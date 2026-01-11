@@ -1,0 +1,212 @@
+================================================================================
+SATELLITE CONTROL SYSTEM - MISSION SUMMARY & CONFIGURATION
+================================================================================
+Generated: 2026-01-11 10:02:54
+Data Directory: data/Simulation/11-01-2026_10-01-21
+Test Mode: SIMULATION
+================================================================================
+
+================================================================================
+MISSION CONFIGURATION - RECREATION DATA
+================================================================================
+This section contains all information needed to recreate this exact mission.
+
+MISSION TYPE: WAYPOINT NAVIGATION (MODE 1)
+--------------------------------------------------
+Description: Satellite visits multiple waypoints in sequence
+
+STARTING CONFIGURATION:
+  Starting X position:     1.000 m
+  Starting Y position:     1.000 m
+  Starting Z position:     1.000 m
+  Starting orientation:    roll=0.0°, pitch=0.0°, yaw=90.0°
+
+WAYPOINTS:
+  Number of Waypoints:     1
+  Waypoint 1:              (0.000, 0.000, 0.000) m, roll=0.0°, pitch=0.0°, yaw=0.0°
+
+  Hold Time per Waypoint:  5.0 s
+
+OBSTACLE CONFIGURATION:
+  Obstacle Avoidance:      DISABLED
+
+================================================================================
+CONTROLLER CONFIGURATION
+================================================================================
+These parameters affect mission performance and control behavior.
+
+MPC CONTROLLER PARAMETERS:
+--------------------------------------------------
+  Controller Type:         Linearized MPC (A*x[k] + B*u[k])
+  Solver:                  OSQP
+  Prediction Horizon:      100 steps
+  Control Horizon:         100 steps
+  Simulation Timestep:     0.005 s
+  Control Timestep:        0.050 s
+  Solver Time Limit:       0.040 s
+
+COST FUNCTION WEIGHTS:
+--------------------------------------------------
+  Position Weight (Q):     1000.0
+  Velocity Weight (Q):     1000.0
+  Angle Weight (Q):        1000.0
+  Angular Vel Weight (Q):  1000.0
+  Thrust Penalty (R):      0.100
+
+CONTROL CONSTRAINTS:
+--------------------------------------------------
+  Max Velocity:            0.500 m/s
+  Max Angular Velocity:    90.0°/s
+  Position Bounds:         ±3.0 m
+
+TOLERANCE THRESHOLDS:
+--------------------------------------------------
+  Position Tolerance:      0.050 m
+  Angle Tolerance:         <3.0°
+  Velocity Tolerance:      0.050 m/s
+  Angular Vel Tolerance:   <3.0°/s
+
+PHYSICAL PARAMETERS:
+--------------------------------------------------
+  Total Mass:              10.000 kg
+  Moment of Inertia:       0.150000 kg·m²
+  Satellite Size:          0.300 m
+  COM Offset:              (0.000000, 0.000000, 0.000000) m
+
+THRUSTER FORCES:
+  Thruster 1:             0.500000 N
+  Thruster 2:             0.000000 N
+  Thruster 3:             0.500000 N
+  Thruster 4:             0.000000 N
+  Thruster 5:             0.500000 N
+  Thruster 6:             0.000000 N
+
+================================================================================
+ALL CONFIGURATION PARAMETERS (FOR TEST COMPARISON)
+================================================================================
+Complete listing of all system parameters for easy test-to-test comparison.
+
+MPC PARAMETERS:
+--------------------------------------------------
+  MPC_PREDICTION_HORIZON:        100
+  MPC_CONTROL_HORIZON:           100
+  MPC_SOLVER_TIME_LIMIT:         0.040 s
+  MPC_SOLVER_TYPE:               OSQP
+  Q_POSITION:                    1000.0
+  Q_VELOCITY:                    1000.0
+  Q_ANGLE:                       1000.0
+  Q_ANGULAR_VELOCITY:            1000.0
+  R_THRUST:                      0.100
+  MAX_VELOCITY:                  0.500 m/s
+  MAX_ANGULAR_VELOCITY:          90.0°/s
+  POSITION_BOUNDS:               ±3.0 m
+  DAMPING_ZONE:                  0.250 m
+  VELOCITY_THRESHOLD:            0.030 m/s
+  ANGLE_TOLERANCE:               3.0°
+  VELOCITY_TOLERANCE:            0.050 m/s
+  ANGULAR_VELOCITY_TOLERANCE:    3.0°/s
+
+TIMING PARAMETERS:
+--------------------------------------------------
+  SIMULATION_DT:                 0.005 s
+  CONTROL_DT:                    0.050 s
+  MAX_SIMULATION_TIME:           500.0 s
+  TARGET_HOLD_TIME:              5.0 s
+  POINT_TO_POINT_FINAL_STAB:    10.0 s
+  MULTI_POINT_FINAL_STAB:       10.0 s
+  DXF_FINAL_STAB:                10.0 s
+
+PHYSICS PARAMETERS:
+--------------------------------------------------
+  TOTAL_MASS:                    10.000 kg
+  MOMENT_OF_INERTIA:             0.150000 kg·m²
+  SATELLITE_SIZE:                0.300 m
+  LINEAR_DAMPING_COEFF:          0.000 N/(m/s)
+  ROTATIONAL_DAMPING_COEFF:      0.0000 N·m/(rad/s)
+  THRUSTER_VALVE_DELAY:          50.0 ms
+  THRUSTER_RAMPUP_TIME:          15.0 ms
+  THRUST_FORCE_NOISE_PERCENT:    0.0%
+
+SENSOR NOISE PARAMETERS:
+--------------------------------------------------
+  POSITION_NOISE_STD:            0.00 mm
+  ANGLE_NOISE_STD:               0.00°
+  VELOCITY_NOISE_STD:            0.00 mm/s
+  ANGULAR_VEL_NOISE_STD:         0.00°/s
+
+DISTURBANCE PARAMETERS:
+--------------------------------------------------
+  RANDOM_DISTURBANCES_ENABLED:   False
+  DISTURBANCE_FORCE_STD:         0.000 N
+  DISTURBANCE_TORQUE_STD:        0.0000 N·m
+
+FEATURE FLAGS:
+--------------------------------------------------
+  REALISTIC_PHYSICS_ENABLED:     True
+  USE_FINAL_STABILIZATION:       False
+  HEADLESS_MODE:                 True
+
+================================================================================
+MISSION PERFORMANCE RESULTS
+================================================================================
+
+[POSITION] POSITION & TRAJECTORY ANALYSIS
+--------------------------------------------------
+Initial Position:          (1.000, 1.000, 1.000) m
+Final Position:            (-11.816, -11.828, -14.109) m
+Target Position:           (0.000, 0.000, 0.000) m
+Initial Position Error:    1.7321 m
+Final Position Error:      21.8760 m
+Position Improvement:      -1163.0%
+Total Distance Traveled:   23.622 m
+Trajectory Efficiency:     7.3%
+
+ORIENTATION ANALYSIS
+--------------------------------------------------
+Initial Angle Error:       90.00°
+Final Angle Error:         19.97° (target: <3.0°)
+Angle Improvement:         77.8%
+Final Velocity Magnitude:  0.2881 m/s
+Final Angular Velocity:    0.00°/s
+
+LINEARIZED MPC CONTROLLER PERFORMANCE
+--------------------------------------------------
+Total Test Time:           84.2 s
+MPC Updates:               1685 cycles
+MPC Update Rate:           20.0 Hz
+Fastest MPC Solve:         0.004 s
+Slowest MPC Solve:         0.042 s
+Average MPC Solve:         0.004 s
+MPC Solve Std Dev:         0.002 s
+Timing Violations:         5/1685 (0.3%)
+Real-time Performance:     8.6% of available time
+
+CONTROL EFFORT & FUEL ANALYSIS
+--------------------------------------------------
+Total Thruster Activations: 179
+Total Control Magnitude:    130.07 N·s
+Average Control per Step:   0.077 N
+Thruster Switching Events:  10
+Control Smoothness:         100.0%
+Fuel Efficiency:            5.506 N·s/m
+
+MISSION SUCCESS & TARGET MAINTENANCE ANALYSIS
+--------------------------------------------------
+Position Tolerance:        <0.050 m
+Angle Tolerance:           <3.0°
+Position Target Met:       NO
+Angle Target Met:          NO
+Overall Mission Status:    INCOMPLETE
+
+Achieved Precision:        21.8760m
+Precision Ratio:           437.52 (FAILED - 43651.9% over target)
+
+TARGET STATUS
+--------------------------------------------------
+Target Never Reached:      Mission incomplete
+Remaining Position Error:  21.8260 m
+Remaining Angle Error:     16.97°
+
+================================================================================
+END OF MISSION SUMMARY
+================================================================================
