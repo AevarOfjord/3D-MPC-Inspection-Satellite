@@ -25,12 +25,16 @@ import numpy as np
 from mujoco import viewer as mujoco_viewer
 
 # V4.0.0: SatelliteConfig removed - use AppConfig only
-from src.satellite_control.config.models import AppConfig, SatellitePhysicalParams, SimulationParams
+from src.satellite_control.config.models import (
+    AppConfig,
+    SatellitePhysicalParams,
+    SimulationParams,
+)
 
-from .backend import SimulationBackend
+# from .backend import SimulationBackend
 
 
-class MuJoCoSatelliteSimulator(SimulationBackend):
+class MuJoCoSatelliteSimulator:
     """
     MuJoCo-based satellite physics simulator.
 
@@ -56,8 +60,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # V4.0.0: app_config is required
         if app_config is None:
             from src.satellite_control.config.simulation_config import SimulationConfig
+
             app_config = SimulationConfig.create_default().app_config
-        
+
         # Load MuJoCo model
         model_full_path = Path(model_path)
         if not model_full_path.exists():
@@ -120,13 +125,13 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         self.actuator_ids = {}
         # Note: XML defines reaction wheel motors but not thruster actuators?
         # Simulation applies forces manually via xfrc_applied.
-        # This mapping is likely unused if we apply forces manually, 
+        # This mapping is likely unused if we apply forces manually,
         # but let's keep it clean or remove if obsolete.
         # Check if code uses self.actuator_ids... it does not seem to use it for force application.
-        
+
         # However, _update_visuals needs to map IDs to sites.
         # New 6-thruster mapping to XML sites:
-        # 1 (+X face) -> site "thruster_px" (pushes -X) ?? 
+        # 1 (+X face) -> site "thruster_px" (pushes -X) ??
         # Wait, physics.py says:
         # 1: (0.15, 0, 0) direction [-1, 0, 0] (pushes -X, sits on +X face)
         # XML site "thruster_px" is at (0.145, 0, 0).
@@ -136,7 +141,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # ID 4 -> "thruster_my"
         # ID 5 -> "thruster_pz"
         # ID 6 -> "thruster_mz"
-        
+
         self.thruster_site_map = {
             1: "thruster_px",
             2: "thruster_mx",
@@ -150,16 +155,23 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # for thrusters if we aren't using mjData.ctrl for them.
         # Keeping dictionary empty or minimal to avoid breakage if referenced.
 
-
         # Get sensor indices
         try:
-            self.sensor_x_pos = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, "x_pos")
-            self.sensor_y_pos = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, "y_pos")
+            self.sensor_x_pos = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SENSOR, "x_pos"
+            )
+            self.sensor_y_pos = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SENSOR, "y_pos"
+            )
             self.sensor_theta = mujoco.mj_name2id(
                 self.model, mujoco.mjtObj.mjOBJ_SENSOR, "z_rot_pos"
             )
-            self.sensor_x_vel = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, "x_vel")
-            self.sensor_y_vel = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, "y_vel")
+            self.sensor_x_vel = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SENSOR, "x_vel"
+            )
+            self.sensor_y_vel = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SENSOR, "y_vel"
+            )
             self.sensor_omega = mujoco.mj_name2id(
                 self.model, mujoco.mjtObj.mjOBJ_SENSOR, "z_rot_vel"
             )
@@ -195,7 +207,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # the XML file has CoM=(0.005, 0.005), causing the Controller to fight.
         # --------------------------------------------------------------------
         try:
-            body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite")
+            body_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite"
+            )
 
             # 1. Update Mass
             self.model.body_mass[body_id] = self.total_mass
@@ -220,8 +234,10 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             print(f"    - CoM: {self.model.body_ipos[body_id]}")
 
         except Exception as e:
-            print(f"  Warning: Failed to override MuJoCo physics " f"parameters: {e}")
-            print("  Simulation will use XML default parameters " "(Risk of Model Mismatch!)")
+            print(f"  Warning: Failed to override MuJoCo physics parameters: {e}")
+            print(
+                "  Simulation will use XML default parameters (Risk of Model Mismatch!)"
+            )
 
         mujoco.mj_forward(self.model, self.data)
 
@@ -235,12 +251,14 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         print("MuJoCo satellite simulator initialized")
         print(f"  Model: {model_path}")
-        viz_mode = "MuJoCo native viewer" if use_mujoco_viewer else "matplotlib (legacy)"
+        viz_mode = (
+            "MuJoCo native viewer" if use_mujoco_viewer else "matplotlib (legacy)"
+        )
         print(f"  Visualization: {viz_mode}")
         print(f"  Timestep: {self.model.opt.timestep:.4f}s")
         print(f"  Mass: {self.total_mass:.2f} kg")
         print(f"  Inertia: {self.moment_of_inertia:.3f} kg*m^2")
-        print(f"  COM offset: ({self.com_offset[0]:.6f}, " f"{self.com_offset[1]:.6f}) m")
+        print(f"  COM offset: ({self.com_offset[0]:.6f}, {self.com_offset[1]:.6f}) m")
 
     def set_thruster_level(self, thruster_id: int, level: float):
         """Set the thrust level (0.0 to 1.0) for a specific thruster."""
@@ -294,7 +312,10 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         # Set window title
         try:
-            if hasattr(self.fig.canvas, "manager") and self.fig.canvas.manager is not None:
+            if (
+                hasattr(self.fig.canvas, "manager")
+                and self.fig.canvas.manager is not None
+            ):
                 self.fig.canvas.manager.set_window_title("MuJoCo Satellite Simulation")
         except AttributeError:
             pass  # Window title not supported on this backend
@@ -442,7 +463,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # w = q[0], z = q[3]
         q = self.quaternion
         # yaw = atan2(2(wz + xy), 1 - 2(y^2 + z^2))
-        return float(np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2)))
+        return float(
+            np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
+        )
 
     @angle.setter
     def angle(self, value: Union[Tuple[float, float, float], np.ndarray]):
@@ -451,7 +474,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         Expects (Roll, Pitch, Yaw) in radians.
         """
         if not (isinstance(value, (tuple, list, np.ndarray)) and len(value) == 3):
-            raise ValueError("Orientation must be a 3-element Euler tuple (roll, pitch, yaw).")
+            raise ValueError(
+                "Orientation must be a 3-element Euler tuple (roll, pitch, yaw)."
+            )
 
         quat = euler_xyz_to_quat_wxyz(value)
         self.data.qpos[3:7] = quat
@@ -513,9 +538,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             force_magnitude = self.get_thrust_force(thruster_id)
             if force_magnitude > 0:
                 # Local pos and dir
-                pos_body = (
-                    np.array(self.thrusters[thruster_id]) - self.com_offset
-                )
+                pos_body = np.array(self.thrusters[thruster_id]) - self.com_offset
                 dir_body = np.array(self.thruster_directions[thruster_id])
 
                 # Rotate to world frame
@@ -574,7 +597,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
                 force = nominal_force  # Assumes valve was fully open
             # Phase 2: Ramp-down
             elif time_since_deactivation < (valve_delay + rampup_time):
-                rampdown_progress = (time_since_deactivation - valve_delay) / rampup_time
+                rampdown_progress = (
+                    time_since_deactivation - valve_delay
+                ) / rampup_time
                 force = nominal_force * (1.0 - rampdown_progress)
             else:
                 # Fully off - remove from deactivation tracking
@@ -597,7 +622,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         if thruster_id not in self.active_thrusters and level <= 0.001:
             return 0.0
 
-        activation_time = self.thruster_activation_time.get(thruster_id, self.simulation_time)
+        activation_time = self.thruster_activation_time.get(
+            thruster_id, self.simulation_time
+        )
         time_since_activation = self.simulation_time - activation_time
 
         # Phase 1: Valve opening delay - no thrust
@@ -637,7 +664,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         # Get body id for satellite
         try:
-            body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite")
+            body_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite"
+            )
         except Exception:
             body_id = 1  # Fallback
 
@@ -715,7 +744,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         try:
             # Get material IDs (not used currently, but could be for
             # future material-based visual updates)
-            _ = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_MATERIAL, "mat_thruster_active")
+            _ = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_MATERIAL, "mat_thruster_active"
+            )
             _ = mujoco.mj_name2id(
                 self.model,
                 mujoco.mjtObj.mjOBJ_MATERIAL,
@@ -728,7 +759,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             # 6-Thruster mapping:
             for i in self.thrusters.keys():
                 site_name = self.thruster_site_map.get(i, f"thruster{i}")
-                site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+                site_id = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_SITE, site_name
+                )
 
                 if site_id != -1:
                     is_active = i in self.active_thrusters
@@ -763,7 +796,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
     def get_state(self) -> np.ndarray:
         """
         Get the full current state of the satellite (SimulationBackend interface).
-        
+
         Returns:
             State vector [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (13 elements)
         """
@@ -784,12 +817,12 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
     ):
         """
         Set satellite state (SimulationBackend interface with legacy compatibility).
-        
+
         Supports two calling conventions:
         1. set_state(state) - where state is [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (13 elements)
            This matches the SimulationBackend interface.
         2. set_state(position=..., velocity=..., quaternion=..., ...) - legacy interface
-        
+
         Args:
             state: Full state vector [13 elements] (SimulationBackend interface)
             position: Position [x, y, z] (legacy interface)
@@ -800,14 +833,21 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         """
         # If state vector provided as positional argument (SimulationBackend interface)
         # Check if state is provided and no keyword arguments are used
-        if state is not None and position is None and velocity is None and quaternion is None and angular_velocity is None and angle is None:
+        if (
+            state is not None
+            and position is None
+            and velocity is None
+            and quaternion is None
+            and angular_velocity is None
+            and angle is None
+        ):
             if len(state) != 13:
                 raise ValueError(f"State vector must be 13 elements, got {len(state)}")
             position = state[0:3]
             quaternion = state[3:7]
             velocity = state[7:10]
             angular_velocity = state[10:13]
-        
+
         # Set position (3D)
         if position is not None:
             if len(position) < 3:
