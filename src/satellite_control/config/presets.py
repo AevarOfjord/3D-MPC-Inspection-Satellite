@@ -19,8 +19,8 @@ Usage:
 
 from typing import Dict, Any
 
-from .models import MPCParams, SatellitePhysicalParams, SimulationParams
-from . import physics, timing, constants
+from .models import MPCParams
+from . import timing
 from .satellite_config import SatelliteConfig
 
 
@@ -36,35 +36,6 @@ class ConfigPreset:
     def all(cls) -> list[str]:
         """Get all available preset names."""
         return [cls.FAST, cls.BALANCED, cls.STABLE, cls.PRECISION]
-
-
-def _get_base_physics() -> SatellitePhysicalParams:
-    """Get base physics parameters (shared across presets)."""
-    return SatellitePhysicalParams(
-        total_mass=physics.TOTAL_MASS,
-        moment_of_inertia=physics.MOMENT_OF_INERTIA,
-        satellite_size=physics.SATELLITE_SIZE,
-        com_offset=tuple(physics.COM_OFFSET),
-        thruster_positions=physics.THRUSTER_POSITIONS,
-        thruster_directions={
-            k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()
-        },
-        thruster_forces=physics.THRUSTER_FORCES,
-        use_realistic_physics=False,
-        damping_linear=0.0,
-        damping_angular=0.0,
-    )
-
-
-def _get_base_simulation() -> SimulationParams:
-    """Get base simulation parameters (shared across presets)."""
-    return SimulationParams(
-        dt=0.005,
-        max_duration=timing.MAX_SIMULATION_TIME,
-        headless=constants.Constants.HEADLESS_MODE,
-        window_width=constants.Constants.WINDOW_WIDTH,
-        window_height=constants.Constants.WINDOW_HEIGHT,
-    )
 
 
 def _create_fast_mpc() -> MPCParams:

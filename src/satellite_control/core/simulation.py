@@ -35,49 +35,25 @@ Configuration:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
 from src.satellite_control.config import SimulationConfig
-
-# V4.0.0: SatelliteConfig removed - use SimulationConfig only
 from src.satellite_control.config.constants import Constants
-from src.satellite_control.config.satellite_config import (
-    initialize_config,
-)
-from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.core.mujoco_satellite import SatelliteThrusterTester
-from src.satellite_control.core.simulation_initialization import SimulationInitializer
-from src.satellite_control.core.simulation_io import SimulationIO
+from src.satellite_control.config.satellite_config import initialize_config
 from src.satellite_control.core.simulation_loop import SimulationLoop
-from src.satellite_control.core.thruster_manager import ThrusterManager
-from src.satellite_control.mission.mission_report_generator import (
-    create_mission_report_generator,
-)
-from src.satellite_control.mission.mission_state_manager import (
-    MissionStateManager,
-)
-from src.satellite_control.utils.data_logger import create_data_logger
 from src.satellite_control.utils.logging_config import setup_logging
-
 from src.satellite_control.utils.navigation_utils import (
     angle_difference,
     normalize_angle,
     point_to_line_distance,
 )
 from src.satellite_control.utils.orientation_utils import (
-    euler_xyz_to_quat_wxyz,
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
-)
-from src.satellite_control.utils.simulation_state_validator import (
-    create_state_validator_from_config,
-)
-from src.satellite_control.visualization.simulation_visualization import (
-    create_simulation_visualizer,
 )
 
 initialize_config()
