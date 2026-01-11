@@ -36744,3 +36744,4 @@ RW Output = [0.0, -0.0, 0.0]
 2026-01-10 23:18:37, Performance metrics exported to Data/Simulation/10-01-2026_23-18-07/performance_metrics.json
 2026-01-10 23:18:37, Performance threshold violations detected:
 2026-01-10 23:18:37,   ⚠️  MPC P95 solve time (5.37ms) exceeds threshold (5.00ms)
+2026-01-10 23:19:46, Simulation closed.
