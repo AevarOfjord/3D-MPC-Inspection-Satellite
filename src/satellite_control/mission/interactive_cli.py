@@ -182,7 +182,7 @@ class InteractiveMissionCLI:
                 "start_pos": (1.0, 1.0, 1.0),
                 "start_angle": (0.0, 0.0, np.radians(45)),
                 "targets": [((-1.0, -1.0, 0.0), (0.0, 0.0, np.radians(-135)))],
-                "obstacles": [(0.0, 0.0, 0.3)],
+                "obstacles": [(0.0, 0.0, 0.0, 0.3)],
             },
             "square": {
                 "name": "Square Pattern",
@@ -201,7 +201,7 @@ class InteractiveMissionCLI:
                 "start_pos": (1.0, 0.0, 1.0),
                 "start_angle": (0.0, 0.0, np.radians(180)),
                 "targets": [((-1.0, 0.0, 0.5), (0.0, 0.0, np.radians(180)))],
-                "obstacles": [(0.0, 0.5, 0.3), (0.0, -0.5, 0.3)],
+                "obstacles": [(0.0, 0.5, 0.0, 0.3), (0.0, -0.5, 0.0, 0.3)],
             },
         }
 
@@ -253,8 +253,10 @@ class InteractiveMissionCLI:
 
         # Obstacles
         if preset["obstacles"]:
-            for i, (x, y, r) in enumerate(preset["obstacles"], 1):
-                table.add_row(f"Obstacle {i}", f"({x:.1f}, {y:.1f}) r={r:.2f}m")
+            for i, (x, y, z, r) in enumerate(preset["obstacles"], 1):
+                table.add_row(
+                    f"Obstacle {i}", f"({x:.1f}, {y:.1f}, {z:.1f}) r={r:.2f}m"
+                )
         else:
             table.add_row("Obstacles", "None")
 
@@ -291,8 +293,13 @@ class InteractiveMissionCLI:
         mission_state.obstacles_enabled = len(obstacles) > 0
         
         targets = preset.get("targets", [])
-        # Extract yaw from angles if they're tuples
-        waypoint_angles = [t[1][2] if isinstance(t[1], tuple) and len(t[1]) == 3 else t[1] for t in targets]
+        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
+        waypoint_angles = [
+            t[1]
+            if isinstance(t[1], (tuple, list)) and len(t[1]) == 3
+            else (0.0, 0.0, float(t[1]))
+            for t in targets
+        ]
         
         mission_state.enable_waypoint_mode = True
         mission_state.enable_multi_point_mode = True
@@ -377,7 +384,9 @@ class InteractiveMissionCLI:
             float(np.radians(float(yaw or yaw_default))),
         )
 
-    def configure_obstacles_interactive(self, mission_state) -> Tuple[List[Tuple[float, float, float]], bool]:
+    def configure_obstacles_interactive(
+        self, mission_state
+    ) -> Tuple[List[Tuple[float, float, float, float]], bool]:
         """Configure obstacles with interactive menu.
         
         Args:
@@ -408,18 +417,23 @@ class InteractiveMissionCLI:
             qmark=QMARK,
         ).ask()
 
-        obstacles: List[Tuple[float, float, float]] = []
+        obstacles: List[Tuple[float, float, float, float]] = []
 
         if result == "central":
-            obstacles.append((0.0, 0.0, 0.3))
-            console.print("[green]+ Added central obstacle at (0, 0)[/green]")
+            obstacles.append((0.0, 0.0, 0.0, 0.3))
+            console.print("[green]+ Added central obstacle at (0, 0, 0)[/green]")
 
         elif result == "corridor":
-            obstacles.extend([(0.0, 0.4, 0.25), (0.0, -0.4, 0.25)])
+            obstacles.extend([(0.0, 0.4, 0.0, 0.25), (0.0, -0.4, 0.0, 0.25)])
             console.print("[green]+ Added corridor obstacles[/green]")
 
         elif result == "scattered":
-            scattered = [(0.5, 0.5, 0.2), (-0.5, 0.5, 0.2), (0.5, -0.5, 0.2), (-0.5, -0.5, 0.2)]
+            scattered = [
+                (0.5, 0.5, 0.0, 0.2),
+                (-0.5, 0.5, 0.0, 0.2),
+                (0.5, -0.5, 0.0, 0.2),
+                (-0.5, -0.5, 0.0, 0.2),
+            ]
             obstacles.extend(scattered)
             console.print("[green]+ Added 4 corner obstacles[/green]")
 
@@ -434,16 +448,18 @@ class InteractiveMissionCLI:
         
         return obstacles, obstacles_enabled
 
-    def _add_custom_obstacles(self, mission_state) -> List[Tuple[float, float, float]]:
+    def _add_custom_obstacles(
+        self, mission_state
+    ) -> List[Tuple[float, float, float, float]]:
         """Add custom obstacles interactively.
         
         Args:
             mission_state: MissionState to update (required in V3.0.0).
         
         Returns:
-            List of obstacles as (x, y, radius) tuples.
+            List of obstacles as (x, y, z, radius) tuples.
         """
-        obstacles: List[Tuple[float, float, float]] = []
+        obstacles: List[Tuple[float, float, float, float]] = []
         while True:
             add_more = questionary.confirm(
                 "Add an obstacle?",
@@ -454,7 +470,7 @@ class InteractiveMissionCLI:
             if not add_more:
                 break
 
-            pos = self.get_position_interactive("Obstacle position", dim=2)
+            pos = self.get_position_interactive("Obstacle position", dim=3)
             radius = questionary.text(
                 "Radius (meters) [0.3]:",
                 default="0.3",
@@ -463,7 +479,7 @@ class InteractiveMissionCLI:
             ).ask()
 
             r = float(radius or 0.3)
-            obstacles.append((pos[0], pos[1], r))
+            obstacles.append((pos[0], pos[1], pos[2] if len(pos) > 2 else 0.0, r))
             console.print(f"[green]+ Added obstacle at {pos}[/green]")
         
         # V3.0.0: Update mission_state directly
@@ -489,7 +505,7 @@ class InteractiveMissionCLI:
         start_angle = self.get_angle_interactive("Starting Angle", (0.0, 0.0, 0.0))
 
         # Get waypoints
-        waypoints: List[Tuple[Tuple[float, float], Tuple[float, float, float]]] = []
+        waypoints: List[Tuple[Tuple[float, ...], Tuple[float, float, float]]] = []
 
         console.print("\n[bold]Define waypoints[/bold] (at least 1 required)")
 
@@ -522,8 +538,13 @@ class InteractiveMissionCLI:
         if not self._confirm_mission("Custom Waypoint Mission"):
             return {}
 
-        # Extract yaw from angles for waypoint_angles
-        waypoint_angles = [wp[1][2] if isinstance(wp[1], tuple) and len(wp[1]) == 3 else wp[1] for wp in waypoints]
+        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
+        waypoint_angles = [
+            wp[1]
+            if isinstance(wp[1], (tuple, list)) and len(wp[1]) == 3
+            else (0.0, 0.0, float(wp[1]))
+            for wp in waypoints
+        ]
         
         # Update MissionState (V3.0.0)
         mission_state.enable_waypoint_mode = True
@@ -543,9 +564,9 @@ class InteractiveMissionCLI:
 
     def _show_custom_mission_summary(
         self,
-        start_pos: Tuple[float, float],
+        start_pos: Tuple[float, ...],
         start_angle: Tuple[float, float, float],
-        waypoints: List[Tuple[Tuple[float, float], Tuple[float, float, float]]],
+        waypoints: List[Tuple[Tuple[float, ...], Tuple[float, float, float]]],
         mission_state,
     ) -> None:
         """Show summary of custom mission configuration."""
@@ -882,10 +903,10 @@ class InteractiveMissionCLI:
 
     def _show_shape_mission_summary(
         self,
-        start_pos: Tuple[float, float],
+        start_pos: Tuple[float, ...],
         start_angle: Tuple[float, float, float],
         shape_type: str,
-        shape_center: Tuple[float, float],
+        shape_center: Tuple[float, ...],
         rotation_deg: float,
         offset: float,
         target_speed: float,
@@ -900,9 +921,20 @@ class InteractiveMissionCLI:
         table.add_column("Value", style="cyan")
 
         sa = self._format_euler_deg(start_angle)
-        table.add_row("Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}) @ {sa}")
+        if len(start_pos) == 3:
+            table.add_row(
+                "Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}, {start_pos[2]:.1f}) @ {sa}"
+            )
+        else:
+            table.add_row("Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}) @ {sa}")
         table.add_row("Shape", shape_type.title())
-        table.add_row("Center", f"({shape_center[0]:.1f}, {shape_center[1]:.1f})")
+        if len(shape_center) == 3:
+            table.add_row(
+                "Center",
+                f"({shape_center[0]:.1f}, {shape_center[1]:.1f}, {shape_center[2]:.1f})",
+            )
+        else:
+            table.add_row("Center", f"({shape_center[0]:.1f}, {shape_center[1]:.1f})")
         table.add_row("Rotation", f"{rotation_deg:.0f}°")
         table.add_row("Offset", f"{offset:.2f} m")
         table.add_row("Speed", f"{target_speed:.2f} m/s")
@@ -916,26 +948,26 @@ class InteractiveMissionCLI:
 
     def _apply_shape_config(
         self,
-        start_pos: Tuple[float, float],
+        start_pos: Tuple[float, ...],
         start_angle: Tuple[float, float, float],
-        shape_center: Tuple[float, float],
+        shape_center: Tuple[float, ...],
         rotation_rad: float,
-        transformed_shape: List[Tuple[float, float]],
-        upscaled_path: List[Tuple[float, float]],
+        transformed_shape: List[Tuple[float, ...]],
+        upscaled_path: List[Tuple[float, ...]],
         target_speed: float,
         path_length: float,
         estimated_duration: float,
         has_return: bool,
-        return_pos: Optional[Tuple[float, float]],
+        return_pos: Optional[Tuple[float, ...]],
         return_angle: Optional[Tuple[float, float, float]],
         mission_state,
     ) -> None:
         """Apply shape following configuration to MissionState.
         
         Args:
-            start_pos: Starting position (x, y)
+            start_pos: Starting position (x, y, z)
             start_angle: Starting angle (roll, pitch, yaw)
-            shape_center: Shape center position (x, y)
+            shape_center: Shape center position (x, y, z)
             rotation_rad: Shape rotation in radians
             transformed_shape: Transformed shape points
             upscaled_path: Upscaled path points
@@ -943,7 +975,7 @@ class InteractiveMissionCLI:
             path_length: Path length in meters
             estimated_duration: Estimated duration in seconds
             has_return: Whether to return to start
-            return_pos: Return position (x, y) if has_return
+            return_pos: Return position (x, y, z) if has_return
             return_angle: Return angle if has_return
             mission_state: MissionState to update (required in V3.0.0).
         """
@@ -970,7 +1002,12 @@ class InteractiveMissionCLI:
         mission_state.dxf_path_length = path_length
         mission_state.dxf_has_return = has_return
         mission_state.dxf_return_position = return_pos_3d
-        mission_state.dxf_return_angle = return_angle[2] if return_angle and len(return_angle) == 3 else return_angle
+        if isinstance(return_angle, (tuple, list)) and len(return_angle) == 3:
+            mission_state.dxf_return_angle = tuple(return_angle)
+        elif return_angle is not None:
+            mission_state.dxf_return_angle = (0.0, 0.0, float(return_angle))
+        else:
+            mission_state.dxf_return_angle = None
 
         # Clear transient state
         mission_state.dxf_tracking_start_time = None

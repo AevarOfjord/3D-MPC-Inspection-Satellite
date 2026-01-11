@@ -33,6 +33,7 @@ class SimulationContext:
     last_control_update_time: float = 0.0
     active_thrusters: List[int] = field(default_factory=list)
     previous_thruster_command: Optional[np.ndarray] = None
+    rw_torque_command: np.ndarray = field(default_factory=lambda: np.zeros(3))
     # Performance / Internals
     computation_time_last_step: float = 0.0
 

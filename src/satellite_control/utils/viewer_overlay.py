@@ -6,7 +6,7 @@ Renders text overlays showing mission status, position error, and thruster activ
 """
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 
@@ -25,16 +25,16 @@ class OverlayData:
     position_error: float = 0.0
 
     # Angle tracking
-    current_angle: float = 0.0
-    target_angle: float = 0.0
+    current_angle: Union[float, Tuple[float, float, float]] = 0.0
+    target_angle: Union[float, Tuple[float, float, float]] = 0.0
     angle_error: float = 0.0
 
     # MPC info
     mpc_solve_time_ms: float = 0.0
     mpc_status: str = "OK"
 
-    # Thruster activity (12 thrusters, 0.0-1.0 each)
-    thruster_levels: Tuple[float, ...] = (0.0,) * 12
+    # Thruster activity (8 thrusters, 0.0-1.0 each)
+    thruster_levels: Tuple[float, ...] = (0.0,) * 8
 
 
 class ViewerOverlay:
@@ -54,8 +54,8 @@ class ViewerOverlay:
         sim_time: float,
         current_pos: Tuple[float, float, float],
         target_pos: Tuple[float, float, float],
-        current_angle: float,
-        target_angle: float,
+        current_angle: Union[float, Tuple[float, float, float]],
+        target_angle: Union[float, Tuple[float, float, float]],
         mpc_solve_time: float,
         mpc_status: str,
         thruster_levels: Tuple[float, ...],
@@ -77,20 +77,22 @@ class ViewerOverlay:
         tp = np.array(target_pos)
         self.data.position_error = float(np.linalg.norm(cp - tp))
 
-        # Angle error is passed as scalar usually, or computed here from quaternions?
-        # The signature takes `current_angle: float` which implies scalar Yaw or 2D angle.
-        # But in 3D we have quaternions or 3D Euler angles.
-        # IF the input `current_angle` is just Yaw, then this calculation is valid for Yaw error.
-        # Ideally, we should receive the total angular error from the validator/simulation logic.
-        # For visualization purposes, let's assume `current_angle` is either Yaw or
-        # that we should just compute simple difference if scalar.
-        if isinstance(current_angle, (float, int)) and isinstance(target_angle, (float, int)):
+        if (
+            isinstance(current_angle, (tuple, list, np.ndarray))
+            and isinstance(target_angle, (tuple, list, np.ndarray))
+            and len(current_angle) == 3
+            and len(target_angle) == 3
+        ):
+            from src.satellite_control.utils.orientation_utils import (
+                euler_xyz_to_quat_wxyz,
+                quat_angle_error,
+            )
+
+            curr_quat = euler_xyz_to_quat_wxyz(tuple(current_angle))
+            targ_quat = euler_xyz_to_quat_wxyz(tuple(target_angle))
+            self.data.angle_error = quat_angle_error(targ_quat, curr_quat)
+        elif isinstance(current_angle, (float, int)) and isinstance(target_angle, (float, int)):
             self.data.angle_error = abs(self._normalize_angle(current_angle - target_angle))
-        else:
-            # If vectors/quaternions passed, assume error is pre-calculated or handle separately.
-            # For now, keep simpler logic or rely on caller to pass updated error?
-            # Actually, let's just use scalar difference of what is passed (likely Yaw).
-            pass
 
     def get_status_text(self) -> str:
         """Get formatted status text for top-left overlay."""

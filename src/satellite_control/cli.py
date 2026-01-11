@@ -85,7 +85,10 @@ def run(
     # Mission configuration from CLI (v2.0.0: uses SimulationConfig)
     mission_simulation_config = None
     
-    if classic:
+    if auto:
+        # Auto mode - skip menu and use defaults set above
+        pass
+    elif classic:
         # Use classic text-based menu
         mission_manager = MissionManager()
         mode = mission_manager.show_mission_menu()

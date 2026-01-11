@@ -45,24 +45,26 @@ class TestThrusterPositions:
         assert actual_ids == expected_ids
 
     def test_thruster_positions_are_tuples(self):
-        """Test that each position is a tuple of two values."""
+        """Test that each position is a tuple of three values."""
         for thruster_id, position in model.thruster_positions.items():
             assert isinstance(
                 position, tuple
             ), f"Thruster {thruster_id} position not a tuple"
             assert (
-                len(position) == 2
-            ), f"Thruster {thruster_id} position should have 2 coordinates"
+                len(position) == 3
+            ), f"Thruster {thruster_id} position should have 3 coordinates"
 
     def test_thruster_positions_are_symmetric(self):
         """Test that thrusters are roughly symmetric around center."""
         positions = np.array(list(model.thruster_positions.values()))
         x_coords = positions[:, 0]
         y_coords = positions[:, 1]
+        z_coords = positions[:, 2]
 
         # Center of mass should be near origin
         assert abs(np.mean(x_coords)) < 0.1
         assert abs(np.mean(y_coords)) < 0.1
+        assert abs(np.mean(z_coords)) < 1e-6
 
 
 class TestThrusterDirections:
@@ -84,42 +86,38 @@ class TestThrusterDirections:
         assert position_ids == direction_ids
 
     def test_thruster_directions_are_tuples(self):
-        """Test that each direction is a tuple of two values."""
+        """Test that each direction is a tuple of three values."""
         for thruster_id, direction in model.thruster_directions.items():
             assert isinstance(
                 direction, tuple
             ), f"Thruster {thruster_id} direction not a tuple"
             assert (
-                len(direction) == 2
-            ), f"Thruster {thruster_id} direction should have 2 components"
+                len(direction) == 3
+            ), f"Thruster {thruster_id} direction should have 3 components"
 
     def test_thruster_directions_are_unit_vectors(self):
         """Test that all direction vectors are normalized."""
-        for thruster_id, (dx, dy) in model.thruster_directions.items():
-            magnitude = np.sqrt(dx**2 + dy**2)
+        for thruster_id, (dx, dy, dz) in model.thruster_directions.items():
+            magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
             assert (
                 abs(magnitude - 1.0) < 1e-6
             ), f"Thruster {thruster_id} direction not unit vector: {magnitude}"
 
     def test_thruster_directions_are_valid_orientations(self):
-        """Test that directions are one of the cardinal/diagonal directions."""
+        """Test that directions are axis-aligned unit vectors."""
         valid_directions = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),  # Cardinal
-            (np.sqrt(2) / 2, np.sqrt(2) / 2),  # Diagonal NE
-            (np.sqrt(2) / 2, -np.sqrt(2) / 2),  # Diagonal SE
-            (-np.sqrt(2) / 2, -np.sqrt(2) / 2),  # Diagonal SW
-            (-np.sqrt(2) / 2, np.sqrt(2) / 2),  # Diagonal NW
+            (1, 0, 0),
+            (-1, 0, 0),
+            (0, 1, 0),
+            (0, -1, 0),
         ]
 
         for thruster_id, direction in model.thruster_directions.items():
-            dx, dy = direction
+            dx, dy, dz = direction
             # Check if close to any valid direction
             is_valid = any(
-                abs(dx - vx) < 0.01 and abs(dy - vy) < 0.01
-                for vx, vy in valid_directions
+                np.allclose((dx, dy, dz), valid_dir, atol=1e-6)
+                for valid_dir in valid_directions
             )
             assert (
                 is_valid
@@ -211,54 +209,54 @@ class TestModelIntegration:
         """Test that we can compute total force from all thrusters."""
         # All thrusters firing
         thruster_commands = np.ones(8)
-        total_fx = 0
-        total_fy = 0
+        total_force = np.zeros(3)
 
         for i, thruster_id in enumerate(range(1, 9)):
             if thruster_commands[i]:
-                dx, dy = model.thruster_directions[thruster_id]
+                dx, dy, dz = model.thruster_directions[thruster_id]
                 # Assuming uniform force of 0.45N
-                total_fx += dx * 0.45
-                total_fy += dy * 0.45
+                total_force += np.array([dx, dy, dz]) * 0.45
 
         # Total should be finite
-        assert np.isfinite(total_fx)
-        assert np.isfinite(total_fy)
+        assert np.all(np.isfinite(total_force))
 
     def test_can_compute_total_torque_from_all_thrusters(self):
         """Test that we can compute total torque from all thrusters."""
         thruster_commands = np.ones(8)
-        total_torque = 0
+        total_torque = np.zeros(3)
 
         for i, thruster_id in enumerate(range(1, 9)):
             if thruster_commands[i]:
-                px, py = model.thruster_positions[thruster_id]
-                dx, dy = model.thruster_directions[thruster_id]
+                px, py, pz = model.thruster_positions[thruster_id]
+                dx, dy, dz = model.thruster_directions[thruster_id]
                 # Force magnitude
                 force = 0.45
-                # Torque = r × F (cross product in 2D)
-                torque = px * (dy * force) - py * (dx * force)
+                # Torque = r × F
+                force_vec = np.array([dx, dy, dz]) * force
+                torque = np.cross(np.array([px, py, pz]), force_vec)
                 total_torque += torque
 
         # Total torque should be finite
-        assert np.isfinite(total_torque)
+        assert np.all(np.isfinite(total_torque))
 
     def test_opposing_thrusters_cancel_forces(self):
         """Test that opposing thrusters roughly cancel linear forces."""
         # Find opposing thruster pairs (if they exist)
         # For example, thrusters pointing in opposite directions
 
-        for tid1, (dx1, dy1) in model.thruster_directions.items():
-            for tid2, (dx2, dy2) in model.thruster_directions.items():
+        for tid1, (dx1, dy1, dz1) in model.thruster_directions.items():
+            for tid2, (dx2, dy2, dz2) in model.thruster_directions.items():
                 if tid1 < tid2:  # Avoid double counting
                     # Check if opposite directions
-                    if abs(dx1 + dx2) < 0.01 and abs(dy1 + dy2) < 0.01:
+                    if (
+                        abs(dx1 + dx2) < 0.01
+                        and abs(dy1 + dy2) < 0.01
+                        and abs(dz1 + dz2) < 0.01
+                    ):
                         # These are opposing thrusters
                         # Net force should be small
-                        net_fx = dx1 + dx2
-                        net_fy = dy1 + dy2
-                        assert abs(net_fx) < 0.1
-                        assert abs(net_fy) < 0.1
+                        net_force = np.array([dx1 + dx2, dy1 + dy2, dz1 + dz2])
+                        assert np.all(np.abs(net_force) < 0.1)
 
 
 class TestModelDocumentation:

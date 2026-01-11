@@ -18,7 +18,24 @@ def mock_data_accessor():
     """Create a mock data accessor for testing."""
     accessor = MagicMock()
     accessor._col = MagicMock(return_value=np.array([0.0, 1.0, 2.0, 3.0, 4.0]))
-    accessor._row = MagicMock(return_value={"Current_X": 1.0, "Current_Y": 2.0})
+    accessor._row = MagicMock(
+        return_value={
+            "Current_X": 1.0,
+            "Current_Y": 2.0,
+            "Current_Z": 0.5,
+            "Current_Yaw": 0.1,
+            "Target_X": 0.0,
+            "Target_Y": 0.0,
+            "Target_Z": 0.0,
+            "Target_Yaw": 0.0,
+            "Command_Vector": "",
+            "Error_X": 0.0,
+            "Error_Y": 0.0,
+            "Error_Yaw": 0.0,
+            "Linear_Speed": 0.0,
+            "Current_Angular_Vel": 0.0,
+        }
+    )
     accessor._get_len = MagicMock(return_value=5)
     return accessor
 
@@ -86,14 +103,17 @@ class TestVideoRendererSetup:
     def test_setup_plot(self, mock_subplots, video_renderer):
         """Test that setup_plot creates figure and axes."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
 
         video_renderer.setup_plot()
 
         assert video_renderer.fig == mock_fig
-        assert video_renderer.ax_main == mock_ax_main
+        assert video_renderer.ax_xy == mock_ax_xy
+        assert video_renderer.ax_xz == mock_ax_xz
         assert video_renderer.ax_info == mock_ax_info
         mock_subplots.assert_called_once()
 
@@ -105,37 +125,45 @@ class TestVideoRendererDrawing:
     def test_draw_satellite(self, mock_subplots, video_renderer):
         """Test drawing satellite."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
-        video_renderer.draw_satellite(x=1.0, y=2.0, angle=0.5)
+        video_renderer.draw_satellite(x=1.0, y=2.0, z=0.5, yaw=0.5, active_thrusters=[])
 
         # Verify drawing methods were called
-        assert video_renderer.ax_main is not None
+        assert video_renderer.ax_xy is not None
+        assert video_renderer.ax_xz is not None
 
     @patch("matplotlib.pyplot.subplots")
     def test_draw_target(self, mock_subplots, video_renderer):
         """Test drawing target."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
-        video_renderer.draw_target(x=0.0, y=0.0)
+        video_renderer.draw_target(target_x=0.0, target_y=0.0, target_z=0.0, target_yaw=0.0)
 
         # Verify drawing methods were called
-        assert video_renderer.ax_main is not None
+        assert video_renderer.ax_xy is not None
+        assert video_renderer.ax_xz is not None
 
     @patch("matplotlib.pyplot.subplots")
     def test_draw_trajectory(self, mock_subplots, video_renderer):
         """Test drawing trajectory."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
         trajectory_x = [0.0, 1.0, 2.0]
@@ -145,7 +173,8 @@ class TestVideoRendererDrawing:
         video_renderer.draw_trajectory(trajectory_x, trajectory_y, trajectory_z)
 
         # Verify drawing methods were called
-        assert video_renderer.ax_main is not None
+        assert video_renderer.ax_xy is not None
+        assert video_renderer.ax_xz is not None
 
 
 class TestVideoRendererAnimation:
@@ -159,9 +188,11 @@ class TestVideoRendererAnimation:
     ):
         """Test animation generation."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
         mock_writer = MagicMock()
@@ -192,9 +223,11 @@ class TestVideoRendererFrameRendering:
     def test_animate_frame(self, mock_subplots, video_renderer):
         """Test frame animation."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
         result = video_renderer.animate_frame(frame=0)
@@ -216,12 +249,21 @@ class TestVideoRendererInfoPanel:
     def test_update_info_panel(self, mock_subplots, video_renderer):
         """Test info panel update."""
         mock_fig = MagicMock()
-        mock_ax_main = MagicMock()
+        mock_ax_xy = MagicMock()
+        mock_ax_xz = MagicMock()
         mock_ax_info = MagicMock()
-        mock_subplots.return_value = (mock_fig, (mock_ax_main, mock_ax_info))
+        mock_fig.add_axes.return_value = mock_ax_info
+        mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
-        current_data = {"Current_X": 1.0, "Current_Y": 2.0, "Step": 10}
+        current_data = {
+            "Current_X": 1.0,
+            "Current_Y": 2.0,
+            "Current_Yaw": 0.0,
+            "Error_X": 0.0,
+            "Error_Y": 0.0,
+            "Error_Yaw": 0.0,
+        }
 
         video_renderer.update_info_panel(step=10, current_data=current_data)
 

@@ -155,9 +155,10 @@ def create_satellite_model(app_config: Optional[AppConfig] = None):
     ax.plot(0, 0, "ko", markersize=8, label="Satellite Center")
 
     # Draw thrusters
-    thruster_colors = plt.cm.tab10(np.linspace(0, 1, 8))  # type: ignore
+    thruster_colors = plt.cm.tab10(np.linspace(0, 1, len(thrusters)))  # type: ignore
 
-    for i, (thruster_id, (x, y)) in enumerate(thrusters.items()):
+    for i, (thruster_id, pos) in enumerate(thrusters.items()):
+        x, y = pos[0], pos[1]
         # Draw thruster position
         ax.plot(
             x,
@@ -363,7 +364,8 @@ def print_thruster_info(app_config: Optional[AppConfig] = None):
     print(f"Total Available Thrust: {total_thrust:.6f} N")
     print("\nThruster Positions and Forces:")
 
-    for thruster_id, (x, y) in thrusters.items():
+    for thruster_id, pos in thrusters.items():
+        x, y = pos[0], pos[1]
         if abs(x) > abs(y):  # On left or right face
             if x > 0:  # Right face (thrusters 1, 2)
                 thrust_dir_x, thrust_dir_y = -1, 0  # Push left

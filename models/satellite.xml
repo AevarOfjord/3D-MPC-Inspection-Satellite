@@ -45,15 +45,6 @@
       <site name="thruster6" pos="-0.145 0.06 0"  rgba="0 0.2 1 0.3"/>
       <site name="thruster7" pos="-0.06 0.145 0"  rgba="1 1 0 0.3"/>
       <site name="thruster8" pos="0.06 0.145 0"   rgba="1 0.8 0 0.3"/>
-
-      <!-- New Z-Axis Thrusters (9-12) -->
-      <!-- Top Face (+Z) -->
-      <site name="thruster9"  pos="0.145 0 0.145"  rgba="0 1 1 0.3"/>
-      <site name="thruster10" pos="-0.145 0 0.145" rgba="0 1 1 0.3"/>
-
-      <!-- Bottom Face (-Z) -->
-      <site name="thruster11" pos="0 0.145 -0.145" rgba="1 0 1 0.3"/>
-      <site name="thruster12" pos="0 -0.145 -0.145" rgba="1 0 1 0.3"/>
     </body>
   </worldbody>
 </mujoco>

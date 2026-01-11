@@ -1,6 +1,8 @@
 # Mathematical Documentation
 
 > **Note:** This document provides comprehensive mathematical formulation and implementation details for the satellite control system. It covers the MPC optimization problem, dynamics linearization, thruster allocation, and navigation mathematics. For system architecture and code structure, see [ARCHITECTURE.md](ARCHITECTURE.md). For development guidelines, see [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md).
+>
+> **Update:** The derivations below primarily document the legacy planar (x, y, yaw) model. The current controller uses a 13-state 3D model with planar thrusters and tilt-based Z translation. Treat the equations as planar approximations unless otherwise noted.
 
 ---
 

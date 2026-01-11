@@ -30,7 +30,7 @@ class Controller(ABC):
     architectures.
     
     State format: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (13 elements)
-    Control format: [u1, ..., u12] (12 thrusters)
+    Control format: [τ_rw_x, τ_rw_y, τ_rw_z, u1, ..., uN] (RW torques + thrusters)
     """
     
     @property

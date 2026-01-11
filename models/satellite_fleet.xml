@@ -58,7 +58,7 @@
     <!-- ==================== INSPECTOR 1 (Blue) ==================== -->
     <body name="inspector_1" pos="5 0 0">
       <joint name="inspector_1_root" type="free"/>
-      <geom name="insp1_body" type="box" size="0.145 0.145 0.145" mass="9.1" 
+      <geom name="insp1_body" type="sphere" size="0.145" mass="9.1" 
             material="inspector_1"/>
       
       <!-- Reaction Wheels -->
@@ -87,7 +87,7 @@
     <!-- ==================== INSPECTOR 2 (Orange) ==================== -->
     <body name="inspector_2" pos="-2.5 4.33 0">
       <joint name="inspector_2_root" type="free"/>
-      <geom name="insp2_body" type="box" size="0.145 0.145 0.145" mass="9.1" 
+      <geom name="insp2_body" type="sphere" size="0.145" mass="9.1" 
             material="inspector_2"/>
       
       <!-- Reaction Wheels -->
@@ -116,7 +116,7 @@
     <!-- ==================== INSPECTOR 3 (Green) ==================== -->
     <body name="inspector_3" pos="-2.5 -4.33 0">
       <joint name="inspector_3_root" type="free"/>
-      <geom name="insp3_body" type="box" size="0.145 0.145 0.145" mass="9.1" 
+      <geom name="insp3_body" type="sphere" size="0.145" mass="9.1" 
             material="inspector_3"/>
       
       <!-- Reaction Wheels -->

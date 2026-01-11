@@ -113,8 +113,10 @@ def test_config_validation():
     from src.satellite_control.config.models import SatellitePhysicalParams
 
     # Create valid thruster configuration (8 thrusters required)
-    thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2)) for i in range(1, 9)}
-    thruster_directions = {i: (1.0, 0.0) for i in range(1, 9)}
+    thruster_positions = {
+        i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in range(1, 9)
+    }
+    thruster_directions = {i: (1.0, 0.0, 0.0) for i in range(1, 9)}
     thruster_forces = {i: 0.3 for i in range(1, 9)}
 
     # Valid config
@@ -122,7 +124,7 @@ def test_config_validation():
         total_mass=10.0,
         moment_of_inertia=1.0,
         satellite_size=1.0,
-        com_offset=(0, 0),
+        com_offset=(0, 0, 0),
         thruster_positions=thruster_positions,
         thruster_directions=thruster_directions,
         thruster_forces=thruster_forces,
@@ -138,7 +140,7 @@ def test_config_validation():
             total_mass=-10.0,
             moment_of_inertia=1.0,
             satellite_size=1.0,
-            com_offset=(0, 0),
+            com_offset=(0, 0, 0),
             thruster_positions=thruster_positions,
             thruster_directions=thruster_directions,
             thruster_forces=thruster_forces,
@@ -153,7 +155,7 @@ def test_config_validation():
             total_mass=10.0,
             moment_of_inertia=1.0,
             satellite_size=1.0,
-            com_offset=(0, 0),
+            com_offset=(0, 0, 0),
             thruster_positions={},  # Empty should fail
             thruster_directions={},
             thruster_forces={},

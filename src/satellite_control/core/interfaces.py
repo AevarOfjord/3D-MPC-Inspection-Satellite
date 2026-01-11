@@ -105,7 +105,7 @@ class PhysicsSimulator(Protocol):
 
     @property
     def position(self) -> NDArray[np.floating]:
-        """Current position [x, y] in meters."""
+        """Current position [x, y, z] in meters."""
         ...
 
     @position.setter
@@ -113,7 +113,7 @@ class PhysicsSimulator(Protocol):
 
     @property
     def velocity(self) -> NDArray[np.floating]:
-        """Current velocity [vx, vy] in m/s."""
+        """Current velocity [vx, vy, vz] in m/s."""
         ...
 
     @velocity.setter
@@ -156,7 +156,7 @@ class PhysicsSimulator(Protocol):
         Set thrust level for a specific thruster.
 
         Args:
-            thruster_id: Thruster index (1-12)
+            thruster_id: Thruster index (1-8)
             level: Thrust level (0.0 to 1.0)
         """
         ...

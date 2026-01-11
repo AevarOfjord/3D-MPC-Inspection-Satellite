@@ -8,7 +8,7 @@ Features:
 - Accurate physics simulation with RK4 integration
 - Realistic thruster dynamics with valve delays and ramp-up
 - Damping and disturbance modeling
-- Planar (2D) motion constraint
+- 6-DOF free joint with planar thrusters (Z translation via attitude/tilt)
 - Same interface as testing_environment.SatelliteThrusterTester
 """
 
@@ -89,6 +89,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         self.thrusters = self._physics_params.thruster_positions
         self.thruster_forces = self._physics_params.thruster_forces.copy()
         self.thruster_directions = self._physics_params.thruster_directions
+        self.num_thrusters = len(self.thrusters)
 
         # Realistic physics flags
         self.use_realistic_physics = self._physics_params.use_realistic_physics
@@ -100,6 +101,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         self.thruster_activation_time: Dict[int, float] = {}
         self.thruster_deactivation_time: Dict[int, float] = {}
         self.thruster_levels: Dict[int, float] = {}  # Track thrust level [0.0, 1.0]
+        self.rw_torque_body = np.zeros(3, dtype=np.float64)
 
         # Simulation timing
         self._dt = self._simulation_params.dt
@@ -114,29 +116,40 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         self.max_trajectory_points = 200
 
         # Get actuator indices
-        # (8 actuators: thruster1_x, thruster2_x, ..., thruster8_y)
+        # (6 actuators: 1 per face)
         self.actuator_ids = {}
-        thruster_axis_map = {
-            1: "x",
-            2: "x",  # Thrusters 1-2 on X axis
-            3: "y",
-            4: "y",  # Thrusters 3-4 on Y axis
-            5: "x",
-            6: "x",  # Thrusters 5-6 on X axis
-            7: "y",
-            8: "y",  # Thrusters 7-8 on Y axis
+        # Note: XML defines reaction wheel motors but not thruster actuators?
+        # Simulation applies forces manually via xfrc_applied.
+        # This mapping is likely unused if we apply forces manually, 
+        # but let's keep it clean or remove if obsolete.
+        # Check if code uses self.actuator_ids... it does not seem to use it for force application.
+        
+        # However, _update_visuals needs to map IDs to sites.
+        # New 6-thruster mapping to XML sites:
+        # 1 (+X face) -> site "thruster_px" (pushes -X) ?? 
+        # Wait, physics.py says:
+        # 1: (0.15, 0, 0) direction [-1, 0, 0] (pushes -X, sits on +X face)
+        # XML site "thruster_px" is at (0.145, 0, 0).
+        # So ID 1 -> "thruster_px"
+        # ID 2 -> "thruster_mx"
+        # ID 3 -> "thruster_py"
+        # ID 4 -> "thruster_my"
+        # ID 5 -> "thruster_pz"
+        # ID 6 -> "thruster_mz"
+        
+        self.thruster_site_map = {
+            1: "thruster_px",
+            2: "thruster_mx",
+            3: "thruster_py",
+            4: "thruster_my",
+            5: "thruster_pz",
+            6: "thruster_mz",
         }
 
-        for i in range(1, 9):
-            axis = thruster_axis_map[i]
-            actuator_name = f"thruster{i}_{axis}"
-            try:
-                self.actuator_ids[i] = mujoco.mj_name2id(
-                    self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name
-                )
-            except Exception as e:
-                print(f"Warning: Could not find actuator {actuator_name}: {e}")
-                self.actuator_ids[i] = i - 1  # Fallback to sequential indexing
+        # Forces are applied manually, so we don't strictly need actuator_ids
+        # for thrusters if we aren't using mjData.ctrl for them.
+        # Keeping dictionary empty or minimal to avoid breakage if referenced.
+
 
         # Get sensor indices
         try:
@@ -171,10 +184,6 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             6: "#DDA0DD",  # Plum
             7: "#98D8C8",  # Mint
             8: "#F7DC6F",  # Light Yellow
-            9: "#00FFFF",  # Cyan
-            10: "#00FFFF",  # Cyan
-            11: "#FF00FF",  # Magenta
-            12: "#FF00FF",  # Magenta
         }
 
         # Initialize state
@@ -191,16 +200,12 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             # 1. Update Mass
             self.model.body_mass[body_id] = self.total_mass
 
-            # 2. Update Inertia (Diagonal approximation for 3D,
-            # Z-axis matters for 2D)
-            # MuJoCo uses full inertia tensor, but we can update logical
-            # diagonal. For a 2D planar sat, Ix and Iy don't matter much,
-            # Iz is key. We assume a cube/cylinder distribution:
-            # Ix=Iy=Inertia/2, Iz=Inertia (Just setting the full vector)
+            # 2. Update Inertia (Diagonal approximation for 3D)
+            # For a symmetric body, Ix = Iy = Iz = I.
             self.model.body_inertia[body_id, :] = [
-                self.moment_of_inertia / 2,  # Ix
-                self.moment_of_inertia / 2,  # Iy
-                self.moment_of_inertia,  # Iz (The one that counts)
+                self.moment_of_inertia,  # Ix
+                self.moment_of_inertia,  # Iy
+                self.moment_of_inertia,  # Iz
             ]
 
             # 3. Update Center of Mass (ipos)
@@ -248,6 +253,12 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         else:
             if thruster_id in self.active_thrusters:
                 self.deactivate_thruster(thruster_id)
+
+    def set_reaction_wheel_torque(self, torque_body: np.ndarray) -> None:
+        """Set reaction wheel torques in body frame [τx, τy, τz]."""
+        torque = np.zeros(3, dtype=np.float64)
+        torque[: min(3, len(torque_body))] = np.array(torque_body, dtype=np.float64)[:3]
+        self.rw_torque_body = torque
 
     def setup_plot(self):
         """
@@ -329,12 +340,12 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
                 self.model, self.data, key_callback=_handle_keypress
             )
 
-            # Configure camera for top-down view of planar motion
+            # Configure camera for top-down XY view (useful for planar thrusters)
             if self.viewer is not None:
                 # Fixed corner view covering entire 3x3 workspace
                 self.viewer.cam.lookat[:] = [0.0, 0.0, 0.0]  # Center
                 self.viewer.cam.distance = 6.0  # User requested 6m
-                self.viewer.cam.elevation = -90  # Top-down view for best planar visibility
+                self.viewer.cam.elevation = -90  # Top-down view for XY debugging
                 self.viewer.cam.azimuth = 0  # Align with XY axis
 
             print("  MuJoCo viewer launched successfully")
@@ -427,7 +438,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
     def angle(self) -> float:
         """Deprecated: Get Z-rotation angle. Kept for legacy compatibility."""
         # Convert quat to Z-angle approx
-        # For planar this works. For 3D, it's just Yaw.
+        # Legacy helper: returns yaw from the quaternion.
         # w = q[0], z = q[3]
         q = self.quaternion
         # yaw = atan2(2(wz + xy), 1 - 2(y^2 + z^2))
@@ -497,32 +508,8 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         # Current orientation quaternion
         quat = self.quaternion
 
-        # Calculate net force and torque
-        for thruster_id in range(1, 13):
-            force_magnitude = self.get_thrust_force(thruster_id)
-
-            if force_magnitude > 0:
-                # Get thruster direction in body frame
-                dir_body = np.array(self.model.site_rgba[0])  # Dummy init
-
-                # Fetch from config (we can't easily rely on self.thrusters if it's outdated)
-                # But self.thrusters was initialized from Config.
-                # Assuming self.thrusters / self.com_offset matching config.
-
-                # We need to rely on the config data stored in 'self'
-                # But 'self.thrusters' in __init__ is just 'THRUSTER_POSITIONS'
-                # We need DIRECTIONS too.
-                # Let's import config to be safe
-                pass
-
-        # Since this method is tricky to partially replace without full context of helper data,
-        # I'll rely on update_physics to do the heavy lifting and this method checks applied forces?
-        # No, update_physics calls this? No, update_physics computes it internally.
-        # simulation.py calls this for visualization.
-
-        # Re-implementing logic (V4.0.0: uses self.thrusters and self.thruster_directions from app_config)
-
-        for thruster_id in range(1, 13):
+        # Calculate net force and torque from configured thrusters
+        for thruster_id in self.thrusters.keys():
             force_magnitude = self.get_thrust_force(thruster_id)
             if force_magnitude > 0:
                 # Local pos and dir
@@ -549,6 +536,11 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
                 torque = np.cross(pos_world_rel, force_world)
                 net_torque += torque
+
+        if np.any(self.rw_torque_body):
+            rw_torque_world = np.zeros(3)
+            mujoco.mju_rotVecQuat(rw_torque_world, self.rw_torque_body, quat)
+            net_torque += rw_torque_world
 
         return net_force, net_torque
 
@@ -672,14 +664,17 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         # Add damping and disturbances
         if self.use_realistic_physics:
-            # Linear damping
+            # Linear damping (3D)
             drag_force = -self.linear_damping_coeff * self.velocity
             self.data.xfrc_applied[body_id, 0] += drag_force[0]
             self.data.xfrc_applied[body_id, 1] += drag_force[1]
+            self.data.xfrc_applied[body_id, 2] += drag_force[2]
 
-            # Rotational damping
+            # Rotational damping (3D)
             drag_torque = -self.rotational_damping_coeff * self.angular_velocity
-            self.data.xfrc_applied[body_id, 5] += drag_torque
+            self.data.xfrc_applied[body_id, 3] += drag_torque[0]
+            self.data.xfrc_applied[body_id, 4] += drag_torque[1]
+            self.data.xfrc_applied[body_id, 5] += drag_torque[2]
 
             # Random disturbances
             # V4.0.0: Use hardcoded defaults (TODO: move to AppConfig.physics in future)
@@ -730,9 +725,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
             # Map thruster IDs to their visual sites
             # Per xml: thruster1, thruster2, ...
             # Map thruster IDs to their visual sites
-            # Per xml: thruster1, thruster2, ...
-            for i in range(1, 13):
-                site_name = f"thruster{i}"
+            # 6-Thruster mapping:
+            for i in self.thrusters.keys():
+                site_name = self.thruster_site_map.get(i, f"thruster{i}")
                 site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site_name)
 
                 if site_id != -1:
@@ -754,7 +749,9 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
                         # This is a bit hacky, hardcoding the colors
                         # from XML or storing them
                         # For now, just dim them significantly
-                        original_colors = {i: [0.0, 0.45, 1.0, 0.35] for i in range(1, 13)}
+                        original_colors = {
+                            i: [0.0, 0.45, 1.0, 0.35] for i in self.thrusters.keys()
+                        }
                         self.model.site_rgba[site_id] = original_colors.get(
                             i, [0.0, 0.45, 1.0, 0.35]
                         )
@@ -851,6 +848,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
         self.active_thrusters.clear()
         self.thruster_activation_time.clear()
         self.thruster_deactivation_time.clear()
+        self.rw_torque_body.fill(0.0)
         self._simulation_time = 0.0
         self.trajectory.clear()
         mujoco.mj_forward(self.model, self.data)

@@ -125,25 +125,19 @@ class TestPhysicsComputation:
         position = model.thruster_positions[thruster_id]
         direction = model.thruster_directions[thruster_id]
 
-        # Compute force
-        fx = direction[0] * force_magnitude
-        fy = direction[1] * force_magnitude
-
-        # Compute torque (2D cross product)
-        torque = position[0] * fy - position[1] * fx
+        force_vec = np.array(direction) * force_magnitude
+        torque = np.cross(position, force_vec)
 
         # Compute accelerations
         mass = physics.total_mass
         inertia = physics.moment_of_inertia
 
-        ax = fx / mass
-        ay = fy / mass
+        accel = force_vec / mass
         alpha = torque / inertia
 
         # All should be finite
-        assert np.isfinite(ax)
-        assert np.isfinite(ay)
-        assert np.isfinite(alpha)
+        assert np.all(np.isfinite(accel))
+        assert np.all(np.isfinite(alpha))
 
     def test_can_compute_dynamics_for_all_thrusters(self):
         """Test computing dynamics with all thrusters."""
@@ -159,32 +153,27 @@ class TestPhysicsComputation:
         inertia = physics.moment_of_inertia
 
         # All thrusters firing
-        total_fx = 0
-        total_fy = 0
-        total_torque = 0
+        total_force = np.zeros(3)
+        total_torque = np.zeros(3)
 
         for thruster_id in range(1, 9):
             force_mag = physics.thruster_forces[thruster_id]
-            px, py = model.thruster_positions[thruster_id]
-            dx, dy = model.thruster_directions[thruster_id]
+            position = np.array(model.thruster_positions[thruster_id])
+            direction = np.array(model.thruster_directions[thruster_id])
 
-            fx = dx * force_mag
-            fy = dy * force_mag
-            torque = px * fy - py * fx
+            force_vec = direction * force_mag
+            torque = np.cross(position, force_vec)
 
-            total_fx += fx
-            total_fy += fy
+            total_force += force_vec
             total_torque += torque
 
         # Compute accelerations
-        ax = total_fx / mass
-        ay = total_fy / mass
+        accel = total_force / mass
         alpha = total_torque / inertia
 
         # All should be finite
-        assert np.isfinite(ax)
-        assert np.isfinite(ay)
-        assert np.isfinite(alpha)
+        assert np.all(np.isfinite(accel))
+        assert np.all(np.isfinite(alpha))
 
 
 @pytest.mark.integration

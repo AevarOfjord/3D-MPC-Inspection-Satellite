@@ -20,7 +20,6 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 # V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
 from src.satellite_control.config.mission_state import MissionState
@@ -105,7 +104,8 @@ class VideoRenderer:
         self.mission_state = mission_state
 
         self.fig: Optional[Figure] = None
-        self.ax_main: Optional[Axes] = None
+        self.ax_xy: Optional[Axes] = None
+        self.ax_xz: Optional[Axes] = None
         self.ax_info: Optional[Axes] = None
 
     def _col(self, name: str) -> np.ndarray:
@@ -120,17 +120,23 @@ class VideoRenderer:
         """Get data length from data accessor."""
         return self.data_accessor._get_len()
 
+    def _get_thruster_count(self) -> int:
+        """Determine thruster count from config or fallback."""
+        if self.app_config and self.app_config.physics:
+            return len(self.app_config.physics.thruster_positions)
+        return 8
+
     def parse_command_vector(self, command_str: Any) -> np.ndarray:
         """Parse command vector string to numpy array."""
         try:
             if command_str is None or command_str == "":
-                return np.zeros(12)
+                return np.zeros(self._get_thruster_count())
             command_str = str(command_str)
             command_str = command_str.strip("[]")
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
-            return np.zeros(12)
+            return np.zeros(self._get_thruster_count())
 
     def get_active_thrusters(self, command_vector: np.ndarray) -> list:
         """Get list of active thruster IDs from command vector."""
@@ -141,91 +147,53 @@ class VideoRenderer:
         return active
 
     def setup_plot(self) -> None:
-        """Set up the 3D plot for animation."""
-        self.fig = plt.figure(figsize=(12, 8))
-        self.ax_main = self.fig.add_subplot(111, projection="3d")
-        self.ax_info = self.fig.add_axes([0.02, 0.02, 0.25, 0.35])
+        """Set up the XY/XZ plots for animation."""
+        self.fig, axes = plt.subplots(1, 2, figsize=(12, 8))
+        self.ax_xy, self.ax_xz = axes
+        self.fig.subplots_adjust(left=0.32, right=0.98, wspace=0.3)
+        self.ax_info = self.fig.add_axes([0.03, 0.08, 0.26, 0.84])
 
     def draw_satellite(
         self, x: float, y: float, z: float, yaw: float, active_thrusters: list
     ) -> None:
-        """Draw satellite at given position and orientation (3D)."""
-        assert self.ax_main is not None, "ax_main must be initialized"
+        """Draw satellite at given position and orientation (XY + XZ)."""
+        assert self.ax_xy is not None, "ax_xy must be initialized"
+        assert self.ax_xz is not None, "ax_xz must be initialized"
 
-        # Rotation matrix (2D Yaw only for now, visualized in 3D)
         cos_yaw = np.cos(yaw)
         sin_yaw = np.sin(yaw)
-        rotation_matrix = np.array([[cos_yaw, -sin_yaw, 0], [sin_yaw, cos_yaw, 0], [0, 0, 1]])
+        rotation_matrix = np.array([[cos_yaw, -sin_yaw], [sin_yaw, cos_yaw]])
 
-        s = self.satellite_size / 2
-        # Define 3D cube corners relative to center
-        corners = np.array(
-            [
-                [-s, -s, -s],
-                [s, -s, -s],
-                [s, s, -s],
-                [-s, s, -s],  # Bottom
-                [-s, -s, s],
-                [s, -s, s],
-                [s, s, s],
-                [-s, s, s],  # Top
-            ]
+        radius = self.satellite_size / 2
+        circle_xy = Circle(
+            (x, y),
+            radius,
+            facecolor=self.satellite_color,
+            edgecolor="black",
+            alpha=0.5,
+            linewidth=0.5,
         )
+        self.ax_xy.add_patch(circle_xy)
 
-        # Rotate and translate
-        rotated_corners = corners @ rotation_matrix.T + np.array([x, y, z])
+        circle_xz = Circle(
+            (x, z),
+            radius,
+            facecolor=self.satellite_color,
+            edgecolor="black",
+            alpha=0.5,
+            linewidth=0.5,
+        )
+        self.ax_xz.add_patch(circle_xz)
 
-        # Define faces for Poly3DCollection
-        faces = [
-            [
-                rotated_corners[0],
-                rotated_corners[1],
-                rotated_corners[2],
-                rotated_corners[3],
-            ],  # Bottom
-            [rotated_corners[4], rotated_corners[5], rotated_corners[6], rotated_corners[7]],  # Top
-            [
-                rotated_corners[0],
-                rotated_corners[1],
-                rotated_corners[5],
-                rotated_corners[4],
-            ],  # Front
-            [
-                rotated_corners[2],
-                rotated_corners[3],
-                rotated_corners[7],
-                rotated_corners[6],
-            ],  # Back
-            [
-                rotated_corners[1],
-                rotated_corners[2],
-                rotated_corners[6],
-                rotated_corners[5],
-            ],  # Right
-            [
-                rotated_corners[0],
-                rotated_corners[3],
-                rotated_corners[7],
-                rotated_corners[4],
-            ],  # Left
-        ]
-
-        # Draw Satellite Body
-        poly = Poly3DCollection(faces, alpha=0.5, edgecolor="black", linewidths=0.5)
-        poly.set_facecolor(self.satellite_color)
-        self.ax_main.add_collection3d(poly)
-
-        # Draw thrusters
+        # Draw thrusters in both projections
         for thruster_id, pos in self.thrusters.items():
             tx, ty, tz = pos[0], pos[1], pos[2] if len(pos) > 2 else 0.0
 
-            # Rotate thruster position
-            thruster_pos = np.array([tx, ty, tz]) @ rotation_matrix.T
-            thruster_x = x + thruster_pos[0]
-            thruster_y = y + thruster_pos[1]
-            thruster_z = z + thruster_pos[2]
+            rotated_thruster = np.array([tx, ty]) @ rotation_matrix.T
+            thruster_x = x + rotated_thruster[0]
+            thruster_y = y + rotated_thruster[1]
+            thruster_z = z + tz
 
-            # Color and size based on activity
             if thruster_id in active_thrusters:
                 color = "red"
                 size = 80
@@ -237,9 +205,18 @@ class VideoRenderer:
                 marker = "o"
                 alpha = 0.3
 
-            self.ax_main.scatter(
+            self.ax_xy.scatter(
                 thruster_x,
                 thruster_y,
+                c=color,
+                s=size,
+                marker=marker,
+                alpha=alpha,
+                edgecolors="black",
+                linewidth=0.5,
+            )
+            self.ax_xz.scatter(
+                thruster_x,
                 thruster_z,
                 c=color,
                 s=size,
@@ -247,73 +224,97 @@ class VideoRenderer:
                 alpha=alpha,
                 edgecolors="black",
                 linewidth=0.5,
-                depthshade=True,
             )
 
-        # Draw orientation arrow (Forward X-axis)
+        # Draw orientation arrow (Yaw shown in XY, forward axis in XZ)
         arrow_length = self.satellite_size * 1.5
         arrow_end_x = x + arrow_length * cos_yaw
         arrow_end_y = y + arrow_length * sin_yaw
-        arrow_end_z = z
 
-        self.ax_main.plot(
-            [x, arrow_end_x], [y, arrow_end_y], [z, arrow_end_z], color="green", linewidth=2
-        )
+        self.ax_xy.plot([x, arrow_end_x], [y, arrow_end_y], color="green", linewidth=2)
+        self.ax_xz.plot([x, x + arrow_length], [z, z], color="green", linewidth=2, alpha=0.7)
 
     def draw_target(
         self, target_x: float, target_y: float, target_z: float, target_yaw: float
     ) -> None:
-        """Draw target position and orientation (3D)."""
-        assert self.ax_main is not None, "ax_main must be initialized"
+        """Draw target position and orientation (XY + XZ)."""
+        assert self.ax_xy is not None, "ax_xy must be initialized"
+        assert self.ax_xz is not None, "ax_xz must be initialized"
 
-        self.ax_main.scatter(
+        self.ax_xy.scatter(
             target_x,
             target_y,
-            target_z,
             c=self.target_color,
             s=200,
             marker="x",
             linewidth=4,
             label="Target",
         )
+        self.ax_xz.scatter(
+            target_x,
+            target_z,
+            c=self.target_color,
+            s=200,
+            marker="x",
+            linewidth=4,
+        )
 
-        # Target Sphere (wireframe visual)
-        theta = np.linspace(0, 2 * np.pi, 20)
-        cx = target_x + 0.1 * np.cos(theta)
-        cy = target_y + 0.1 * np.sin(theta)
-        cz = np.full_like(cx, target_z)
-        self.ax_main.plot(cx, cy, cz, color=self.target_color, alpha=0.5, linestyle="--")
+        target_radius = 0.1
+        target_xy = Circle(
+            (target_x, target_y),
+            target_radius,
+            fill=False,
+            color=self.target_color,
+            alpha=0.5,
+            linestyle="--",
+            linewidth=1.5,
+        )
+        target_xz = Circle(
+            (target_x, target_z),
+            target_radius,
+            fill=False,
+            color=self.target_color,
+            alpha=0.5,
+            linestyle="--",
+            linewidth=1.5,
+        )
+        self.ax_xy.add_patch(target_xy)
+        self.ax_xz.add_patch(target_xz)
 
-        # Target orientation arrow
         arrow_length = self.satellite_size * 0.6
         arrow_end_x = target_x + arrow_length * np.cos(target_yaw)
         arrow_end_y = target_y + arrow_length * np.sin(target_yaw)
-        arrow_end_z = target_z
-        self.ax_main.plot(
+        self.ax_xy.plot(
             [target_x, arrow_end_x],
             [target_y, arrow_end_y],
-            [target_z, arrow_end_z],
             color=self.target_color,
             alpha=0.8,
             linewidth=2,
         )
 
     def draw_trajectory(self, trajectory_x: list, trajectory_y: list, trajectory_z: list) -> None:
-        """Draw satellite trajectory (3D)."""
-        assert self.ax_main is not None, "ax_main must be initialized"
+        """Draw satellite trajectory (XY + XZ)."""
+        assert self.ax_xy is not None, "ax_xy must be initialized"
+        assert self.ax_xz is not None, "ax_xz must be initialized"
 
-        # Ensure lengths match
         min_len = min(len(trajectory_x), len(trajectory_y), len(trajectory_z))
         if min_len > 1:
-            self.ax_main.plot(
+            self.ax_xy.plot(
                 trajectory_x[:min_len],
                 trajectory_y[:min_len],
-                trajectory_z[:min_len],
                 color=self.trajectory_color,
                 linewidth=2,
                 alpha=0.8,
                 linestyle="-",
                 label="Trajectory",
+            )
+            self.ax_xz.plot(
+                trajectory_x[:min_len],
+                trajectory_z[:min_len],
+                color=self.trajectory_color,
+                linewidth=2,
+                alpha=0.8,
+                linestyle="-",
             )
 
     def draw_obstacles(self, mission_state: Optional[MissionState] = None) -> None:
@@ -323,7 +324,7 @@ class VideoRenderer:
             mission_state: Optional MissionState to get obstacles from (v4.0.0).
                           If None, uses self.mission_state if available. No fallback.
         """
-        assert self.ax_main is not None, "ax_main must be initialized"
+        assert self.ax_xy is not None, "ax_xy must be initialized"
 
         # V4.0.0: Get obstacles from mission_state (required, no fallback)
         obstacles_enabled = False
@@ -335,8 +336,8 @@ class VideoRenderer:
         # V4.0.0: No fallback - if no mission_state, obstacles are empty
         
         if obstacles_enabled and obstacles:
-            for i, (obs_x, obs_y, obs_radius) in enumerate(obstacles, 1):
-                # Draw obstacle as red filled circle
+            for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
+                # Draw obstacle as red filled circle (XY projection)
                 obstacle_circle = Circle(
                     (obs_x, obs_y),
                     obs_radius,
@@ -348,10 +349,10 @@ class VideoRenderer:
                     zorder=15,
                     label="Obstacle" if i == 1 else "",
                 )
-                self.ax_main.add_patch(obstacle_circle)
+                self.ax_xy.add_patch(obstacle_circle)
 
                 # Add obstacle label
-                self.ax_main.text(
+                self.ax_xy.text(
                     obs_x,
                     obs_y,
                     f"O{i}",
@@ -426,7 +427,10 @@ class VideoRenderer:
             "STATE",
             f"  X:   {current_data['Current_X']:>7.3f} m",
             f"  Y:   {current_data['Current_Y']:>7.3f} m",
-            f"  Yaw: {np.degrees(current_data['Current_Yaw']):>6.1f}°",
+            f"  Z:   {current_data.get('Current_Z', 0.0):>7.3f} m",
+            f"  Roll:  {np.degrees(current_data.get('Current_Roll', 0.0)):>6.1f}°",
+            f"  Pitch: {np.degrees(current_data.get('Current_Pitch', 0.0)):>6.1f}°",
+            f"  Yaw:   {np.degrees(current_data.get('Current_Yaw', 0.0)):>6.1f}°",
         ]
 
         lin_speed = current_data.get("Linear_Speed", 0.0)
@@ -439,13 +443,19 @@ class VideoRenderer:
 
         err_x = abs(current_data["Error_X"])
         err_y = abs(current_data["Error_Y"])
-        err_yaw = abs(np.degrees(current_data["Error_Yaw"]))
+        err_z = abs(current_data.get("Error_Z", 0.0))
+        err_roll = abs(np.degrees(current_data.get("Error_Roll", 0.0)))
+        err_pitch = abs(np.degrees(current_data.get("Error_Pitch", 0.0)))
+        err_yaw = abs(np.degrees(current_data.get("Error_Yaw", 0.0)))
 
         error_lines = [
             "ERRORS",
             f"  Err X:   {err_x:.3f} m",
             f"  Err Y:   {err_y:.3f} m",
-            f"  Err Yaw: {err_yaw:.1f}°",
+            f"  Err Z:   {err_z:.3f} m",
+            f"  Err Roll:  {err_roll:.1f}°",
+            f"  Err Pitch: {err_pitch:.1f}°",
+            f"  Err Yaw:   {err_yaw:.1f}°",
         ]
 
         system_lines = [
@@ -486,21 +496,29 @@ class VideoRenderer:
             y_pos -= group_spacing
 
     def animate_frame(self, frame: int) -> List[Any]:
-        """Animation update function for each frame (3D)."""
-        assert self.ax_main is not None, "ax_main must be initialized"
+        """Animation update function for each frame (XY + XZ)."""
+        assert self.ax_xy is not None, "ax_xy must be initialized"
+        assert self.ax_xz is not None, "ax_xz must be initialized"
 
-        # Clear main plot
-        self.ax_main.clear()
-        self.ax_main.set_xlim(-3, 3)
-        self.ax_main.set_ylim(-3, 3)
-        self.ax_main.set_zlim(-3, 3)
-        self.ax_main.set_xlabel("X (m)")
-        self.ax_main.set_ylabel("Y (m)")
-        self.ax_main.set_zlabel("Z (m)")
-        self.ax_main.set_title(self.frame_title_template.format(frame=frame))
+        self.ax_xy.clear()
+        self.ax_xz.clear()
 
-        # Consistent viewing angle
-        self.ax_main.view_init(elev=30.0, azim=45)
+        self.ax_xy.set_xlim(-3, 3)
+        self.ax_xy.set_ylim(-3, 3)
+        self.ax_xy.set_xlabel("X (m)")
+        self.ax_xy.set_ylabel("Y (m)")
+        self.ax_xy.set_title("X-Y Plane")
+        self.ax_xy.set_aspect("equal", adjustable="box")
+
+        self.ax_xz.set_xlim(-3, 3)
+        self.ax_xz.set_ylim(-3, 3)
+        self.ax_xz.set_xlabel("X (m)")
+        self.ax_xz.set_ylabel("Z (m)")
+        self.ax_xz.set_title("X-Z Plane")
+        self.ax_xz.set_aspect("equal", adjustable="box")
+
+        if self.fig is not None:
+            self.fig.suptitle(self.frame_title_template.format(frame=frame))
 
         # Get current data
         step = min(int(frame * self.speedup_factor), self._get_len() - 1)
@@ -545,7 +563,7 @@ class VideoRenderer:
         self.draw_obstacles()
 
         # Add legend
-        self.ax_main.legend(loc="upper right", fontsize=9)
+        self.ax_xy.legend(loc="upper right", fontsize=9)
 
         # Update info panel
         self.update_info_panel(step, current_data)

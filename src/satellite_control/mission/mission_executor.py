@@ -79,7 +79,7 @@ class MissionExecutor:
             from pathlib import Path
 
             self.model_path = str(
-                Path(__file__).parent.parent.parent.parent.parent / "models" / "satellite_rw.xml"
+                Path(__file__).parent.parent.parent.parent.parent / "models" / "satellite_3d.xml"
             )
 
         self.model = mujoco.MjModel.from_xml_path(self.model_path)
@@ -87,15 +87,22 @@ class MissionExecutor:
         logger.info(f"Loaded model: {self.model_path}")
 
     def load_controller(self):
-        """Load the RW MPC controller."""
-        from src.satellite_control.control.rw_mpc_controller import ReactionWheelMPCController
-        from src.satellite_control.config.actuator_config import create_actuator_config
+        """Load the hybrid MPC controller."""
+        from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.control.mpc_controller import MPCController
 
-        actuator_config = create_actuator_config("reaction_wheels")
-        self.controller = ReactionWheelMPCController(
-            actuator_config=actuator_config,
-            prediction_horizon=30,
-            dt=self.control_dt,
+        base_config = SimulationConfig.create_default()
+        mpc_params = base_config.app_config.mpc.model_copy(
+            update={
+                "prediction_horizon": 30,
+                "control_horizon": 30,
+                "dt": self.control_dt,
+            }
+        )
+
+        self.controller = MPCController(
+            satellite_params=base_config.app_config.physics,
+            mpc_params=mpc_params,
         )
         logger.info("Controller loaded")
 
@@ -170,37 +177,34 @@ class MissionExecutor:
                 quat = self.data.qpos[3:7].copy()
                 vel = self.data.qvel[0:3].copy()
                 ang_vel = self.data.qvel[3:6].copy()
-                rw_speeds = self.data.sensordata[0:3].copy()
-
-                x_current = np.concatenate([pos, quat, vel, ang_vel, rw_speeds])
+                x_current = np.concatenate([pos, quat, vel, ang_vel])
 
                 # Build target state
-                x_target = np.zeros(16)
+                x_target = np.zeros(13)
                 x_target[0:3] = current_target.position
                 x_target[3] = 1.0  # Identity quaternion
 
                 # Compute control
                 u, info = self.controller.get_control_action(x_current, x_target)
 
-                # Apply control
-                self.data.ctrl[0] = u[0] * self.controller.max_rw_torque
-                self.data.ctrl[1] = u[1] * self.controller.max_rw_torque
-                self.data.ctrl[2] = u[2] * self.controller.max_rw_torque
+                rw_torque_norm, thruster_cmd = self.controller.split_control(u)
+                rw_torque_body = rw_torque_norm * self.controller.max_rw_torque
 
-                # Apply thruster forces
-                thrust_dirs = np.array(
-                    [
-                        [-1, 0, 0],
-                        [1, 0, 0],
-                        [0, -1, 0],
-                        [0, 1, 0],
-                        [0, 0, -1],
-                        [0, 0, 1],
-                    ]
-                )
+                # Apply thruster forces + torques
+                quat = self.data.qpos[3:7].copy()
+                R = np.zeros(9)
+                mujoco.mju_quat2Mat(R, quat)
+                R = R.reshape(3, 3)
+
                 net_force = np.zeros(3)
-                for i in range(6):
-                    net_force += u[3 + i] * self.controller.max_thrust * thrust_dirs[i]
+                net_torque_body = np.zeros(3)
+                for i in range(self.controller.num_thrusters):
+                    force_body = thruster_cmd[i] * self.controller.body_frame_forces[i]
+                    net_force += R @ force_body
+                    net_torque_body += thruster_cmd[i] * self.controller.body_frame_torques[i]
+
+                net_torque_body += rw_torque_body
+                net_torque_world = R @ net_torque_body
 
                 # Add CW orbital forces
                 from src.satellite_control.config.orbital_config import OrbitalConfig
@@ -209,7 +213,9 @@ class MissionExecutor:
                 orbital_config = OrbitalConfig()
                 cw_force = compute_cw_force(pos, vel, 10.0, orbital_config)
 
+                self.data.xfrc_applied[sat_body_id, :] = 0.0
                 self.data.xfrc_applied[sat_body_id, 0:3] = net_force + cw_force
+                self.data.xfrc_applied[sat_body_id, 3:6] = net_torque_world
 
                 # Check waypoint reached
                 error = np.linalg.norm(pos - current_target.position)

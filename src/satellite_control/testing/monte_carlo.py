@@ -30,13 +30,22 @@ class TrialConfig:
     trial_id: int
     initial_x: float
     initial_y: float
+    initial_z: float
     initial_vx: float
     initial_vy: float
-    initial_theta: float
-    initial_omega: float
+    initial_vz: float
+    initial_roll: float
+    initial_pitch: float
+    initial_yaw: float
+    initial_wx: float
+    initial_wy: float
+    initial_wz: float
     target_x: float = 0.0
     target_y: float = 0.0
-    target_theta: float = 0.0
+    target_z: float = 0.0
+    target_roll: float = 0.0
+    target_pitch: float = 0.0
+    target_yaw: float = 0.0
 
 
 @dataclass
@@ -80,7 +89,12 @@ class MonteCarloConfig:
     # Target position
     target_x: float = 0.0
     target_y: float = 0.0
-    target_theta: float = 0.0
+    target_z: float = 0.0
+
+    # Target orientation
+    target_roll: float = 0.0
+    target_pitch: float = 0.0
+    target_yaw: float = 0.0
 
     # Success criteria
     position_tolerance: float = 0.05  # meters
@@ -116,32 +130,49 @@ class MonteCarloRunner:
         for i in range(self.config.n_trials):
             # Random initial position (distance from origin)
             r = abs(self.rng.normal(self.config.pos_mean, self.config.pos_std))
-            angle = self.rng.uniform(0, 2 * np.pi)
-            x = r * np.cos(angle)
-            y = r * np.sin(angle)
+            theta = self.rng.uniform(0, 2 * np.pi)
+            u = self.rng.uniform(-1.0, 1.0)
+            sqrt_term = np.sqrt(max(0.0, 1.0 - u**2))
+            x = r * sqrt_term * np.cos(theta)
+            y = r * sqrt_term * np.sin(theta)
+            z = r * u
 
             # Random initial velocity
             vx = self.rng.normal(self.config.vel_mean, self.config.vel_std)
             vy = self.rng.normal(self.config.vel_mean, self.config.vel_std)
+            vz = self.rng.normal(self.config.vel_mean, self.config.vel_std)
 
             # Random initial orientation
-            theta = self.rng.normal(self.config.angle_mean, self.config.angle_std)
+            roll = self.rng.normal(self.config.angle_mean, self.config.angle_std)
+            pitch = self.rng.normal(self.config.angle_mean, self.config.angle_std)
+            yaw = self.rng.normal(self.config.angle_mean, self.config.angle_std)
 
             # Random angular velocity
-            omega = self.rng.normal(0, self.config.omega_std)
+            wx = self.rng.normal(0, self.config.omega_std)
+            wy = self.rng.normal(0, self.config.omega_std)
+            wz = self.rng.normal(0, self.config.omega_std)
 
             configs.append(
                 TrialConfig(
                     trial_id=i,
                     initial_x=x,
                     initial_y=y,
+                    initial_z=z,
                     initial_vx=vx,
                     initial_vy=vy,
-                    initial_theta=theta,
-                    initial_omega=omega,
+                    initial_vz=vz,
+                    initial_roll=roll,
+                    initial_pitch=pitch,
+                    initial_yaw=yaw,
+                    initial_wx=wx,
+                    initial_wy=wy,
+                    initial_wz=wz,
                     target_x=self.config.target_x,
                     target_y=self.config.target_y,
-                    target_theta=self.config.target_theta,
+                    target_z=self.config.target_z,
+                    target_roll=self.config.target_roll,
+                    target_pitch=self.config.target_pitch,
+                    target_yaw=self.config.target_yaw,
                 )
             )
 
@@ -164,13 +195,30 @@ class MonteCarloRunner:
         try:
             # Create simulation with trial initial conditions
             sim = SatelliteMPCLinearizedSimulation(
-                start_pos=(trial_config.initial_x, trial_config.initial_y),
-                target_pos=(trial_config.target_x, trial_config.target_y),
-                start_angle=(0.0, 0.0, trial_config.initial_theta),
-                target_angle=(0.0, 0.0, trial_config.target_theta),
+                start_pos=(
+                    trial_config.initial_x,
+                    trial_config.initial_y,
+                    trial_config.initial_z,
+                ),
+                target_pos=(trial_config.target_x, trial_config.target_y, trial_config.target_z),
+                start_angle=(
+                    trial_config.initial_roll,
+                    trial_config.initial_pitch,
+                    trial_config.initial_yaw,
+                ),
+                target_angle=(
+                    trial_config.target_roll,
+                    trial_config.target_pitch,
+                    trial_config.target_yaw,
+                ),
                 start_vx=trial_config.initial_vx,
                 start_vy=trial_config.initial_vy,
-                start_omega=trial_config.initial_omega,
+                start_vz=trial_config.initial_vz,
+                start_omega=(
+                    trial_config.initial_wx,
+                    trial_config.initial_wy,
+                    trial_config.initial_wz,
+                ),
                 use_mujoco_viewer=False,  # Headless mode
             )
 
@@ -193,13 +241,16 @@ class MonteCarloRunner:
             pos_error = np.sqrt(
                 (final_state[0] - trial_config.target_x) ** 2
                 + (final_state[1] - trial_config.target_y) ** 2
+                + (final_state[2] - trial_config.target_z) ** 2
             )
             from src.satellite_control.utils.orientation_utils import (
                 euler_xyz_to_quat_wxyz,
                 quat_angle_error,
             )
 
-            target_quat = euler_xyz_to_quat_wxyz((0.0, 0.0, trial_config.target_theta))
+            target_quat = euler_xyz_to_quat_wxyz(
+                (trial_config.target_roll, trial_config.target_pitch, trial_config.target_yaw)
+            )
             angle_error = quat_angle_error(target_quat, final_state[3:7])
 
             # Check success

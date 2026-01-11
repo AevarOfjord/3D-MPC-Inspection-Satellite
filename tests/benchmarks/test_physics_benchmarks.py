@@ -63,7 +63,7 @@ class TestPhysicsBenchmarks:
 
     def test_control_application_performance(self, benchmark, physics_simulator):
         """Benchmark control input application."""
-        control = np.ones(12) * 0.5  # 50% thrust on all thrusters
+        control = np.ones(8) * 0.5  # 50% thrust on all thrusters
 
         def apply_control():
             physics_simulator.apply_control(control)

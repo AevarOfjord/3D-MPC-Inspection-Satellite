@@ -4,8 +4,9 @@ State Format Converter Utility
 Provides centralized conversion between simulation and MPC state formats.
 
 State Formats:
-- Simulation: [x, y, vx, vy, theta, omega]
-- MPC:        [x, y, theta, vx, vy, omega]
+- Simulation (3D): [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+- MPC (3D):        [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+- Legacy (2D):     [x, y, vx, vy, theta, omega] ↔ [x, y, theta, vx, vy, omega]
 """
 
 from typing import List, Union
@@ -17,11 +18,8 @@ class StateConverter:
     """
     Convert between state vector formats used in simulation and MPC.
 
-    The simulation uses [x, y, vx, vy, theta, omega] format for consistency
-    with physics (position, velocity pairs).
-
-    The MPC uses [x, y, theta, vx, vy, omega] format which groups all
-    positions together and all velocities together.
+    In 3D, the simulation and MPC share the same 13-element state.
+    The 2D conversion logic is retained for legacy planar workflows.
     """
 
     # Index mappings
@@ -34,7 +32,7 @@ class StateConverter:
         Convert simulation state to MPC state format.
 
         Args:
-            state: [x, y, vx, vy, theta, omega] (2D) OR
+            state: [x, y, vx, vy, theta, omega] (legacy 2D) OR
                    [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (3D)
 
         Returns:
@@ -65,7 +63,7 @@ class StateConverter:
         Convert MPC state to simulation state format.
 
         Args:
-            state: [x, y, theta, vx, vy, omega] (2D) OR
+            state: [x, y, theta, vx, vy, omega] (legacy 2D) OR
                    [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (3D)
 
         Returns:
@@ -98,10 +96,10 @@ class StateConverter:
         Convert a trajectory of simulation states to MPC format.
 
         Args:
-            trajectory: Array of shape (N, 6) or list of 6-element arrays
+            trajectory: Array of shape (N, 6) or (N, 13)
 
         Returns:
-            Array of shape (N, 6) in MPC format
+            Array of shape (N, 6) in legacy MPC format or (N, 13) for 3D
         """
         trajectory = np.array(trajectory)
         if trajectory.ndim == 1:
@@ -117,10 +115,10 @@ class StateConverter:
         Convert a trajectory of MPC states to simulation format.
 
         Args:
-            trajectory: Array of shape (N, 6) or list of 6-element arrays
+            trajectory: Array of shape (N, 6) or (N, 13)
 
         Returns:
-            Array of shape (N, 6) in simulation format
+            Array of shape (N, 6) in legacy simulation format or (N, 13) for 3D
         """
         trajectory = np.array(trajectory)
         if trajectory.ndim == 1:

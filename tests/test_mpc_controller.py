@@ -62,7 +62,7 @@ class TestMPCControllerInitialization:
         assert mpc.N == 10  # Prediction horizon
         assert mpc.dt == 0.1
         assert mpc.nx == 13  # State dimension
-        assert mpc.nu == 12  # Control dimension
+        assert mpc.nu == 11  # Control dimension
 
         # Check OSQP initialization
         assert mpc.prob is not None
@@ -127,11 +127,53 @@ class TestLinearization:
         assert A[0, 0] == 1.0
         assert A[0, 7] == mpc.dt
         assert A.shape == (13, 13)
-        assert B.shape == (13, 12)
+        assert B.shape == (13, 11)
 
 
 class TestControlAction:
     """Test control action computation."""
+
+    def test_planar_translation_ignores_z_when_z_tilt_disabled(self, monkeypatch):
+        """When enable_z_tilt is False, controller must not chase Z target error."""
+        mpc = MPCController()
+        mpc.enable_z_tilt = False
+
+        captured = {}
+
+        def spy_apply_z_tilt_target(x_current, x_target):
+            captured["x_target"] = np.array(x_target, dtype=float).copy()
+            return x_target
+
+        monkeypatch.setattr(mpc, "_apply_z_tilt_target", spy_apply_z_tilt_target)
+
+        # Mock OSQP methods
+        mpc.prob = MagicMock()
+
+        class MockResult:
+            info = MagicMock()
+            info.run_time = 0.001
+            info.status = "solved"
+
+        mock_res = MockResult()
+        total_vars = mpc.nx * (mpc.N + 1) + mpc.nu * mpc.N
+        mock_res.x = np.zeros(total_vars)
+        u_start_idx = mpc.nx * (mpc.N + 1)
+        mock_res.x[u_start_idx] = 0.5
+        mpc.prob.solve.return_value = mock_res
+
+        x_curr = np.zeros(13)
+        x_target = np.zeros(13)
+        x_curr[2] = 1.0
+        x_target[2] = 0.0
+        x_curr[3] = 1.0
+        x_target[3] = 1.0
+
+        _u, _info = mpc.get_control_action(x_curr, x_target)
+
+        assert "x_target" in captured
+        assert captured["x_target"][2] == pytest.approx(x_curr[2])
+        # Ensure we don't mutate the caller's target vector.
+        assert x_target[2] == pytest.approx(0.0)
 
     def test_get_control_action_osqp_mock(self):
         """Test that get_control_action calls OSQP solver."""

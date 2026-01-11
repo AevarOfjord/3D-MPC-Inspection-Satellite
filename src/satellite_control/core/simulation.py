@@ -9,13 +9,14 @@ and disturbances.
 Simulation features:
 - Linearized dynamics with A, B matrices around equilibrium
 - Eight-thruster configuration with individual force calibration
-- Collision avoidance with circular obstacles
+- Collision avoidance with spherical obstacles
 - Mission execution (waypoint, shape following)
 - Sensor noise and disturbance simulation
 - Real-time visualization with matplotlib
 
 Physics modeling:
-- 2D planar motion (x, y, θ) with velocities (vx, vy, ω)
+- 3D rigid-body state [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+- Planar thruster layout with optional Z translation via attitude/tilt
 - Thruster force and torque calculations
 - Moment of inertia and mass properties
 - Integration with configurable time steps
@@ -34,7 +35,7 @@ Configuration:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,6 +76,7 @@ from src.satellite_control.utils.navigation_utils import (
 from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
     quat_angle_error,
+    quat_wxyz_to_euler_xyz,
 )
 from src.satellite_control.utils.simulation_state_validator import (
     create_state_validator_from_config,
@@ -125,14 +127,14 @@ class SatelliteMPCLinearizedSimulation:
 
     def __init__(
         self,
-        start_pos: Optional[Tuple[float, float]] = None,
+        start_pos: Optional[Tuple[float, ...]] = None,
         target_pos: Optional[Tuple[float, ...]] = None,
         start_angle: Optional[Tuple[float, float, float]] = None,
         target_angle: Optional[Tuple[float, float, float]] = None,
         start_vx: float = 0.0,
         start_vy: float = 0.0,
         start_vz: float = 0.0,
-        start_omega: float = 0.0,
+        start_omega: Union[float, Tuple[float, float, float]] = 0.0,
         config: Optional[StructuredConfig] = None,
         config_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         simulation_config: Optional[SimulationConfig] = None,
@@ -142,14 +144,14 @@ class SatelliteMPCLinearizedSimulation:
         Initialize linearized MPC simulation.
 
         Args:
-            start_pos: Starting position coords (uses Config default if None)
-            target_pos: Target position coords (uses Config default if None)
+            start_pos: Starting position coords (x, y, z) (uses Config default if None)
+            target_pos: Target position coords (x, y, z) (uses Config default if None)
             start_angle: Starting orientation in radians (roll, pitch, yaw)
             target_angle: Target orientation in radians (roll, pitch, yaw)
             start_vx: Initial X velocity in m/s (default: 0.0)
             start_vy: Initial Y velocity in m/s (default: 0.0)
             start_vz: Initial Z velocity in m/s (default: 0.0)
-            start_omega: Initial angular velocity (Z-spin) in rad/s (default: 0.0)
+            start_omega: Initial angular velocity in rad/s (scalar yaw or (wx, wy, wz))
             config: Optional structured config snapshot to run against (deprecated, use simulation_config)
             config_overrides: Nested override dict for build_structured_config (deprecated, use simulation_config)
             simulation_config: Optional SimulationConfig (preferred, eliminates global state)
@@ -192,8 +194,7 @@ class SatelliteMPCLinearizedSimulation:
         if config_overrides:
             from src.satellite_control.config.validator import ConfigValidator
             
-            validator = ConfigValidator(self.simulation_config.app_config)
-            issues = validator.validate()
+            issues = ConfigValidator.validate_all(self.simulation_config.app_config)
             if issues:
                 logger.warning("Configuration validation issues detected:")
                 for issue in issues:
@@ -294,6 +295,7 @@ class SatelliteMPCLinearizedSimulation:
         command_sent_time: float,
         thruster_action: np.ndarray,
         mpc_info: Optional[dict],
+        rw_torque: Optional[np.ndarray] = None,
     ):
         """
         Log detailed simulation step data for CSV export with timing analysis.
@@ -339,6 +341,8 @@ class SatelliteMPCLinearizedSimulation:
         self.context.step_number = self.data_logger.current_step
         self.context.mission_phase = mission_phase
         self.context.previous_thruster_command = previous_thruster_action
+        if rw_torque is not None:
+            self.context.rw_torque_command = np.array(rw_torque, dtype=np.float64)
 
         # Ensure mpc_info has required keys, providing defaults if missing
         mpc_info_safe = mpc_info if mpc_info is not None else {}
@@ -350,6 +354,7 @@ class SatelliteMPCLinearizedSimulation:
             command_sent_time,
             thruster_action,
             mpc_info_safe,
+            rw_torque=self.context.rw_torque_command,
         )
 
         self.previous_command = thruster_action.copy()
@@ -552,6 +557,7 @@ class SatelliteMPCLinearizedSimulation:
             # Compute action
             (
                 thruster_action,
+                rw_torque_norm,
                 mpc_info,
                 mpc_computation_time,
                 command_sent_time,
@@ -561,6 +567,13 @@ class SatelliteMPCLinearizedSimulation:
                 previous_thrusters=self.previous_thrusters,
                 target_trajectory=target_trajectory,
             )
+
+            rw_torque_cmd = np.zeros(3, dtype=np.float64)
+            max_rw_torque = getattr(self.mpc_controller, "max_rw_torque", 0.0)
+            if rw_torque_norm is not None and max_rw_torque:
+                rw_torque_cmd[: len(rw_torque_norm)] = rw_torque_norm * max_rw_torque
+            if hasattr(self.satellite, "set_reaction_wheel_torque"):
+                self.satellite.set_reaction_wheel_torque(rw_torque_cmd)
 
             # Update simulation state
             self.last_control_update = self.simulation_time
@@ -581,6 +594,7 @@ class SatelliteMPCLinearizedSimulation:
                 command_sent_sim_time,
                 thruster_action,
                 mpc_info,
+                rw_torque=rw_torque_cmd,
             )
 
             # Record performance metrics
@@ -645,39 +659,47 @@ class SatelliteMPCLinearizedSimulation:
             active_thruster_ids = [int(x) for x in np.where(display_thrusters > 0.01)[0] + 1]
             self.command_history.append(active_thruster_ids)
 
-            # Helper for clean state formatting
-            def fmt_state(s):
+            def fmt_position_mm(s: np.ndarray) -> str:
                 x_mm = s[0] * 1000
                 y_mm = s[1] * 1000
                 z_mm = s[2] * 1000
-                # Display Roll/Pitch/Yaw
-                # Simpler: just Z-angle if we assume flat?
-                # But it's 3D.
-                # Let's show Quat or convert to Euler?
-                # Using simple Z-axis rotation approximation for logging conciseness?
-                # No, show Euler. mju_quat2Mat logic...
-                # Simple conversion to "Yaw" approx
-                q = s[3:7]
-                yaw = np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
-                yaw_deg = np.degrees(yaw)
-                return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm Yaw:{yaw_deg:.1f}°"
+                return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
+
+            def fmt_angles_deg(s: np.ndarray) -> str:
+                q = np.array(s[3:7], dtype=float)
+                if np.linalg.norm(q) == 0:
+                    q = np.array([1.0, 0.0, 0.0, 0.0])
+                roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
+                roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
+                return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
 
             safe_target = self.target_state if self.target_state is not None else np.zeros(13)
+            if safe_target.shape[0] >= 7 and np.linalg.norm(safe_target[3:7]) == 0:
+                safe_target = safe_target.copy()
+                safe_target[3] = 1.0
 
             ang_err_deg = np.degrees(ang_error)
             solve_ms = mpc_info.get("solve_time", 0) * 1000
             next_upd = self.next_control_simulation_time
             # Show duty cycle for each active thruster (matching active_thruster_ids)
             thr_out = [round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids]
+            rw_norm = np.zeros(3, dtype=float)
+            if rw_torque_norm is not None:
+                rw_vals = np.array(rw_torque_norm, dtype=float)
+                rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
+            rw_out = [round(float(val), 2) for val in rw_norm]
             logger.info(
                 f"t = {self.simulation_time:.1f}s: {status_msg}\n"
-                f"     Pos Err = {pos_error:.3f}m, "
-                f"Ang Err = {ang_err_deg:.1f}°\n"
-                f"     Current = {fmt_state(current_state)}\n"
-                f"     Target = {fmt_state(safe_target)}\n"
-                f"     Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
-                f"     Thrusters = {active_thruster_ids}\n"
-                f"     Output = {thr_out}\n"
+                f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
+                f"Position = {fmt_position_mm(current_state)}\n"
+                f"Angle = {fmt_angles_deg(current_state)}\n"
+                f"Target Pos = {fmt_position_mm(safe_target)}\n"
+                f"Target Ang = {fmt_angles_deg(safe_target)}\n"
+                f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
+                f"Thrusters = {active_thruster_ids}\n"
+                f"Thruster Output = {thr_out}\n"
+                f"Reaction Wheel = [X, Y, Z]\n"
+                f"RW Output = {rw_out}\n"
             )
 
             # Log terminal message to CSV

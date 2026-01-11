@@ -182,8 +182,7 @@ Determines target state based on mission type:
 
 **Outputs:**
 
-- `x_target` - Target position [x, y]
-- `theta_target` - Target orientation (radians)
+- `target_state` - Full target state [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
 - `mission_phase` - Current state (APPROACHING, STABILIZING, etc.)
 
 **2. Control Cycle (MPC)**
@@ -192,15 +191,15 @@ Runs at **16.67 Hz** (every 60ms):
 
 **Input:**
 
-- Current state: [x, y, theta, vx, vy, omega]
-- Target state: [x_target, y_target, theta_target, 0, 0, 0]
+- Current state: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+- Target state: [x_target, y_target, z_target, qw, qx, qy, qz, 0, 0, 0, 0, 0, 0]
 
 **Computation:**
 
 - Formulates Quadratic Program (QP) with:
   - N = 50 prediction steps (3.0 seconds ahead)
-  - 6 states + 8 controls per step
-  - Cost function: minimize position/velocity error + control effort
+  - 13 states + 11 controls per step (3 reaction-wheel torques + 8 thrusters)
+  - Cost function: minimize position/velocity/attitude error + control effort
 - Solves using **OSQP** (typical: 1-2ms)
 
 **Output:**
@@ -224,7 +223,7 @@ Runs at **200 Hz** (every 5ms):
 - Computes accelerations from forces (F = ma, τ = Iα)
 - Integrates to update velocities
 - Integrates to update positions
-- Enforces constraints (planar motion, velocity limits)
+- Enforces constraints (position/velocity bounds, solver limits)
 
 **4. Data Logging** (`data_logger.py`)
 

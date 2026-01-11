@@ -54,10 +54,12 @@ def _create_default_config() -> AppConfig:
     """Create default configuration from legacy modules."""
 
     # Physics
+    # Physics
     phys = SatellitePhysicalParams(
         total_mass=physics.TOTAL_MASS,
         moment_of_inertia=physics.MOMENT_OF_INERTIA,
         satellite_size=physics.SATELLITE_SIZE,
+        satellite_shape="cube",  # Set to cube
         com_offset=tuple(physics.COM_OFFSET),
         thruster_positions=physics.THRUSTER_POSITIONS,
         thruster_directions={k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()},
@@ -79,6 +81,7 @@ def _create_default_config() -> AppConfig:
         q_angle=mpc_params.Q_ANGLE,
         q_angular_velocity=mpc_params.Q_ANGULAR_VELOCITY,
         r_thrust=mpc_params.R_THRUST,
+        r_rw_torque=mpc_params.R_RW_TORQUE,
         max_velocity=mpc_params.MAX_VELOCITY,
         max_angular_velocity=mpc_params.MAX_ANGULAR_VELOCITY,
         position_bounds=mpc_params.POSITION_BOUNDS,
@@ -86,6 +89,10 @@ def _create_default_config() -> AppConfig:
         velocity_threshold=mpc_params.VELOCITY_THRESHOLD,
         max_velocity_weight=mpc_params.MAX_VELOCITY_WEIGHT,
         thruster_type=mpc_params.THRUSTER_TYPE,
+        enable_rw_yaw=mpc_params.ENABLE_RW_YAW,
+        enable_z_tilt=mpc_params.ENABLE_Z_TILT,
+        z_tilt_gain=mpc_params.Z_TILT_GAIN,
+        z_tilt_max_deg=mpc_params.Z_TILT_MAX_DEG,
         verbose_mpc=mpc_params.VERBOSE_MPC,
     )
 
@@ -233,6 +240,11 @@ class SatelliteConfig:
     Q_ANGLE = mpc_params.Q_ANGLE
     Q_ANGULAR_VELOCITY = mpc_params.Q_ANGULAR_VELOCITY
     R_THRUST = mpc_params.R_THRUST
+    R_RW_TORQUE = mpc_params.R_RW_TORQUE
+    ENABLE_RW_YAW = mpc_params.ENABLE_RW_YAW
+    ENABLE_Z_TILT = mpc_params.ENABLE_Z_TILT
+    Z_TILT_GAIN = mpc_params.Z_TILT_GAIN
+    Z_TILT_MAX_DEG = mpc_params.Z_TILT_MAX_DEG
 
     MAX_VELOCITY = mpc_params.MAX_VELOCITY
     MAX_ANGULAR_VELOCITY = mpc_params.MAX_ANGULAR_VELOCITY
@@ -255,6 +267,7 @@ class SatelliteConfig:
 
     TOTAL_MASS = physics.TOTAL_MASS
     SATELLITE_SIZE = physics.SATELLITE_SIZE
+    SATELLITE_SHAPE = "cube"  # Default to cube
     MOMENT_OF_INERTIA = physics.MOMENT_OF_INERTIA
     COM_OFFSET = physics.COM_OFFSET
     GRAVITY_M_S2 = physics.GRAVITY_M_S2
@@ -332,7 +345,7 @@ class SatelliteConfig:
     # Use MissionState via SimulationConfig.mission_state instead.
     # See docs/SATELLITE_CONFIG_DEPRECATION.md for migration guide.
     ENABLE_WAYPOINT_MODE = False  # type: ignore
-    WAYPOINT_TARGETS: List[Tuple[float, float]] = []  # type: ignore
+    WAYPOINT_TARGETS: List[Tuple[float, float, float]] = []  # type: ignore
     WAYPOINT_ANGLES: List[Tuple[float, float, float]] = []  # type: ignore
     CURRENT_TARGET_INDEX = 0  # type: ignore
     MULTI_POINT_PHASE: Optional[str] = None  # type: ignore
@@ -351,8 +364,8 @@ class SatelliteConfig:
     # DXF shape mode
     DXF_SHAPE_MODE_ACTIVE = False  # type: ignore
     DXF_SHAPE_CENTER = None  # type: ignore
-    DXF_SHAPE_PATH: List[Tuple[float, float]] = []  # type: ignore
-    DXF_BASE_SHAPE: List[Tuple[float, float]] = []  # type: ignore
+    DXF_SHAPE_PATH: List[Tuple[float, float, float]] = []  # type: ignore
+    DXF_BASE_SHAPE: List[Tuple[float, float, float]] = []  # type: ignore
     DXF_MISSION_START_TIME = None  # type: ignore
     DXF_SHAPE_PHASE = "POSITIONING"  # type: ignore
     DXF_PATH_LENGTH = 0.0  # type: ignore
@@ -449,6 +462,8 @@ class SatelliteConfig:
             "inertia": cls.MOMENT_OF_INERTIA,
             "size": cls.SATELLITE_SIZE,  # Add 'size' alias for tests
             "satellite_size": cls.SATELLITE_SIZE,
+            "shape": cls.SATELLITE_SHAPE,
+            "satellite_shape": cls.SATELLITE_SHAPE,
             "com_offset": cls.COM_OFFSET.copy(),
             "thruster_positions": cls.THRUSTER_POSITIONS.copy(),
             "thruster_directions": cls.THRUSTER_DIRECTIONS.copy(),
@@ -476,11 +491,13 @@ class SatelliteConfig:
             "Q_ang": cls.Q_ANGLE,
             "Q_angvel": cls.Q_ANGULAR_VELOCITY,
             "R_thrust": cls.R_THRUST,
+            "R_rw_torque": getattr(cls, "R_RW_TORQUE", cls.R_THRUST),
             "q_position": cls.Q_POSITION,
             "q_velocity": cls.Q_VELOCITY,
             "q_angle": cls.Q_ANGLE,
             "q_angular_velocity": cls.Q_ANGULAR_VELOCITY,
             "r_thrust": cls.R_THRUST,
+            "r_rw_torque": getattr(cls, "R_RW_TORQUE", cls.R_THRUST),
             "max_velocity": cls.MAX_VELOCITY,
             "max_angular_velocity": cls.MAX_ANGULAR_VELOCITY,
             "position_bounds": cls.POSITION_BOUNDS,
@@ -488,6 +505,10 @@ class SatelliteConfig:
             "velocity_threshold": cls.VELOCITY_THRESHOLD,
             "max_velocity_weight": cls.MAX_VELOCITY_WEIGHT,
             "thruster_type": cls.THRUSTER_TYPE,
+            "enable_rw_yaw": getattr(cls, "ENABLE_RW_YAW", False),
+            "enable_z_tilt": getattr(cls, "ENABLE_Z_TILT", True),
+            "z_tilt_gain": getattr(cls, "Z_TILT_GAIN", 0.35),
+            "z_tilt_max_deg": getattr(cls, "Z_TILT_MAX_DEG", 20.0),
         }
 
     @classmethod
@@ -701,9 +722,9 @@ class SatelliteConfig:
         cls.OBSTACLES_ENABLED = cls._obstacle_manager.enabled
 
     @classmethod
-    def add_obstacle(cls, x: float, y: float, radius: Optional[float] = None):
-        """Add a single obstacle."""
-        cls._obstacle_manager.add_obstacle(x, y, radius)
+    def add_obstacle(cls, x: float, y: float, z: float = 0.0, radius: Optional[float] = None):
+        """Add a single spherical obstacle."""
+        cls._obstacle_manager.add_obstacle(x, y, z, radius)
         cls.OBSTACLES = cls._obstacle_manager.get_obstacles()
         cls.OBSTACLES_ENABLED = cls._obstacle_manager.enabled
 

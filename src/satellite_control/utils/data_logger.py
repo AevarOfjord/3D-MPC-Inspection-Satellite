@@ -202,7 +202,7 @@ class DataLogger:
 
     def _get_physics_headers(self) -> List[str]:
         """Get CSV headers for physics mode (high-frequency valve tracking)."""
-        return [
+        headers = [
             "Time",
             "Current_X",
             "Current_Y",
@@ -229,31 +229,42 @@ class DataLogger:
             "Error_Pitch",
             "Error_Yaw",
             "Command_Vector",
-            "Thruster_1_Cmd",
-            "Thruster_1_Val",
-            "Thruster_2_Cmd",
-            "Thruster_2_Val",
-            "Thruster_3_Cmd",
-            "Thruster_3_Val",
-            "Thruster_4_Cmd",
-            "Thruster_4_Val",
-            "Thruster_5_Cmd",
-            "Thruster_5_Val",
-            "Thruster_6_Cmd",
-            "Thruster_6_Val",
-            "Thruster_7_Cmd",
-            "Thruster_7_Val",
-            "Thruster_8_Cmd",
-            "Thruster_8_Val",
-            "Thruster_9_Cmd",
-            "Thruster_9_Val",
-            "Thruster_10_Cmd",
-            "Thruster_10_Val",
-            "Thruster_11_Cmd",
-            "Thruster_11_Val",
-            "Thruster_12_Cmd",
-            "Thruster_12_Val",
         ]
+        thruster_count = self._get_logged_thruster_count()
+        for thruster_id in range(1, thruster_count + 1):
+            headers.append(f"Thruster_{thruster_id}_Cmd")
+            headers.append(f"Thruster_{thruster_id}_Val")
+        return headers
+
+    def _get_logged_thruster_count(self) -> int:
+        """Infer thruster count from logged data or fall back to config."""
+        max_id = 0
+        for entry in self.detailed_log_data:
+            for key in entry.keys():
+                if not key.startswith("Thruster_"):
+                    continue
+                if not (key.endswith("_Cmd") or key.endswith("_Val")):
+                    continue
+                parts = key.split("_")
+                if len(parts) < 2:
+                    continue
+                try:
+                    thruster_id = int(parts[1])
+                except (ValueError, TypeError):
+                    continue
+                if thruster_id > max_id:
+                    max_id = thruster_id
+
+        if max_id > 0:
+            return max_id
+
+        try:
+            from src.satellite_control.config.simulation_config import SimulationConfig
+
+            default_config = SimulationConfig.create_default()
+            return len(default_config.app_config.physics.thruster_positions)
+        except Exception:
+            return 8
 
     def _get_simulation_headers(self) -> List[str]:
         """Get CSV headers for simulation mode (historical format)."""
@@ -322,6 +333,9 @@ class DataLogger:
             "Command_Sent_Time",
             "Total_Active_Thrusters",
             "Thruster_Switches",
+            "RW_Torque_X",
+            "RW_Torque_Y",
+            "RW_Torque_Z",
             "Total_MPC_Loop_Time",
             "Timing_Violation",
         ]

@@ -78,15 +78,26 @@ class PlotGenerator:
         self.generate_position_error_plot(plot_dir)
         self.generate_angular_tracking_plot(plot_dir)
         self.generate_angular_error_plot(plot_dir)
+        self.generate_error_norms_plot(plot_dir)
         self.generate_trajectory_plot(plot_dir)
         self.generate_trajectory_3d_interactive_plot(plot_dir)
+        self.generate_trajectory_3d_orientation_plot(plot_dir)
         self.generate_thruster_usage_plot(plot_dir)
         self.generate_thruster_valve_activity_plot(plot_dir)
         self.generate_pwm_quantization_plot(plot_dir)
         self.generate_control_effort_plot(plot_dir)
+        self.generate_actuator_limits_plot(plot_dir)
+        self.generate_constraint_violations_plot(plot_dir)
+        self.generate_reaction_wheel_output_plot(plot_dir)
+        self.generate_z_tilt_coupling_plot(plot_dir)
+        self.generate_thruster_impulse_proxy_plot(plot_dir)
+        self.generate_phase_position_velocity_plot(plot_dir)
+        self.generate_phase_attitude_rate_plot(plot_dir)
         self.generate_velocity_tracking_plot(plot_dir)
         self.generate_velocity_magnitude_plot(plot_dir)
         self.generate_mpc_performance_plot(plot_dir)
+        self.generate_solver_health_plot(plot_dir)
+        self.generate_waypoint_progress_plot(plot_dir)
         self.generate_timing_intervals_plot(plot_dir)
         
         print(f"Performance plots saved to: {plot_dir}")
@@ -360,6 +371,83 @@ class PlotGenerator:
         axes[2].set_title("Yaw Error")
         
         PlotStyle.save_figure(fig, plot_dir / "angular_error.png")
+
+    def generate_error_norms_plot(self, plot_dir: Path) -> None:
+        """Generate error norm summary plot."""
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        fig.suptitle(f"Error Norms - {self.system_title}")
+
+        time = np.arange(self._get_len()) * float(self.dt)
+
+        def get_series(name: str) -> np.ndarray:
+            vals = self._col(name)
+            return vals if len(vals) else np.zeros_like(time)
+
+        err_x = get_series("Error_X")
+        err_y = get_series("Error_Y")
+        err_z = get_series("Error_Z")
+        err_vx = get_series("Error_VX")
+        err_vy = get_series("Error_VY")
+        err_vz = get_series("Error_VZ")
+        err_roll = get_series("Error_Roll")
+        err_pitch = get_series("Error_Pitch")
+        err_yaw = get_series("Error_Yaw")
+        err_wx = get_series("Error_WX")
+        err_wy = get_series("Error_WY")
+        err_wz = get_series("Error_WZ")
+
+        pos_err_norm = np.sqrt(err_x**2 + err_y**2 + err_z**2)
+        vel_err_norm = np.sqrt(err_vx**2 + err_vy**2 + err_vz**2)
+        ang_err_norm = np.degrees(np.sqrt(err_roll**2 + err_pitch**2 + err_yaw**2))
+        angvel_err_norm = np.degrees(np.sqrt(err_wx**2 + err_wy**2 + err_wz**2))
+
+        axes[0, 0].plot(
+            time,
+            pos_err_norm,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Position Error Norm",
+        )
+        axes[0, 0].set_ylabel("Position Error (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0, 0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0, 0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[0, 1].plot(
+            time,
+            vel_err_norm,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Velocity Error Norm",
+        )
+        axes[0, 1].set_ylabel("Velocity Error (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1, 0].plot(
+            time,
+            ang_err_norm,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Attitude Error Norm",
+        )
+        axes[1, 0].set_ylabel("Attitude Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 0].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1, 0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1, 1].plot(
+            time,
+            angvel_err_norm,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Angular Rate Error Norm",
+        )
+        axes[1, 1].set_ylabel("Angular Rate Error (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "error_norms.png")
     
     def generate_trajectory_plot(self, plot_dir: Path) -> None:
         """Generate trajectory plot."""
@@ -579,6 +667,80 @@ class PlotGenerator:
 
         output_path = plot_dir / "trajectory_3d_interactive.html"
         fig.write_html(output_path, include_plotlyjs="cdn")
+
+    def generate_trajectory_3d_orientation_plot(self, plot_dir: Path) -> None:
+        """Generate 3D trajectory plot with orientation arrows."""
+        x_pos = self._col("Current_X")
+        y_pos = self._col("Current_Y")
+        z_pos = self._col("Current_Z")
+        if len(x_pos) == 0 or len(y_pos) == 0 or len(z_pos) == 0:
+            return
+
+        target_x_col = self._col("Target_X")
+        target_y_col = self._col("Target_Y")
+        target_z_col = self._col("Target_Z")
+        target_x = float(target_x_col[0]) if len(target_x_col) > 0 else 0.0
+        target_y = float(target_y_col[0]) if len(target_y_col) > 0 else 0.0
+        target_z = float(target_z_col[0]) if len(target_z_col) > 0 else 0.0
+
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+        ax.plot(x_pos, y_pos, z_pos, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=2)
+        ax.scatter(x_pos[0], y_pos[0], z_pos[0], color=PlotStyle.COLOR_SUCCESS, s=40, label="Start")
+        ax.scatter(x_pos[-1], y_pos[-1], z_pos[-1], color=PlotStyle.COLOR_ERROR, s=40, label="End")
+        ax.scatter(target_x, target_y, target_z, color=PlotStyle.COLOR_TARGET, s=60, marker="*")
+
+        roll = self._col("Current_Roll")
+        pitch = self._col("Current_Pitch")
+        yaw = self._col("Current_Yaw")
+
+        n = len(x_pos)
+        step = max(n // 50, 1)
+        idxs = np.arange(0, n, step)
+
+        arrow_len = 0.06
+        try:
+            if self.app_config and self.app_config.physics:
+                arrow_len = float(self.app_config.physics.satellite_size) * 0.2
+            else:
+                from src.satellite_control.config.simulation_config import SimulationConfig
+
+                arrow_len = float(
+                    SimulationConfig.create_default().app_config.physics.satellite_size
+                ) * 0.2
+        except Exception:
+            pass
+
+        try:
+            from scipy.spatial.transform import Rotation
+
+            eulers = np.vstack([roll[idxs], pitch[idxs], yaw[idxs]]).T
+            dirs = Rotation.from_euler("xyz", eulers, degrees=False).apply(
+                np.array([1.0, 0.0, 0.0])
+            )
+            ax.quiver(
+                x_pos[idxs],
+                y_pos[idxs],
+                z_pos[idxs],
+                dirs[:, 0],
+                dirs[:, 1],
+                dirs[:, 2],
+                length=arrow_len,
+                normalize=True,
+                color="gray",
+                alpha=0.6,
+            )
+        except Exception:
+            pass
+
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        ax.set_zlabel("Z (m)")
+        ax.set_title(f"3D Trajectory with Orientation - {self.system_title}")
+        ax.legend()
+
+        PlotStyle.save_figure(fig, plot_dir / "trajectory_3d_orientation.png")
     
     def generate_thruster_usage_plot(self, plot_dir: Path) -> None:
         """Generate thruster usage plot using actual valve states."""
@@ -1024,7 +1186,7 @@ class PlotGenerator:
                 default_config = SimulationConfig.create_default()
                 return len(default_config.app_config.physics.thruster_positions)
         except Exception:
-            return 12
+            return 8
 
     def _parse_command_vector(self, command_str: Any) -> np.ndarray:
         """Parse command vector string to numpy array.
@@ -1038,7 +1200,7 @@ class PlotGenerator:
         try:
             # Handle None or empty
             if command_str is None or command_str == "":
-                return np.zeros(12)
+                return np.zeros(self._get_thruster_count())
             
             # Convert to string if not already
             command_str = str(command_str)
@@ -1048,7 +1210,7 @@ class PlotGenerator:
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
-            return np.zeros(12)
+            return np.zeros(self._get_thruster_count())
     
     def generate_control_effort_plot(self, plot_dir: Path) -> None:
         """Generate control effort plot."""
@@ -1079,6 +1241,854 @@ class PlotGenerator:
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
         
         PlotStyle.save_figure(fig, plot_dir / "control_effort.png")
+
+    def generate_reaction_wheel_output_plot(self, plot_dir: Path) -> None:
+        """Generate reaction wheel torque output plot."""
+        fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Reaction Wheel Output - {self.system_title}")
+
+        df = None
+        cols = []
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            df = self.data_accessor.control_data
+            cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_data_backend")
+            and self.data_accessor._data_backend == "pandas"
+        ):
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                df = self.data_accessor.data
+                cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
+            cols = list(self.data_accessor._col_data.keys())
+
+        if df is not None and "Control_Time" in cols:
+            time = df["Control_Time"].values
+        elif df is not None and "CONTROL_DT" in cols:
+            dt_val = df["CONTROL_DT"].iloc[0]
+            time = np.arange(len(df)) * float(dt_val)
+        else:
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+
+        base_len = len(time)
+        if base_len == 0:
+            axes[0].text(
+                0.5,
+                0.5,
+                "Reaction wheel data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+            axes[0].set_title(f"Reaction Wheel Output - {self.system_title}")
+            for ax in axes[1:]:
+                ax.axis("off")
+            PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
+            return
+
+        def get_series(name: str) -> np.ndarray:
+            if df is not None and name in cols:
+                return df[name].values
+            return self._col(name)
+
+        def normalize_series(values: np.ndarray) -> np.ndarray:
+            if values is None or len(values) == 0:
+                return np.zeros(base_len, dtype=float)
+            try:
+                arr = np.array(values, dtype=float)
+            except (ValueError, TypeError):
+                return np.zeros(base_len, dtype=float)
+            if arr.size < base_len:
+                padded = np.zeros(base_len, dtype=float)
+                padded[: arr.size] = arr
+                return padded
+            return arr[:base_len]
+
+        rw_x = normalize_series(get_series("RW_Torque_X"))
+        rw_y = normalize_series(get_series("RW_Torque_Y"))
+        rw_z = normalize_series(get_series("RW_Torque_Z"))
+
+        axes[0].plot(
+            time,
+            rw_x,
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="RW X",
+        )
+        axes[0].set_ylabel("Torque X (N·m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1].plot(
+            time,
+            rw_y,
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="RW Y",
+        )
+        axes[1].set_ylabel("Torque Y (N·m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[2].plot(
+            time,
+            rw_z,
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="RW Z",
+        )
+        axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel("Torque Z (N·m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
+
+    def generate_actuator_limits_plot(self, plot_dir: Path) -> None:
+        """Generate actuator outputs with limit overlays."""
+        fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Actuator Limits - {self.system_title}")
+
+        df = None
+        cols = []
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            df = self.data_accessor.control_data
+            cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_data_backend")
+            and self.data_accessor._data_backend == "pandas"
+        ):
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                df = self.data_accessor.data
+                cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
+            cols = list(self.data_accessor._col_data.keys())
+
+        if df is not None and "Control_Time" in cols:
+            time = df["Control_Time"].values
+        elif df is not None and "CONTROL_DT" in cols:
+            dt_val = df["CONTROL_DT"].iloc[0]
+            time = np.arange(len(df)) * float(dt_val)
+        else:
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+
+        # Thruster command envelope
+        command_vectors = []
+        if df is not None and "Command_Vector" in cols:
+            for cmd_str in df["Command_Vector"].values:
+                command_vectors.append(self._parse_command_vector(cmd_str))
+        else:
+            for idx in range(self._get_len()):
+                row = self._row(idx)
+                command_vectors.append(self._parse_command_vector(row.get("Command_Vector")))
+        command_matrix = np.array(command_vectors) if command_vectors else np.zeros((0, 0))
+
+        if command_matrix.size > 0:
+            max_u = np.max(command_matrix, axis=1)
+            sum_u = np.sum(command_matrix, axis=1)
+            min_len = min(len(time), len(max_u), len(sum_u))
+            axes[0].plot(
+                time[:min_len],
+                max_u[:min_len],
+                color=PlotStyle.COLOR_SIGNAL_POS,
+                linewidth=PlotStyle.LINEWIDTH,
+                label="Max Thruster Command",
+            )
+            axes[0].plot(
+                time[:min_len],
+                sum_u[:min_len],
+                color=PlotStyle.COLOR_SIGNAL_ANG,
+                linewidth=PlotStyle.LINEWIDTH,
+                label="Sum Thruster Command",
+            )
+            axes[0].axhline(y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit")
+            axes[0].set_ylabel("Command (0-1)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+            axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+        else:
+            axes[0].text(
+                0.5,
+                0.5,
+                "Thruster command data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+
+        # Reaction wheel torque limits
+        base_len = len(time)
+
+        def get_series(name: str) -> np.ndarray:
+            if df is not None and name in cols:
+                return df[name].values
+            return self._col(name)
+
+        def normalize_series(values: np.ndarray) -> np.ndarray:
+            if values is None or len(values) == 0:
+                return np.zeros(base_len, dtype=float)
+            try:
+                arr = np.array(values, dtype=float)
+            except (ValueError, TypeError):
+                return np.zeros(base_len, dtype=float)
+            if arr.size < base_len:
+                padded = np.zeros(base_len, dtype=float)
+                padded[: arr.size] = arr
+                return padded
+            return arr[:base_len]
+
+        rw_x = normalize_series(get_series("RW_Torque_X"))
+        rw_y = normalize_series(get_series("RW_Torque_Y"))
+        rw_z = normalize_series(get_series("RW_Torque_Z"))
+
+        try:
+            from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
+
+            max_rw = float(get_reaction_wheel_config().wheel_x.max_torque)
+        except Exception:
+            max_rw = 0.0
+
+        if base_len > 0:
+            axes[1].plot(
+                time,
+                rw_x,
+                color=PlotStyle.COLOR_SIGNAL_ANG,
+                linewidth=PlotStyle.LINEWIDTH,
+                label="RW X",
+            )
+            axes[1].plot(
+                time,
+                rw_y,
+                color=PlotStyle.COLOR_SIGNAL_POS,
+                linewidth=PlotStyle.LINEWIDTH,
+                label="RW Y",
+            )
+            axes[1].plot(
+                time,
+                rw_z,
+                color=PlotStyle.COLOR_ERROR,
+                linewidth=PlotStyle.LINEWIDTH,
+                label="RW Z",
+            )
+            if max_rw > 0:
+                axes[1].axhline(y=max_rw, color="black", linestyle="--", alpha=0.6)
+                axes[1].axhline(y=-max_rw, color="black", linestyle="--", alpha=0.6, label="RW Limit")
+            axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[1].set_ylabel("Torque (N*m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+            axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+        else:
+            axes[1].text(
+                0.5,
+                0.5,
+                "Reaction wheel data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[1].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+            axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "actuator_limits.png")
+
+    def generate_constraint_violations_plot(self, plot_dir: Path) -> None:
+        """Generate constraint violation plot."""
+        fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Constraint Violations - {self.system_title}")
+
+        time = np.arange(self._get_len()) * float(self.dt)
+
+        try:
+            if self.app_config and self.app_config.mpc:
+                pos_bound = float(self.app_config.mpc.position_bounds)
+                max_vel = float(self.app_config.mpc.max_velocity)
+                max_ang_vel = float(self.app_config.mpc.max_angular_velocity)
+            else:
+                from src.satellite_control.config.simulation_config import SimulationConfig
+
+                cfg = SimulationConfig.create_default().app_config.mpc
+                pos_bound = float(cfg.position_bounds)
+                max_vel = float(cfg.max_velocity)
+                max_ang_vel = float(cfg.max_angular_velocity)
+        except Exception:
+            pos_bound = 0.0
+            max_vel = 0.0
+            max_ang_vel = 0.0
+
+        x = self._col("Current_X")
+        y = self._col("Current_Y")
+        z = self._col("Current_Z")
+        vx = self._col("Current_VX")
+        vy = self._col("Current_VY")
+        vz = self._col("Current_VZ")
+        wx = self._col("Current_WX")
+        wy = self._col("Current_WY")
+        wz = self._col("Current_WZ")
+
+        min_len = min(len(time), len(x), len(y), len(z), len(vx), len(vy), len(vz), len(wx), len(wy), len(wz))
+        if min_len == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Constraint data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+            PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
+            return
+
+        pos_violation = np.maximum(
+            np.max(np.abs(np.vstack([x[:min_len], y[:min_len], z[:min_len]])), axis=0) - pos_bound,
+            0.0,
+        )
+        vel_mag = np.sqrt(vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2)
+        vel_violation = np.maximum(vel_mag - max_vel, 0.0)
+        ang_vel_mag = np.sqrt(wx[:min_len] ** 2 + wy[:min_len] ** 2 + wz[:min_len] ** 2)
+        ang_vel_violation = np.maximum(ang_vel_mag - max_ang_vel, 0.0)
+
+        axes[0].plot(
+            time[:min_len],
+            pos_violation,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Position Bound Violation",
+        )
+        axes[0].set_ylabel("Meters", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1].plot(
+            time[:min_len],
+            vel_violation,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Velocity Limit Violation",
+        )
+        axes[1].set_ylabel("m/s", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[2].plot(
+            time[:min_len],
+            ang_vel_violation,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Angular Velocity Limit Violation",
+        )
+        axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel("rad/s", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
+
+    def generate_z_tilt_coupling_plot(self, plot_dir: Path) -> None:
+        """Generate Z-tilt coupling plot."""
+        fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Z Tilt Coupling - {self.system_title}")
+
+        time = np.arange(self._get_len()) * float(self.dt)
+
+        err_z = self._col("Error_Z")
+        if len(err_z) == 0:
+            current_z = self._col("Current_Z")
+            target_z = self._col("Target_Z")
+            min_len = min(len(current_z), len(target_z))
+            err_z = current_z[:min_len] - target_z[:min_len]
+
+        roll = np.degrees(self._col("Current_Roll"))
+        pitch = np.degrees(self._col("Current_Pitch"))
+        vz = self._col("Current_VZ")
+
+        min_len = min(len(time), len(err_z), len(roll), len(pitch), len(vz))
+        if min_len == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Z tilt data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+            PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+            return
+
+        axes[0].plot(
+            time[:min_len],
+            err_z[:min_len],
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Z Error",
+        )
+        axes[0].set_ylabel("Z Error (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1].plot(
+            time[:min_len],
+            roll[:min_len],
+            color=PlotStyle.COLOR_SIGNAL_POS,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Roll",
+        )
+        axes[1].plot(
+            time[:min_len],
+            pitch[:min_len],
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Pitch",
+        )
+        axes[1].set_ylabel("Angle (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[2].plot(
+            time[:min_len],
+            vz[:min_len],
+            color=PlotStyle.COLOR_SIGNAL_POS,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="VZ",
+        )
+        axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel("Vertical Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+
+    def generate_thruster_impulse_proxy_plot(self, plot_dir: Path) -> None:
+        """Generate thruster impulse proxy plot."""
+        fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Thruster Impulse Proxy - {self.system_title}")
+
+        df = None
+        cols = []
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            df = self.data_accessor.control_data
+            cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_data_backend")
+            and self.data_accessor._data_backend == "pandas"
+        ):
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                df = self.data_accessor.data
+                cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
+            cols = list(self.data_accessor._col_data.keys())
+
+        if df is not None and "Control_Time" in cols:
+            time = df["Control_Time"].values
+        elif df is not None and "CONTROL_DT" in cols:
+            dt_val = df["CONTROL_DT"].iloc[0]
+            time = np.arange(len(df)) * float(dt_val)
+        else:
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+
+        thruster_forces = {}
+        thruster_dirs = {}
+        try:
+            if self.app_config and self.app_config.physics:
+                thruster_forces = self.app_config.physics.thruster_forces
+                thruster_dirs = self.app_config.physics.thruster_directions
+            else:
+                from src.satellite_control.config.simulation_config import SimulationConfig
+
+                cfg = SimulationConfig.create_default().app_config.physics
+                thruster_forces = cfg.thruster_forces
+                thruster_dirs = cfg.thruster_directions
+        except Exception:
+            thruster_forces = {}
+            thruster_dirs = {}
+
+        thruster_ids = sorted(thruster_forces.keys())
+        if not thruster_ids:
+            axes[0].text(
+                0.5,
+                0.5,
+                "Thruster configuration\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+            PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+            return
+
+        force_matrix = []
+        for tid in thruster_ids:
+            direction = np.array(thruster_dirs[tid], dtype=float)
+            force_matrix.append(float(thruster_forces[tid]) * direction)
+        force_matrix = np.array(force_matrix)
+
+        command_vectors = []
+        if df is not None and "Command_Vector" in cols:
+            for cmd_str in df["Command_Vector"].values:
+                command_vectors.append(self._parse_command_vector(cmd_str))
+        else:
+            for idx in range(self._get_len()):
+                row = self._row(idx)
+                command_vectors.append(self._parse_command_vector(row.get("Command_Vector")))
+        if not command_vectors:
+            axes[0].text(
+                0.5,
+                0.5,
+                "Command data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+            PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+            return
+
+        commands = []
+        for cmd in command_vectors:
+            if len(cmd) < len(thruster_ids):
+                padded = np.zeros(len(thruster_ids))
+                padded[: len(cmd)] = cmd
+                commands.append(padded)
+            else:
+                commands.append(cmd[: len(thruster_ids)])
+        commands = np.array(commands)
+
+        min_len = min(len(time), commands.shape[0])
+        if min_len == 0:
+            return
+
+        net_forces = commands[:min_len] @ force_matrix
+        force_mag = np.linalg.norm(net_forces, axis=1)
+
+        dt_steps = np.diff(time[:min_len], prepend=time[0])
+        if min_len > 1:
+            fallback_dt = float(np.median(dt_steps[1:])) if np.any(dt_steps[1:]) else float(self.dt)
+        else:
+            fallback_dt = float(self.dt)
+        if dt_steps[0] == 0:
+            dt_steps[0] = fallback_dt
+
+        impulse = np.cumsum(force_mag * dt_steps)
+
+        axes[0].plot(
+            time[:min_len],
+            net_forces[:, 0],
+            color=PlotStyle.COLOR_SIGNAL_POS,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Fx (body)",
+        )
+        axes[0].plot(
+            time[:min_len],
+            net_forces[:, 1],
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Fy (body)",
+        )
+        axes[0].plot(
+            time[:min_len],
+            net_forces[:, 2],
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Fz (body)",
+        )
+        axes[0].plot(
+            time[:min_len],
+            force_mag,
+            color="black",
+            linestyle="--",
+            linewidth=PlotStyle.LINEWIDTH,
+            label="|F|",
+        )
+        axes[0].set_ylabel("Force (N)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        axes[1].plot(
+            time[:min_len],
+            impulse,
+            color=PlotStyle.COLOR_SIGNAL_POS,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="Cumulative Impulse",
+        )
+        axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].set_ylabel("Impulse (N*s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+
+    def generate_phase_position_velocity_plot(self, plot_dir: Path) -> None:
+        """Generate position vs velocity phase plots."""
+        fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+        fig.suptitle(f"Phase Plot: Position vs Velocity - {self.system_title}")
+
+        x = self._col("Current_X")
+        y = self._col("Current_Y")
+        z = self._col("Current_Z")
+        vx = self._col("Current_VX")
+        vy = self._col("Current_VY")
+        vz = self._col("Current_VZ")
+
+        axes[0].plot(x, vx, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[0].set_xlabel("X (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].set_ylabel("VX (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        axes[1].plot(y, vy, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[1].set_xlabel("Y (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].set_ylabel("VY (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        axes[2].plot(z, vz, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[2].set_xlabel("Z (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel("VZ (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        PlotStyle.save_figure(fig, plot_dir / "phase_position_velocity.png")
+
+    def generate_phase_attitude_rate_plot(self, plot_dir: Path) -> None:
+        """Generate attitude vs rate phase plots."""
+        fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+        fig.suptitle(f"Phase Plot: Attitude vs Rates - {self.system_title}")
+
+        roll = np.degrees(self._col("Current_Roll"))
+        pitch = np.degrees(self._col("Current_Pitch"))
+        yaw = np.degrees(self._col("Current_Yaw"))
+        wx = np.degrees(self._col("Current_WX"))
+        wy = np.degrees(self._col("Current_WY"))
+        wz = np.degrees(self._col("Current_WZ"))
+
+        axes[0].plot(roll, wx, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[0].set_xlabel("Roll (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].set_ylabel("WX (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        axes[1].plot(pitch, wy, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[1].set_xlabel("Pitch (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].set_ylabel("WY (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        axes[2].plot(yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[2].set_xlabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        PlotStyle.save_figure(fig, plot_dir / "phase_attitude_rate.png")
+
+    def generate_solver_health_plot(self, plot_dir: Path) -> None:
+        """Generate solver health summary plot."""
+        fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Solver Health - {self.system_title}")
+
+        df = None
+        cols = []
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            df = self.data_accessor.control_data
+            cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_data_backend")
+            and self.data_accessor._data_backend == "pandas"
+        ):
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                df = self.data_accessor.data
+                cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
+            cols = list(self.data_accessor._col_data.keys())
+
+        if df is not None and "MPC_Status" in cols:
+            status_vals = df["MPC_Status"].values
+        else:
+            status_vals = self._col("MPC_Status")
+
+        status_counts = {}
+        for val in status_vals:
+            if val is None:
+                continue
+            label = str(val).strip()
+            if label == "" or label.lower() == "nan":
+                continue
+            status_counts[label] = status_counts.get(label, 0) + 1
+
+        if status_counts:
+            labels = list(status_counts.keys())
+            counts = [status_counts[k] for k in labels]
+            axes[0].bar(labels, counts, color=PlotStyle.COLOR_SIGNAL_POS, alpha=0.8)
+            axes[0].set_ylabel("Count", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[0].set_title("Solver Status Counts")
+            axes[0].grid(True, axis="y", alpha=PlotStyle.GRID_ALPHA)
+        else:
+            axes[0].text(
+                0.5,
+                0.5,
+                "Solver status data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[0].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+
+        if df is not None and "MPC_Solve_Time" in cols:
+            solve_times = df["MPC_Solve_Time"].values
+        else:
+            solve_times = self._col("MPC_Solve_Time")
+            if len(solve_times) == 0:
+                solve_times = self._col("MPC_Computation_Time")
+
+        solve_ms = []
+        for val in solve_times:
+            try:
+                num = float(val) * 1000.0
+                if num > 0:
+                    solve_ms.append(num)
+            except (ValueError, TypeError):
+                continue
+        solve_ms = np.array(solve_ms)
+
+        if solve_ms.size > 0:
+            axes[1].hist(solve_ms, bins=30, color=PlotStyle.COLOR_SIGNAL_ANG, alpha=0.8)
+            axes[1].set_xlabel("Solve Time (ms)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[1].set_ylabel("Count", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[1].set_title("Solve Time Distribution")
+            axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        else:
+            axes[1].text(
+                0.5,
+                0.5,
+                "Solve time data\nnot available",
+                ha="center",
+                va="center",
+                transform=axes[1].transAxes,
+                fontsize=PlotStyle.ANNOTATION_SIZE,
+            )
+
+        PlotStyle.save_figure(fig, plot_dir / "solver_health.png")
+
+    def generate_waypoint_progress_plot(self, plot_dir: Path) -> None:
+        """Generate waypoint/mission phase progress plot."""
+        fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
+        fig.suptitle(f"Waypoint Progress - {self.system_title}")
+
+        df = None
+        cols = []
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            df = self.data_accessor.control_data
+            cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_data_backend")
+            and self.data_accessor._data_backend == "pandas"
+        ):
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                df = self.data_accessor.data
+                cols = df.columns
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
+            cols = list(self.data_accessor._col_data.keys())
+
+        if df is not None and "Control_Time" in cols:
+            time = df["Control_Time"].values
+        elif df is not None and "CONTROL_DT" in cols:
+            dt_val = df["CONTROL_DT"].iloc[0]
+            time = np.arange(len(df)) * float(dt_val)
+        else:
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+
+        if df is not None and "Waypoint_Number" in cols:
+            waypoint_vals = df["Waypoint_Number"].values
+        else:
+            waypoint_vals = self._col("Waypoint_Number")
+
+        if df is not None and "Mission_Phase" in cols:
+            phase_vals = df["Mission_Phase"].values
+        else:
+            phase_vals = self._col("Mission_Phase")
+
+        if len(waypoint_vals) == 0 or len(phase_vals) == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Waypoint/phase data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+            PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
+            return
+
+        min_len = min(len(time), len(waypoint_vals), len(phase_vals))
+        time = time[:min_len]
+        waypoint_vals = waypoint_vals[:min_len]
+        phase_vals = phase_vals[:min_len]
+
+        axes[0].step(time, waypoint_vals, where="post", color=PlotStyle.COLOR_SIGNAL_POS)
+        axes[0].set_ylabel("Waypoint #", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        phase_order = []
+        phase_codes = []
+        for val in phase_vals:
+            label = str(val)
+            if label not in phase_order:
+                phase_order.append(label)
+            phase_codes.append(phase_order.index(label))
+
+        axes[1].step(time, phase_codes, where="post", color=PlotStyle.COLOR_SIGNAL_ANG)
+        axes[1].set_yticks(range(len(phase_order)))
+        axes[1].set_yticklabels(phase_order)
+        axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].set_ylabel("Mission Phase", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+        PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
     
     def generate_velocity_tracking_plot(self, plot_dir: Path) -> None:
         """Generate velocity tracking over time plot."""

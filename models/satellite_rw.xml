@@ -78,8 +78,8 @@
       <!-- 6-DOF Free Joint -->
       <joint name="root" type="free"/>
       
-      <!-- Satellite Body (10kg, 0.29m cube) -->
-      <geom name="satellite_geom" type="box" size="0.145 0.145 0.145" mass="9.1" 
+      <!-- Satellite Body (Box 30cm - half size 0.15m) -->
+      <geom name="satellite_geom" type="box" size="0.15 0.15 0.15" mass="9.1" 
             rgba="0.7 0.7 0.8 0.85"/>
       
       <!-- ==================== REACTION WHEELS ==================== -->

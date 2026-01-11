@@ -18,7 +18,7 @@ Key features:
 - Spline-based smooth obstacle avoidance
 """
 
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 try:
     from src.satellite_control.utils.spline_path import (
@@ -106,7 +106,7 @@ class MissionStateManager:
         self.return_stabilization_start_time: Optional[float] = None
         self.final_waypoint_stabilization_start_time: Optional[float] = None
         # Obstacle Avoidance State
-        self.obstacle_waypoints: List[Tuple[float, float]] = []
+        self.obstacle_waypoints: List[Tuple[float, float, float]] = []
         self.current_obstacle_idx: int = 0
         self.last_target_index: int = -1
         self.obstacle_waypoint_reached_time: Optional[float] = None
@@ -115,7 +115,7 @@ class MissionStateManager:
         self.avoidance_spline: Optional["ObstacleAvoidanceSpline"] = None
         self.spline_arc_progress: float = 0.0
         self.spline_cruise_speed: float = 0.12  # m/s along spline
-        self._active_obstacle: Optional[Tuple[float, float, float]] = None
+        self._active_obstacle: Optional[Tuple[float, float, float, float]] = None
     
     def _update_dxf_phase(self, phase: str) -> None:
         """Update DXF shape phase in mission_state (V4.0.0: no SatelliteConfig fallback)."""
@@ -129,7 +129,7 @@ class MissionStateManager:
         """Get obstacles enabled status from mission_state (V4.0.0: required)."""
         return self.mission_state.obstacles_enabled
     
-    def _get_obstacles(self) -> List[Tuple[float, float, float]]:
+    def _get_obstacles(self) -> List[Tuple[float, float, float, float]]:
         """Get obstacles list from mission_state (V4.0.0: required)."""
         return self.mission_state.obstacles
     
@@ -210,19 +210,19 @@ class MissionStateManager:
         """Set DXF positioning start time in mission_state (V4.0.0: no SatelliteConfig)."""
         setattr(self.mission_state, "dxf_positioning_start_time", value)
     
-    def _get_dxf_current_target_position(self) -> Optional[Tuple[float, float]]:
+    def _get_dxf_current_target_position(self) -> Optional[Tuple[float, float, float]]:
         """Get DXF current target position from mission_state (V4.0.0: required)."""
         return getattr(self.mission_state, "dxf_current_target_position", None)
     
-    def _set_dxf_current_target_position(self, value: Optional[Tuple[float, float]]) -> None:
+    def _set_dxf_current_target_position(self, value: Optional[Tuple[float, float, float]]) -> None:
         """Set DXF current target position in mission_state (V4.0.0: no SatelliteConfig)."""
         setattr(self.mission_state, "dxf_current_target_position", value)
     
-    def _get_dxf_final_position(self) -> Optional[Tuple[float, float]]:
+    def _get_dxf_final_position(self) -> Optional[Tuple[float, float, float]]:
         """Get DXF final position from mission_state (V4.0.0: required)."""
         return self.mission_state.dxf_final_position
     
-    def _set_dxf_final_position(self, value: Optional[Tuple[float, float]]) -> None:
+    def _set_dxf_final_position(self, value: Optional[Tuple[float, float, float]]) -> None:
         """Set DXF final position in mission_state (V4.0.0: no SatelliteConfig)."""
         self.mission_state.dxf_final_position = value
     
@@ -281,7 +281,7 @@ class MissionStateManager:
         orientation: Tuple[float, float, float],
         vx: float = 0.0,
         vy: float = 0.0,
-        omega: float = 0.0,
+        omega: Union[float, Tuple[float, float, float]] = 0.0,
         z: float = 0.0,
         vz: float = 0.0,
     ) -> np.ndarray:
@@ -298,7 +298,10 @@ class MissionStateManager:
         state[8] = vy
         state[9] = vz
 
-        state[12] = omega
+        if isinstance(omega, (tuple, list, np.ndarray)) and len(omega) == 3:
+            state[10:13] = np.array(omega, dtype=float)
+        else:
+            state[12] = float(omega)
         return state
 
     @staticmethod
@@ -377,7 +380,11 @@ class MissionStateManager:
                         trajectory[k] = self._create_3d_state(
                             current_path_position[0],
                             current_path_position[1],
-                            self._yaw_to_euler(target_orientation),
+                            target_orientation,
+                            0.0,
+                            0.0,
+                            0.0,
+                            current_path_position[2] if len(current_path_position) > 2 else 0.0,
                         )
                     else:
                         wrapped_s = distance % path_len
@@ -391,10 +398,19 @@ class MissionStateManager:
                             wrapped_s,
                             closest_point_idx,
                         )
-                        vx = speed * np.cos(orient)
-                        vy = speed * np.sin(orient)
+                        roll, pitch, yaw = orient
+                        vx = speed * np.cos(yaw) * np.cos(pitch)
+                        vy = speed * np.sin(yaw) * np.cos(pitch)
+                        vz = -speed * np.sin(pitch)
                         trajectory[k] = self._create_3d_state(
-                            pos[0], pos[1], self._yaw_to_euler(orient), vx, vy
+                            pos[0],
+                            pos[1],
+                            orient,
+                            vx,
+                            vy,
+                            0.0,
+                            pos[2] if len(pos) > 2 else 0.0,
+                            vz,
                         )
             else:
                 target = self.update_target_state(
@@ -430,8 +446,16 @@ class MissionStateManager:
                             s_tan = self.avoidance_spline.tangent(future_progress)
                             vx = s_tan[0] * speed
                             vy = s_tan[1] * speed
+                            vz = s_tan[2] * speed if len(s_tan) > 2 else 0.0
                             trajectory[k] = self._create_3d_state(
-                                s_pos[0], s_pos[1], (0.0, 0.0, 0.0), vx, vy
+                                s_pos[0],
+                                s_pos[1],
+                                (0.0, 0.0, 0.0),
+                                vx,
+                                vy,
+                                0.0,
+                                s_pos[2] if len(s_pos) > 2 else 0.0,
+                                vz,
                             )
 
             elif external_target_state is not None:
@@ -443,20 +467,22 @@ class MissionStateManager:
         return trajectory
 
     def _has_clear_path_to_target(
-        self, current_pos: np.ndarray, target_pos: Tuple[float, float]
+        self, current_pos: np.ndarray, target_pos: Tuple[float, float, float]
     ) -> bool:
         """Check if direct path to target is clear of the active obstacle."""
         if self._active_obstacle is None:
             return True
 
-        obs_x, obs_y, obs_radius = self._active_obstacle
+        obs_x, obs_y, obs_z, obs_radius = self._active_obstacle
         # V4.0.0: Use hardcoded safety margin (could be moved to AppConfig in future)
         safety = 0.5
 
         # Calculate distance from obstacle center to path line
-        start = current_pos[:2]
-        end = np.array(target_pos)
-        obstacle = np.array([obs_x, obs_y])
+        start = np.array(current_pos[:3], dtype=float)
+        end = np.array(target_pos, dtype=float)
+        if end.shape[0] < 3:
+            end = np.pad(end, (0, 3 - end.shape[0]), "constant")
+        obstacle = np.array([obs_x, obs_y, obs_z], dtype=float)
 
         path_vec = end - start
         path_length = np.linalg.norm(path_vec)
@@ -500,7 +526,7 @@ class MissionStateManager:
     def _default_point_to_line_distance(
         point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray
     ) -> float:
-        """Default point-to-line distance calculation."""
+        """Default point-to-line distance calculation (2D or 3D)."""
         line_vec = line_end - line_start
         line_length_sq = np.dot(line_vec, line_vec)
 
@@ -574,7 +600,7 @@ class MissionStateManager:
 
         target_pos = final_target_pos
         target_orientation = final_target_angle
-        target_vx, target_vy = 0.0, 0.0
+        target_vx, target_vy, target_vz = 0.0, 0.0, 0.0
         using_spline = False
 
         # SPLINE-BASED OBSTACLE AVOIDANCE with moving reference
@@ -584,18 +610,18 @@ class MissionStateManager:
             # Generate spline if needed (first time through obstacle zone)
             if self.avoidance_spline is None:
                 # Try to create spline for first blocking obstacle
-                for obs_x, obs_y, obs_radius in obstacles:
+                for obs_x, obs_y, obs_z, obs_radius in obstacles:
                     spline = create_obstacle_avoidance_spline(
                         start_pos=current_position,
                         target_pos=np.array(final_target_pos),
-                        obstacle_center=np.array([obs_x, obs_y]),
+                        obstacle_center=np.array([obs_x, obs_y, obs_z]),
                         obstacle_radius=obs_radius,
                         safety_margin=0.5,  # V4.0.0: Hardcoded (could be in AppConfig)
                     )
                     if spline is not None:
                         self.avoidance_spline = spline
                         self.spline_arc_progress = 0.0
-                        self._active_obstacle = (obs_x, obs_y, obs_radius)
+                        self._active_obstacle = (obs_x, obs_y, obs_z, obs_radius)
                         break
 
             # If we have an active spline, track along it
@@ -632,21 +658,27 @@ class MissionStateManager:
                         tangent = self.avoidance_spline.tangent(self.spline_arc_progress)
                         target_vx = tangent[0] * self.spline_cruise_speed
                         target_vy = tangent[1] * self.spline_cruise_speed
+                        target_vz = tangent[2] * self.spline_cruise_speed if len(tangent) > 2 else 0.0
 
                         # Keep neutral angle during spline traversal
                         target_orientation = (0.0, 0.0, 0.0)
 
+        target_pos_arr = np.array(target_pos, dtype=float)
+        if target_pos_arr.shape[0] < 3:
+            target_pos_arr = np.pad(target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant")
+
         target_state = self._create_3d_state(
-            target_pos[0],
-            target_pos[1],
+            target_pos_arr[0],
+            target_pos_arr[1],
             target_orientation,
             target_vx,
             target_vy,
             0.0,
-            target_pos[2],
+            target_pos_arr[2],
+            target_vz,
         )
 
-        pos_error = np.linalg.norm(current_position - np.array(target_pos))
+        pos_error = np.linalg.norm(current_position - target_pos_arr)
         ang_error = quat_angle_error(target_state[3:7], current_quat)
 
         # Only count as "REACHED" if NOT on spline (targeting final
@@ -723,6 +755,9 @@ class MissionStateManager:
 
         # Initialize mission start time (V4.0.0: mission_state required)
         path = self.mission_state.dxf_shape_path
+        if path and len(path[0]) < 3:
+            path = [(p[0], p[1], 0.0) for p in path]
+            self.mission_state.dxf_shape_path = path
         mission_start_time = self.mission_state.dxf_mission_start_time
         
         if mission_start_time is None:
@@ -754,7 +789,11 @@ class MissionStateManager:
 
             logger.info(f" PROFILE FOLLOWING MISSION STARTED at t={current_time:.2f}s")
             cx, cy = closest_point[0], closest_point[1]
-            logger.info(f"   Phase 1: Moving to closest point on path " f"({cx:.3f}, {cy:.3f})")
+            cz = closest_point[2] if len(closest_point) > 2 else 0.0
+            logger.info(
+                f"   Phase 1: Moving to closest point on path "
+                f"({cx:.3f}, {cy:.3f}, {cz:.3f})"
+            )
             logger.info(f" Profile path length: {total_length:.3f} m")
 
         # Get path and phase from mission_state (V4.0.0: required)
@@ -792,7 +831,7 @@ class MissionStateManager:
         current_position: np.ndarray,
         current_quat: np.ndarray,
         current_time: float,
-        path: List[Tuple[float, float]],
+        path: List[Tuple[float, ...]],
     ) -> Optional[np.ndarray]:
         """Handle DXF positioning phase."""
         from src.satellite_control.mission.mission_manager import (
@@ -806,20 +845,27 @@ class MissionStateManager:
         target_pos = self._get_dxf_current_target_position()
         if target_pos is None:
             return None
+        target_pos_arr = np.array(target_pos, dtype=float)
+        if target_pos_arr.shape[0] < 3:
+            target_pos_arr = np.pad(target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant")
+        target_pos_arr = np.array(target_pos, dtype=float)
+        if target_pos_arr.shape[0] < 3:
+            target_pos_arr = np.pad(target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant")
         target_orientation = get_path_tangent_orientation(
             path, 0.0, self._get_dxf_closest_point_index()
         )
 
         target_state = self._create_3d_state(
-            target_pos[0],
-            target_pos[1],
-            self._yaw_to_euler(target_orientation),
+            target_pos_arr[0],
+            target_pos_arr[1],
+            target_orientation,
             0.0,
             0.0,
             0.0,
+            target_pos_arr[2],
         )
 
-        pos_error = np.linalg.norm(current_position - np.array(target_pos))
+        pos_error = np.linalg.norm(current_position - target_pos_arr)
         ang_error = quat_angle_error(target_state[3:7], current_quat)
 
         if pos_error < self.position_tolerance and ang_error < self.angle_tolerance:
@@ -852,7 +898,7 @@ class MissionStateManager:
         self,
         current_position: np.ndarray,
         current_time: float,
-        path: List[Tuple[float, float]],
+        path: List[Tuple[float, ...]],
     ) -> Optional[np.ndarray]:
         """Handle DXF tracking phase."""
         from src.satellite_control.mission.mission_manager import (
@@ -872,6 +918,12 @@ class MissionStateManager:
             current_path_position, _ = get_position_on_path(
                 path, path_len, self._get_dxf_closest_point_index()
             )
+            if len(current_path_position) < 3:
+                current_path_position = (
+                    current_path_position[0],
+                    current_path_position[1],
+                    0.0,
+                )
             has_return = self._get_dxf_has_return()
             if has_return:
                 # Start path stabilization phase at final waypoint before
@@ -904,6 +956,12 @@ class MissionStateManager:
             current_path_position, _ = get_position_on_path(
                 path, wrapped_s, self._get_dxf_closest_point_index()
             )
+            if len(current_path_position) < 3:
+                current_path_position = (
+                    current_path_position[0],
+                    current_path_position[1],
+                    0.0,
+                )
             self._set_dxf_current_target_position(current_path_position)
 
             target_orientation = get_path_tangent_orientation(
@@ -913,10 +971,11 @@ class MissionStateManager:
             return self._create_3d_state(
                 current_path_position[0],
                 current_path_position[1],
-                self._yaw_to_euler(target_orientation),
+                target_orientation,
                 0.0,
                 0.0,
                 0.0,
+                current_path_position[2] if len(current_path_position) > 2 else 0.0,
             )
 
     def _dxf_path_stabilization_phase(
@@ -924,7 +983,7 @@ class MissionStateManager:
         current_position: np.ndarray,
         current_quat: np.ndarray,
         current_time: float,
-        path: List[Tuple[float, float]],
+        path: List[Tuple[float, ...]],
     ) -> Optional[np.ndarray]:
         """Handle DXF path stabilization phase - stabilizing at path waypoints (start or end)."""
         from src.satellite_control.mission.mission_manager import (
@@ -952,15 +1011,16 @@ class MissionStateManager:
         )
 
         target_state = self._create_3d_state(
-            target_pos[0],
-            target_pos[1],
-            self._yaw_to_euler(target_orientation),
+            target_pos_arr[0],
+            target_pos_arr[1],
+            target_orientation,
             0.0,
             0.0,
             0.0,
+            target_pos_arr[2],
         )
 
-        pos_error = float(np.linalg.norm(current_position - np.array(target_pos)))
+        pos_error = float(np.linalg.norm(current_position - target_pos_arr))
         ang_error = quat_angle_error(target_state[3:7], current_quat)
 
         if pos_error < self.position_tolerance and ang_error < self.angle_tolerance:
@@ -983,7 +1043,10 @@ class MissionStateManager:
                         logger.info(" Path stabilization complete!")
                         if return_pos is not None:
                             rx, ry = return_pos[0], return_pos[1]
-                            logger.info(f" Starting return to position ({rx:.2f}, {ry:.2f}) m")
+                            rz = return_pos[2] if len(return_pos) > 2 else 0.0
+                            logger.info(
+                                f" Starting return to position ({rx:.2f}, {ry:.2f}, {rz:.2f}) m"
+                            )
                         self.final_waypoint_stabilization_start_time = None
                         return None
             else:
@@ -1017,7 +1080,7 @@ class MissionStateManager:
         return target_state
 
     def _dxf_stabilizing_phase(
-        self, current_time: float, path: List[Tuple[float, float]]
+        self, current_time: float, path: List[Tuple[float, ...]]
     ) -> Optional[np.ndarray]:
         """Handle DXF stabilizing phase."""
         from src.satellite_control.mission.mission_manager import (
@@ -1033,11 +1096,21 @@ class MissionStateManager:
         # otherwise use path tangent
         has_return = self.mission_state.dxf_has_return
         return_pos = getattr(self.mission_state, "dxf_return_position", None)
+        final_pos_arr = np.array(final_pos, dtype=float)
+        if final_pos_arr.shape[0] < 3:
+            final_pos_arr = np.pad(final_pos_arr, (0, 3 - final_pos_arr.shape[0]), "constant")
+        return_pos_arr = None
+        if return_pos is not None:
+            return_pos_arr = np.array(return_pos, dtype=float)
+            if return_pos_arr.shape[0] < 3:
+                return_pos_arr = np.pad(
+                    return_pos_arr, (0, 3 - return_pos_arr.shape[0]), "constant"
+                )
         at_return_position = (
             has_return
-            and return_pos is not None
+            and return_pos_arr is not None
             and final_pos is not None
-            and np.allclose(final_pos, return_pos, atol=0.001)
+            and np.allclose(final_pos_arr, return_pos_arr, atol=0.001)
         )
 
         if at_return_position:
@@ -1045,6 +1118,8 @@ class MissionStateManager:
             target_orientation = getattr(
                 self.mission_state, "dxf_return_angle", (0.0, 0.0, 0.0)
             ) or (0.0, 0.0, 0.0)
+            if isinstance(target_orientation, (int, float)):
+                target_orientation = (0.0, 0.0, float(target_orientation))
         else:
             # Stabilizing at end of path - use path tangent
             end_s = self.mission_state.dxf_path_length
@@ -1053,14 +1128,15 @@ class MissionStateManager:
             )
 
         target_state = self._create_3d_state(
-            final_pos[0],
-            final_pos[1],
-            self._yaw_to_euler(target_orientation)
-            if not at_return_position
-            else target_orientation,
+            final_pos_arr[0],
+            final_pos_arr[1],
+            target_orientation
+            if isinstance(target_orientation, (tuple, list))
+            else self._yaw_to_euler(target_orientation),
             0.0,
             0.0,
             0.0,
+            final_pos_arr[2],
         )
 
         if self._get_dxf_stabilization_start_time() is None:
@@ -1084,16 +1160,29 @@ class MissionStateManager:
         current_time: float,
     ) -> Optional[np.ndarray]:
         """Handle DXF returning phase (V4.0.0: use mission_state only)."""
-        return_pos = getattr(self.mission_state, "dxf_return_position", (0.0, 0.0))
+        return_pos = getattr(self.mission_state, "dxf_return_position", (0.0, 0.0, 0.0))
+        return_pos_arr = np.array(return_pos, dtype=float)
+        if return_pos_arr.shape[0] < 3:
+            return_pos_arr = np.pad(
+                return_pos_arr, (0, 3 - return_pos_arr.shape[0]), "constant"
+            )
         return_angle = getattr(
             self.mission_state, "dxf_return_angle", (0.0, 0.0, 0.0)
         ) or (0.0, 0.0, 0.0)
+        if isinstance(return_angle, (int, float)):
+            return_angle = (0.0, 0.0, float(return_angle))
 
         target_state = self._create_3d_state(
-            return_pos[0], return_pos[1], return_angle, 0.0, 0.0, 0.0
+            return_pos_arr[0],
+            return_pos_arr[1],
+            return_angle,
+            0.0,
+            0.0,
+            0.0,
+            return_pos_arr[2],
         )
 
-        pos_error = float(np.linalg.norm(current_position - np.array(return_pos)))
+        pos_error = float(np.linalg.norm(current_position - return_pos_arr))
         ang_error = quat_angle_error(target_state[3:7], current_quat)
 
         # Only check position error for transition, not angle error during

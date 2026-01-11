@@ -35,47 +35,47 @@ class MissionState:
     Attributes:
         # Waypoint Navigation
         enable_waypoint_mode: Enable waypoint navigation
-        waypoint_targets: List of (x, y) target positions
-        waypoint_angles: List of target angles in radians
+        waypoint_targets: List of (x, y, z) target positions
+        waypoint_angles: List of target orientations (roll, pitch, yaw) in radians
         current_target_index: Current target index
         target_stabilization_start_time: Stabilization timer
         waypoint_phase: Current phase
 
         # Shape Following
         dxf_shape_mode_active: Enable shape following mode
-        dxf_shape_center: Center point (x, y) of shape
-        dxf_shape_path: List of (x, y) points defining shape path
+        dxf_shape_center: Center point (x, y, z) of shape
+        dxf_shape_path: List of (x, y, z) points defining shape path
         dxf_base_shape: Base shape before transformations
         dxf_target_speed: Target speed along path in m/s
         dxf_estimated_duration: Estimated completion time
         dxf_shape_phase: Current phase ("POSITIONING", "TRACKING", etc.)
         dxf_path_length: Total path length in meters
         dxf_closest_point_index: Index of closest point on path
-        dxf_current_target_position: Current target position (x, y)
+        dxf_current_target_position: Current target position (x, y, z)
         dxf_tracking_start_time: Tracking start time
         dxf_target_start_distance: Distance at tracking start
         dxf_mission_start_time: Mission start time
         dxf_stabilization_start_time: Stabilization start time
-        dxf_final_position: Final position (x, y)
+        dxf_final_position: Final position (x, y, z)
         dxf_shape_rotation: Shape rotation angle in radians
         dxf_offset_distance: Offset distance for shape positioning
         dxf_has_return: Whether to return to start position
-        dxf_return_position: Return position (x, y)
-        dxf_return_angle: Return angle in radians
+        dxf_return_position: Return position (x, y, z)
+        dxf_return_angle: Return orientation (roll, pitch, yaw) in radians
         dxf_return_start_time: Return phase start time
     """
 
     # Waypoint Navigation
     enable_waypoint_mode: bool = False
     waypoint_targets: List[Tuple[float, float, float]] = field(default_factory=list)
-    waypoint_angles: List[float] = field(default_factory=list)
+    waypoint_angles: List[Tuple[float, float, float]] = field(default_factory=list)
     current_target_index: int = 0
     target_stabilization_start_time: Optional[float] = None
     waypoint_phase: Optional[str] = None
 
     enable_multi_point_mode: bool = False
     multi_point_targets: List[Tuple[float, float, float]] = field(default_factory=list)
-    multi_point_angles: List[float] = field(default_factory=list)
+    multi_point_angles: List[Tuple[float, float, float]] = field(default_factory=list)
     multi_point_phase: Optional[str] = None
 
     # Shape Following - Path tracking
@@ -98,8 +98,12 @@ class MissionState:
     dxf_offset_distance: float = 0.5
     dxf_has_return: bool = False
     dxf_return_position: Optional[Tuple[float, float, float]] = None
-    dxf_return_angle: Optional[float] = None
+    dxf_return_angle: Optional[Tuple[float, float, float]] = None
     dxf_return_start_time: Optional[float] = None
+
+    # Obstacle avoidance (spherical obstacles)
+    obstacles_enabled: bool = False
+    obstacles: List[Tuple[float, float, float, float]] = field(default_factory=list)
 
     def reset(self) -> None:
         """Reset all mission state to defaults."""

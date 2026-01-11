@@ -50,7 +50,9 @@ class MPCRunner:
         self.state_validator = state_validator
 
         # Internal state management
-        self.previous_thrusters = np.zeros(12, dtype=np.float64)
+        self.thruster_count = getattr(self.mpc, "num_thrusters", 8)
+        self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
+        self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history: list = []
         self.call_count = 0
 
@@ -60,13 +62,14 @@ class MPCRunner:
         target_state: np.ndarray,
         previous_thrusters: np.ndarray,
         target_trajectory: Optional[np.ndarray] = None,
-    ) -> Tuple[np.ndarray, Dict[str, Any], float, float]:
+    ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any], float, float]:
         """
         Compute the next control action based on current state.
 
         Returns:
             Tuple of:
-            - thruster_action (np.ndarray): The computed command [8,]
+            - thruster_action (np.ndarray): Thruster commands [N]
+            - rw_torque (np.ndarray): Reaction wheel torques (normalized) [3]
             - mpc_info (dict): Solver metadata
             - mpc_computation_time (float): Time taken in seconds
             - command_sent_time (float): Timestamp when command was finalized
@@ -86,7 +89,7 @@ class MPCRunner:
         mpc_info: Dict[str, Any] = {}
 
         try:
-            thruster_action, mpc_info = self.mpc.get_control_action(
+            control_action, mpc_info = self.mpc.get_control_action(
                 x_current=measured_state,
                 x_target=target_state,
                 previous_thrusters=previous_thrusters,
@@ -96,7 +99,7 @@ class MPCRunner:
             # Fallback for controllers that don't accept trajectory
             # yet
             logger.warning("Controller does not support trajectory! " "Falling back to setpoint.")
-            thruster_action, mpc_info = self.mpc.get_control_action(
+            control_action, mpc_info = self.mpc.get_control_action(
                 measured_state, target_state, previous_thrusters
             )
 
@@ -105,25 +108,38 @@ class MPCRunner:
         command_sent_time = end_compute_time
 
         # 3. Post-process Action
-        if thruster_action is not None:
-            # Ensure shape is 1D [8,]
-            if thruster_action.ndim == 2:
-                thruster_action = thruster_action[0, :]
+        rw_torque = np.zeros(self.rw_axes, dtype=np.float64)
+        thruster_action = None
+        if control_action is not None:
+            # Ensure shape is 1D
+            if control_action.ndim == 2:
+                control_action = control_action[0, :]
 
-            # Validate size - must be 12 thrusters
-            if len(thruster_action) != 12:
+            if hasattr(self.mpc, "split_control"):
+                rw_torque, thruster_action = self.mpc.split_control(control_action)
+            elif self.rw_axes and control_action.size >= self.rw_axes:
+                rw_torque = control_action[: self.rw_axes]
+                thruster_action = control_action[self.rw_axes :]
+            else:
+                thruster_action = control_action
+
+            # Validate size - must match configured thruster count
+            if len(thruster_action) != self.thruster_count:
                 logger.error(
                     f"Invalid thruster array size {len(thruster_action)}, "
-                    "expected 12. Defaulting to zero thrust."
+                    f"expected {self.thruster_count}. Defaulting to zero thrust."
                 )
-                thruster_action = np.zeros(12, dtype=np.float64)
+                rw_torque = np.zeros(self.rw_axes, dtype=np.float64)
+                thruster_action = np.zeros(self.thruster_count, dtype=np.float64)
             else:
                 # Enforce bounds
                 thruster_action = np.clip(thruster_action, 0.0, 1.0).astype(np.float64)
+                if self.rw_axes:
+                    rw_torque = np.clip(rw_torque, -1.0, 1.0).astype(np.float64)
         else:
             # Fallback if controller failed completely (should return
             # fallback though)
-            thruster_action = np.zeros(12, dtype=np.float64)
+            thruster_action = np.zeros(self.thruster_count, dtype=np.float64)
             logger.error("Controller returned None! Defaulting to zero thrust.")
 
         # Update internal state
@@ -133,6 +149,7 @@ class MPCRunner:
 
         return (
             thruster_action,
+            rw_torque,
             mpc_info,
             mpc_computation_time,
             command_sent_time,
@@ -140,7 +157,7 @@ class MPCRunner:
 
     def reset(self) -> None:
         """Reset runner state for a new simulation run."""
-        self.previous_thrusters = np.zeros(12, dtype=np.float64)
+        self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history.clear()
         self.call_count = 0
 

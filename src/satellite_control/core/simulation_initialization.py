@@ -15,7 +15,7 @@ This module handles:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -77,20 +77,20 @@ class SimulationInitializer:
         start_vx: float = 0.0,
         start_vy: float = 0.0,
         start_vz: float = 0.0,
-        start_omega: float = 0.0,
+        start_omega: Union[float, Tuple[float, float, float]] = 0.0,
     ) -> None:
         """
         Initialize all simulation components.
         
         Args:
-            start_pos: Starting position
-            target_pos: Target position
+            start_pos: Starting position (x, y, z)
+            target_pos: Target position (x, y, z)
             start_angle: Starting orientation
             target_angle: Target orientation
             start_vx: Initial X velocity
             start_vy: Initial Y velocity
             start_vz: Initial Z velocity
-            start_omega: Initial angular velocity
+            start_omega: Initial angular velocity (scalar yaw or (wx, wy, wz))
         """
         # V3.0.0: Always require simulation_config
         if self.simulation_config is None:
@@ -156,7 +156,7 @@ class SimulationInitializer:
         start_vx: float,
         start_vy: float,
         start_vz: float,
-        start_omega: float,
+        start_omega: Union[float, Tuple[float, float, float]],
     ) -> None:
         """Initialize satellite physics object and set initial state (V4.0.0: app_config required)."""
         if self.simulation_config is None:
@@ -210,7 +210,7 @@ class SimulationInitializer:
 
         logger.info(
             f"INFO: POINT-TO-POINT MODE: "
-            f"Target ({target_pos[0]:.2f}, {target_pos[1]:.2f}, 0.00)"
+            f"Target ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
         )
 
     def _initialize_simulation_timing(self, app_config: Any) -> None:

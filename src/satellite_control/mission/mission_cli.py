@@ -151,34 +151,46 @@ class MissionCLI:
         default_vx: float = 0.0,
         default_vy: float = 0.0,
         default_vz: float = 0.0,
-        default_omega: float = 0.0,
-    ) -> Tuple[float, float, float, float]:
+        default_wx: float = 0.0,
+        default_wy: float = 0.0,
+        default_wz: float = 0.0,
+    ) -> Tuple[float, float, float, Tuple[float, float, float]]:
         """Get initial velocity values from user input.
 
         Args:
             default_vx: Default X velocity in m/s
             default_vy: Default Y velocity in m/s
             default_vz: Default Z velocity in m/s
-            default_omega: Default angular velocity (Z-axis) in rad/s
+            default_wx: Default angular velocity X in rad/s
+            default_wy: Default angular velocity Y in rad/s
+            default_wz: Default angular velocity Z in rad/s
 
         Returns:
-            Tuple of (vx, vy, vz, omega) velocities
+            Tuple of (vx, vy, vz, (wx, wy, wz)) velocities
         """
         while True:
             try:
                 vx_input = input(f"X velocity (m/s, default: {default_vx:.3f}): ").strip()
                 vy_input = input(f"Y velocity (m/s, default: {default_vy:.3f}): ").strip()
                 vz_input = input(f"Z velocity (m/s, default: {default_vz:.3f}): ").strip()
-                omega_input = input(
-                    f"Angular velocity Z (rad/s, default: {default_omega:.3f}): "
+                wx_input = input(
+                    f"Angular velocity X (rad/s, default: {default_wx:.3f}): "
+                ).strip()
+                wy_input = input(
+                    f"Angular velocity Y (rad/s, default: {default_wy:.3f}): "
+                ).strip()
+                wz_input = input(
+                    f"Angular velocity Z (rad/s, default: {default_wz:.3f}): "
                 ).strip()
 
                 vx = float(vx_input) if vx_input else default_vx
                 vy = float(vy_input) if vy_input else default_vy
                 vz = float(vz_input) if vz_input else default_vz
-                omega = float(omega_input) if omega_input else default_omega
+                wx = float(wx_input) if wx_input else default_wx
+                wy = float(wy_input) if wy_input else default_wy
+                wz = float(wz_input) if wz_input else default_wz
 
-                return (vx, vy, vz, omega)
+                return (vx, vy, vz, (wx, wy, wz))
 
             except ValueError:
                 print("Invalid velocity input. Please enter numeric values.")
@@ -199,16 +211,18 @@ class MissionCLI:
             return False
         return True
 
-    def configure_obstacles(self, mission_state) -> List[Tuple[float, float, float]]:
+    def configure_obstacles(
+        self, mission_state
+    ) -> List[Tuple[float, float, float, float]]:
         """Configure obstacles with preset menu or custom input.
         
         Args:
             mission_state: MissionState to update (required in V3.0.0).
             
         Returns:
-            List of obstacles as (x, y, radius) tuples.
+            List of obstacles as (x, y, z, radius) tuples.
         """
-        obstacles: List[Tuple[float, float, float]] = []
+        obstacles: List[Tuple[float, float, float, float]] = []
 
         print("\n=== Obstacle Configuration ===")
         print("1. No obstacles")
@@ -221,29 +235,29 @@ class MissionCLI:
 
         if choice == "2":
             # Single central obstacle
-            obstacles.append((0.0, 0.0, 0.3))
-            print("  Added: Central obstacle at (0.0, 0.0), r=0.30")
+            obstacles.append((0.0, 0.0, 0.0, 0.3))
+            print("  Added: Central obstacle at (0.0, 0.0, 0.0), r=0.30")
 
         elif choice == "3":
             # Corridor - two obstacles with gap in middle
-            obstacles.append((0.0, 0.4, 0.25))
-            obstacles.append((0.0, -0.4, 0.25))
+            obstacles.append((0.0, 0.4, 0.0, 0.25))
+            obstacles.append((0.0, -0.4, 0.0, 0.25))
             print("  Added: Corridor with gap at Y=0")
-            print("    Obstacle 1: (0.0, 0.4), r=0.25")
-            print("    Obstacle 2: (0.0, -0.4), r=0.25")
+            print("    Obstacle 1: (0.0, 0.4, 0.0), r=0.25")
+            print("    Obstacle 2: (0.0, -0.4, 0.0), r=0.25")
 
         elif choice == "4":
             # Scattered obstacles
             positions = [
-                (0.5, 0.5, 0.2),
-                (-0.5, 0.5, 0.2),
-                (0.5, -0.5, 0.2),
-                (-0.5, -0.5, 0.2),
+                (0.5, 0.5, 0.0, 0.2),
+                (-0.5, 0.5, 0.0, 0.2),
+                (0.5, -0.5, 0.0, 0.2),
+                (-0.5, -0.5, 0.0, 0.2),
             ]
             obstacles.extend(positions)
             print("  Added: 4 scattered obstacles at corners")
-            for x, y, r in positions:
-                print(f"    ({x:.1f}, {y:.1f}), r={r:.2f}")
+            for x, y, z, r in positions:
+                print(f"    ({x:.1f}, {y:.1f}, {z:.1f}), r={r:.2f}")
 
         elif choice == "5":
             # Custom - manual entry
@@ -272,8 +286,8 @@ class MissionCLI:
                 break
 
             print(f"\nCurrent obstacles ({len(obstacles)}):")
-            for i, (x, y, r) in enumerate(obstacles, 1):
-                print(f"  {i}. ({x:.2f}, {y:.2f}) r={r:.2f}")
+            for i, (x, y, z, r) in enumerate(obstacles, 1):
+                print(f"  {i}. ({x:.2f}, {y:.2f}, {z:.2f}) r={r:.2f}")
 
             print("\nOptions: [A]dd, [E]dit #, [R]emove #, [C]lear all, [D]one")
             choice = input("Choice: ").strip().lower()
@@ -302,8 +316,8 @@ class MissionCLI:
                     if 0 <= idx < len(obstacles):
                         removed = obstacles.pop(idx)
                         mission_state.obstacles = obstacles
-                        rx, ry = removed[0], removed[1]
-                        print(f"  Removed obstacle at ({rx:.2f}, {ry:.2f})")
+                        rx, ry, rz = removed[0], removed[1], removed[2]
+                        print(f"  Removed obstacle at ({rx:.2f}, {ry:.2f}, {rz:.2f})")
                     else:
                         print(f"  Invalid index. Use 1-{len(obstacles)}")
                 except ValueError:
@@ -316,9 +330,10 @@ class MissionCLI:
         try:
             obs_x = float(input("  X position (meters): "))
             obs_y = float(input("  Y position (meters): "))
+            obs_z = float(input("  Z position (meters): "))
             obs_r_input = input("  Radius (meters, default 0.3): ").strip()
             obs_r = float(obs_r_input) if obs_r_input else 0.3
-            mission_state.obstacles.append((obs_x, obs_y, obs_r))
+            mission_state.obstacles.append((obs_x, obs_y, obs_z, obs_r))
             mission_state.obstacles_enabled = True
         except ValueError:
             print("  Invalid input, obstacle not added.")
@@ -327,38 +342,47 @@ class MissionCLI:
         """Edit an existing obstacle using MissionState (v2.0.0)."""
         obstacles = mission_state.obstacles
         old = obstacles[idx]
-        print(f"  Editing obstacle {idx+1}: " f"({old[0]:.2f}, {old[1]:.2f}) r={old[2]:.2f}")
+        print(
+            f"  Editing obstacle {idx+1}: "
+            f"({old[0]:.2f}, {old[1]:.2f}, {old[2]:.2f}) r={old[3]:.2f}"
+        )
         try:
             x_input = input(f"  New X (enter for {old[0]:.2f}): ").strip()
             y_input = input(f"  New Y (enter for {old[1]:.2f}): ").strip()
-            r_input = input(f"  New radius (enter for {old[2]:.2f}): ").strip()
+            z_input = input(f"  New Z (enter for {old[2]:.2f}): ").strip()
+            r_input = input(f"  New radius (enter for {old[3]:.2f}): ").strip()
 
             new_x = float(x_input) if x_input else old[0]
             new_y = float(y_input) if y_input else old[1]
-            new_r = float(r_input) if r_input else old[2]
+            new_z = float(z_input) if z_input else old[2]
+            new_r = float(r_input) if r_input else old[3]
 
-            obstacles[idx] = (new_x, new_y, new_r)
+            obstacles[idx] = (new_x, new_y, new_z, new_r)
             mission_state.obstacles = obstacles
-            print(f"  Updated: ({new_x:.2f}, {new_y:.2f}) r={new_r:.2f}")
+            print(f"  Updated: ({new_x:.2f}, {new_y:.2f}, {new_z:.2f}) r={new_r:.2f}")
         except ValueError:
             print("  Invalid input, obstacle unchanged.")
 
-    def _configure_obstacles_manual(self) -> List[Tuple[float, float, float]]:
+    def _configure_obstacles_manual(self) -> List[Tuple[float, float, float, float]]:
         """Manual obstacle entry.
         
         Returns:
-            List of obstacles as (x, y, radius) tuples.
+            List of obstacles as (x, y, z, radius) tuples.
         """
-        obstacles: List[Tuple[float, float, float]] = []
+        obstacles: List[Tuple[float, float, float, float]] = []
         add_obs = input("Add obstacle? (y/n): ").strip().lower()
         while add_obs == "y":
             try:
                 obs_x = float(input("  Obstacle X position (meters): "))
                 obs_y = float(input("  Obstacle Y position (meters): "))
+                obs_z = float(input("  Obstacle Z position (meters): "))
                 obs_r_input = input("  Obstacle radius (meters, default 0.5): ").strip()
                 obs_r = float(obs_r_input) if obs_r_input else 0.5
-                obstacles.append((obs_x, obs_y, obs_r))
-                print(f"  Obstacle added: ({obs_x:.2f}, {obs_y:.2f}), r={obs_r:.2f}")
+                obstacles.append((obs_x, obs_y, obs_z, obs_r))
+                print(
+                    f"  Obstacle added: ({obs_x:.2f}, {obs_y:.2f}, {obs_z:.2f}), "
+                    f"r={obs_r:.2f}"
+                )
             except ValueError:
                 print("  Invalid input, skipping obstacle.")
             except KeyboardInterrupt:
@@ -418,7 +442,7 @@ class MissionCLI:
                 "start_vx": 0.0,
                 "start_vy": 0.0,
                 "start_vz": 0.0,
-                "start_omega": 0.0,
+                "start_omega": (0.0, 0.0, 0.0),
             }
             if return_simulation_config:
                 result["simulation_config"] = simulation_config
@@ -427,8 +451,8 @@ class MissionCLI:
         elif choice == "3":
             # Diagonal with central obstacle
             print("\n  Preset: Diagonal with central obstacle")
-            print("    (1,1,1) → (-1,-1,0) avoiding obstacle at (0,0)")
-            obstacles = [(0.0, 0.0, 0.3)]
+            print("    (1,1,1) → (-1,-1,0) avoiding obstacle at (0,0,0)")
+            obstacles = [(0.0, 0.0, 0.0, 0.3)]
             mission_state.obstacles = obstacles
             mission_state.obstacles_enabled = True
 
@@ -451,7 +475,7 @@ class MissionCLI:
                 "start_vx": 0.0,
                 "start_vy": 0.0,
                 "start_vz": 0.0,
-                "start_omega": 0.0,
+                "start_omega": (0.0, 0.0, 0.0),
             }
             if return_simulation_config:
                 result["simulation_config"] = simulation_config
@@ -489,7 +513,7 @@ class MissionCLI:
                 "start_vx": 0.0,
                 "start_vy": 0.0,
                 "start_vz": 0.0,
-                "start_omega": 0.0,
+                "start_omega": (0.0, 0.0, 0.0),
             }
             if return_simulation_config:
                 result["simulation_config"] = simulation_config
@@ -499,7 +523,7 @@ class MissionCLI:
             # Corridor navigation
             print("\n  Preset: Corridor navigation")
             print("    (1,0,1.0) → (-1,0,0.5) through gap between obstacles")
-            obstacles = [(0.0, 0.5, 0.3), (0.0, -0.5, 0.3)]
+            obstacles = [(0.0, 0.5, 0.0, 0.3), (0.0, -0.5, 0.0, 0.3)]
             mission_state.obstacles = obstacles
             mission_state.obstacles_enabled = True
 
@@ -521,7 +545,7 @@ class MissionCLI:
                 "start_vx": 0.0,
                 "start_vy": 0.0,
                 "start_vz": 0.0,
-                "start_omega": 0.0,
+                "start_omega": (0.0, 0.0, 0.0),
             }
             if return_simulation_config:
                 result["simulation_config"] = simulation_config
@@ -546,8 +570,13 @@ class MissionCLI:
             mission_state: MissionState to update (required in V3.0.0).
         """
         target_positions = [t[0] for t in targets]
-        # Extract yaw from angles (3D Euler angles -> single yaw value for waypoints)
-        target_angles = [t[1][2] if isinstance(t[1], tuple) and len(t[1]) == 3 else t[1] for t in targets]
+        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
+        target_angles = [
+            t[1]
+            if isinstance(t[1], (tuple, list)) and len(t[1]) == 3
+            else (0.0, 0.0, float(t[1]))
+            for t in targets
+        ]
 
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
@@ -623,8 +652,13 @@ class MissionCLI:
         # Configure obstacles (V3.0.0: always uses mission_state)
         obstacles = self.configure_obstacles(mission_state=mission_state)
 
-        # Extract yaw from angles for waypoint_angles (single values, not tuples)
-        waypoint_angles = [angle[2] if isinstance(angle, tuple) and len(angle) == 3 else angle for angle in angles]
+        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
+        waypoint_angles = [
+            angle
+            if isinstance(angle, (tuple, list)) and len(angle) == 3
+            else (0.0, 0.0, float(angle))
+            for angle in angles
+        ]
 
         # Update MissionState (v2.0.0)
         mission_state.enable_waypoint_mode = True

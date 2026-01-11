@@ -84,7 +84,7 @@ class TestMPCBenchmarks:
 
         result = benchmark(solve)
         assert result is not None
-        assert len(result) == 12
+        assert len(result) == 11
 
     def test_linearization_time(self, benchmark, mpc_controller, sample_state):
         """Benchmark dynamics linearization time."""
@@ -206,8 +206,10 @@ class TestMPCRegressionDetection:
 
             # Verify solution is valid
             assert u is not None
-            assert len(u) == 12
-            assert all(0.0 <= v <= 1.0 for v in u)
+            assert len(u) == 11
+            rw_torque, thrusters = mpc_controller.split_control(u)
+            assert all(-1.0 <= v <= 1.0 for v in rw_torque)
+            assert all(0.0 <= v <= 1.0 for v in thrusters)
 
         # Calculate statistics
         solve_times_array = np.array(solve_times)

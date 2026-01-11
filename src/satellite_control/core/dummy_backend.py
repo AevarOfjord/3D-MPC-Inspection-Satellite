@@ -45,7 +45,7 @@ class DummyBackend(SimulationBackend):
         self._velocity = np.zeros(3)
         self._angular_velocity = np.zeros(3)
         self._simulation_time = 0.0
-        self._thruster_levels = np.zeros(12)
+        self._thruster_levels = np.zeros(8)
     
     @property
     def dt(self) -> float:
@@ -123,11 +123,11 @@ class DummyBackend(SimulationBackend):
         Set thruster level (stored but not applied).
         
         Args:
-            thruster_id: Thruster index (1-12, stored as 0-11)
+            thruster_id: Thruster index (1-8, stored as 0-7)
             level: Thrust level (0.0 to 1.0)
         """
         idx = thruster_id - 1  # Convert 1-based to 0-based
-        if 0 <= idx < 12:
+        if 0 <= idx < 8:
             self._thruster_levels[idx] = max(0.0, min(1.0, level))
     
     def get_state(self) -> np.ndarray:
@@ -167,4 +167,4 @@ class DummyBackend(SimulationBackend):
         self._velocity = np.zeros(3)
         self._angular_velocity = np.zeros(3)
         self._simulation_time = 0.0
-        self._thruster_levels = np.zeros(12)
+        self._thruster_levels = np.zeros(8)

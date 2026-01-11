@@ -45,9 +45,9 @@ class PhysicsConfig:
         total_mass: Total satellite mass in kg
         moment_of_inertia: Rotational inertia in kg·m²
         satellite_size: Characteristic dimension in meters
-        com_offset: Center of mass offset [x, y] in meters
+        com_offset: Center of mass offset [x, y, z] in meters
         thruster_positions: Dict[int, Tuple[float, float, float]]
-        # Dict mapping thruster ID (1-12) to (x, y, z) position in meters
+        # Dict mapping thruster ID (1-8) to (x, y, z) position in meters
         thruster_directions: Dict mapping thruster ID to unit direction vector
         thruster_forces: Dict mapping thruster ID to force magnitude in Newtons
         use_realistic_physics: Enable realistic physics modeling
@@ -72,7 +72,7 @@ class PhysicsConfig:
     com_offset: np.ndarray
 
     # Thruster configuration
-    thruster_positions: Dict[int, Tuple[float, float]]
+    thruster_positions: Dict[int, Tuple[float, float, float]]
     thruster_directions: Dict[int, np.ndarray]
     thruster_forces: Dict[int, float]
 
@@ -103,43 +103,30 @@ class PhysicsConfig:
 
 # Mass properties
 TOTAL_MASS = 10.0  # kg
-SATELLITE_SIZE = 0.29  # m
+# Mass properties
+TOTAL_MASS = 10.0  # kg
+SATELLITE_SIZE = 0.30  # m (cube side length)
 
+# Moment of Inertia for a solid cube: I = (1/6) * m * s^2
 MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 
-# Thruster configuration
+# Thruster configuration (6 Thrusters - one centered on each face)
 THRUSTER_POSITIONS = {
-    1: (0.145, 0.06, 0.0),  # Right-top
-    2: (0.145, -0.06, 0.0),  # Right-bottom
-    3: (0.06, -0.145, 0.0),  # Bottom-right
-    4: (-0.06, -0.145, 0.0),  # Bottom-left
-    5: (-0.145, -0.06, 0.0),  # Left-bottom
-    6: (-0.145, 0.06, 0.0),  # Left-top
-    7: (-0.06, 0.145, 0.0),  # Top-left
-    8: (0.06, 0.145, 0.0),  # Top-right
-    # New Z-axis thrusters (3D)
-    # Top face (+Z) pushing DOWN (-Z). Placed on X-axis for Pitch control.
-    9: (0.145, 0.0, 0.145),  # Top-Front (Front in X)
-    10: (-0.145, 0.0, 0.145),  # Top-Back (Back in X)
-    # Bottom face (-Z) pushing UP (+Z). Placed on Y-axis for Roll control.
-    11: (0.0, 0.145, -0.145),  # Bottom-Right (Right in Y)
-    12: (0.0, -0.145, -0.145),  # Bottom-Left (Left in Y)
+    1: (0.15, 0.0, 0.0),    # +X Face
+    2: (-0.15, 0.0, 0.0),   # -X Face
+    3: (0.0, 0.15, 0.0),    # +Y Face
+    4: (0.0, -0.15, 0.0),   # -Y Face
+    5: (0.0, 0.0, 0.15),    # +Z Face
+    6: (0.0, 0.0, -0.15),   # -Z Face
 }
 
 THRUSTER_DIRECTIONS = {
-    1: np.array([-1, 0, 0]),  # Left (-X)
-    2: np.array([-1, 0, 0]),  # Left (-X)
-    3: np.array([0, 1, 0]),  # Up (+Y)
-    4: np.array([0, 1, 0]),  # Up (+Y)
-    5: np.array([1, 0, 0]),  # Right (+X)
-    6: np.array([1, 0, 0]),  # Right (+X)
-    7: np.array([0, -1, 0]),  # Down (-Y)
-    8: np.array([0, -1, 0]),  # Down (-Y)
-    # Z-axis thrusters (3D)
-    9: np.array([0, 0, -1]),  # Down (-Z)
-    10: np.array([0, 0, -1]),  # Down (-Z)
-    11: np.array([0, 0, 1]),  # Up (+Z)
-    12: np.array([0, 0, 1]),  # Up (+Z)
+    1: np.array([-1, 0, 0]),  # Pushes -X (on +X face)
+    2: np.array([1, 0, 0]),   # Pushes +X (on -X face)
+    3: np.array([0, -1, 0]),  # Pushes -Y (on +Y face)
+    4: np.array([0, 1, 0]),   # Pushes +Y (on -Y face)
+    5: np.array([0, 0, -1]),  # Pushes -Z (on +Z face)
+    6: np.array([0, 0, 1]),   # Pushes +Z (on -Z face)
 }
 
 THRUSTER_FORCES = {
@@ -149,13 +136,6 @@ THRUSTER_FORCES = {
     4: 0.438017,
     5: 0.468918,
     6: 0.446846,
-    7: 0.466956,
-    8: 0.484124,
-    # Default 0.45N for new thrusters until calibrated
-    9: 0.45,
-    10: 0.45,
-    11: 0.45,
-    12: 0.45,
 }
 
 GRAVITY_M_S2 = 9.81  # m/s²
@@ -164,7 +144,7 @@ GRAVITY_M_S2 = 9.81  # m/s²
 def calculate_com_offset() -> np.ndarray:
     """
     Calculate center of mass offset.
-    Hardcoded to (0,0) as per configuration request.
+    Hardcoded to (0,0,0) as per configuration request.
     """
     # Force CoM to be at geometric center
     return np.zeros(3)
@@ -209,14 +189,14 @@ def set_thruster_force(thruster_id: int, force: float) -> None:
     Set individual thruster force for calibration.
 
     Args:
-        thruster_id: Thruster ID (1-8)
+        thruster_id: Thruster ID (1-6)
         force: Force magnitude in Newtons
 
     Raises:
         ValueError: If thruster_id invalid or force non-positive
     """
-    if thruster_id not in range(1, 13):
-        raise ValueError(f"Thruster ID must be 1-12, got {thruster_id}")
+    if thruster_id not in range(1, 7):
+        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 
@@ -237,7 +217,7 @@ def set_all_thruster_forces(force: float) -> None:
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 
-    for thruster_id in range(1, 13):
+    for thruster_id in range(1, 7):
         THRUSTER_FORCES[thruster_id] = force
     logger.info(f"All thruster forces set to {force:.3f} N")
 
@@ -247,7 +227,7 @@ def get_thruster_force(thruster_id: int) -> float:
     Get individual thruster force.
 
     Args:
-        thruster_id: Thruster ID (1-8)
+        thruster_id: Thruster ID (1-6)
 
     Returns:
         Force magnitude in Newtons
@@ -255,15 +235,15 @@ def get_thruster_force(thruster_id: int) -> float:
     Raises:
         ValueError: If thruster_id is invalid
     """
-    if thruster_id not in range(1, 13):
-        raise ValueError(f"Thruster ID must be 1-12, got {thruster_id}")
+    if thruster_id not in range(1, 7):
+        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
     return THRUSTER_FORCES[thruster_id]
 
 
 def print_thruster_forces() -> None:
     """Print current thruster force configuration."""
     logger.info("CURRENT THRUSTER FORCE CONFIGURATION:")
-    for thruster_id in range(1, 13):
+    for thruster_id in range(1, 7):
         force = THRUSTER_FORCES[thruster_id]
         logger.info(f"  Thruster {thruster_id}: {force:.3f} N")
 
@@ -289,14 +269,14 @@ def validate_physics_params(config: PhysicsConfig) -> bool:
         issues.append(f"Invalid moment of inertia: {config.moment_of_inertia}")
 
     # Thruster configuration validation
-    if len(config.thruster_positions) != 12:
-        issues.append(f"Expected 12 thrusters, got {len(config.thruster_positions)}")
+    if len(config.thruster_positions) != 6:
+        issues.append(f"Expected 6 thrusters, got {len(config.thruster_positions)}")
 
-    if len(config.thruster_directions) != 12:
-        issues.append(f"Expected 12 thruster directions, got " f"{len(config.thruster_directions)}")
+    if len(config.thruster_directions) != 6:
+        issues.append(f"Expected 6 thruster directions, got " f"{len(config.thruster_directions)}")
 
-    if len(config.thruster_forces) != 12:
-        issues.append(f"Expected 12 thruster forces, got {len(config.thruster_forces)}")
+    if len(config.thruster_forces) != 6:
+        issues.append(f"Expected 6 thruster forces, got {len(config.thruster_forces)}")
 
     # Validate thruster force values are positive
     for thruster_id, force in config.thruster_forces.items():

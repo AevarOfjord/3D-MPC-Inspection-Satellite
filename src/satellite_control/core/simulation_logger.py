@@ -31,6 +31,7 @@ class SimulationLogger:
         command_sent_time: float,
         thruster_action: np.ndarray,
         mpc_info: Optional[Dict[str, Any]],
+        rw_torque: Optional[np.ndarray] = None,
     ) -> None:
         """
         Log detailed simulation step data using SimulationContext.
@@ -128,6 +129,10 @@ class SimulationLogger:
                 np.sum(np.abs(thruster_action - previous_thruster_action) > 0.01)
             )
 
+        rw_torque_vals = np.zeros(3)
+        if rw_torque is not None:
+            rw_torque_vals[: min(3, len(rw_torque))] = np.array(rw_torque, dtype=float)[:3]
+
         log_entry = {
             "Step": step_number,
             "MPC_Start_Time": mpc_start_time,
@@ -193,6 +198,9 @@ class SimulationLogger:
             "Command_Sent_Time": command_sent_time,
             "Total_Active_Thrusters": total_active_thrusters,
             "Thruster_Switches": thruster_switches,
+            "RW_Torque_X": rw_torque_vals[0],
+            "RW_Torque_Y": rw_torque_vals[1],
+            "RW_Torque_Z": rw_torque_vals[2],
             "Total_MPC_Loop_Time": total_mpc_loop_time,
             "Timing_Violation": ("YES" if total_mpc_loop_time > control_update_interval else "NO"),
         }
@@ -273,7 +281,7 @@ class SimulationLogger:
             "Command_Vector": cmd_vec_str,
         }
 
-        # Log Thruster States (12 thrusters)
+        # Log Thruster States
         num_thrusters = len(thruster_actual_output)
         for i in range(num_thrusters):
             entry[f"Thruster_{i+1}_Cmd"] = f"{thruster_last_command[i]:.3f}"

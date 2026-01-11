@@ -8,7 +8,7 @@ Common questions about the Satellite Control System.
 
 ### What is this project?
 
-A high-fidelity satellite control simulation using Model Predictive Control (MPC) with MuJoCo physics. It demonstrates real-time optimal control of a planar satellite with 8 thrusters.
+A high-fidelity satellite control simulation using Model Predictive Control (MPC) with MuJoCo physics. It demonstrates real-time optimal control of a 3D satellite model with a planar 8-thruster layout (Z translation via attitude/tilt).
 
 **Key Features:**
 

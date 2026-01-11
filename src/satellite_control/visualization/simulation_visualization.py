@@ -277,7 +277,7 @@ class SimulationVisualizationManager:
         )
 
         if self.target_state is not None:
-            pos_error = float(np.linalg.norm(current_state[:2] - self.target_state[:2]))
+            pos_error = float(np.linalg.norm(current_state[:3] - self.target_state[:3]))
 
             # Recalculate target angle for error
             q_t = self.target_state[3:7]
@@ -313,8 +313,8 @@ class SimulationVisualizationManager:
             obstacles = []
         
         if obstacles_enabled and obstacles:
-            for i, (obs_x, obs_y, obs_radius) in enumerate(obstacles, 1):
-                # Draw obstacle as red circle
+            for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
+                # Draw obstacle as red circle (XY projection)
                 obstacle_circle = patches.Circle(
                     (obs_x, obs_y),
                     obs_radius,
@@ -436,32 +436,10 @@ class SimulationVisualizationManager:
                     zorder=1,
                 )
 
-        square_corners = np.array(
-            [
-                [
-                    -self.satellite.satellite_size / 2,
-                    -self.satellite.satellite_size / 2,
-                ],
-                [
-                    self.satellite.satellite_size / 2,
-                    -self.satellite.satellite_size / 2,
-                ],
-                [
-                    self.satellite.satellite_size / 2,
-                    self.satellite.satellite_size / 2,
-                ],
-                [
-                    -self.satellite.satellite_size / 2,
-                    self.satellite.satellite_size / 2,
-                ],
-            ]
-        )
-
-        rotated_corners = np.array([rotation_matrix @ corner for corner in square_corners])
-        translated_corners = rotated_corners + self.satellite.position[:2]
-
-        satellite_patch = patches.Polygon(
-            translated_corners,
+        radius = self.satellite.satellite_size / 2
+        satellite_patch = patches.Circle(
+            (self.satellite.position[0], self.satellite.position[1]),
+            radius=radius,
             linewidth=3,
             edgecolor="black",
             facecolor="lightgray",
@@ -777,7 +755,9 @@ class SimulationVisualizationManager:
                     if cmd_str:
                         # Handle both comma and space separated values
                         cmd_vals = [float(x) for x in cmd_str.replace(",", " ").split()]
-                        thruster_count = max(12, len(cmd_vals))
+                        thruster_count = len(cmd_vals)
+                        if hasattr(self.satellite, "thrusters"):
+                            thruster_count = max(thruster_count, len(self.satellite.thrusters))
                         # Active indices (1-based)
                         active_thrusters_indices = [
                             i + 1 for i, val in enumerate(cmd_vals) if val > 0.5
@@ -804,7 +784,8 @@ class SimulationVisualizationManager:
                                     else:
                                         # Dim
                                         original_colors = {
-                                            i: [0.0, 0.45, 1.0, 0.35] for i in range(1, 13)
+                                            i: [0.0, 0.45, 1.0, 0.35]
+                                            for i in range(1, thruster_count + 1)
                                         }
                                         self.satellite.model.site_rgba[site_id] = (
                                             original_colors.get(thruster_idx, [0.5, 0.5, 0.5, 0.3])

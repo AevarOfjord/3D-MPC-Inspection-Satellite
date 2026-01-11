@@ -118,11 +118,19 @@ class MissionManager:
         # Print summary
         roll_deg, pitch_deg, yaw_deg = np.degrees(start_angle)
         omega_deg = np.degrees(start_omega)
+        if np.ndim(omega_deg) == 0:
+            omega_str = f"{omega_deg:.1f}°/s"
+        else:
+            omega_str = (
+                f"wx={omega_deg[0]:.1f}°/s, "
+                f"wy={omega_deg[1]:.1f}°/s, "
+                f"wz={omega_deg[2]:.1f}°/s"
+            )
         print(
-            f"Starting: ({start_pos[0]:.2f}, {start_pos[1]:.2f}) m, "
+            f"Starting: ({start_pos[0]:.2f}, {start_pos[1]:.2f}, {start_pos[2]:.2f}) m, "
             f"roll={roll_deg:.1f}°, pitch={pitch_deg:.1f}°, yaw={yaw_deg:.1f}°, "
             f"({start_vx:.2f}, {start_vy:.2f}, {start_vz:.2f}) m/s, "
-            f"{omega_deg:.1f}°/s"
+            f"{omega_str}"
         )
 
         print("\nShape configuration:")
@@ -184,17 +192,20 @@ class MissionManager:
                 shape_points = self.logic.generate_demo_shape("circle")
 
         try:
-            shape_center = self.cli.get_user_position("shape center", (0.0, 0.0))
+            shape_center = self.cli.get_user_position("shape center", (0.0, 0.0, 0.0))
             shape_rotation_input = input("Shape rotation angle (degrees, default 0): ").strip()
             shape_rotation_deg = float(shape_rotation_input) if shape_rotation_input else 0.0
             shape_rotation_rad = np.radians(shape_rotation_deg)
         except ValueError:
             print("Invalid input. Using default shape parameters.")
-            shape_center = (0.0, 0.0)
+            shape_center = (0.0, 0.0, 0.0)
             shape_rotation_deg = 0.0
             shape_rotation_rad = 0.0
 
-        print(f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}) m")
+        print(
+            f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}, "
+            f"{shape_center[2]:.2f}) m"
+        )
         print(f"Shape rotation: {shape_rotation_deg:.1f}°")
 
         try:
@@ -256,7 +267,7 @@ class MissionManager:
                 rp = return_pos
                 ra_roll, ra_pitch, ra_yaw = np.degrees(return_angle)
                 print(
-                    f"Return position: ({rp[0]:.2f}, {rp[1]:.2f}) m, "
+                    f"Return position: ({rp[0]:.2f}, {rp[1]:.2f}, {rp[2]:.2f}) m, "
                     f"roll={ra_roll:.1f}°, pitch={ra_pitch:.1f}°, yaw={ra_yaw:.1f}°"
                 )
             has_return = True
@@ -277,10 +288,13 @@ class MissionManager:
         print(f"{'=' * 50}")
         sa_roll, sa_pitch, sa_yaw = np.degrees(start_angle)
         print(
-            f"Starting: ({start_pos[0]:.2f}, {start_pos[1]:.2f}) m, "
+            f"Starting: ({start_pos[0]:.2f}, {start_pos[1]:.2f}, {start_pos[2]:.2f}) m, "
             f"roll={sa_roll:.1f}°, pitch={sa_pitch:.1f}°, yaw={sa_yaw:.1f}°"
         )
-        print(f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}) m")
+        print(
+            f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}, "
+            f"{shape_center[2]:.2f}) m"
+        )
         print(f"Shape rotation: {shape_rotation_deg:.1f}°")
         print(f"Offset distance: {offset_distance:.2f} m")
         print(f"Path points: {len(upscaled_path)}")
@@ -291,7 +305,7 @@ class MissionManager:
             rp = return_pos
             ra_roll, ra_pitch, ra_yaw = np.degrees(return_angle)
             print(
-                f"Return position: ({rp[0]:.2f}, {rp[1]:.2f}) m, "
+                f"Return position: ({rp[0]:.2f}, {rp[1]:.2f}, {rp[2]:.2f}) m, "
                 f"roll={ra_roll:.1f}°, pitch={ra_pitch:.1f}°, yaw={ra_yaw:.1f}°"
             )
 
@@ -321,7 +335,10 @@ class MissionManager:
         if return_pos:
             mission_state.dxf_return_position = return_pos
         if return_angle:
-            mission_state.dxf_return_angle = return_angle
+            if isinstance(return_angle, (tuple, list)) and len(return_angle) == 3:
+                mission_state.dxf_return_angle = tuple(return_angle)
+            else:
+                mission_state.dxf_return_angle = (0.0, 0.0, float(return_angle))
 
         config = {
             "mission_type": "shape_following",
@@ -356,7 +373,7 @@ class MissionManager:
 
         return config
 
-    def load_dxf_shape(self, file_path: str) -> List[Tuple[float, float]]:
+    def load_dxf_shape(self, file_path: str) -> List[Tuple[float, float, float]]:
         """
         Load shape points from DXF using the same pipeline as DXF_Viewer.
 
@@ -364,7 +381,7 @@ class MissionManager:
             file_path: Path to DXF file
 
         Returns:
-            List of (x, y) points in meters
+            List of (x, y, z) points in meters
         """
         import ezdxf
 
@@ -386,7 +403,11 @@ class MissionManager:
         # Extract and sanitize boundary in native units, then scale to meters
         boundary = extract_boundary_polygon(msp)
         boundary = sanitize_boundary(boundary, to_m)
-        boundary_m = [(float(x) * to_m, float(y) * to_m) for (x, y) in boundary] if boundary else []
+        boundary_m = (
+            [(float(x) * to_m, float(y) * to_m, 0.0) for (x, y) in boundary]
+            if boundary
+            else []
+        )
 
         if not boundary_m:
             raise ValueError("No usable DXF boundary could be constructed.")
@@ -398,60 +419,65 @@ class MissionManager:
 
 # Helper functions for external use
 def get_path_tangent_orientation(
-    path: List[Tuple[float, float]], distance: float, start_idx: int = 0
-) -> float:
+    path: List[Tuple[float, ...]], distance: float, start_idx: int = 0
+) -> Tuple[float, float, float]:
     """
     Calculate tangent orientation at a given distance along path.
 
     Args:
-        path: List of (x, y) points
+        path: List of (x, y) or (x, y, z) points
         distance: Distance along path in meters
         start_idx: Index to start searching from (optimization)
 
     Returns:
-        Orientation angle in radians
+        Orientation as (roll, pitch, yaw) in radians
     """
     if not path:
-        return 0.0
+        return (0.0, 0.0, 0.0)
 
     current_dist = 0.0
     for i in range(len(path) - 1):
         idx = (start_idx + i) % (len(path) - 1)
-        p1 = np.array(path[idx])
-        p2 = np.array(path[idx + 1])
+        p1 = np.array(path[idx], dtype=float)
+        p2 = np.array(path[idx + 1], dtype=float)
         segment_len = np.linalg.norm(p2 - p1)
 
         if current_dist + segment_len >= distance:
             # Found segment
             direction = p2 - p1
-            angle = np.arctan2(direction[1], direction[0])
-            return float(angle)
+            yaw = float(np.arctan2(direction[1], direction[0]))
+            horiz = np.linalg.norm(direction[:2])
+            pitch = float(np.arctan2(-direction[2], horiz)) if direction.shape[0] > 2 else 0.0
+            return (0.0, pitch, yaw)
 
         current_dist += float(segment_len)
 
     # If past end, return angle of last segment
-    p1 = np.array(path[-2])
-    p2 = np.array(path[-1])
+    p1 = np.array(path[-2], dtype=float)
+    p2 = np.array(path[-1], dtype=float)
     direction = p2 - p1
-    return float(np.arctan2(direction[1], direction[0]))
+    yaw = float(np.arctan2(direction[1], direction[0]))
+    horiz = np.linalg.norm(direction[:2])
+    pitch = float(np.arctan2(-direction[2], horiz)) if direction.shape[0] > 2 else 0.0
+    return (0.0, pitch, yaw)
 
 
 def get_position_on_path(
-    path: List[Tuple[float, float]], distance: float, start_idx: int = 0
-) -> Tuple[Tuple[float, float], int]:
+    path: List[Tuple[float, ...]], distance: float, start_idx: int = 0
+) -> Tuple[Tuple[float, ...], int]:
     """
     Calculate position at a given distance along path.
 
     Args:
-        path: List of (x, y) points
+        path: List of (x, y) or (x, y, z) points
         distance: Distance along path in meters
         start_idx: Index to start searching from
 
     Returns:
-        Tuple of ((x, y), new_index)
+        Tuple of ((x, y) or (x, y, z), new_index)
     """
     if not path:
-        return (0.0, 0.0), 0
+        return (0.0, 0.0, 0.0), 0
 
     current_dist = 0.0
     # Search forward from start_idx
@@ -459,14 +485,14 @@ def get_position_on_path(
 
     for i in range(total_segments):
         idx = (start_idx + i) % total_segments
-        p1 = np.array(path[idx])
-        p2 = np.array(path[idx + 1])
+        p1 = np.array(path[idx], dtype=float)
+        p2 = np.array(path[idx + 1], dtype=float)
         segment_len = np.linalg.norm(p2 - p1)
 
         if current_dist + segment_len >= distance:
             t = (distance - current_dist) / max(float(segment_len), 1e-6)
             pos = p1 + t * (p2 - p1)
-            return (float(pos[0]), float(pos[1])), idx
+            return tuple(float(x) for x in pos), idx
 
         current_dist += float(segment_len)
 

@@ -16,7 +16,7 @@ class TestThrusterManagerInitialization:
     def test_manager_creation_defaults(self):
         """Test that ThrusterManager can be created with defaults."""
         manager = ThrusterManager()
-        assert manager.num_thrusters == 12
+        assert manager.num_thrusters == 8
         assert manager.VALVE_DELAY == 0.0
         assert manager.THRUST_RAMPUP_TIME == 0.0
         assert manager.use_realistic_physics is False

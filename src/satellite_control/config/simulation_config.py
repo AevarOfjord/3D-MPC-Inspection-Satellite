@@ -106,6 +106,7 @@ class SimulationConfig:
             "q_angle": self.app_config.mpc.q_angle,
             "q_angular_velocity": self.app_config.mpc.q_angular_velocity,
             "r_thrust": self.app_config.mpc.r_thrust,
+            "r_rw_torque": self.app_config.mpc.r_rw_torque,
             "max_velocity": self.app_config.mpc.max_velocity,
             "max_angular_velocity": self.app_config.mpc.max_angular_velocity,
             "position_bounds": self.app_config.mpc.position_bounds,
@@ -113,6 +114,10 @@ class SimulationConfig:
             "velocity_threshold": self.app_config.mpc.velocity_threshold,
             "max_velocity_weight": self.app_config.mpc.max_velocity_weight,
             "thruster_type": self.app_config.mpc.thruster_type,
+            "enable_rw_yaw": self.app_config.mpc.enable_rw_yaw,
+            "enable_z_tilt": self.app_config.mpc.enable_z_tilt,
+            "z_tilt_gain": self.app_config.mpc.z_tilt_gain,
+            "z_tilt_max_deg": self.app_config.mpc.z_tilt_max_deg,
         }
     
     def get_physics_params(self) -> Dict[str, Any]:

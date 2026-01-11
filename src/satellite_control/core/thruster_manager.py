@@ -32,7 +32,7 @@ class ThrusterManager:
 
     def __init__(
         self,
-        num_thrusters: int = 12,
+        num_thrusters: int = 8,
         valve_delay: float = 0.0,
         thrust_rampup_time: float = 0.0,
         use_realistic_physics: bool = False,
@@ -42,7 +42,7 @@ class ThrusterManager:
         Initialize thruster manager.
 
         Args:
-            num_thrusters: Number of thrusters (default 12)
+            num_thrusters: Number of thrusters (default 8)
             valve_delay: Time from command to valve action [s]
             thrust_rampup_time: Time for thrust to reach full value [s]
             use_realistic_physics: Enable valve delays and ramp-up

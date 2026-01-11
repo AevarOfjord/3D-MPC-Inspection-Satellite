@@ -98,9 +98,9 @@ class TestCacheByConfig:
             total_mass=10.0,
             moment_of_inertia=1.0,
             satellite_size=0.5,
-            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_forces={i: 1.0 for i in range(1, 13)},
+            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_forces={i: 1.0 for i in range(1, 9)},
         )
         mpc = MPCParams(
             prediction_horizon=50,
@@ -141,9 +141,9 @@ class TestCacheByConfig:
             total_mass=10.0,
             moment_of_inertia=1.0,
             satellite_size=0.5,
-            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_forces={i: 1.0 for i in range(1, 13)},
+            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_forces={i: 1.0 for i in range(1, 9)},
         )
         mpc = MPCParams(
             prediction_horizon=50,
@@ -183,9 +183,9 @@ class TestCacheKeyFromConfig:
             total_mass=10.0,
             moment_of_inertia=1.0,
             satellite_size=0.5,
-            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_forces={i: 1.0 for i in range(1, 13)},
+            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_forces={i: 1.0 for i in range(1, 9)},
         )
 
         key1 = cache_key_from_config(physics)
@@ -211,17 +211,17 @@ class TestCacheKeyFromConfig:
             total_mass=10.0,
             moment_of_inertia=1.0,
             satellite_size=0.5,
-            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_forces={i: 1.0 for i in range(1, 13)},
+            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_forces={i: 1.0 for i in range(1, 9)},
         )
         physics2 = SatellitePhysicalParams(
             total_mass=20.0,  # Different mass
             moment_of_inertia=1.0,
             satellite_size=0.5,
-            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 13)},
-            thruster_forces={i: 1.0 for i in range(1, 13)},
+            thruster_positions={i: (0.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_directions={i: (1.0, 0.0, 0.0) for i in range(1, 9)},
+            thruster_forces={i: 1.0 for i in range(1, 9)},
         )
 
         key1 = cache_key_from_config(physics1)

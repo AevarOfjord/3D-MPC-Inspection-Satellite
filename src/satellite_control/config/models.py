@@ -35,6 +35,11 @@ class SatellitePhysicalParams(BaseModel):
         le=2,  # Reasonable upper bound in meters
         description="Characteristic size in meters (must be positive, max 2m)",
     )
+    satellite_shape: str = Field(
+        "sphere",
+        pattern="^(sphere|cube)$",
+        description="Satellite shape ('sphere' or 'cube')",
+    )
     com_offset: Tuple[float, float, float] = Field(
         (0.0, 0.0, 0.0),
         description="Center of Mass offset (x, y, z) in meters",
@@ -43,15 +48,15 @@ class SatellitePhysicalParams(BaseModel):
     # Thruster configuration
     thruster_positions: Dict[int, Tuple[float, float, float]] = Field(
         ...,
-        description="Map of thruster ID (1-12) to (x, y, z) position in meters",
+        description="Map of thruster ID (1-6 or 1-8) to (x, y, z) position in meters",
     )
     thruster_directions: Dict[int, Tuple[float, float, float]] = Field(
         ...,
-        description="Map of thruster ID (1-12) to (dx, dy, dz) unit direction vector",
+        description="Map of thruster ID (1-6 or 1-8) to (dx, dy, dz) unit direction vector",
     )
     thruster_forces: Dict[int, float] = Field(
         ...,
-        description="Map of thruster ID (1-12) to max force in Newtons",
+        description="Map of thruster ID (1-6 or 1-8) to max force in Newtons",
     )
 
     # Damping
@@ -78,11 +83,11 @@ class SatellitePhysicalParams(BaseModel):
         cls, v: Dict[int, Tuple[float, float, float]]
     ) -> Dict[int, Tuple[float, float, float]]:
         """Validate thruster positions are within satellite bounds."""
-        if len(v) != 12:
-            raise ValueError(f"Expected 12 thrusters, got {len(v)}")
+        if len(v) not in [6, 8]:
+            raise ValueError(f"Expected 6 or 8 thrusters, got {len(v)}")
         for tid, pos in v.items():
-            if not (1 <= tid <= 12):
-                raise ValueError(f"Thruster ID must be 1-12, got {tid}")
+            if not (1 <= tid <= 8):
+                raise ValueError(f"Thruster ID must be 1-8, got {tid}")
             if abs(pos[0]) > 1.0 or abs(pos[1]) > 1.0 or abs(pos[2]) > 1.0:
                 raise ValueError(f"Thruster {tid} position {pos} exceeds satellite bounds (±1m)")
         return v
@@ -174,6 +179,12 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Thrust usage penalty weight",
     )
+    r_rw_torque: float = Field(
+        1.0,
+        ge=0,
+        le=1e6,
+        description="Reaction wheel torque penalty weight",
+    )
     # Constraints
     max_velocity: float = Field(
         ...,
@@ -216,6 +227,26 @@ class MPCParams(BaseModel):
     thruster_type: str = Field(
         "PWM",
         description="Thruster actuation type: 'PWM' (Binary) or 'CON' (Continuous)",
+    )
+    enable_rw_yaw: bool = Field(
+        False,
+        description="Enable reaction wheel torque about yaw axis",
+    )
+    enable_z_tilt: bool = Field(
+        True,
+        description="Enable tilt-based Z translation using pitch/roll",
+    )
+    z_tilt_gain: float = Field(
+        0.35,
+        ge=0.0,
+        le=2.0,
+        description="Tilt gain (rad per meter of Z error)",
+    )
+    z_tilt_max_deg: float = Field(
+        20.0,
+        ge=0.0,
+        le=60.0,
+        description="Maximum tilt magnitude in degrees for Z translation",
     )
     verbose_mpc: bool = Field(
         False,

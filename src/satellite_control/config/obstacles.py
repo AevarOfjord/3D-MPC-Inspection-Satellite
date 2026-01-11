@@ -2,17 +2,17 @@
 Obstacle Avoidance Configuration for Satellite Control System
 
 Obstacle definitions and collision checking for safe navigation.
-Manages circular obstacles with configurable safety margins.
+Manages spherical obstacles with configurable safety margins.
 
 Obstacle management features:
 - Dynamic obstacle configuration at runtime
-- Circular obstacle representation (x, y, radius)
-- Path collision detection along line segments
+- Spherical obstacle representation (x, y, z, radius)
+- Path collision detection along 3D line segments
 - Safety margin enforcement around obstacles
 - Minimum distance validation
 
 Path checking:
-- Line-segment to circle collision detection
+- Line-segment to sphere collision detection
 - Configurable path resolution for accuracy
 - Nearest point calculation for avoidance
 - Integration with path_planning_manager
@@ -39,47 +39,55 @@ class ObstacleManager:
     def __init__(self) -> None:
         """Initialize obstacle manager with default settings."""
         self.enabled: bool = False
-        self.obstacles: List[Tuple[float, float, float]] = []  # (x, y, radius)
+        self.obstacles: List[Tuple[float, float, float, float]] = []  # (x, y, z, radius)
         self.default_obstacle_radius: float = 0.5  # meters
         self.safety_margin: float = 0.1  # meters
         self.min_obstacle_distance: float = 0.5  # meters
         self.path_resolution: float = 0.1  # meters
         self.waypoint_stabilization_time: float = 0.5  # seconds
 
-    def set_obstacles(self, obstacles: List[Tuple[float, float, float]]) -> None:
+    def set_obstacles(self, obstacles: List[Tuple[float, float, float, float]]) -> None:
         """
         Set obstacles for navigation.
 
         Args:
-            obstacles: List of (x, y, radius) tuples defining obstacles
+            obstacles: List of (x, y, z, radius) tuples defining obstacles
         """
         self.obstacles = obstacles.copy()
         self.enabled = len(obstacles) > 0
 
         if self.enabled:
             print(f"\n OBSTACLE AVOIDANCE ENABLED: {len(obstacles)} " "obstacles configured")
-            for i, (x, y, radius) in enumerate(obstacles, 1):
-                print(f"  Obstacle {i}: ({x:.2f}, {y:.2f}) m, " f"radius {radius:.2f} m")
+            for i, (x, y, z, radius) in enumerate(obstacles, 1):
+                print(
+                    f"  Obstacle {i}: ({x:.2f}, {y:.2f}, {z:.2f}) m, "
+                    f"radius {radius:.2f} m"
+                )
         else:
             print("\n OBSTACLE AVOIDANCE DISABLED: No obstacles configured")
 
-    def add_obstacle(self, x: float, y: float, radius: Optional[float] = None) -> None:
+    def add_obstacle(
+        self, x: float, y: float, z: float = 0.0, radius: Optional[float] = None
+    ) -> None:
         """
         Add a single obstacle.
 
         Args:
             x: X coordinate of obstacle center
             y: Y coordinate of obstacle center
+            z: Z coordinate of obstacle center
             radius: Obstacle radius (uses default if None)
         """
         if radius is None:
             radius = self.default_obstacle_radius
 
-        obstacle = (x, y, radius)
+        obstacle = (x, y, z, radius)
         self.obstacles.append(obstacle)
         self.enabled = True
 
-        print(f" Added obstacle: ({x:.2f}, {y:.2f}) m, radius {radius:.2f} m")
+        print(
+            f" Added obstacle: ({x:.2f}, {y:.2f}, {z:.2f}) m, radius {radius:.2f} m"
+        )
 
     def clear_obstacles(self) -> None:
         """Clear all obstacles and disable obstacle avoidance."""
@@ -87,12 +95,12 @@ class ObstacleManager:
         self.enabled = False
         print(" All obstacles cleared")
 
-    def get_obstacles(self) -> List[Tuple[float, float, float]]:
+    def get_obstacles(self) -> List[Tuple[float, float, float, float]]:
         """
         Get current obstacle configuration.
 
         Returns:
-            List of (x, y, radius) tuples
+            List of (x, y, z, radius) tuples
         """
         return self.obstacles.copy()
 
@@ -106,8 +114,8 @@ class ObstacleManager:
         Check if a straight path between two points is clear of obstacles.
 
         Args:
-            start_pos: (x, y) starting position
-            end_pos: (x, y) ending position
+            start_pos: (x, y, z) starting position
+            end_pos: (x, y, z) ending position
             safety_margin: Additional safety margin (uses default if None)
 
         Returns:
@@ -119,11 +127,11 @@ class ObstacleManager:
         if safety_margin is None:
             safety_margin = self.safety_margin
 
-        start = np.array(start_pos)[:2]
-        end = np.array(end_pos)[:2]
+        start = np.array(start_pos)[:3]
+        end = np.array(end_pos)[:3]
 
-        for obs_x, obs_y, obs_radius in self.obstacles:
-            obs_center = np.array([obs_x, obs_y])
+        for obs_x, obs_y, obs_z, obs_radius in self.obstacles:
+            obs_center = np.array([obs_x, obs_y, obs_z])
             # Use consistent safety margin from module constant
             effective_radius = obs_radius + OBSTACLE_AVOIDANCE_SAFETY_MARGIN
 
@@ -180,8 +188,11 @@ class ObstacleManager:
 
         if self.obstacles:
             print("\nConfigured obstacles:")
-            for i, (x, y, radius) in enumerate(self.obstacles, 1):
-                print(f"  {i}. Position: ({x:.2f}, {y:.2f}) m, " f"Radius: {radius:.2f} m")
+            for i, (x, y, z, radius) in enumerate(self.obstacles, 1):
+                print(
+                    f"  {i}. Position: ({x:.2f}, {y:.2f}, {z:.2f}) m, "
+                    f"Radius: {radius:.2f} m"
+                )
 
         print("=" * 80 + "\n")
 

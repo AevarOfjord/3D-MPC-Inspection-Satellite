@@ -195,9 +195,9 @@ class MissionLogic:
 
             # Extract exterior coords
             exterior = list(buffered.exterior.coords)
-            # Re-attach Z=0.0 (or original Z if we tracked it, but shapely is 2D)
-            # For now, assume Z=0.0 for upscaled path
-            return [(float(x), float(y), 0.0) for x, y in exterior]
+            zs = [p[2] for p in points if len(p) > 2]
+            z_level = float(np.mean(zs)) if zs else 0.0
+            return [(float(x), float(y), z_level) for x, y in exterior]
 
         except Exception as e:
             logger.warning(f" Shapely offset failed in upscale_shape: {e}")
@@ -211,7 +211,7 @@ class MissionLogic:
             file_path: Path to DXF file
 
         Returns:
-            List of (x, y) points in meters
+            List of (x, y, z) points in meters
         """
         try:
             import ezdxf

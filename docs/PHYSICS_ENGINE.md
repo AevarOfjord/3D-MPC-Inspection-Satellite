@@ -30,7 +30,7 @@ The system uses a clean separation of concerns where the MPC controller operates
 │  4. Calculate torques about COM                             │
 │  5. Pass to MuJoCo via xfrc_applied                         │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ Force vectors [Fx, Fy, τz]
+                      │ Force/torque vectors [Fx, Fy, Fz, Tx, Ty, Tz]
                       ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                    MuJoCo Physics Engine                     │
@@ -40,10 +40,10 @@ The system uses a clean separation of concerns where the MPC controller operates
 │  1. Integrate forces → accelerations (F=ma)                 │
 │  2. Integrate accelerations → velocities (RK4/Euler)        │
 │  3. Integrate velocities → positions                        │
-│  4. Enforce constraints (2D plane, contacts)                │
+│  4. Enforce constraints (contacts, joint limits)            │
 │  5. Add damping and friction                                │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ New state [x, y, θ, vx, vy, ω]
+                      │ New state [x, y, z, q, v, w]
                       ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                         MPC Controller                       │
@@ -72,7 +72,7 @@ Thruster forces and torques are applied directly to the rigid body using `mj_dat
 self.data.xfrc_applied[body_id, :] = [fx, fy, fz, tx, ty, tz]
 ```
 
-- **Constraint Handling**: MuJoCo automatically solves for constraint forces (e.g., keeping the satellite on the air-bearing table plane 3DOF).
+- **Constraint Handling**: MuJoCo automatically solves contact constraints; no planar constraint is enforced by default.
 - **Friction**: Uses a physical friction model for any contacts.
 
 ### 3. Numerical Accuracy
@@ -84,7 +84,7 @@ MuJoCo is chosen for its superior numerical stability compared to simple custom 
 
 ### 4. 3D Capability
 
-While the current mission profile focuses on planar (3-DOF) movement to simulate an air-bearing table, the underlying MuJoCo engine is fully 3D. This allows:
+While the thrusters are mounted in a planar XY layout, the MuJoCo model uses a 6-DOF free joint and a full 3D state. Z translation is achieved via attitude/tilt, and the engine remains fully 3D. This allows:
 
 - **Complex Geometries**: Support for arbitrary convex meshes for collision detection.
 
@@ -111,7 +111,7 @@ By default, the simulation runs in **idealized mode** (no delays, noise, or damp
 
 The physics simulation is configured via XML (MJCF) and Python config files.
 
-- **Model Files**: `models/satellite.xml` and `models/satellite_planar.xml` (define the body, geometry, and mass properties)
+- **Model Files**: `models/satellite_3d.xml`, `models/satellite_rw.xml`, `models/satellite_fleet.xml` (define body, geometry, and mass properties)
 - **Physics Parameters**: `src/satellite_control/config/physics.py` (mass, inertia, thruster config, damping coefficients)
 - **MPC Parameters**: `src/satellite_control/config/mpc_params.py` (cost weights, horizons, constraints)
 - **Timing**: `src/satellite_control/config/timing.py` (control dt, physics dt)

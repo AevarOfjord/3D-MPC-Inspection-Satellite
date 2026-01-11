@@ -26,6 +26,8 @@ from typing import Any, Callable, List, Optional
 
 import numpy as np
 
+from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,15 +199,18 @@ class MissionReportGenerator:
         f.write(f"  Starting Y position:     {initial_state[1]:.3f} m\n")
         f.write(f"  Starting Z position:     {initial_state[2]:.3f} m\n")
 
-        # Extract Yaw
         q = initial_state[3:7]
-        yaw = np.arctan2(2.0 * (q[0] * q[3] + q[1] * q[2]), 1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2))
-        f.write(f"  Starting orientation:    {np.degrees(yaw):.1f}°\n\n")
+        f.write(
+            f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
+        )
 
         f.write("SHAPE CONFIGURATION:\n")
         if hasattr(self.config, "DXF_SHAPE_CENTER") and self.config.DXF_SHAPE_CENTER:
-            f.write(f"  Shape Center X:          {self.config.DXF_SHAPE_CENTER[0]:.3f} m\n")
-            f.write(f"  Shape Center Y:          {self.config.DXF_SHAPE_CENTER[1]:.3f} m\n")
+            center = self.config.DXF_SHAPE_CENTER
+            f.write(f"  Shape Center X:          {center[0]:.3f} m\n")
+            f.write(f"  Shape Center Y:          {center[1]:.3f} m\n")
+            if len(center) > 2:
+                f.write(f"  Shape Center Z:          {center[2]:.3f} m\n")
         if hasattr(self.config, "DXF_SHAPE_ROTATION"):
             f.write(
                 f"  Shape Rotation:          {np.degrees(self.config.DXF_SHAPE_ROTATION):.1f}°\n"
@@ -240,8 +245,9 @@ class MissionReportGenerator:
         f.write(f"  Starting Z position:     {initial_state[2]:.3f} m\n")
 
         q = initial_state[3:7]
-        yaw = np.arctan2(2.0 * (q[0] * q[3] + q[1] * q[2]), 1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2))
-        f.write(f"  Starting orientation:    {np.degrees(yaw):.1f}°\n\n")
+        f.write(
+            f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
+        )
 
         f.write("WAYPOINTS:\n")
         f.write(f"  Number of Waypoints:     {len(self.config.WAYPOINT_TARGETS)}\n")
@@ -269,19 +275,18 @@ class MissionReportGenerator:
         f.write(f"  Starting Z position:     {initial_state[2]:.3f} m\n")
 
         q = initial_state[3:7]
-        yaw = np.arctan2(2.0 * (q[0] * q[3] + q[1] * q[2]), 1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2))
-        f.write(f"  Starting orientation:    {np.degrees(yaw):.1f}°\n\n")
+        f.write(
+            f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
+        )
 
         target_pos = target_state[:3]
         qt = target_state[3:7]
-        target_yaw = np.arctan2(
-            2.0 * (qt[0] * qt[3] + qt[1] * qt[2]), 1.0 - 2.0 * (qt[2] ** 2 + qt[3] ** 2)
-        )
+        target_euler = quat_wxyz_to_euler_xyz(qt)
         f.write("TARGET CONFIGURATION:\n")
         f.write(f"  Target X position:       {target_pos[0]:.3f} m\n")
         f.write(f"  Target Y position:       {target_pos[1]:.3f} m\n")
         f.write(f"  Target Z position:       {target_pos[2]:.3f} m\n")
-        f.write(f"  Target orientation:      {np.degrees(target_yaw):.1f}°\n\n")
+        f.write(f"  Target orientation:      {self._format_euler_deg(target_euler)}\n\n")
 
     def _write_obstacle_configuration(self, f) -> None:
         """Write obstacle configuration."""
@@ -289,9 +294,9 @@ class MissionReportGenerator:
             f.write("OBSTACLE CONFIGURATION:\n")
             f.write("  Obstacle Avoidance:      ENABLED\n")
             f.write(f"  Number of Obstacles:     {len(self.config.OBSTACLES)}\n")
-            for i, (ox, oy, orad) in enumerate(self.config.OBSTACLES, 1):
+            for i, (ox, oy, oz, orad) in enumerate(self.config.OBSTACLES, 1):
                 f.write(
-                    f"  Obstacle {i}:              ({ox:.3f}, {oy:.3f}) m, radius {orad:.3f} m\n"
+                    f"  Obstacle {i}:              ({ox:.3f}, {oy:.3f}, {oz:.3f}) m, radius {orad:.3f} m\n"
                 )
             f.write("\n")
         else:
@@ -354,7 +359,7 @@ class MissionReportGenerator:
         f.write(f"  COM Offset:              ({com_x:.6f}, {com_y:.6f}, {com_z:.6f}) m\n\n")
 
         f.write("THRUSTER FORCES:\n")
-        for tid in range(1, 13):
+        for tid in sorted(self.config.THRUSTER_FORCES.keys()):
             f.write(f"  Thruster {tid}:             {self.config.THRUSTER_FORCES[tid]:.6f} N\n")
         f.write("\n")
 

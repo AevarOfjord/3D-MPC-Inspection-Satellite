@@ -46,6 +46,7 @@ class MPCConfig:
         q_angle: Angle error cost weight
         q_ang_velocity: Angular velocity error cost weight
         r_thrust: Thrust magnitude penalty
+        r_rw_torque: Reaction wheel torque penalty
         r_switch: Thruster switching penalty
         max_velocity: Maximum linear velocity in m/s
         max_angular_velocity: Maximum angular velocity in rad/s
@@ -70,6 +71,7 @@ class MPCConfig:
     q_angle: float
     q_ang_velocity: float
     r_thrust: float
+    r_rw_torque: float
     r_switch: float
 
     # Constraints
@@ -82,6 +84,10 @@ class MPCConfig:
     velocity_threshold: float
     max_velocity_weight: float
     thruster_type: str = "PWM"
+    enable_rw_yaw: bool = False
+    enable_z_tilt: bool = True
+    z_tilt_gain: float = 0.35
+    z_tilt_max_deg: float = 20.0
 
 
 # DEFAULT MPC PARAMETERS
@@ -94,6 +100,10 @@ MPC_SOLVER_TIME_LIMIT = timing.CONTROL_DT - 0.01  # 10ms safety buffer
 MPC_SOLVER_TYPE = "OSQP"
 
 THRUSTER_TYPE = "CON"  # Options: "PWM" (Binary/Pulse Width Modulation), "CON" (Continuous)
+ENABLE_RW_YAW = True
+ENABLE_Z_TILT = True
+Z_TILT_GAIN = 0.35
+Z_TILT_MAX_DEG = 20.0
 
 VERBOSE_MPC = False
 MPC_CACHE_RESOLUTION = 0.01  # rad - dynamics linearization cache resolution
@@ -107,11 +117,12 @@ MOVE_BLOCK_SIZES = [1] * 10 + [2] * 10 + [5] * 4  # 24 decisions for 50 steps
 
 # Cost weights
 Q_POSITION = 1000.0
-Q_VELOCITY = 10000.0  # Reduced from 10000.0 to allow faster movement
+Q_VELOCITY = 1000.0  # Reduced from 10000.0 to allow faster movement
 Q_ANGLE = 1000.0
-Q_ANGULAR_VELOCITY = 1500.0
-R_THRUST = 1.0  # Moderate fuel cost
+Q_ANGULAR_VELOCITY = 1000.0
+R_THRUST = 0.1  # Moderate fuel cost
 R_SWITCH = 0.0
+R_RW_TORQUE = R_THRUST
 
 # Fuel-Optimal Mode (L1 norm minimization)
 # Uses |u|₁ instead of |u|² for thrust cost - promotes sparse control
@@ -165,6 +176,7 @@ def get_mpc_params() -> MPCConfig:
         q_ang_velocity=Q_ANGULAR_VELOCITY,
         r_thrust=R_THRUST,
         r_switch=R_SWITCH,
+        r_rw_torque=R_RW_TORQUE,
         max_velocity=MAX_VELOCITY,
         max_angular_velocity=MAX_ANGULAR_VELOCITY,
         position_bounds=POSITION_BOUNDS,
@@ -172,6 +184,10 @@ def get_mpc_params() -> MPCConfig:
         velocity_threshold=VELOCITY_THRESHOLD,
         max_velocity_weight=MAX_VELOCITY_WEIGHT,
         thruster_type=THRUSTER_TYPE,
+        enable_rw_yaw=ENABLE_RW_YAW,
+        enable_z_tilt=ENABLE_Z_TILT,
+        z_tilt_gain=Z_TILT_GAIN,
+        z_tilt_max_deg=Z_TILT_MAX_DEG,
     )
 
 

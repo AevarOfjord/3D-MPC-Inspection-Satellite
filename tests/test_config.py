@@ -152,10 +152,10 @@ class TestSatelliteConfigSetters:
         """Test that invalid thruster ID raises error (deprecated API)."""
         # V4.0.0: This tests deprecated SatelliteConfig API
         with pytest.raises((ValueError, KeyError)):
-            SatelliteConfig.set_thruster_force(0, 0.5)  # ID should be 1-12 (3D)
+            SatelliteConfig.set_thruster_force(0, 0.5)  # ID should be 1-8 (3D)
 
         with pytest.raises((ValueError, KeyError)):
-            SatelliteConfig.set_thruster_force(13, 0.5)  # ID should be 1-12 (3D)
+            SatelliteConfig.set_thruster_force(9, 0.5)  # ID should be 1-8 (3D)
 
     def test_set_thruster_force_negative(self):
         """Test that negative force raises error or is handled (deprecated API)."""
@@ -178,8 +178,8 @@ class TestSatelliteConfigSetters:
             SatelliteConfig.set_all_thruster_forces(0.6)
             params = SatelliteConfig.get_satellite_params()
 
-            # V4.0.0: 3D system has 12 thrusters
-            for thruster_id in range(1, 13):
+            # V4.0.0: 3D system has 8 thrusters
+            for thruster_id in range(1, 9):
                 assert params["thruster_forces"][thruster_id] == 0.6
         finally:
             # Restore original
@@ -309,8 +309,8 @@ class TestSatelliteConfigThrusterGeometry:
         physics = config.app_config.physics
 
         for thruster_id, direction in physics.thruster_directions.items():
-            dx, dy = direction[0], direction[1]
-            magnitude = np.sqrt(dx**2 + dy**2)
+            dx, dy, dz = direction[0], direction[1], direction[2]
+            magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
             assert (
                 abs(magnitude - 1.0) < 1e-6
             ), f"Thruster {thruster_id} direction not unit vector"
@@ -326,8 +326,7 @@ class TestSatelliteConfigThrusterGeometry:
         direction_ids = set(physics.thruster_directions.keys())
 
         assert force_ids == position_ids == direction_ids
-        # Note: V4.0.0 uses 12 thrusters (3D), not 8 (2D)
-        assert len(force_ids) == 12
+        assert len(force_ids) == 8
 
 
 class TestSatelliteConfigIntegration:

@@ -72,12 +72,12 @@ def point_to_line_distance(
     point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray
 ) -> float:
     """
-    Calculate the shortest distance from a point to a line segment.
+    Calculate the shortest distance from a point to a line segment (2D or 3D).
 
     Args:
-        point: Point position as [x, y] numpy array
-        line_start: Line segment start position as [x, y] numpy array
-        line_end: Line segment end position as [x, y] numpy array
+        point: Point position as [x, y] or [x, y, z] numpy array
+        line_start: Line segment start position as [x, y] or [x, y, z] numpy array
+        line_end: Line segment end position as [x, y] or [x, y, z] numpy array
 
     Returns:
         Shortest distance from point to line segment in meters
@@ -103,111 +103,92 @@ def point_to_line_distance(
 def calculate_safe_path_to_waypoint(
     start_pos: np.ndarray,
     target_pos: np.ndarray,
-    all_obstacles: List[Tuple[float, float]],
+    all_obstacles: List[Tuple[float, ...]],
     safety_radius: float,
-) -> List[Tuple[float, float]]:
+) -> List[Tuple[float, float, float]]:
     """
-    Calculate a safe path from start to target that avoids circular obstacles.
+    Calculate a safe path from start to target that avoids spherical obstacles.
 
     Uses a simple single-waypoint strategy: if the direct path crosses an obstacle,
     generates an intermediate waypoint that goes around it.
 
     Args:
-        start_pos: Starting position as [x, y] numpy array
-        target_pos: Target position as [x, y] numpy array
-        all_obstacles: List of (x, y) obstacle center positions
+        start_pos: Starting position as [x, y, z] (z optional)
+        target_pos: Target position as [x, y, z] (z optional)
+        all_obstacles: List of obstacles as (x, y, z, r) tuples
         safety_radius: Minimum distance to maintain from obstacle centers
 
     Returns:
-        List of waypoints [(x, y), ...] from start to target
+        List of waypoints [(x, y, z), ...] from start to target
     """
-    # Simple approach: If direct path crosses obstacles, generate intermediate
-    # waypoint
-    # Determine Z coordinates
-    start_z = start_pos[2] if len(start_pos) > 2 else 0.0
-    target_z = target_pos[2] if len(target_pos) > 2 else 0.0
+    # Simple approach: If direct path crosses obstacles, generate intermediate waypoint.
+    start = np.array(start_pos, dtype=float)
+    target = np.array(target_pos, dtype=float)
+    if start.shape[0] < 3:
+        start = np.pad(start, (0, 3 - start.shape[0]), "constant")
+    if target.shape[0] < 3:
+        target = np.pad(target, (0, 3 - target.shape[0]), "constant")
 
-    # Work in 2D for obstacle avoidance (Cylindrical obstacles)
-    start_2d = start_pos[:2]
-    target_2d = target_pos[:2]
-
-    waypoints = [tuple(start_pos)]
+    waypoints = [tuple(start)]
 
     blocking_obstacles = []
-    for obstacle_center_tuple in all_obstacles:
-        obstacle_center = np.array(obstacle_center_tuple)
-        distance_to_path = point_to_line_distance(obstacle_center, start_2d, target_2d)
-        if distance_to_path < safety_radius:
-            blocking_obstacles.append(obstacle_center)
+    for obstacle in all_obstacles:
+        if len(obstacle) == 4:
+            obs_x, obs_y, obs_z, obs_radius = obstacle
+        elif len(obstacle) == 3:
+            obs_x, obs_y, obs_radius = obstacle
+            obs_z = 0.0
+        else:
+            continue
+        obstacle_center = np.array([obs_x, obs_y, obs_z], dtype=float)
+        distance_to_path = point_to_line_distance(obstacle_center, start, target)
+        if distance_to_path < (safety_radius + obs_radius):
+            blocking_obstacles.append((obstacle_center, obs_radius))
 
     if blocking_obstacles:
         # For simplicity, create a waypoint that goes around the closest
         # blocking obstacle
-        closest_obstacle = min(
+        closest_obstacle, obstacle_radius = min(
             blocking_obstacles,
-            key=lambda obs: float(np.linalg.norm(obs - start_2d)),
+            key=lambda obs: float(np.linalg.norm(obs[0] - start)),
         )
 
-        # Check if obstacle is at start position (edge case)
-        obstacle_distance = np.linalg.norm(closest_obstacle - start_2d)
+        path_vec = target - start
+        path_len = np.linalg.norm(path_vec)
+        if path_len < 1e-10:
+            waypoints.append(tuple(target))
+            return waypoints
 
-        # Linearly interpolate Z for the intermediate waypoint based on distance ratio
-        # But for simplicity, just average Z or keep start Z seems safer for collision avoidance
-        # Let's average Z
-        avg_z = (start_z + target_z) / 2.0
+        path_dir = path_vec / path_len
+        to_obstacle = closest_obstacle - start
+        projection = np.dot(to_obstacle, path_dir)
+        projection = max(0.0, min(path_len, projection))
+        closest_point = start + projection * path_dir
 
-        if obstacle_distance < 1e-10:
-            # Obstacle is at start - move perpendicular to target direction
-            direction_to_target = target_2d - start_2d
-            target_norm = np.linalg.norm(direction_to_target)
-            if target_norm > 1e-10:
-                direction_to_target_norm = direction_to_target / target_norm
-                # Move perpendicular to get away from obstacle
-                perpendicular = np.array(
-                    [-direction_to_target_norm[1], direction_to_target_norm[0]]
-                )
-                intermediate_2d = start_2d + perpendicular * safety_radius * 1.5
-            else:
-                # Both at start and target at start - just offset in x
-                # direction
-                intermediate_2d = start_2d + np.array([safety_radius * 1.5, 0])
-        else:
-            # Normal case: create intermediate waypoint by going around the
-            # obstacle
-            direction_to_target = target_2d - start_2d
+        offset_dir = closest_point - closest_obstacle
+        offset_norm = np.linalg.norm(offset_dir)
+        if offset_norm < 1e-10:
+            ref = np.array([0.0, 0.0, 1.0])
+            if abs(np.dot(path_dir, ref)) > 0.9:
+                ref = np.array([0.0, 1.0, 0.0])
+            offset_dir = np.cross(path_dir, ref)
+            offset_norm = np.linalg.norm(offset_dir)
+            if offset_norm < 1e-10:
+                offset_dir = np.array([1.0, 0.0, 0.0])
+                offset_norm = 1.0
+        offset_dir = offset_dir / offset_norm
 
-            # Helper to avoid div by zero
-            denom = np.linalg.norm(direction_to_target)
-            if denom < 1e-10:
-                direction_to_target_norm = np.array([1.0, 0.0])
-            else:
-                direction_to_target_norm = direction_to_target / denom
+        from src.satellite_control.config.obstacles import OBSTACLE_AVOIDANCE_SAFETY_MARGIN
 
-            direction_to_obstacle = closest_obstacle - start_2d
-            direction_to_obstacle_norm = direction_to_obstacle / obstacle_distance
-
-            # Calculate perpendicular direction
-            perpendicular = np.array(
-                [-direction_to_obstacle_norm[1], direction_to_obstacle_norm[0]]
-            )
-
-            # Create waypoint that goes around the obstacle
-            # Use constant from obstacles module (not mutable, so safe to use directly)
-            from src.satellite_control.config.obstacles import OBSTACLE_AVOIDANCE_SAFETY_MARGIN
-            
-            intermediate_2d = closest_obstacle + perpendicular * (
-                safety_radius + OBSTACLE_AVOIDANCE_SAFETY_MARGIN
-            )
-
-        # Construct 3D intermediate waypoint
-        intermediate_waypoint = np.array([intermediate_2d[0], intermediate_2d[1], avg_z])
+        clearance = obstacle_radius + safety_radius + OBSTACLE_AVOIDANCE_SAFETY_MARGIN
+        intermediate_waypoint = closest_obstacle + offset_dir * clearance
 
         waypoints.append(tuple(intermediate_waypoint))
-        wp_x, wp_y = intermediate_waypoint[0], intermediate_waypoint[1]
+        wp_x, wp_y, wp_z = intermediate_waypoint
         print(
             f" Generated intermediate waypoint to avoid obstacle: "
-            f"({wp_x:.3f}, {wp_y:.3f}, {avg_z:.3f})"
+            f"({wp_x:.3f}, {wp_y:.3f}, {wp_z:.3f})"
         )
 
-    waypoints.append(tuple(target_pos))
+    waypoints.append(tuple(target))
     return waypoints

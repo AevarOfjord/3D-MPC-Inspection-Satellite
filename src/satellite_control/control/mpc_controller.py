@@ -13,10 +13,15 @@ import osqp
 import scipy.sparse as sp
 
 from src.satellite_control.config import mpc_params
+from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
 from src.satellite_control.config.models import MPCParams, SatellitePhysicalParams
 from src.satellite_control.core.error_handling import with_error_context
 from src.satellite_control.core.exceptions import OptimizationError, SolverTimeoutError
 from src.satellite_control.utils.caching import cached
+from src.satellite_control.utils.orientation_utils import (
+    euler_xyz_to_quat_wxyz,
+    quat_wxyz_to_euler_xyz,
+)
 
 from .base import Controller
 
@@ -29,7 +34,7 @@ class MPCController(Controller):
 
     Unified implementation for 6-DOF control.
     State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (13 elements).
-    Control: [u1, ..., u12] (12 thrusters).
+    Control: [τ_rw_x, τ_rw_y, τ_rw_z, u1, ..., uN] (RW torques + thrusters).
     """
 
     def __init__(
@@ -75,6 +80,19 @@ class MPCController(Controller):
         self.com_offset = get_param(satellite_params, "com_offset", "com_offset", np.zeros(3))
         self.com_offset = np.array(self.com_offset)
 
+        # Thruster indexing (stable order)
+        self.thruster_ids = sorted(self.thruster_forces.keys())
+        self.num_thrusters = len(self.thruster_ids)
+
+        # Reaction wheel configuration (torque-only)
+        self.enable_rw_yaw = get_param(mpc_params, "enable_rw_yaw", "enable_rw_yaw", False)
+        rw_config = get_reaction_wheel_config()
+        self.max_rw_torque = rw_config.wheel_x.max_torque
+        self.num_rw_axes = 3
+        self.rw_torque_limits = np.full(self.num_rw_axes, self.max_rw_torque)
+        if not self.enable_rw_yaw:
+            self.rw_torque_limits[2] = 0.0
+
         # MPC parameters
         self.N = get_param(mpc_params, "prediction_horizon", "prediction_horizon")
         self._dt = get_param(mpc_params, "dt", "dt")
@@ -87,6 +105,7 @@ class MPCController(Controller):
         self.Q_ang = get_param(mpc_params, "q_angle", "Q_ang")
         self.Q_angvel = get_param(mpc_params, "q_angular_velocity", "Q_angvel")
         self.R_thrust = get_param(mpc_params, "r_thrust", "R_thrust")
+        self.R_rw_torque = get_param(mpc_params, "r_rw_torque", "R_rw_torque", self.R_thrust)
 
         # Constraints
         self.max_velocity = get_param(mpc_params, "max_velocity", "max_velocity")
@@ -95,10 +114,26 @@ class MPCController(Controller):
         )
         self.position_bounds = get_param(mpc_params, "position_bounds", "position_bounds")
 
+        # Z translation via tilt (uses pitch/roll with planar thrusters)
+        self.enable_z_tilt = get_param(mpc_params, "enable_z_tilt", "enable_z_tilt", True)
+        self.z_tilt_gain = get_param(mpc_params, "z_tilt_gain", "z_tilt_gain", 0.35)
+        self.z_tilt_max_deg = get_param(mpc_params, "z_tilt_max_deg", "z_tilt_max_deg", 20.0)
+        self.z_tilt_max_rad = np.deg2rad(self.z_tilt_max_deg)
+
         # State dimension: [p(3), q(4), v(3), w(3)]
         self.nx = 13
-        # Control dimension: 12 thrusters
-        self.nu = 12
+        # Control dimension: RW torques + thrusters
+        self.nu = self.num_rw_axes + self.num_thrusters
+
+        self.control_lower = np.concatenate(
+            [np.full(self.num_rw_axes, -1.0), np.zeros(self.num_thrusters)]
+        )
+        self.control_upper = np.concatenate(
+            [np.full(self.num_rw_axes, 1.0), np.ones(self.num_thrusters)]
+        )
+        if not self.enable_rw_yaw:
+            self.control_lower[2] = 0.0
+            self.control_upper[2] = 0.0
 
         # Performance tracking
         self.solve_times: list[float] = []
@@ -156,16 +191,12 @@ class MPCController(Controller):
 
     def _precompute_thruster_forces(self) -> None:
         """Precompute thruster forces and torques in body frame (3D)."""
-        # Forces: 12 x 3
-        # Torques: 12 x 3
-        self.body_frame_forces = np.zeros((12, 3), dtype=np.float64)
-        self.body_frame_torques = np.zeros((12, 3), dtype=np.float64)
+        # Forces: N x 3
+        # Torques: N x 3
+        self.body_frame_forces = np.zeros((self.num_thrusters, 3), dtype=np.float64)
+        self.body_frame_torques = np.zeros((self.num_thrusters, 3), dtype=np.float64)
 
-        for i in range(12):
-            thruster_id = i + 1
-            if thruster_id not in self.thruster_forces:
-                continue
-
+        for i, thruster_id in enumerate(self.thruster_ids):
             pos = np.array(self.thruster_positions[thruster_id])
             rel_pos = pos - self.com_offset
             direction = np.array(self.thruster_directions[thruster_id])
@@ -226,18 +257,25 @@ class MPCController(Controller):
         G = 0.5 * np.array([[-x, -y, -z], [w, -z, y], [z, w, -x], [-y, x, w]]) * self.dt
         A[3:7, 10:13] = G
 
-        # Control input B (13 x 12)
-        B = np.zeros((13, 12))
+        # Control input B (13 x (RW + thrusters))
+        B = np.zeros((13, self.nu))
 
-        for i in range(12):
+        # Reaction wheel torque effect (body frame)
+        for i in range(self.num_rw_axes):
+            if self.rw_torque_limits[i] == 0.0:
+                continue
+            B[10 + i, i] = self.rw_torque_limits[i] / self.moment_of_inertia * self.dt
+
+        thruster_offset = self.num_rw_axes
+        for i in range(self.num_thrusters):
             # Velocity update (World frame) -> Force rotated
             F_body = self.body_frame_forces[i]
             F_world = R @ F_body
-            B[7:10, i] = F_world / self.total_mass * self.dt
+            B[7:10, thruster_offset + i] = F_world / self.total_mass * self.dt
 
             # Angular velocity update (Body frame) -> Torque in body
             T_body = self.body_frame_torques[i]
-            B[10:13, i] = T_body / self.moment_of_inertia * self.dt
+            B[10:13, thruster_offset + i] = T_body / self.moment_of_inertia * self.dt
 
         return A, B
 
@@ -258,7 +296,12 @@ class MPCController(Controller):
             ]
         )  # 13 elements
 
-        R_diag = np.full(self.nu, self.R_thrust)
+        R_diag = np.concatenate(
+            [
+                np.full(self.num_rw_axes, self.R_rw_torque),
+                np.full(self.num_thrusters, self.R_thrust),
+            ]
+        )
 
         diags = []
         for _ in range(self.N):
@@ -275,8 +318,8 @@ class MPCController(Controller):
         # Equality Constraints A (Dynamics)
         # B mapping: A matrix data depends on B, which depends on 'q' (orientation).
         self.B_idx_map: Dict[Tuple[int, int], List[int]] = {}
-        for r in range(13):  # 13 rows for dynamics
-            for c in range(12):  # 12 cols for control
+        for r in range(self.nx):  # 13 rows for dynamics
+            for c in range(self.nu):  # control columns
                 self.B_idx_map[(r, c)] = []
 
         row_idx = 0
@@ -357,10 +400,12 @@ class MPCController(Controller):
         self.l = np.zeros(self.n_constraints)
         self.u = np.zeros(self.n_constraints)
 
-        # Control bounds [0, 1]
+        # Control bounds (RW torques + thrusters)
         ctrl_idx = self.n_constraints - self.N * self.nu
-        self.l[ctrl_idx:] = 0.0
-        self.u[ctrl_idx:] = 1.0  # Max normalized thrust
+        for k in range(self.N):
+            start = ctrl_idx + k * self.nu
+            self.l[start : start + self.nu] = self.control_lower
+            self.u[start : start + self.nu] = self.control_upper
 
         # State Bounds
         # default to inf
@@ -383,6 +428,62 @@ class MPCController(Controller):
                 indices = self.B_idx_map[(r, c)]
                 for idx in indices:
                     self.A.data[idx] = val
+
+    def _apply_z_tilt_target(self, x_current: np.ndarray, x_target: np.ndarray) -> np.ndarray:
+        """Tilt target roll/pitch to enable Z translation with planar thrusters."""
+        if not self.enable_z_tilt or x_target.shape[0] < 7:
+            return x_target
+
+        z_err = x_target[2] - x_current[2]
+        if abs(z_err) < 1e-4:
+            return x_target
+
+        q = np.array(x_target[3:7], dtype=float)
+        if np.linalg.norm(q) == 0:
+            q = np.array([1.0, 0.0, 0.0, 0.0])
+
+        roll_t, pitch_t, yaw_t = quat_wxyz_to_euler_xyz(q)
+
+        dx = x_target[0] - x_current[0]
+        dy = x_target[1] - x_current[1]
+        norm_xy = np.hypot(dx, dy)
+
+        if norm_xy < 1e-6:
+            d_xy_body = np.array([1.0, 0.0])
+        else:
+            d_xy_world = np.array([dx, dy]) / norm_xy
+            cos_yaw = np.cos(-yaw_t)
+            sin_yaw = np.sin(-yaw_t)
+            d_xy_body = np.array(
+                [
+                    cos_yaw * d_xy_world[0] - sin_yaw * d_xy_world[1],
+                    sin_yaw * d_xy_world[0] + cos_yaw * d_xy_world[1],
+                ]
+            )
+
+        tilt_mag = min(abs(z_err) * self.z_tilt_gain, self.z_tilt_max_rad)
+        if tilt_mag == 0.0:
+            return x_target
+
+        sign_z = 1.0 if z_err > 0 else -1.0
+        roll_offset = sign_z * tilt_mag * d_xy_body[1]
+        pitch_offset = -sign_z * tilt_mag * d_xy_body[0]
+
+        if roll_offset == 0.0 and pitch_offset == 0.0:
+            return x_target
+
+        new_quat = euler_xyz_to_quat_wxyz(
+            (roll_t + roll_offset, pitch_t + pitch_offset, yaw_t)
+        )
+        x_new = x_target.copy()
+        x_new[3:7] = new_quat
+        return x_new
+
+    def split_control(self, control: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Split control vector into RW torques and thruster commands."""
+        rw = control[: self.num_rw_axes]
+        thrusters = control[self.num_rw_axes : self.num_rw_axes + self.num_thrusters]
+        return rw, thrusters
 
     def get_solver_stats(self) -> Dict[str, Any]:
         """Get solver performance statistics (Controller interface)."""
@@ -417,7 +518,23 @@ class MPCController(Controller):
 
         # Prepare targets (identity mapping now)
         x_curr_mpc = x_current  # StateConverter.sim_to_mpc(x_current) is identity
-        x_targ_mpc = x_target
+        # Planar-translation mode: if tilt is disabled, do not try to chase Z.
+        # With body-frame planar thrusters, the system could create world-Z
+        # acceleration by tilting. If you want effectively planar translation,
+        # keep Z as a free/uncontrolled state and align target Z to current.
+        if not self.enable_z_tilt and len(x_target) >= 3:
+            x_target = x_target.copy()
+            x_target[2] = float(x_current[2])
+
+        x_targ_mpc = self._apply_z_tilt_target(x_current, x_target)
+
+        if x_target_trajectory is not None and self.enable_z_tilt:
+            tilted_trajectory = x_target_trajectory.copy()
+            for k in range(tilted_trajectory.shape[0]):
+                tilted_trajectory[k] = self._apply_z_tilt_target(
+                    x_current, tilted_trajectory[k]
+                )
+            x_target_trajectory = tilted_trajectory
 
         # Dynamics update if Quat changed significantly
         quat = x_current[3:7]
@@ -495,12 +612,12 @@ class MPCController(Controller):
 
         u_idx = (self.N + 1) * self.nx
         u_opt = res.x[u_idx : u_idx + self.nu]
-        u_opt = np.clip(u_opt, 0.0, 1.0)
+        u_opt = np.clip(u_opt, self.control_lower, self.control_upper)
 
         return u_opt, {"status": 1, "solve_time": solve_time}
 
     def _get_fallback_control(self, x_current: np.ndarray, x_target: np.ndarray) -> np.ndarray:
         """3D PD Controller fallback."""
-        u = np.zeros(12)
+        u = np.zeros(self.nu)
         # Placeholder: Zero thrust
         return u

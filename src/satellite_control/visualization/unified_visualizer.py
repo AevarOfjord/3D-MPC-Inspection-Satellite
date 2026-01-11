@@ -31,7 +31,6 @@ from cycler import cycler
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 # V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
 from src.satellite_control.config.mission_state import MissionState
@@ -480,10 +479,16 @@ class UnifiedVisualizationGenerator:
                     # tracking. This matches the thruster_usage.png calculation.
                     has_valve_data = "Thruster_1_Val" in self.data.columns
                     if has_valve_data:
-                        # Sum valve states for all 12 thrusters at each timestep
+                        thruster_ids = sorted(
+                            {
+                                int(col.split("_")[1])
+                                for col in self.data.columns
+                                if col.startswith("Thruster_") and col.endswith("_Val")
+                            }
+                        )
                         valve_sum_per_step = np.zeros(len(self.data))
-                        for i in range(12):
-                            col_name = f"Thruster_{i+1}_Val"
+                        for tid in thruster_ids:
+                            col_name = f"Thruster_{tid}_Val"
                             if col_name in self.data.columns:
                                 vals = self.data[col_name].values
                                 try:
@@ -683,7 +688,7 @@ class UnifiedVisualizationGenerator:
         try:
             # Handle None or empty
             if command_str is None or command_str == "":
-                return np.zeros(12)
+                return np.zeros(8)
 
             # Convert to string if not already
             command_str = str(command_str)
@@ -693,7 +698,7 @@ class UnifiedVisualizationGenerator:
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
-            return np.zeros(12)
+            return np.zeros(8)
 
     def get_active_thrusters(self, command_vector: np.ndarray) -> list:
         """Get list of active thruster IDs from command vector.
@@ -731,74 +736,99 @@ class UnifiedVisualizationGenerator:
         plt.tight_layout()
 
     def draw_satellite(
-        self, x: float, y: float, z: float, yaw: float, active_thrusters: list
+        self,
+        x: float,
+        y: float,
+        z: float,
+        roll: float,
+        pitch: float,
+        yaw: float,
+        active_thrusters: list,
     ) -> None:
         """Draw satellite at given position and orientation (3D)."""
         assert self.ax_main is not None, "ax_main must be initialized"
 
-        # Rotation matrix (2D Yaw only for now, visualized in 3D)
-        cos_yaw = np.cos(yaw)
-        sin_yaw = np.sin(yaw)
-        rotation_matrix = np.array([[cos_yaw, -sin_yaw, 0], [sin_yaw, cos_yaw, 0], [0, 0, 1]])
-
-        s = self.satellite_size / 2
-        # Define 3D cube corners relative to center
-        corners = np.array(
+        # Prepare rotation matrix (Rz * Ry * Rx)
+        cos_r = np.cos(roll)
+        sin_r = np.sin(roll)
+        cos_p = np.cos(pitch)
+        sin_p = np.sin(pitch)
+        cos_y = np.cos(yaw)
+        sin_y = np.sin(yaw)
+        rotation_matrix = np.array(
             [
-                [-s, -s, -s],
-                [s, -s, -s],
-                [s, s, -s],
-                [-s, s, -s],  # Bottom
-                [-s, -s, s],
-                [s, -s, s],
-                [s, s, s],
-                [-s, s, s],  # Top
+                [cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r],
+                [sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r],
+                [-sin_p, cos_p * sin_r, cos_p * cos_r],
             ]
         )
 
-        # Rotate and translate
-        rotated_corners = corners @ rotation_matrix.T + np.array([x, y, z])
+        radius = self.satellite_size / 2
 
-        # Define faces for Poly3DCollection
-        # Bottom, Top, Front, Back, Left, Right
-        faces = [
-            [
-                rotated_corners[0],
-                rotated_corners[1],
-                rotated_corners[2],
-                rotated_corners[3],
-            ],  # Bottom
-            [rotated_corners[4], rotated_corners[5], rotated_corners[6], rotated_corners[7]],  # Top
-            [
-                rotated_corners[0],
-                rotated_corners[1],
-                rotated_corners[5],
-                rotated_corners[4],
-            ],  # Front
-            [
-                rotated_corners[2],
-                rotated_corners[3],
-                rotated_corners[7],
-                rotated_corners[6],
-            ],  # Back
-            [
-                rotated_corners[1],
-                rotated_corners[2],
-                rotated_corners[6],
-                rotated_corners[5],
-            ],  # Right
-            [
-                rotated_corners[0],
-                rotated_corners[3],
-                rotated_corners[7],
-                rotated_corners[4],
-            ],  # Left
-        ]
+        # Check shape from config (V4.1.0)
+        shape = "sphere"
+        if self.app_config and self.app_config.physics:
+            if hasattr(self.app_config.physics, "satellite_shape"):
+                shape = self.app_config.physics.satellite_shape
 
-        # Draw Satellite Body
-        poly = Poly3DCollection(faces, alpha=0.5, edgecolor="black", linewidths=0.5)
-        poly.set_facecolor(self.satellite_color)
-        self.ax_main.add_collection3d(poly)
+        if shape == "cube":
+            # Draw Cube
+            # Create a cube of points
+            r = [-radius, radius]
+            X, Y = np.meshgrid(r, r)
+            # Define 6 faces
+            # Top/Bottom
+            faces = []
+            faces.append((X, Y, np.full_like(X, radius)))   # Top (+Z)
+            faces.append((X, Y, np.full_like(X, -radius)))  # Bottom (-Z)
+            # Left/Right
+            faces.append((X, np.full_like(X, radius), Y))   # Right (+Y)
+            faces.append((X, np.full_like(X, -radius), Y))  # Left (-Y)
+            # Front/Back
+            faces.append((np.full_like(X, radius), X, Y))   # Front (+X)
+            faces.append((np.full_like(X, -radius), X, Y))  # Back (-X)
+
+            for xx, yy, zz in faces:
+                # Rotate
+                points = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1)
+                rotated = points @ rotation_matrix.T
+                xs = rotated[:, 0].reshape(xx.shape) + x
+                ys = rotated[:, 1].reshape(yy.shape) + y
+                zs = rotated[:, 2].reshape(zz.shape) + z
+                
+                self.ax_main.plot_surface(
+                    xs, ys, zs,
+                    color=self.satellite_color,
+                    alpha=0.6,
+                    linewidth=0.5,
+                    edgecolor='k',
+                    antialiased=True,
+                    shade=True
+                )
+        else:
+            # Draw Sphere (Default)
+            u = np.linspace(0, 2 * np.pi, 24)
+            v = np.linspace(0, np.pi, 12)
+            uu, vv = np.meshgrid(u, v)
+            xs = radius * np.cos(uu) * np.sin(vv)
+            ys = radius * np.sin(uu) * np.sin(vv)
+            zs = radius * np.cos(vv)
+
+            points = np.stack([xs.ravel(), ys.ravel(), zs.ravel()], axis=1)
+            rotated = points @ rotation_matrix.T
+            xs = rotated[:, 0].reshape(xs.shape) + x
+            ys = rotated[:, 1].reshape(ys.shape) + y
+            zs = rotated[:, 2].reshape(zs.shape) + z
+
+            self.ax_main.plot_surface(
+                xs,
+                ys,
+                zs,
+                color=self.satellite_color,
+                alpha=0.5,
+                linewidth=0,
+                antialiased=True,
+            )
 
         # Draw thrusters
         for thruster_id, pos in self.thrusters.items():
@@ -835,18 +865,25 @@ class UnifiedVisualizationGenerator:
                 depthshade=True,
             )
 
-        # Draw orientation arrow (Forward X-axis)
+        # Draw orientation arrow (body X-axis)
         arrow_length = self.satellite_size * 1.5
-        arrow_end_x = x + arrow_length * cos_yaw
-        arrow_end_y = y + arrow_length * sin_yaw
-        arrow_end_z = z
+        body_x = rotation_matrix @ np.array([1.0, 0.0, 0.0])
+        arrow_end_x = x + arrow_length * body_x[0]
+        arrow_end_y = y + arrow_length * body_x[1]
+        arrow_end_z = z + arrow_length * body_x[2]
 
         self.ax_main.plot(
             [x, arrow_end_x], [y, arrow_end_y], [z, arrow_end_z], color="green", linewidth=2
         )
 
     def draw_target(
-        self, target_x: float, target_y: float, target_z: float, target_yaw: float
+        self,
+        target_x: float,
+        target_y: float,
+        target_z: float,
+        target_roll: float,
+        target_pitch: float,
+        target_yaw: float,
     ) -> None:
         """Draw target position and orientation (3D)."""
         assert self.ax_main is not None, "ax_main must be initialized"
@@ -871,11 +908,25 @@ class UnifiedVisualizationGenerator:
         cz = np.full_like(cx, target_z)
         self.ax_main.plot(cx, cy, cz, color=self.target_color, alpha=0.5, linestyle="--")
 
-        # Target orientation arrow
+        # Target orientation arrow (body X-axis)
         arrow_length = self.satellite_size * 0.6
-        arrow_end_x = target_x + arrow_length * np.cos(target_yaw)
-        arrow_end_y = target_y + arrow_length * np.sin(target_yaw)
-        arrow_end_z = target_z
+        cos_r = np.cos(target_roll)
+        sin_r = np.sin(target_roll)
+        cos_p = np.cos(target_pitch)
+        sin_p = np.sin(target_pitch)
+        cos_y = np.cos(target_yaw)
+        sin_y = np.sin(target_yaw)
+        rotation_matrix = np.array(
+            [
+                [cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r],
+                [sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r],
+                [-sin_p, cos_p * sin_r, cos_p * cos_r],
+            ]
+        )
+        body_x = rotation_matrix @ np.array([1.0, 0.0, 0.0])
+        arrow_end_x = target_x + arrow_length * body_x[0]
+        arrow_end_y = target_y + arrow_length * body_x[1]
+        arrow_end_z = target_z + arrow_length * body_x[2]
         self.ax_main.plot(
             [target_x, arrow_end_x],
             [target_y, arrow_end_y],
@@ -911,9 +962,13 @@ class UnifiedVisualizationGenerator:
             if isinstance(self.dxf_base_shape, (list, tuple)) and len(self.dxf_base_shape) >= 3:
                 bx = [p[0] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][0]]
                 by = [p[1] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][1]]
+                bz = [
+                    p[2] if len(p) > 2 else 0.0 for p in self.dxf_base_shape
+                ] + [self.dxf_base_shape[0][2] if len(self.dxf_base_shape[0]) > 2 else 0.0]
                 self.ax_main.plot(
                     bx,
                     by,
+                    bz,
                     color="#9b59b6",
                     linewidth=2.5,
                     alpha=0.7,
@@ -922,19 +977,23 @@ class UnifiedVisualizationGenerator:
             if isinstance(self.dxf_offset_path, (list, tuple)) and len(self.dxf_offset_path) >= 2:
                 px = [p[0] for p in self.dxf_offset_path]
                 py = [p[1] for p in self.dxf_offset_path]
+                pz = [p[2] if len(p) > 2 else 0.0 for p in self.dxf_offset_path]
                 self.ax_main.plot(
                     px,
                     py,
+                    pz,
                     color="#e67e22",
                     linewidth=2,
                     alpha=0.8,
                     linestyle="--",
                     label="Shape Path",
                 )
-            if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) == 2:
+            if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) >= 2:
+                cz = self.dxf_center[2] if len(self.dxf_center) > 2 else 0.0
                 self.ax_main.scatter(
                     self.dxf_center[0],
                     self.dxf_center[1],
+                    cz,
                     c="#2ecc71",
                     s=60,
                     marker="+",
@@ -963,25 +1022,27 @@ class UnifiedVisualizationGenerator:
         # V4.0.0: No fallback - if no mission_state, obstacles are empty
         
         if obstacles_enabled and obstacles:
-            for i, (obs_x, obs_y, obs_radius) in enumerate(obstacles, 1):
-                # Draw obstacle as red filled circle
-                obstacle_circle = Circle(
-                    (obs_x, obs_y),
-                    obs_radius,
-                    fill=True,
+            for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
+                # Draw obstacle as a wireframe sphere
+                u = np.linspace(0, 2 * np.pi, 18)
+                v = np.linspace(0, np.pi, 10)
+                xs = obs_x + obs_radius * np.outer(np.cos(u), np.sin(v))
+                ys = obs_y + obs_radius * np.outer(np.sin(u), np.sin(v))
+                zs = obs_z + obs_radius * np.outer(np.ones_like(u), np.cos(v))
+                self.ax_main.plot_wireframe(
+                    xs,
+                    ys,
+                    zs,
                     color="red",
-                    alpha=0.6,
-                    edgecolor="darkred",
-                    linewidth=2,
-                    zorder=15,
-                    label="Obstacle" if i == 1 else "",
+                    alpha=0.35,
+                    linewidth=0.6,
                 )
-                self.ax_main.add_patch(obstacle_circle)
 
                 # Add obstacle label
                 self.ax_main.text(
                     obs_x,
                     obs_y,
+                    obs_z,
                     f"O{i}",
                     fontsize=8,
                     color="white",
@@ -1063,7 +1124,10 @@ class UnifiedVisualizationGenerator:
             "STATE",
             f"  X:   {current_data['Current_X']:>7.3f} m",
             f"  Y:   {current_data['Current_Y']:>7.3f} m",
-            f"  Yaw: {np.degrees(current_data['Current_Yaw']):>6.1f}°",
+            f"  Z:   {current_data.get('Current_Z', 0.0):>7.3f} m",
+            f"  Roll:  {np.degrees(current_data.get('Current_Roll', 0.0)):>6.1f}°",
+            f"  Pitch: {np.degrees(current_data.get('Current_Pitch', 0.0)):>6.1f}°",
+            f"  Yaw:   {np.degrees(current_data.get('Current_Yaw', 0.0)):>6.1f}°",
         ]
 
         # Group 3: DYNAMICS (Blue/Black) - Speed info
@@ -1078,13 +1142,19 @@ class UnifiedVisualizationGenerator:
         # Group 4: ERRORS (Red)
         err_x = abs(current_data["Error_X"])
         err_y = abs(current_data["Error_Y"])
-        err_yaw = abs(np.degrees(current_data["Error_Yaw"]))
+        err_z = abs(current_data.get("Error_Z", 0.0))
+        err_roll = abs(np.degrees(current_data.get("Error_Roll", 0.0)))
+        err_pitch = abs(np.degrees(current_data.get("Error_Pitch", 0.0)))
+        err_yaw = abs(np.degrees(current_data.get("Error_Yaw", 0.0)))
 
         error_lines = [
             "ERRORS",
             f"  Err X:   {err_x:.3f} m",
             f"  Err Y:   {err_y:.3f} m",
-            f"  Err Yaw: {err_yaw:.1f}°",
+            f"  Err Z:   {err_z:.3f} m",
+            f"  Err Roll:  {err_roll:.1f}°",
+            f"  Err Pitch: {err_pitch:.1f}°",
+            f"  Err Yaw:   {err_yaw:.1f}°",
         ]
 
         # Group 5: SYSTEM (Black) - Usage & Perf
@@ -1172,9 +1242,11 @@ class UnifiedVisualizationGenerator:
         target_z = float(
             current_data.get("Target_Z", 0.0) or 0.0
         )  # Assume Target_Z exists or default 0
+        target_roll = float(current_data.get("Target_Roll", 0.0) or 0.0)
+        target_pitch = float(current_data.get("Target_Pitch", 0.0) or 0.0)
         target_yaw = float(current_data.get("Target_Yaw", 0.0) or 0.0)
 
-        self.draw_target(target_x, target_y, target_z, target_yaw)
+        self.draw_target(target_x, target_y, target_z, target_roll, target_pitch, target_yaw)
 
         # Draw DXF if needed (ignored for now in 3D to keep simple, or project to Z=0)
         # V4.0.0: Use self.overlay_dxf or self.mission_state.dxf_shape_mode_active
@@ -1195,12 +1267,16 @@ class UnifiedVisualizationGenerator:
         curr_x = float(current_data.get("Current_X", 0.0) or 0.0)
         curr_y = float(current_data.get("Current_Y", 0.0) or 0.0)
         curr_z = float(current_data.get("Current_Z", 0.0) or 0.0)
+        curr_roll = float(current_data.get("Current_Roll", 0.0) or 0.0)
+        curr_pitch = float(current_data.get("Current_Pitch", 0.0) or 0.0)
         curr_yaw = float(current_data.get("Current_Yaw", 0.0) or 0.0)
 
         self.draw_satellite(
             curr_x,
             curr_y,
             curr_z,
+            curr_roll,
+            curr_pitch,
             curr_yaw,
             active_thrusters,
         )
@@ -1260,6 +1336,7 @@ class UnifiedVisualizationGenerator:
                 data_accessor=self,
                 dt=self.dt,
                 system_title=self.system_title,
+                app_config=self.app_config,
             )
         return self._plot_generator
 
@@ -1636,7 +1713,7 @@ class UnifiedVisualizationGenerator:
                     linestyle="--",
                     label="Shape Path",
                 )
-            if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) == 2:
+            if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) >= 2:
                 ax_xy.scatter(
                     self.dxf_center[0],
                     self.dxf_center[1],
@@ -1856,7 +1933,7 @@ class UnifiedVisualizationGenerator:
                 default_config = SimulationConfig.create_default()
                 return len(default_config.app_config.physics.thruster_positions)
         except Exception:
-            return 12
+            return 8
 
     def _generate_thruster_usage_plot(self, plot_dir: Path) -> None:
         """Generate thruster usage plot using actual valve states.
@@ -2566,11 +2643,14 @@ class UnifiedVisualizationGenerator:
     def _col(self, name: str) -> np.ndarray:
         """Get column data."""
         if self._data_backend == "pandas" and self.data is not None:
-            return (
-                self.data[name].values
-                if hasattr(self.data[name], "values")
-                else np.array(self.data[name])
-            )
+            try:
+                return (
+                    self.data[name].values
+                    if hasattr(self.data[name], "values")
+                    else np.array(self.data[name])
+                )
+            except KeyError:
+                return np.array([])
         return (
             self._col_data.get(name, np.array([])) if self._col_data is not None else np.array([])
         )
@@ -2757,10 +2837,12 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
     try:
         center_x = float(input("Shape center X position (meters): "))
         center_y = float(input("Shape center Y position (meters): "))
-        shape_center = (center_x, center_y)
+        center_z_input = input("Shape center Z position (meters, default 0): ").strip()
+        center_z = float(center_z_input) if center_z_input else 0.0
+        shape_center = (center_x, center_y, center_z)
     except ValueError:
         print("Invalid input. Using default center (0.0, 0.0).")
-        shape_center = (0.0, 0.0)
+        shape_center = (0.0, 0.0, 0.0)
 
     # Get shape rotation
     try:
@@ -2772,7 +2854,10 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
         shape_rotation_deg = 0.0
         shape_rotation_rad = 0.0
 
-    print(f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}) m")
+    print(
+        f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}, "
+        f"{shape_center[2]:.2f}) m"
+    )
     print(f"Shape rotation: {shape_rotation_deg:.1f}°")
 
     # Get offset distance

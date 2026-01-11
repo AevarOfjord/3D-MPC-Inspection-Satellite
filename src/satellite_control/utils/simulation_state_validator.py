@@ -412,29 +412,34 @@ class SimulationStateValidator:
         noisy_state[8] += np.random.normal(0, velocity_noise_std)
         noisy_state[9] += np.random.normal(0, velocity_noise_std)
 
-        # Angle noise (Rotation about Z for now to match noise config)
-        # Apply small rotation perturbation
-        angle_noise = np.random.normal(0, angle_noise_std)
-        half = angle_noise / 2.0
-        dq = np.array([np.cos(half), 0, 0, np.sin(half)])  # Z-rotation noise
-        # q_new = q_old * dq (approx) or dq * q_old
-        # Simplified: Just perturbs Z-component of orientation if predominantly planar?
-        # Better: full quaternion multiplication.
-        # But to be safe and simple, let's just add noise to Euler Z (Yaw) logic if we can.
-        # Since we don't have quat logic here easily, assume simple scalar update isn't enough.
-        # Skip complex noise or implement simple quat mult to avoid imports.
-        # Implementation of simple q_mult(dq, q):
-        # q = [w, x, y, z]
-        qw, qx, qy, qz = noisy_state[3], noisy_state[4], noisy_state[5], noisy_state[6]
-        dw, dx, dy, dz = dq[0], dq[1], dq[2], dq[3]
-        # Hamilton product
-        nw = dw * qw - dx * qx - dy * qy - dz * qz
-        nx = dw * qx + dx * qw + dy * qz - dz * qy
-        ny = dw * qy - dx * qz + dy * qw + dz * qx
-        nz = dw * qz + dx * qy - dy * qx + dz * qw
-        # Normalize
-        norm = np.sqrt(nw * nw + nx * nx + ny * ny + nz * nz)
-        noisy_state[3:7] = np.array([nw, nx, ny, nz]) / norm
+        # Orientation noise (small random 3D rotation)
+        if angle_noise_std > 0.0:
+            angle_noise = np.random.normal(0, angle_noise_std)
+            if abs(angle_noise) > 0.0:
+                axis = np.random.normal(0.0, 1.0, 3)
+                axis_norm = np.linalg.norm(axis)
+                if axis_norm > 1e-12:
+                    axis /= axis_norm
+                    half = angle_noise / 2.0
+                    sin_half = np.sin(half)
+                    dq = np.array(
+                        [np.cos(half), axis[0] * sin_half, axis[1] * sin_half, axis[2] * sin_half]
+                    )
+                    # q_new = dq ⊗ q (Hamilton product), q = [w, x, y, z]
+                    qw, qx, qy, qz = (
+                        noisy_state[3],
+                        noisy_state[4],
+                        noisy_state[5],
+                        noisy_state[6],
+                    )
+                    dw, dx, dy, dz = dq[0], dq[1], dq[2], dq[3]
+                    nw = dw * qw - dx * qx - dy * qy - dz * qz
+                    nx = dw * qx + dx * qw + dy * qz - dz * qy
+                    ny = dw * qy - dx * qz + dy * qw + dz * qx
+                    nz = dw * qz + dx * qy - dy * qx + dz * qw
+                    norm = np.sqrt(nw * nw + nx * nx + ny * ny + nz * nz)
+                    if norm > 0.0:
+                        noisy_state[3:7] = np.array([nw, nx, ny, nz]) / norm
 
         # Angular velocity noise (10,11,12)
         noisy_state[10] += np.random.normal(0, angular_velocity_noise_std)

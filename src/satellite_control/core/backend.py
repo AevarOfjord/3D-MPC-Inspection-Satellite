@@ -167,7 +167,7 @@ class SimulationBackend(ABC):
         Set thrust level for a specific thruster.
         
         Args:
-            thruster_id: Thruster index (1-12)
+            thruster_id: Thruster index (1-8)
             level: Thrust level (0.0 to 1.0)
         """
         pass

@@ -52,22 +52,24 @@ Data/
 
 **Contains:** Complete state history of the satellite
 
-**Columns:**
+**Columns (subset):**
 
-- `time` - Simulation time (seconds)
-- `x`, `y` - Position in world frame (meters)
-- `vx`, `vy` - Velocity in world frame (m/s)
-- `theta` - Orientation angle (radians)
-- `omega` - Angular velocity (rad/s)
-- `target_x`, `target_y` - Current target position
-- `target_theta` - Target orientation
-- `mission_phase` - Current mission state (APPROACHING, STABILIZING, etc.)
+- `Time` - Simulation time (seconds)
+- `Current_X`, `Current_Y`, `Current_Z` - Position in world frame (meters)
+- `Current_Roll`, `Current_Pitch`, `Current_Yaw` - Orientation (radians)
+- `Current_VX`, `Current_VY`, `Current_VZ` - Linear velocity (m/s)
+- `Target_X`, `Target_Y`, `Target_Z` - Target position
+- `Target_Roll`, `Target_Pitch`, `Target_Yaw` - Target orientation
+- `Error_*` - Position/orientation tracking errors
+- `Command_Vector`, `Thruster_*_Cmd`, `Thruster_*_Val` - Thruster command/actual levels
 
-**Example Row:**
+See the CSV header for the full column list.
+
+**Example Row (truncated):**
 
 ```csv
-time,x,y,vx,vy,theta,omega,target_x,target_y,target_theta,mission_phase
-12.34,0.452,-0.231,0.082,-0.034,0.125,-0.012,1.0,0.0,0.0,APPROACHING
+Time,Current_X,Current_Y,Current_Z,Current_Roll,Current_Pitch,Current_Yaw,...,Thruster_1_Cmd,Thruster_1_Val
+12.3400,0.45200,-0.23100,0.00000,0.00010,-0.00020,0.12500,...,0.000,0.000
 ```
 
 **Use Case:** Import into your own analysis tools, MATLAB, Python pandas, etc.
@@ -84,20 +86,20 @@ print(df.describe())
 
 **Contains:** Control inputs and MPC solver performance
 
-**Columns:**
+**Columns (subset):**
 
-- `time` - Simulation time (seconds)
-- `thruster_1` through `thruster_8` - Duty cycle [0-1] for each thruster
-- `mpc_solve_time` - Optimization solver time (seconds)
-- `mpc_cost` - Objective function value
-- `mpc_status` - Solver status (OPTIMAL, SUBOPTIMAL, FAILED)
-- `num_active_thrusters` - Count of thrusters currently firing
+- `Control_Time` - Control tick time (seconds)
+- `Current_*`, `Target_*`, `Error_*` - Full 3D state and tracking errors
+- `Command_Vector`, `Command_Hex`, `Total_Active_Thrusters`, `Thruster_Switches`
+- `MPC_Solve_Time`, `MPC_Status`, `MPC_Objective`, `MPC_Iterations`
 
-**Example Row:**
+See the CSV header for the full column list.
+
+**Example Row (truncated):**
 
 ```csv
-time,thruster_1,thruster_2,...,thruster_8,mpc_solve_time,mpc_cost,mpc_status,num_active_thrusters
-12.34,0.0,0.0,0.0,0.0,0.641,0.0,0.823,0.0,0.00142,245.3,OPTIMAL,2
+Control_Time,Current_X,Current_Y,Current_Z,...,Command_Vector,Total_Active_Thrusters,MPC_Solve_Time,MPC_Status
+12.3400,0.45200,-0.23100,0.00000,...,"[0.000, 0.000, ...]",2,0.00142,solved
 ```
 
 **Use Case:** Analyze control effort, MPC performance, thruster usage patterns
