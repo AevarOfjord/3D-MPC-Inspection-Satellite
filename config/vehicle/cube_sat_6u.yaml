@@ -1,0 +1,97 @@
+# 6U CubeSat Configuration
+mass: 12.0
+inertia: [0.08, 0.08, 0.08] # Diagonal approximations
+center_of_mass: [0.0, 0.0, 0.0]
+
+geometry_file: "models/meshes/CubeSat_6U.obj"
+mesh_scale: [1.0, 1.0, 1.0]
+
+thrusters:
+  # +X Face (Right)
+  - position: [0.15, 0.05, 0.1]
+    direction: [-1.0, 0.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [0.15, -0.05, -0.1]
+    direction: [-1.0, 0.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+  # -X Face (Left)
+  - position: [-0.15, 0.05, 0.1]
+    direction: [1.0, 0.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [-0.15, -0.05, -0.1]
+    direction: [1.0, 0.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+  # +Y Face (Front)
+  - position: [0.1, 0.1, 0.05]
+    direction: [0.0, -1.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [-0.1, 0.1, -0.05]
+    direction: [0.0, -1.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+  # -Y Face (Back)
+  - position: [0.1, -0.1, 0.05]
+    direction: [0.0, 1.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [-0.1, -0.1, -0.05]
+    direction: [0.0, 1.0, 0.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+  # +Z Face (Top)
+  - position: [0.05, 0.1, 0.15]
+    direction: [0.0, 0.0, -1.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [-0.05, -0.1, 0.15]
+    direction: [0.0, 0.0, -1.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+  # -Z Face (Bottom)
+  - position: [0.05, 0.1, -0.15]
+    direction: [0.0, 0.0, 1.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+  - position: [-0.05, -0.1, -0.15]
+    direction: [0.0, 0.0, 1.0]
+    max_thrust: 1.5
+    min_impulse_bit: 0.001
+    group: "main"
+
+reaction_wheels:
+  - axis: [1.0, 0.0, 0.0]
+    max_torque: 0.1
+    max_momentum: 1.0
+    max_speed_rad_s: 600.0
+    inertia: 0.0001
+  - axis: [0.0, 1.0, 0.0]
+    max_torque: 0.1
+    max_momentum: 1.0
+    max_speed_rad_s: 600.0
+    inertia: 0.0001
+  - axis: [0.0, 0.0, 1.0]
+    max_torque: 0.1
+    max_momentum: 1.0
+    max_speed_rad_s: 600.0
+    inertia: 0.0001

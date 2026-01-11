@@ -32,7 +32,7 @@ from src.satellite_control.mission.mission_logic import MissionLogic
 
 # Add path for optional DXF_Viewer module (3 levels up from
 # src/satellite_control/mission)
-sys.path.insert(0, str(Path(__file__).parents[3] / "DXF"))
+sys.path.insert(0, str(Path(__file__).parents[3] / "models" / "meshes"))
 
 
 class MissionManager:
@@ -54,28 +54,28 @@ class MissionManager:
 
     def run_selected_mission(self, mode_choice: str) -> Optional[Dict[str, Any]]:
         """Run the selected mission type.
-        
+
         V4.0.0: Phase 2 - Now uses plugin system to run missions.
         Falls back to legacy hardcoded missions for backward compatibility.
         """
         from src.satellite_control.mission.plugin import get_registry
         from src.satellite_control.config.simulation_config import SimulationConfig
-        
+
         registry = get_registry()
         plugin = registry.get_plugin(mode_choice)
-        
+
         if plugin:
             # Use plugin system
             config = SimulationConfig.create_default()
             mission_state = plugin.configure(config)
             config.mission_state = mission_state
-            
+
             return {
                 "simulation_config": config,
                 "mission_type": mode_choice,
                 "plugin_name": plugin.get_display_name(),
             }
-        
+
         # Fallback to legacy hardcoded missions for backward compatibility
         if mode_choice == "waypoint":
             # Delegate entirely to CLI which has full implementation
@@ -87,24 +87,28 @@ class MissionManager:
                 return self.run_dxf_shape_mode(return_simulation_config=True)
         return None
 
-    def run_dxf_shape_mode(self, return_simulation_config: bool = False) -> Dict[str, Any]:
+    def run_dxf_shape_mode(
+        self, return_simulation_config: bool = False
+    ) -> Dict[str, Any]:
         """Mode 2: Shape Following (Refactored).
-        
+
         Args:
             return_simulation_config: If True, includes SimulationConfig in returned dict.
-            
+
         Returns:
             Dictionary with mission configuration. If return_simulation_config=True, includes 'simulation_config' key.
         """
         # Create SimulationConfig for v2.0.0 pattern
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
-        
+
         print("\n SHAPE FOLLOWING MISSION")
         print("Satellite will follow a moving target along a shape path.")
         print("  Phase 2: Track moving target along the shape path")
         # V3.0.0: Use app_config instead of SatelliteConfig
-        stab_time = simulation_config.app_config.simulation.shape_final_stabilization_time
+        stab_time = (
+            simulation_config.app_config.simulation.shape_final_stabilization_time
+        )
         print(f"  Phase 3: Stabilize at completion point ({stab_time:.1f}s)")
 
         print("\nSimulation starting configuration:")
@@ -193,8 +197,12 @@ class MissionManager:
 
         try:
             shape_center = self.cli.get_user_position("shape center", (0.0, 0.0, 0.0))
-            shape_rotation_input = input("Shape rotation angle (degrees, default 0): ").strip()
-            shape_rotation_deg = float(shape_rotation_input) if shape_rotation_input else 0.0
+            shape_rotation_input = input(
+                "Shape rotation angle (degrees, default 0): "
+            ).strip()
+            shape_rotation_deg = (
+                float(shape_rotation_input) if shape_rotation_input else 0.0
+            )
             shape_rotation_rad = np.radians(shape_rotation_deg)
         except ValueError:
             print("Invalid input. Using default shape parameters.")
@@ -209,7 +217,9 @@ class MissionManager:
         print(f"Shape rotation: {shape_rotation_deg:.1f}°")
 
         try:
-            offset_input = input("Offset distance from shape (meters, default 0.5): ").strip()
+            offset_input = input(
+                "Offset distance from shape (meters, default 0.5): "
+            ).strip()
             offset_distance = float(offset_input) if offset_input else 0.5
             if offset_distance < 0.1:
                 print("Minimum offset 0.1m. Using 0.1m.")
@@ -251,14 +261,18 @@ class MissionManager:
                 target_speed_mps = 0.5
         except ValueError:
             print("Invalid input. Using default speed.")
-            target_speed_mps = simulation_config.app_config.simulation.default_target_speed
+            target_speed_mps = (
+                simulation_config.app_config.simulation.default_target_speed
+            )
 
         print(f"Target speed: {target_speed_mps:.2f} m/s")
 
         # Get return position and orientation
         print("\nReturn position configuration:")
         use_return = (
-            input("Return to specific position after profile? (y/n, default n): ").strip().lower()
+            input("Return to specific position after profile? (y/n, default n): ")
+            .strip()
+            .lower()
         )
         if use_return == "y" or use_return == "yes":
             return_pos = self.cli.get_user_position("return", start_pos)
@@ -366,7 +380,7 @@ class MissionManager:
                 "start_omega": start_omega,
             }
         )
-        
+
         # V3.0.0: All state is managed via MissionState, no SatelliteConfig mutations
         if return_simulation_config:
             config["simulation_config"] = simulation_config
@@ -413,7 +427,9 @@ class MissionManager:
             raise ValueError("No usable DXF boundary could be constructed.")
 
         print(f" DXF Loaded (viewer parity): {len(boundary_m)} points")
-        print(f"   Units: {units_name} (INSUNITS={insunits}), " f"scaled → meters (x{to_m})")
+        print(
+            f"   Units: {units_name} (INSUNITS={insunits}), scaled → meters (x{to_m})"
+        )
         return boundary_m
 
 
@@ -447,7 +463,11 @@ def get_path_tangent_orientation(
             direction = p2 - p1
             yaw = float(np.arctan2(direction[1], direction[0]))
             horiz = np.linalg.norm(direction[:2])
-            pitch = float(np.arctan2(-direction[2], horiz)) if direction.shape[0] > 2 else 0.0
+            pitch = (
+                float(np.arctan2(-direction[2], horiz))
+                if direction.shape[0] > 2
+                else 0.0
+            )
             return (0.0, pitch, yaw)
 
         current_dist += float(segment_len)

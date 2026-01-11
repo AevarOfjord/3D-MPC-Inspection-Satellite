@@ -1,0 +1,13 @@
+# Default MPC weights matching mpc_params.py
+
+prediction_horizon: 50
+control_horizon: 50
+solver_time_limit: 0.05
+
+weights:
+  position: 1000.0
+  velocity: 1000.0
+  angle: 1000.0
+  angular_velocity: 1000.0
+  thrust: 0.1
+  rw_torque: 0.1
