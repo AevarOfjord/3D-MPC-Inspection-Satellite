@@ -1,5 +1,0 @@
-[console_scripts]
-satellite-control = src.satellite_control.cli:app
-satellite-sim = simulation:main
-satellite-test = testing_environment:main
-satellite-visualize = visualization_manager:main
