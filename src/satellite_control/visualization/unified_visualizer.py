@@ -36,7 +36,9 @@ from matplotlib.patches import Circle
 from src.satellite_control.config.mission_state import MissionState
 from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config import mpc_params
+
+# V4.0.0: mpc_params removed - use SatelliteConfig if needed
+from src.satellite_control.config.satellite_config import SatelliteConfig
 from src.satellite_control.visualization.shape_utils import (
     get_demo_shape,
     load_dxf_shape,
@@ -51,6 +53,7 @@ matplotlib.use("Agg")  # Use non-interactive backend
 try:
     # Try to get from constants first
     from src.satellite_control.config.constants import Constants
+
     ffmpeg_path = Constants.FFMPEG_PATH
     if ffmpeg_path and os.path.exists(ffmpeg_path):
         plt.rcParams["animation.ffmpeg_path"] = ffmpeg_path
@@ -218,7 +221,9 @@ class UnifiedVisualizationGenerator:
         self.ax_info: Optional[Axes] = None
         # Data backend management
         self._data_backend: Optional[str] = None  # 'pandas' or 'csv'
-        self._rows: Optional[List[Dict[str, Any]]] = None  # list of dicts when csv backend
+        self._rows: Optional[List[Dict[str, Any]]] = (
+            None  # list of dicts when csv backend
+        )
         self._col_data: Optional[Dict[str, np.ndarray]] = (
             None  # dict of column -> array when csv backend
         )
@@ -244,16 +249,28 @@ class UnifiedVisualizationGenerator:
             # V4.0.0: Create default config if not provided
             default_config = SimulationConfig.create_default()
             self.satellite_size = default_config.app_config.physics.satellite_size
-        
+
         self.satellite_color = "blue"
         self.target_color = "red"
         self.trajectory_color = "cyan"
 
         # Get DXF shape data from mission_state if available, otherwise fallback
         if mission_state:
-            self.dxf_base_shape = list(mission_state.dxf_base_shape) if mission_state.dxf_base_shape else []
-            self.dxf_offset_path = list(mission_state.dxf_shape_path) if mission_state.dxf_shape_path else []
-            self.dxf_center = mission_state.dxf_shape_center if mission_state.dxf_shape_center else None
+            self.dxf_base_shape = (
+                list(mission_state.dxf_base_shape)
+                if mission_state.dxf_base_shape
+                else []
+            )
+            self.dxf_offset_path = (
+                list(mission_state.dxf_shape_path)
+                if mission_state.dxf_shape_path
+                else []
+            )
+            self.dxf_center = (
+                mission_state.dxf_shape_center
+                if mission_state.dxf_shape_center
+                else None
+            )
         else:
             # V4.0.0: Use empty defaults if mission_state not provided
             self.dxf_base_shape = []
@@ -269,9 +286,14 @@ class UnifiedVisualizationGenerator:
         else:
             # V4.0.0: Use default config if app_config not provided
             default_config = SimulationConfig.create_default()
-            for thruster_id, pos in default_config.app_config.physics.thruster_positions.items():
+            for (
+                thruster_id,
+                pos,
+            ) in default_config.app_config.physics.thruster_positions.items():
                 self.thrusters[thruster_id] = pos
-            self.thruster_forces = default_config.app_config.physics.thruster_forces.copy()
+            self.thruster_forces = (
+                default_config.app_config.physics.thruster_forces.copy()
+            )
 
         # Initialize component generators (lazy initialization)
         self._plot_generator: Optional[Any] = None
@@ -378,7 +400,9 @@ class UnifiedVisualizationGenerator:
                     data_folders.append((folder, csv_files))
 
         if not data_folders:
-            raise FileNotFoundError(f"No folders with CSV data found in: {self.data_directory}")
+            raise FileNotFoundError(
+                f"No folders with CSV data found in: {self.data_directory}"
+            )
 
         data_folders.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
 
@@ -396,7 +420,9 @@ class UnifiedVisualizationGenerator:
         # Get user selection
         while True:
             try:
-                choice = input(f"Select folder (1-{len(data_folders)}) or 'q' to quit: ").strip()
+                choice = input(
+                    f"Select folder (1-{len(data_folders)}) or 'q' to quit: "
+                ).strip()
                 if choice.lower() == "q":
                     print("Visualization cancelled.")
                     sys.exit(0)
@@ -416,7 +442,9 @@ class UnifiedVisualizationGenerator:
 
             while True:
                 try:
-                    csv_choice = input(f"Select CSV file (1-{len(csv_files)}): ").strip()
+                    csv_choice = input(
+                        f"Select CSV file (1-{len(csv_files)}): "
+                    ).strip()
                     csv_idx = int(csv_choice) - 1
                     if 0 <= csv_idx < len(csv_files):
                         selected_csv = csv_files[csv_idx]
@@ -456,7 +484,9 @@ class UnifiedVisualizationGenerator:
                     if control_path.exists():
                         try:
                             self.control_data = pd.read_csv(control_path)
-                            print(f"Loaded sibling control data: {len(self.control_data)} points")
+                            print(
+                                f"Loaded sibling control data: {len(self.control_data)} points"
+                            )
                         except Exception as e:
                             print(f"Failed to load sibling control data: {e}")
                             self.control_data = None
@@ -467,7 +497,10 @@ class UnifiedVisualizationGenerator:
                 self._detect_timestep()  # Ensure dt is set
                 if self.dt is not None:
                     # Linear Speed
-                    if "Current_VX" in self.data.columns and "Current_VY" in self.data.columns:
+                    if (
+                        "Current_VX" in self.data.columns
+                        and "Current_VY" in self.data.columns
+                    ):
                         self.data["Linear_Speed"] = np.sqrt(
                             self.data["Current_VX"] ** 2 + self.data["Current_VY"] ** 2
                         )
@@ -522,7 +555,9 @@ class UnifiedVisualizationGenerator:
                             f"{cumulative_usage[-1]:.2f} s"
                         )
                     else:
-                        print("Could not calculate usage: " "Thruster_X_Val columns missing")
+                        print(
+                            "Could not calculate usage: Thruster_X_Val columns missing"
+                        )
 
             else:
                 print(f"Loading CSV data (csv backend) from: {self.csv_path}")
@@ -614,7 +649,9 @@ class UnifiedVisualizationGenerator:
         elif "Step" in cols and self._get_len() > 1:
             if "Control_Time" in cols:
                 control_time_col = self._col("Control_Time")
-                total_time = float(control_time_col[-1]) if len(control_time_col) > 0 else 0.0
+                total_time = (
+                    float(control_time_col[-1]) if len(control_time_col) > 0 else 0.0
+                )
                 total_steps = self._get_len() - 1
                 if total_steps > 0:
                     self.dt = total_time / total_steps
@@ -757,8 +794,16 @@ class UnifiedVisualizationGenerator:
         sin_y = np.sin(yaw)
         rotation_matrix = np.array(
             [
-                [cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r],
-                [sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r],
+                [
+                    cos_y * cos_p,
+                    cos_y * sin_p * sin_r - sin_y * cos_r,
+                    cos_y * sin_p * cos_r + sin_y * sin_r,
+                ],
+                [
+                    sin_y * cos_p,
+                    sin_y * sin_p * sin_r + cos_y * cos_r,
+                    sin_y * sin_p * cos_r - cos_y * sin_r,
+                ],
                 [-sin_p, cos_p * sin_r, cos_p * cos_r],
             ]
         )
@@ -779,13 +824,13 @@ class UnifiedVisualizationGenerator:
             # Define 6 faces
             # Top/Bottom
             faces = []
-            faces.append((X, Y, np.full_like(X, radius)))   # Top (+Z)
+            faces.append((X, Y, np.full_like(X, radius)))  # Top (+Z)
             faces.append((X, Y, np.full_like(X, -radius)))  # Bottom (-Z)
             # Left/Right
-            faces.append((X, np.full_like(X, radius), Y))   # Right (+Y)
+            faces.append((X, np.full_like(X, radius), Y))  # Right (+Y)
             faces.append((X, np.full_like(X, -radius), Y))  # Left (-Y)
             # Front/Back
-            faces.append((np.full_like(X, radius), X, Y))   # Front (+X)
+            faces.append((np.full_like(X, radius), X, Y))  # Front (+X)
             faces.append((np.full_like(X, -radius), X, Y))  # Back (-X)
 
             for xx, yy, zz in faces:
@@ -795,15 +840,17 @@ class UnifiedVisualizationGenerator:
                 xs = rotated[:, 0].reshape(xx.shape) + x
                 ys = rotated[:, 1].reshape(yy.shape) + y
                 zs = rotated[:, 2].reshape(zz.shape) + z
-                
+
                 self.ax_main.plot_surface(
-                    xs, ys, zs,
+                    xs,
+                    ys,
+                    zs,
                     color=self.satellite_color,
                     alpha=0.6,
                     linewidth=0.5,
-                    edgecolor='k',
+                    edgecolor="k",
                     antialiased=True,
-                    shade=True
+                    shade=True,
                 )
         else:
             # Draw Sphere (Default)
@@ -873,7 +920,11 @@ class UnifiedVisualizationGenerator:
         arrow_end_z = z + arrow_length * body_x[2]
 
         self.ax_main.plot(
-            [x, arrow_end_x], [y, arrow_end_y], [z, arrow_end_z], color="green", linewidth=2
+            [x, arrow_end_x],
+            [y, arrow_end_y],
+            [z, arrow_end_z],
+            color="green",
+            linewidth=2,
         )
 
     def draw_target(
@@ -906,7 +957,9 @@ class UnifiedVisualizationGenerator:
         cx = target_x + 0.1 * np.cos(theta)
         cy = target_y + 0.1 * np.sin(theta)
         cz = np.full_like(cx, target_z)
-        self.ax_main.plot(cx, cy, cz, color=self.target_color, alpha=0.5, linestyle="--")
+        self.ax_main.plot(
+            cx, cy, cz, color=self.target_color, alpha=0.5, linestyle="--"
+        )
 
         # Target orientation arrow (body X-axis)
         arrow_length = self.satellite_size * 0.6
@@ -918,8 +971,16 @@ class UnifiedVisualizationGenerator:
         sin_y = np.sin(target_yaw)
         rotation_matrix = np.array(
             [
-                [cos_y * cos_p, cos_y * sin_p * sin_r - sin_y * cos_r, cos_y * sin_p * cos_r + sin_y * sin_r],
-                [sin_y * cos_p, sin_y * sin_p * sin_r + cos_y * cos_r, sin_y * sin_p * cos_r - cos_y * sin_r],
+                [
+                    cos_y * cos_p,
+                    cos_y * sin_p * sin_r - sin_y * cos_r,
+                    cos_y * sin_p * cos_r + sin_y * sin_r,
+                ],
+                [
+                    sin_y * cos_p,
+                    sin_y * sin_p * sin_r + cos_y * cos_r,
+                    sin_y * sin_p * cos_r - cos_y * sin_r,
+                ],
                 [-sin_p, cos_p * sin_r, cos_p * cos_r],
             ]
         )
@@ -936,7 +997,9 @@ class UnifiedVisualizationGenerator:
             linewidth=2,
         )
 
-    def draw_trajectory(self, trajectory_x: list, trajectory_y: list, trajectory_z: list) -> None:
+    def draw_trajectory(
+        self, trajectory_x: list, trajectory_y: list, trajectory_z: list
+    ) -> None:
         """Draw satellite trajectory (3D)."""
         assert self.ax_main is not None, "ax_main must be initialized"
 
@@ -959,12 +1022,17 @@ class UnifiedVisualizationGenerator:
         assert self.ax_main is not None, "ax_main must be initialized"
 
         try:
-            if isinstance(self.dxf_base_shape, (list, tuple)) and len(self.dxf_base_shape) >= 3:
+            if (
+                isinstance(self.dxf_base_shape, (list, tuple))
+                and len(self.dxf_base_shape) >= 3
+            ):
                 bx = [p[0] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][0]]
                 by = [p[1] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][1]]
-                bz = [
-                    p[2] if len(p) > 2 else 0.0 for p in self.dxf_base_shape
-                ] + [self.dxf_base_shape[0][2] if len(self.dxf_base_shape[0]) > 2 else 0.0]
+                bz = [p[2] if len(p) > 2 else 0.0 for p in self.dxf_base_shape] + [
+                    self.dxf_base_shape[0][2]
+                    if len(self.dxf_base_shape[0]) > 2
+                    else 0.0
+                ]
                 self.ax_main.plot(
                     bx,
                     by,
@@ -974,7 +1042,10 @@ class UnifiedVisualizationGenerator:
                     alpha=0.7,
                     label="Object Shape",
                 )
-            if isinstance(self.dxf_offset_path, (list, tuple)) and len(self.dxf_offset_path) >= 2:
+            if (
+                isinstance(self.dxf_offset_path, (list, tuple))
+                and len(self.dxf_offset_path) >= 2
+            ):
                 px = [p[0] for p in self.dxf_offset_path]
                 py = [p[1] for p in self.dxf_offset_path]
                 pz = [p[2] if len(p) > 2 else 0.0 for p in self.dxf_offset_path]
@@ -1005,7 +1076,7 @@ class UnifiedVisualizationGenerator:
 
     def draw_obstacles(self, mission_state: Optional[MissionState] = None) -> None:
         """Draw obstacles if they are configured.
-        
+
         Args:
             mission_state: Optional MissionState to get obstacles from (v4.0.0).
                           If None, uses self.mission_state if available. No fallback.
@@ -1020,7 +1091,7 @@ class UnifiedVisualizationGenerator:
             obstacles_enabled = state_to_use.obstacles_enabled
             obstacles = list(state_to_use.obstacles) if state_to_use.obstacles else []
         # V4.0.0: No fallback - if no mission_state, obstacles are empty
-        
+
         if obstacles_enabled and obstacles:
             for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
                 # Draw obstacle as a wireframe sphere
@@ -1093,7 +1164,10 @@ class UnifiedVisualizationGenerator:
                 and "Mission_Phase" in self.control_data.columns
             ):
                 # Ensure sorted
-                idx = self.control_data["Control_Time"].searchsorted(time, side="right") - 1
+                idx = (
+                    self.control_data["Control_Time"].searchsorted(time, side="right")
+                    - 1
+                )
                 idx = max(0, min(idx, len(self.control_data) - 1))
                 row = self.control_data.iloc[idx]
 
@@ -1106,7 +1180,9 @@ class UnifiedVisualizationGenerator:
                 if "MPC_Solve_Time" in row and pd.notna(row["MPC_Solve_Time"]):
                     mpc_solve_time = float(row["MPC_Solve_Time"]) * 1000.0
                 elif "MPC_Computation_Time" in row:
-                    mpc_solve_time = float(row["MPC_Computation_Time"]) * 1000.0  # to ms
+                    mpc_solve_time = (
+                        float(row["MPC_Computation_Time"]) * 1000.0
+                    )  # to ms
 
                 # Accumulated Thruster Usage (calculated on control_data)
                 if "Accumulated_Usage_S" in row:
@@ -1185,7 +1261,9 @@ class UnifiedVisualizationGenerator:
 
         for lines, color, bold_idx in groups:
             for i, line in enumerate(lines):
-                weight = "bold" if (bold_idx is not None and i == bold_idx) else "normal"
+                weight = (
+                    "bold" if (bold_idx is not None and i == bold_idx) else "normal"
+                )
                 size = 11 if weight == "bold" else 10
 
                 # Special handling for Phase to make it pop?
@@ -1246,7 +1324,9 @@ class UnifiedVisualizationGenerator:
         target_pitch = float(current_data.get("Target_Pitch", 0.0) or 0.0)
         target_yaw = float(current_data.get("Target_Yaw", 0.0) or 0.0)
 
-        self.draw_target(target_x, target_y, target_z, target_roll, target_pitch, target_yaw)
+        self.draw_target(
+            target_x, target_y, target_z, target_roll, target_pitch, target_yaw
+        )
 
         # Draw DXF if needed (ignored for now in 3D to keep simple, or project to Z=0)
         # V4.0.0: Use self.overlay_dxf or self.mission_state.dxf_shape_mode_active
@@ -1298,7 +1378,9 @@ class UnifiedVisualizationGenerator:
         Args:
             output_filename: Name of output MP4 file (optional)
         """
-        assert self.fps is not None, "FPS must be calculated before generating animation"
+        assert self.fps is not None, (
+            "FPS must be calculated before generating animation"
+        )
         assert self.dt is not None, "dt must be set before generating animation"
         assert self.output_dir is not None, "Output directory must be set"
 
@@ -1347,7 +1429,9 @@ class UnifiedVisualizationGenerator:
 
             assert self.dt is not None, "dt must be set before generating animation"
             assert self.fps is not None, "fps must be set before generating animation"
-            assert self.output_dir is not None, "output_dir must be set before generating animation"
+            assert self.output_dir is not None, (
+                "output_dir must be set before generating animation"
+            )
 
             self._video_renderer = VideoRenderer(
                 data_accessor=self,
@@ -1372,7 +1456,9 @@ class UnifiedVisualizationGenerator:
     def generate_performance_plots(self) -> None:
         """Generate performance analysis plots."""
         assert self.dt is not None, "dt must be set before generating plots"
-        assert self.output_dir is not None, "output_dir must be set before generating plots"
+        assert self.output_dir is not None, (
+            "output_dir must be set before generating plots"
+        )
 
         plots_dir = self.output_dir / "Plots"
         plot_generator = self._get_plot_generator()
@@ -1475,8 +1561,8 @@ class UnifiedVisualizationGenerator:
         if self.app_config and hasattr(self.app_config.mpc, "position_tolerance"):
             target_threshold = self.app_config.mpc.position_tolerance
         else:
-            # Use constant from mpc_params or default
-            target_threshold = mpc_params.POSITION_TOLERANCE
+            # Use constant from SatelliteConfig
+            target_threshold = SatelliteConfig.POSITION_TOLERANCE
 
         ax.plot(
             time,
@@ -1606,8 +1692,8 @@ class UnifiedVisualizationGenerator:
         if self.app_config and hasattr(self.app_config.mpc, "angle_tolerance"):
             target_threshold_rad = self.app_config.mpc.angle_tolerance
         else:
-            # Use constant from mpc_params or default
-            target_threshold_rad = mpc_params.ANGLE_TOLERANCE
+            # Use constant from SatelliteConfig
+            target_threshold_rad = SatelliteConfig.ANGLE_TOLERANCE
         target_threshold_deg = np.degrees(target_threshold_rad)
 
         ax.plot(
@@ -1690,7 +1776,10 @@ class UnifiedVisualizationGenerator:
         ax_xy.plot(target_x, target_y, "r*", markersize=20, label="Target")
 
         try:
-            if isinstance(self.dxf_base_shape, (list, tuple)) and len(self.dxf_base_shape) >= 3:
+            if (
+                isinstance(self.dxf_base_shape, (list, tuple))
+                and len(self.dxf_base_shape) >= 3
+            ):
                 bx = [p[0] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][0]]
                 by = [p[1] for p in self.dxf_base_shape] + [self.dxf_base_shape[0][1]]
                 ax_xy.plot(
@@ -1701,7 +1790,10 @@ class UnifiedVisualizationGenerator:
                     alpha=0.7,
                     label="Object Shape",
                 )
-            if isinstance(self.dxf_offset_path, (list, tuple)) and len(self.dxf_offset_path) >= 2:
+            if (
+                isinstance(self.dxf_offset_path, (list, tuple))
+                and len(self.dxf_offset_path) >= 2
+            ):
                 px = [p[0] for p in self.dxf_offset_path]
                 py = [p[1] for p in self.dxf_offset_path]
                 ax_xy.plot(
@@ -1920,8 +2012,13 @@ class UnifiedVisualizationGenerator:
             return max_id
 
         if hasattr(self, "control_data") and self.control_data is not None:
-            if "Command_Vector" in self.control_data.columns and len(self.control_data) > 0:
-                sample_vec = self.parse_command_vector(self.control_data["Command_Vector"].iloc[0])
+            if (
+                "Command_Vector" in self.control_data.columns
+                and len(self.control_data) > 0
+            ):
+                sample_vec = self.parse_command_vector(
+                    self.control_data["Command_Vector"].iloc[0]
+                )
                 if sample_vec.size > 0:
                     return int(sample_vec.size)
 
@@ -1965,7 +2062,7 @@ class UnifiedVisualizationGenerator:
             # Use actual valve states - most accurate for PWM
             data_source = "actual valve"
             for i in range(thruster_count):
-                col_name = f"Thruster_{i+1}_Val"
+                col_name = f"Thruster_{i + 1}_Val"
                 vals = self._col(col_name)
                 try:
                     vals = np.array([float(x) for x in vals])
@@ -2011,7 +2108,9 @@ class UnifiedVisualizationGenerator:
                 va="bottom",
                 fontsize=PlotStyle.ANNOTATION_SIZE,
                 fontfamily=(
-                    PlotStyle.FONT_FAMILY if hasattr(PlotStyle, "FONT_FAMILY") else "serif"
+                    PlotStyle.FONT_FAMILY
+                    if hasattr(PlotStyle, "FONT_FAMILY")
+                    else "serif"
                 ),
             )
 
@@ -2022,7 +2121,9 @@ class UnifiedVisualizationGenerator:
             fontsize=PlotStyle.TITLE_SIZE,
             fontweight="bold",
         )
-        ax.grid(True, axis="y", alpha=PlotStyle.GRID_ALPHA)  # Vert grid less useful for bar charts
+        ax.grid(
+            True, axis="y", alpha=PlotStyle.GRID_ALPHA
+        )  # Vert grid less useful for bar charts
         ax.set_xticks(thruster_ids)
 
         total_thruster_seconds = float(np.sum(total_activation_time))
@@ -2126,7 +2227,9 @@ class UnifiedVisualizationGenerator:
             ax_top.set_yticklabels(["OFF", "ON"])
             ax_top.grid(True, alpha=0.3)
             ax_top.set_ylabel("Valve State")
-            ax_top.set_title(f"Thruster {thruster_id} - {self.system_title}", fontsize=12)
+            ax_top.set_title(
+                f"Thruster {thruster_id} - {self.system_title}", fontsize=12
+            )
 
             # Bottom plot: Commanded duty cycle (u value)
             ax_bot.plot(
@@ -2208,7 +2311,9 @@ class UnifiedVisualizationGenerator:
 
         cols = 3 if thruster_count > 8 else 2
         rows = int(np.ceil(thruster_count / cols))
-        fig, axes = plt.subplots(rows, cols, figsize=(14, 3.5 * rows), sharex=True, sharey=True)
+        fig, axes = plt.subplots(
+            rows, cols, figsize=(14, 3.5 * rows), sharex=True, sharey=True
+        )
         axes = axes.flatten()
         fig.suptitle(
             f"PWM MPC Duty Cycle Output (u) vs Time - {self.system_title}",
@@ -2237,7 +2342,9 @@ class UnifiedVisualizationGenerator:
                 linewidth=1.5,
                 alpha=0.9,
             )
-            ax.fill_between(time, 0, duty_cycles, step="post", color=colors[i], alpha=0.3)
+            ax.fill_between(
+                time, 0, duty_cycles, step="post", color=colors[i], alpha=0.3
+            )
 
             # Add horizontal lines at key duty cycle levels
             ax.axhline(y=0.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
@@ -2245,7 +2352,9 @@ class UnifiedVisualizationGenerator:
             ax.axhline(y=1.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
 
             # Find intermediate values (not 0 or 1)
-            intermediate = [(t, u) for t, u in zip(time, duty_cycles) if 0.01 < u < 0.99]
+            intermediate = [
+                (t, u) for t, u in zip(time, duty_cycles) if 0.01 < u < 0.99
+            ]
             if intermediate:
                 all_intermediate_values.extend([u for _, u in intermediate])
                 # Mark intermediate points with dots
@@ -2354,7 +2463,9 @@ class UnifiedVisualizationGenerator:
                     linewidth=PlotStyle.LINEWIDTH,
                     label=f"Target {axis_label}",
                 )
-            ax.set_ylabel(f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            ax.set_ylabel(
+                f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+            )
             ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
             ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
@@ -2478,7 +2589,9 @@ class UnifiedVisualizationGenerator:
             else:
                 # Fallback to main dt (might be wrong if mixed, but better than
                 # nothing)
-                time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+                time = np.arange(
+                    len(df) if df is not None else self._get_len()
+                ) * float(self.dt)
 
             # Ensure we have numeric data - convert and handle non-numeric
             # values
@@ -2545,7 +2658,9 @@ class UnifiedVisualizationGenerator:
                         label="Time Limit",
                     )
                 else:
-                    limit_val = float(limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms)
+                    limit_val = float(
+                        limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms
+                    )
                     if limit_val > 0:
                         ax.axhline(
                             y=limit_val,
@@ -2560,7 +2675,9 @@ class UnifiedVisualizationGenerator:
                     exceeded_idx = []
                     for i, val in enumerate(exceeded_vals):
                         try:
-                            if bool(val) or (isinstance(val, str) and val.lower() == "true"):
+                            if bool(val) or (
+                                isinstance(val, str) and val.lower() == "true"
+                            ):
                                 exceeded_idx.append(i)
                         except Exception:
                             pass
@@ -2652,7 +2769,9 @@ class UnifiedVisualizationGenerator:
             except KeyError:
                 return np.array([])
         return (
-            self._col_data.get(name, np.array([])) if self._col_data is not None else np.array([])
+            self._col_data.get(name, np.array([]))
+            if self._col_data is not None
+            else np.array([])
         )
 
     def _row(self, idx: int) -> Dict[str, Any]:
@@ -2694,7 +2813,9 @@ class UnifiedVisualizationGenerator:
                 dt_val = df["CONTROL_DT"].iloc[0]
                 time = np.arange(len(df)) * float(dt_val)
             else:
-                time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+                time = np.arange(
+                    len(df) if df is not None else self._get_len()
+                ) * float(self.dt)
 
             # Get intervals
             if df is not None:
@@ -2761,7 +2882,7 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
     then returns the configuration as a dictionary (v3.0.0).
 
     Returns:
-        Dictionary with keys: 'dxf_shape_mode_active', 'dxf_base_shape', 
+        Dictionary with keys: 'dxf_shape_mode_active', 'dxf_base_shape',
         'dxf_shape_path', 'dxf_shape_center', or empty dict if cancelled.
         V4.0.0: Returns dict only (no global state mutation).
     """
@@ -2772,7 +2893,9 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
     # Ask if user wants overlay
     print("\nAdd DXF shape overlay to animation?")
     response = (
-        input("Enter 'yes' or 'y' to configure overlay (or press Enter to skip): ").strip().lower()
+        input("Enter 'yes' or 'y' to configure overlay (or press Enter to skip): ")
+        .strip()
+        .lower()
     )
     if response not in ["yes", "y"]:
         print("Skipping DXF overlay.")
@@ -2846,8 +2969,12 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
 
     # Get shape rotation
     try:
-        shape_rotation_input = input("Shape rotation angle (degrees, default 0): ").strip()
-        shape_rotation_deg = float(shape_rotation_input) if shape_rotation_input else 0.0
+        shape_rotation_input = input(
+            "Shape rotation angle (degrees, default 0): "
+        ).strip()
+        shape_rotation_deg = (
+            float(shape_rotation_input) if shape_rotation_input else 0.0
+        )
         shape_rotation_rad = np.radians(shape_rotation_deg)
     except ValueError:
         print("Invalid input. Using default rotation 0°.")
@@ -2862,7 +2989,9 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
 
     # Get offset distance
     try:
-        offset_input = input("Offset distance from shape (meters, default 0.5): ").strip()
+        offset_input = input(
+            "Offset distance from shape (meters, default 0.5): "
+        ).strip()
         offset_distance = float(offset_input) if offset_input else 0.5
         if offset_distance < 0.1:
             print("Minimum offset 0.1m. Using 0.1m.")
@@ -2888,7 +3017,7 @@ def configure_dxf_overlay_interactive() -> Dict[str, Any]:
         "dxf_shape_path": offset_path,
         "dxf_shape_center": shape_center,
     }
-    
+
     # V4.0.0: SatelliteConfig removed - return dict only (no global state mutation)
 
     print("\n DXF overlay configured successfully!")
@@ -2939,7 +3068,9 @@ def select_data_file_interactive() -> tuple:
     print(f"\nFound {len(all_csvs)} data file(s):\n")
     for idx, (mode, timestamp, csv_path) in enumerate(all_csvs, 1):
         file_size = csv_path.stat().st_size / 1024  # KB
-        mod_time = datetime.fromtimestamp(csv_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        mod_time = datetime.fromtimestamp(csv_path.stat().st_mtime).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         print(f"{idx:2d}. [{mode:10s}] {timestamp} ({file_size:.1f} KB) - {mod_time}")
 
     # Get user selection
@@ -2981,7 +3112,9 @@ def main() -> int:
         type=str,
         help="Data directory (optional, uses defaults based on mode)",
     )
-    parser.add_argument("--interactive", action="store_true", help="Interactive data selection")
+    parser.add_argument(
+        "--interactive", action="store_true", help="Interactive data selection"
+    )
     parser.add_argument(
         "--plots-only",
         action="store_true",

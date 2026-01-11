@@ -11,3 +11,24 @@ weights:
   angular_velocity: 1000.0
   thrust: 0.1
   rw_torque: 0.1
+  switch: 0.0
+
+constraints:
+  max_velocity: 1.0
+  max_angular_velocity: 2.0
+  position_bounds: 5.0
+
+adaptive:
+  damping_zone: 0.25
+  velocity_threshold: 0.03
+  max_velocity_weight: 1000.0
+
+settings:
+  dt: 0.05
+  solver_type: "OSQP"
+  verbose_mpc: false
+  thruster_type: "PWM"
+  enable_rw_yaw: false
+  enable_z_tilt: true
+  z_tilt_gain: 0.35
+  z_tilt_max_deg: 20.0

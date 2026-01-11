@@ -6,17 +6,19 @@ Combines logic from previous BaseMPC and PWMMPC into a single, optimized class.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import osqp
 import scipy.sparse as sp
 
-from src.satellite_control.config import mpc_params
-from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
-from src.satellite_control.config.models import MPCParams, SatellitePhysicalParams
+# from src.satellite_control.config import mpc_params
+# from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
+# from src.satellite_control.config.models import MPCParams, SatellitePhysicalParams
 from src.satellite_control.core.error_handling import with_error_context
-from src.satellite_control.core.exceptions import OptimizationError, SolverTimeoutError
+from src.satellite_control.core.exceptions import (
+    OptimizationError,
+)  # , SolverTimeoutError
 from src.satellite_control.utils.caching import cached
 from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
@@ -39,86 +41,108 @@ class MPCController(Controller):
 
     def __init__(
         self,
-        satellite_params: Optional[Union[Dict[str, Any], SatellitePhysicalParams]] = None,
-        mpc_params: Optional[Union[Dict[str, Any], MPCParams]] = None,
+        cfg: Any,  # Expects the full Hydra DictConfig or a specific sub-config
     ):
         """
         Initialize MPC controller with OSQP and pre-allocate matrices.
         """
-        # Load defaults from SimulationConfig if not provided (V3.0.0)
-        if satellite_params is None or mpc_params is None:
-            from src.satellite_control.config.simulation_config import SimulationConfig
+        # Unwrap if passed the root config
+        if hasattr(cfg, "control") and hasattr(cfg, "vehicle"):
+            self.mpc_cfg = cfg.control.mpc
+            self.vehicle_cfg = cfg.vehicle
+        else:
+            # Assume we got passed standard objects or dicts (legacy support or direct injection)
+            # This part requires careful migration. For now, let's assume strict Hydra usage
+            # or simple duck-typing if needed.
+            raise ValueError(
+                "MPCController now requires a valid Hydra-like config object with .control.mpc and .vehicle"
+            )
 
-            default_config = SimulationConfig.create_default()
-            if satellite_params is None:
-                satellite_params = default_config.app_config.physics
-            if mpc_params is None:
-                mpc_params = default_config.app_config.mpc
-
-        # Normalization Helper
-        def get_param(obj, attr, key, default=None):
-            if hasattr(obj, attr):
-                return getattr(obj, attr)
-            if isinstance(obj, dict):
-                # Try both keys
-                if attr in obj:
-                    return obj[attr]
-                if key in obj:
-                    return obj[key]
-            return obj.get(key, default) if isinstance(obj, dict) else default
+        # Helper to safely access attributes (Omegaconf/Dataclass)
+        def get(obj, attr, default=None):
+            return getattr(obj, attr, default)
 
         # Satellite physical parameters
-        self.total_mass = get_param(satellite_params, "total_mass", "mass")
-        self.moment_of_inertia = get_param(satellite_params, "moment_of_inertia", "inertia")
-        self.thruster_positions = get_param(
-            satellite_params, "thruster_positions", "thruster_positions"
-        )
-        self.thruster_directions = get_param(
-            satellite_params, "thruster_directions", "thruster_directions"
-        )
-        self.thruster_forces = get_param(satellite_params, "thruster_forces", "thruster_forces")
-        self.com_offset = get_param(satellite_params, "com_offset", "com_offset", np.zeros(3))
-        self.com_offset = np.array(self.com_offset)
+        self.total_mass = self.vehicle_cfg.mass
+        # Ensure inertia is 3D array
+        inertia = self.vehicle_cfg.inertia
+        if hasattr(inertia, "__len__") and len(inertia) == 3:
+            self.moment_of_inertia = np.array(inertia, dtype=float)
+        else:
+            # scalar to vector
+            val = float(inertia)
+            self.moment_of_inertia = np.array([val, val, val], dtype=float)
 
-        # Thruster indexing (stable order)
-        self.thruster_ids = sorted(self.thruster_forces.keys())
-        self.num_thrusters = len(self.thruster_ids)
+        self.com_offset = np.array(self.vehicle_cfg.center_of_mass)
 
-        # Reaction wheel configuration (torque-only)
-        self.enable_rw_yaw = get_param(mpc_params, "enable_rw_yaw", "enable_rw_yaw", False)
-        rw_config = get_reaction_wheel_config()
-        self.max_rw_torque = rw_config.wheel_x.max_torque
-        self.num_rw_axes = 3
-        self.rw_torque_limits = np.full(self.num_rw_axes, self.max_rw_torque)
-        if not self.enable_rw_yaw:
-            self.rw_torque_limits[2] = 0.0
+        # Thruster Configuration
+        self.thrusters = self.vehicle_cfg.thrusters
+        self.num_thrusters = len(self.thrusters)
+        self.thruster_ids = list(range(self.num_thrusters))
+
+        # Extract thruster parameters for easy access
+        self.thruster_positions = [t.position for t in self.thrusters]
+        self.thruster_directions = [t.direction for t in self.thrusters]
+        self.thruster_forces = [float(t.max_thrust) for t in self.thrusters]
+
+        # Reaction wheel configuration
+        self.reaction_wheels = self.vehicle_cfg.reaction_wheels
+        self.num_rw_axes = len(
+            self.reaction_wheels
+        )  # Should be 3 ideally for this code, or adaptation needed
+
+        # RW Logic (Assuming 3 orthogonal wheels aligned with axes for now, as per linear model assumption)
+        # Verify assumption or adapt. The 6U yaml defines 3 wheels.
+        self.enable_rw_yaw = True  # Configurable?
+
+        # Max torque per axis
+        # Assuming axis 0 is X, 1 is Y, 2 is Z
+        if self.num_rw_axes >= 3:
+            self.max_rw_torque = self.reaction_wheels[0].max_torque  # Simplified
+        else:
+            self.max_rw_torque = 0.0
+
+        self.rw_torque_limits = np.array([rw.max_torque for rw in self.reaction_wheels])
 
         # MPC parameters
-        self.N = get_param(mpc_params, "prediction_horizon", "prediction_horizon")
-        self._dt = get_param(mpc_params, "dt", "dt")
-
-        self.solver_time_limit = get_param(mpc_params, "solver_time_limit", "solver_time_limit")
+        self.N = self.mpc_cfg.prediction_horizon
+        self._dt = self.mpc_cfg.settings.dt
+        self.solver_time_limit = self.mpc_cfg.solver_time_limit
 
         # Cost weights
-        self.Q_pos = get_param(mpc_params, "q_position", "Q_pos")
-        self.Q_vel = get_param(mpc_params, "q_velocity", "Q_vel")
-        self.Q_ang = get_param(mpc_params, "q_angle", "Q_ang")
-        self.Q_angvel = get_param(mpc_params, "q_angular_velocity", "Q_angvel")
-        self.R_thrust = get_param(mpc_params, "r_thrust", "R_thrust")
-        self.R_rw_torque = get_param(mpc_params, "r_rw_torque", "R_rw_torque", self.R_thrust)
+        w = self.mpc_cfg.weights
+        self.Q_pos = w.position
+        self.Q_vel = w.velocity
+        self.Q_ang = w.angle
+        self.Q_angvel = w.angular_velocity
+        self.R_thrust = w.thrust
+        self.R_rw_torque = w.rw_torque
+        self.R_switch = w.switch
 
         # Constraints
-        self.max_velocity = get_param(mpc_params, "max_velocity", "max_velocity")
-        self.max_angular_velocity = get_param(
-            mpc_params, "max_angular_velocity", "max_angular_velocity"
-        )
-        self.position_bounds = get_param(mpc_params, "position_bounds", "position_bounds")
+        c = self.mpc_cfg.constraints
+        self.max_velocity = c.max_velocity
+        self.max_angular_velocity = c.max_angular_velocity
+        self.position_bounds = c.position_bounds
 
-        # Z translation via tilt (uses pitch/roll with planar thrusters)
-        self.enable_z_tilt = get_param(mpc_params, "enable_z_tilt", "enable_z_tilt", True)
-        self.z_tilt_gain = get_param(mpc_params, "z_tilt_gain", "z_tilt_gain", 0.35)
-        self.z_tilt_max_deg = get_param(mpc_params, "z_tilt_max_deg", "z_tilt_max_deg", 20.0)
+        # Adaptive settings
+        if hasattr(self.mpc_cfg, "adaptive"):
+            a = self.mpc_cfg.adaptive
+            self.damping_zone = a.damping_zone
+            self.velocity_threshold = a.velocity_threshold
+            self.max_velocity_weight = a.max_velocity_weight
+
+        # Z translation and other settings
+        s = self.mpc_cfg.settings
+        self.thruster_type = s.thruster_type
+        self.enable_rw_yaw = s.enable_rw_yaw
+        self.enable_z_tilt = s.enable_z_tilt
+        self.z_tilt_gain = s.z_tilt_gain
+        self.z_tilt_max_deg = s.z_tilt_max_deg
         self.z_tilt_max_rad = np.deg2rad(self.z_tilt_max_deg)
+
+        # Verbose
+        self.verbose = s.verbose_mpc
 
         # State dimension: [p(3), q(4), v(3), w(3)]
         self.nx = 13
@@ -131,9 +155,6 @@ class MPCController(Controller):
         self.control_upper = np.concatenate(
             [np.full(self.num_rw_axes, 1.0), np.ones(self.num_thrusters)]
         )
-        if not self.enable_rw_yaw:
-            self.control_lower[2] = 0.0
-            self.control_upper[2] = 0.0
 
         # Performance tracking
         self.solve_times: list[float] = []
@@ -152,8 +173,9 @@ class MPCController(Controller):
         )
 
         # Use verbose flag from mpc_params
-        self.verbose = get_param(mpc_params, "verbose_mpc", "VERBOSE_MPC", False)
-        
+        # Use verbose flag from mpc_params or config
+        self.verbose = getattr(self.mpc_cfg, "verbose_mpc", False)
+
         if self.verbose:
             print("OSQP MPC Controller Initializing (3D)...")
 
@@ -178,12 +200,12 @@ class MPCController(Controller):
 
         if self.verbose:
             print("OSQP MPC Ready.")
-    
+
     @property
     def dt(self) -> float:
         """Control update interval in seconds (Controller interface)."""
         return self._dt
-    
+
     @property
     def prediction_horizon(self) -> Optional[int]:
         """Prediction horizon (Controller interface)."""
@@ -209,10 +231,10 @@ class MPCController(Controller):
     def _compute_rotation_matrix(self, quat_tuple: tuple) -> np.ndarray:
         """
         Compute rotation matrix from quaternion (cached).
-        
+
         Args:
             quat_tuple: Quaternion as tuple (for hashing)
-            
+
         Returns:
             3x3 rotation matrix
         """
@@ -223,10 +245,12 @@ class MPCController(Controller):
         mujoco.mju_quat2Mat(R, qv)
         return R.reshape(3, 3)
 
-    def linearize_dynamics(self, x_current: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def linearize_dynamics(
+        self, x_current: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Linearize dynamics around current state (quaternion).
-        
+
         Uses caching for expensive rotation matrix computation.
         """
         # x = [px, py, pz, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
@@ -240,7 +264,7 @@ class MPCController(Controller):
 
         # Round quaternion to reduce cache size (binning for similar orientations)
         quat_rounded = tuple(np.round(qv, decimals=3))
-        
+
         # Use cached rotation matrix computation
         R = self._compute_rotation_matrix(quat_rounded)
 
@@ -264,7 +288,10 @@ class MPCController(Controller):
         for i in range(self.num_rw_axes):
             if self.rw_torque_limits[i] == 0.0:
                 continue
-            B[10 + i, i] = self.rw_torque_limits[i] / self.moment_of_inertia * self.dt
+            # Handle 3D inertia (diagonal)
+            B[10 + i, i] = (
+                self.rw_torque_limits[i] / self.moment_of_inertia[i] * self.dt
+            )
 
         thruster_offset = self.num_rw_axes
         for i in range(self.num_thrusters):
@@ -377,7 +404,9 @@ class MPCController(Controller):
         cols = [t[1] for t in triples]
         vals = [t[2] for t in triples]
 
-        self.A = sp.csc_matrix((vals, (rows, cols)), shape=(self.n_constraints, self.n_vars))
+        self.A = sp.csc_matrix(
+            (vals, (rows, cols)), shape=(self.n_constraints, self.n_vars)
+        )
         self.A.sort_indices()
 
         # Map B indices
@@ -417,7 +446,13 @@ class MPCController(Controller):
 
         # Setup OSQP
         self.prob.setup(
-            self.P, self.q, self.A, self.l, self.u, verbose=False, time_limit=self.solver_time_limit
+            self.P,
+            self.q,
+            self.A,
+            self.l,
+            self.u,
+            verbose=False,
+            time_limit=self.solver_time_limit,
         )
 
     def _update_A_data(self, B_dyn: np.ndarray):
@@ -429,7 +464,9 @@ class MPCController(Controller):
                 for idx in indices:
                     self.A.data[idx] = val
 
-    def _apply_z_tilt_target(self, x_current: np.ndarray, x_target: np.ndarray) -> np.ndarray:
+    def _apply_z_tilt_target(
+        self, x_current: np.ndarray, x_target: np.ndarray
+    ) -> np.ndarray:
         """Tilt target roll/pitch to enable Z translation with planar thrusters."""
         if not self.enable_z_tilt or x_target.shape[0] < 7:
             return x_target
@@ -499,7 +536,7 @@ class MPCController(Controller):
             "average_solve_time": sum(self.solve_times) / len(self.solve_times),
             "max_solve_time": max(self.solve_times),
         }
-    
+
     @with_error_context("MPC solve", reraise=True)
     def get_control_action(
         self,
@@ -616,7 +653,9 @@ class MPCController(Controller):
 
         return u_opt, {"status": 1, "solve_time": solve_time}
 
-    def _get_fallback_control(self, x_current: np.ndarray, x_target: np.ndarray) -> np.ndarray:
+    def _get_fallback_control(
+        self, x_current: np.ndarray, x_target: np.ndarray
+    ) -> np.ndarray:
         """3D PD Controller fallback."""
         u = np.zeros(self.nu)
         # Placeholder: Zero thrust

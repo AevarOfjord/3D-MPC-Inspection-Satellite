@@ -41,7 +41,6 @@ import numpy as np
 from . import (
     constants,
     mission_state,
-    mpc_params,
     obstacles,
     physics,
     timing,
@@ -62,7 +61,9 @@ def _create_default_config() -> AppConfig:
         satellite_shape="cube",  # Set to cube
         com_offset=tuple(physics.COM_OFFSET),
         thruster_positions=physics.THRUSTER_POSITIONS,
-        thruster_directions={k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()},
+        thruster_directions={
+            k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()
+        },
         thruster_forces=physics.THRUSTER_FORCES,
         use_realistic_physics=False,
         damping_linear=0.0,
@@ -71,29 +72,29 @@ def _create_default_config() -> AppConfig:
 
     # MPC
     mpc = MPCParams(
-        prediction_horizon=mpc_params.MPC_PREDICTION_HORIZON,
-        control_horizon=mpc_params.MPC_CONTROL_HORIZON,
+        prediction_horizon=50,
+        control_horizon=50,
         dt=timing.CONTROL_DT,
-        solver_time_limit=mpc_params.MPC_SOLVER_TIME_LIMIT,
-        solver_type=mpc_params.MPC_SOLVER_TYPE,
-        q_position=mpc_params.Q_POSITION,
-        q_velocity=mpc_params.Q_VELOCITY,
-        q_angle=mpc_params.Q_ANGLE,
-        q_angular_velocity=mpc_params.Q_ANGULAR_VELOCITY,
-        r_thrust=mpc_params.R_THRUST,
-        r_rw_torque=mpc_params.R_RW_TORQUE,
-        max_velocity=mpc_params.MAX_VELOCITY,
-        max_angular_velocity=mpc_params.MAX_ANGULAR_VELOCITY,
-        position_bounds=mpc_params.POSITION_BOUNDS,
-        damping_zone=mpc_params.DAMPING_ZONE,
-        velocity_threshold=mpc_params.VELOCITY_THRESHOLD,
-        max_velocity_weight=mpc_params.MAX_VELOCITY_WEIGHT,
-        thruster_type=mpc_params.THRUSTER_TYPE,
-        enable_rw_yaw=mpc_params.ENABLE_RW_YAW,
-        enable_z_tilt=mpc_params.ENABLE_Z_TILT,
-        z_tilt_gain=mpc_params.Z_TILT_GAIN,
-        z_tilt_max_deg=mpc_params.Z_TILT_MAX_DEG,
-        verbose_mpc=mpc_params.VERBOSE_MPC,
+        solver_time_limit=timing.CONTROL_DT - 0.01,
+        solver_type="OSQP",
+        q_position=1000.0,
+        q_velocity=1000.0,
+        q_angle=1000.0,
+        q_angular_velocity=1000.0,
+        r_thrust=0.1,
+        r_rw_torque=0.1,
+        max_velocity=0.5,
+        max_angular_velocity=np.pi / 2,
+        position_bounds=3.0,
+        damping_zone=0.25,
+        velocity_threshold=0.03,
+        max_velocity_weight=1000.0,
+        thruster_type="CON",
+        enable_rw_yaw=True,
+        enable_z_tilt=True,
+        z_tilt_gain=0.35,
+        z_tilt_max_deg=20.0,
+        verbose_mpc=False,
     )
 
     # Simulation (V3.0.0: include all timing parameters)
@@ -161,10 +162,12 @@ def use_structured_config(config):
         pass
 
 
-def _deprecated_attribute_warning(attr_name: str, alternative: str, version: str = "3.0.0"):
+def _deprecated_attribute_warning(
+    attr_name: str, alternative: str, version: str = "3.0.0"
+):
     """
     Issue deprecation warning for mutable attribute access.
-    
+
     Args:
         attr_name: Name of the deprecated attribute
         alternative: Recommended alternative approach
@@ -183,7 +186,7 @@ class SatelliteConfig:
     Backward-compatible facade for satellite configuration.
 
     ⚠️ **DEPRECATED - V4.0.0: INTERNAL USE ONLY** ⚠️
-    
+
     This class is kept only for internal compatibility (SatelliteConfigAdapter).
     All public code should use `SimulationConfig` and `MissionState` instead.
 
@@ -198,7 +201,7 @@ class SatelliteConfig:
         Old: SatelliteConfig.ENABLE_WAYPOINT_MODE = True
         New: mission_state.enable_waypoint_mode = True
               (via SimulationConfig.mission_state)
-    
+
     **Note:** This class will be removed in a future version once
     mission_report_generator.py is fully migrated to use SimulationConfig directly.
     """
@@ -228,38 +231,38 @@ class SatelliteConfig:
     # MPC PARAMETERS
     # ========================================================================
 
-    MPC_PREDICTION_HORIZON = mpc_params.MPC_PREDICTION_HORIZON
-    MPC_CONTROL_HORIZON = mpc_params.MPC_CONTROL_HORIZON
-    MPC_SOLVER_TIME_LIMIT = mpc_params.MPC_SOLVER_TIME_LIMIT
-    MPC_SOLVER_TYPE = mpc_params.MPC_SOLVER_TYPE
+    MPC_PREDICTION_HORIZON = 50
+    MPC_CONTROL_HORIZON = 50
+    MPC_SOLVER_TIME_LIMIT = timing.CONTROL_DT - 0.01
+    MPC_SOLVER_TYPE = "OSQP"
 
-    VERBOSE_MPC = mpc_params.VERBOSE_MPC
+    VERBOSE_MPC = False
 
-    Q_POSITION = mpc_params.Q_POSITION
-    Q_VELOCITY = mpc_params.Q_VELOCITY
-    Q_ANGLE = mpc_params.Q_ANGLE
-    Q_ANGULAR_VELOCITY = mpc_params.Q_ANGULAR_VELOCITY
-    R_THRUST = mpc_params.R_THRUST
-    R_RW_TORQUE = mpc_params.R_RW_TORQUE
-    ENABLE_RW_YAW = mpc_params.ENABLE_RW_YAW
-    ENABLE_Z_TILT = mpc_params.ENABLE_Z_TILT
-    Z_TILT_GAIN = mpc_params.Z_TILT_GAIN
-    Z_TILT_MAX_DEG = mpc_params.Z_TILT_MAX_DEG
+    Q_POSITION = 1000.0
+    Q_VELOCITY = 1000.0
+    Q_ANGLE = 1000.0
+    Q_ANGULAR_VELOCITY = 1000.0
+    R_THRUST = 0.1
+    R_RW_TORQUE = 0.1
+    ENABLE_RW_YAW = True
+    ENABLE_Z_TILT = True
+    Z_TILT_GAIN = 0.35
+    Z_TILT_MAX_DEG = 20.0
 
-    MAX_VELOCITY = mpc_params.MAX_VELOCITY
-    MAX_ANGULAR_VELOCITY = mpc_params.MAX_ANGULAR_VELOCITY
-    POSITION_BOUNDS = mpc_params.POSITION_BOUNDS
-    ANGLE_BOUNDS = mpc_params.ANGLE_BOUNDS
-    DAMPING_ZONE = mpc_params.DAMPING_ZONE
-    VELOCITY_THRESHOLD = mpc_params.VELOCITY_THRESHOLD
-    MAX_VELOCITY_WEIGHT = mpc_params.MAX_VELOCITY_WEIGHT
+    MAX_VELOCITY = 0.5
+    MAX_ANGULAR_VELOCITY = np.pi / 2
+    POSITION_BOUNDS = 3.0
+    ANGLE_BOUNDS = 2 * np.pi
+    DAMPING_ZONE = 0.25
+    VELOCITY_THRESHOLD = 0.03
+    MAX_VELOCITY_WEIGHT = 1000.0
 
-    POSITION_TOLERANCE = mpc_params.POSITION_TOLERANCE
-    ANGLE_TOLERANCE = mpc_params.ANGLE_TOLERANCE
-    VELOCITY_TOLERANCE = mpc_params.VELOCITY_TOLERANCE
-    ANGULAR_VELOCITY_TOLERANCE = mpc_params.ANGULAR_VELOCITY_TOLERANCE
+    POSITION_TOLERANCE = 0.05
+    ANGLE_TOLERANCE = np.deg2rad(3)
+    VELOCITY_TOLERANCE = 0.05
+    ANGULAR_VELOCITY_TOLERANCE = np.deg2rad(3)
 
-    THRUSTER_TYPE = mpc_params.THRUSTER_TYPE
+    THRUSTER_TYPE = "CON"
 
     # ========================================================================
     # PHYSICAL PARAMETERS
@@ -402,7 +405,9 @@ class SatelliteConfig:
     OBSTACLE_SAFETY_MARGIN = obstacles.OBSTACLE_SAFETY_MARGIN
     MIN_OBSTACLE_DISTANCE = obstacles.MIN_OBSTACLE_DISTANCE
     OBSTACLE_PATH_RESOLUTION = obstacles.OBSTACLE_PATH_RESOLUTION
-    OBSTACLE_WAYPOINT_STABILIZATION_TIME = obstacles.OBSTACLE_WAYPOINT_STABILIZATION_TIME
+    OBSTACLE_WAYPOINT_STABILIZATION_TIME = (
+        obstacles.OBSTACLE_WAYPOINT_STABILIZATION_TIME
+    )
     OBSTACLE_FLYTHROUGH_TOLERANCE = obstacles.OBSTACLE_FLYTHROUGH_TOLERANCE
     OBSTACLE_AVOIDANCE_SAFETY_MARGIN = obstacles.OBSTACLE_AVOIDANCE_SAFETY_MARGIN
 
@@ -426,9 +431,8 @@ class SatelliteConfig:
             issues.append("Timing parameters validation failed")
 
         # MPC validation
-        mpc_config = mpc_params.get_mpc_params()
-        if not mpc_params.validate_mpc_params(mpc_config, cls.CONTROL_DT):
-            issues.append("MPC parameters validation failed")
+        # mpc_params module is removed. Validation happens via Pydantic on init.
+        pass
 
         # Physics validation
         physics_config = physics.get_physics_params()
@@ -550,16 +554,16 @@ class SatelliteConfig:
     def set_waypoint_mode(cls, enable: bool):
         """
         Enable or disable waypoint navigation mode (single or multiple).
-        
+
         .. deprecated:: 1.0.0
            ⚠️ **WILL BE REMOVED IN V3.0.0** ⚠️
-           
+
            Use MissionState.enable_waypoint_mode instead.
            See docs/SATELLITE_CONFIG_DEPRECATION.md for migration guide.
         """
         _deprecated_attribute_warning(
             "set_waypoint_mode()",
-            "MissionState.enable_waypoint_mode or SimulationConfig.mission_state.enable_waypoint_mode"
+            "MissionState.enable_waypoint_mode or SimulationConfig.mission_state.enable_waypoint_mode",
         )
         cls.ENABLE_WAYPOINT_MODE = enable
         if enable:
@@ -571,14 +575,14 @@ class SatelliteConfig:
     def set_multi_point_mode(cls, enable: bool):
         """
         Backward-compatible alias for enabling waypoint mode.
-        
+
         .. deprecated:: 1.0.0
            Use MissionState.enable_waypoint_mode instead.
            This method will be removed in v2.0.0.
         """
         _deprecated_attribute_warning(
             "set_multi_point_mode()",
-            "MissionState.enable_waypoint_mode or SimulationConfig.mission_state.enable_waypoint_mode"
+            "MissionState.enable_waypoint_mode or SimulationConfig.mission_state.enable_waypoint_mode",
         )
         cls.set_waypoint_mode(enable)
 
@@ -591,16 +595,16 @@ class SatelliteConfig:
     def set_waypoint_targets(cls, target_points: list, target_angles: list):
         """
         Set waypoint target points and orientations.
-        
+
         .. deprecated:: 1.0.0
            ⚠️ **WILL BE REMOVED IN V3.0.0** ⚠️
-           
+
            Use MissionState.waypoint_targets and MissionState.waypoint_angles instead.
            See docs/SATELLITE_CONFIG_DEPRECATION.md for migration guide.
         """
         _deprecated_attribute_warning(
             "set_waypoint_targets()",
-            "MissionState.waypoint_targets and MissionState.waypoint_angles"
+            "MissionState.waypoint_targets and MissionState.waypoint_angles",
         )
         if len(target_points) != len(target_angles):
             raise ValueError("Number of target points and angles must match")
@@ -679,7 +683,7 @@ class SatelliteConfig:
 
         if shape is not None:
             cls.SHAPE_FINAL_STABILIZATION_TIME = shape
-            print("Shape following final stabilization time set to " f"{shape:.1f} s")
+            print(f"Shape following final stabilization time set to {shape:.1f} s")
 
         if use_in_simulation is not None:
             cls.USE_FINAL_STABILIZATION_IN_SIMULATION = use_in_simulation
@@ -705,16 +709,16 @@ class SatelliteConfig:
     def set_obstacles(cls, obstacles_list: list):
         """
         Set obstacle list for collision avoidance.
-        
+
         .. deprecated:: 1.0.0
            ⚠️ **WILL BE REMOVED IN V3.0.0** ⚠️
-           
+
            Use MissionState.obstacles or ObstacleManager instead.
            See docs/SATELLITE_CONFIG_DEPRECATION.md for migration guide.
         """
         _deprecated_attribute_warning(
             "set_obstacles()",
-            "MissionState.obstacles or ObstacleManager.set_obstacles()"
+            "MissionState.obstacles or ObstacleManager.set_obstacles()",
         )
         """Set obstacles for all navigation modes."""
         cls._obstacle_manager.set_obstacles(obstacles_list)
@@ -722,7 +726,9 @@ class SatelliteConfig:
         cls.OBSTACLES_ENABLED = cls._obstacle_manager.enabled
 
     @classmethod
-    def add_obstacle(cls, x: float, y: float, z: float = 0.0, radius: Optional[float] = None):
+    def add_obstacle(
+        cls, x: float, y: float, z: float = 0.0, radius: Optional[float] = None
+    ):
         """Add a single spherical obstacle."""
         cls._obstacle_manager.add_obstacle(x, y, z, radius)
         cls.OBSTACLES = cls._obstacle_manager.get_obstacles()
@@ -835,16 +841,16 @@ class SatelliteConfig:
 
         Call this between simulations or tests to ensure clean state.
         This addresses the mutable class attribute anti-pattern.
-        
+
         .. deprecated:: 1.0.0
            ⚠️ **WILL BE REMOVED IN V3.0.0** ⚠️
-           
+
            With SimulationConfig, each simulation has its own state.
            No reset needed. See docs/SATELLITE_CONFIG_DEPRECATION.md for migration guide.
         """
         _deprecated_attribute_warning(
             "reset_mission_state()",
-            "Create new SimulationConfig for each simulation (no reset needed)"
+            "Create new SimulationConfig for each simulation (no reset needed)",
         )
         # Waypoint navigation state
         cls.ENABLE_WAYPOINT_MODE = False
@@ -904,7 +910,9 @@ def initialize_config():
     Call this at module import to ensure parameters are valid.
     """
     if not SatelliteConfig.validate_parameters():
-        raise ValueError("Configuration validation failed! Check parameters in config.py")
+        raise ValueError(
+            "Configuration validation failed! Check parameters in config.py"
+        )
 
 
 def build_structured_config(overrides=None):
@@ -940,42 +948,72 @@ if __name__ != "__main__":
 class SatelliteConfigAdapter:
     """
     V4.0.0: Compatibility adapter for report generator.
-    
+
     Provides flat attribute interface that wraps SimulationConfig/MissionState/AppConfig.
     This is a temporary solution until mission_report_generator.py is fully migrated.
     """
-    
+
     def __init__(self, simulation_config):
         """Initialize adapter with SimulationConfig."""
         self.sim_config = simulation_config
         self.app_config = simulation_config.app_config
         self.mission_state = simulation_config.mission_state
-    
+
     def __getattr__(self, name):
         """Map flat attribute names to nested config structure."""
         # Mission state attributes
         if name == "DXF_SHAPE_MODE_ACTIVE":
-            return self.mission_state.dxf_shape_mode_active if self.mission_state else False
+            return (
+                self.mission_state.dxf_shape_mode_active
+                if self.mission_state
+                else False
+            )
         if name == "DXF_SHAPE_PHASE":
-            return getattr(self.mission_state, "dxf_shape_phase", "UNKNOWN") if self.mission_state else "UNKNOWN"
+            return (
+                getattr(self.mission_state, "dxf_shape_phase", "UNKNOWN")
+                if self.mission_state
+                else "UNKNOWN"
+            )
         if name == "DXF_SHAPE_CENTER":
             return self.mission_state.dxf_shape_center if self.mission_state else None
         if name == "DXF_SHAPE_ROTATION":
-            return getattr(self.mission_state, "dxf_shape_rotation", 0.0) if self.mission_state else 0.0
+            return (
+                getattr(self.mission_state, "dxf_shape_rotation", 0.0)
+                if self.mission_state
+                else 0.0
+            )
         if name == "DXF_OFFSET_DISTANCE":
-            return getattr(self.mission_state, "dxf_offset_distance", 0.0) if self.mission_state else 0.0
+            return (
+                getattr(self.mission_state, "dxf_offset_distance", 0.0)
+                if self.mission_state
+                else 0.0
+            )
         if name == "DXF_PATH_LENGTH":
-            return getattr(self.mission_state, "dxf_path_length", 0.0) if self.mission_state else 0.0
+            return (
+                getattr(self.mission_state, "dxf_path_length", 0.0)
+                if self.mission_state
+                else 0.0
+            )
         if name == "DXF_BASE_SHAPE":
             return self.mission_state.dxf_base_shape if self.mission_state else []
         if name == "DXF_SHAPE_PATH":
             return self.mission_state.dxf_shape_path if self.mission_state else []
         if name == "DXF_TARGET_SPEED":
-            return getattr(self.mission_state, "dxf_target_speed", 0.1) if self.mission_state else 0.1
+            return (
+                getattr(self.mission_state, "dxf_target_speed", 0.1)
+                if self.mission_state
+                else 0.1
+            )
         if name == "DXF_ESTIMATED_DURATION":
-            return getattr(self.mission_state, "dxf_estimated_duration", 0.0) if self.mission_state else 0.0
+            return (
+                getattr(self.mission_state, "dxf_estimated_duration", 0.0)
+                if self.mission_state
+                else 0.0
+            )
         if name == "ENABLE_WAYPOINT_MODE":
-            return self.mission_state.enable_waypoint_mode if self.mission_state else False
+            return (
+                self.mission_state.enable_waypoint_mode if self.mission_state else False
+            )
         if name == "WAYPOINT_TARGETS":
             return self.mission_state.waypoint_targets if self.mission_state else []
         if name == "WAYPOINT_ANGLES":
@@ -983,12 +1021,24 @@ class SatelliteConfigAdapter:
         if name == "OBSTACLES_ENABLED":
             return self.mission_state.obstacles_enabled if self.mission_state else False
         if name == "OBSTACLES":
-            return list(self.mission_state.obstacles) if self.mission_state and self.mission_state.obstacles else []
+            return (
+                list(self.mission_state.obstacles)
+                if self.mission_state and self.mission_state.obstacles
+                else []
+            )
         if name == "CURRENT_TARGET_INDEX":
-            return getattr(self.mission_state, "current_target_index", 0) if self.mission_state else 0
+            return (
+                getattr(self.mission_state, "current_target_index", 0)
+                if self.mission_state
+                else 0
+            )
         if name == "MULTI_POINT_PHASE":
-            return getattr(self.mission_state, "multi_point_phase", "") if self.mission_state else ""
-        
+            return (
+                getattr(self.mission_state, "multi_point_phase", "")
+                if self.mission_state
+                else ""
+            )
+
         # Simulation params
         if name == "SIMULATION_DT":
             return self.app_config.simulation.dt
@@ -1008,7 +1058,7 @@ class SatelliteConfigAdapter:
             return self.app_config.simulation.use_final_stabilization
         if name == "HEADLESS_MODE":
             return self.app_config.simulation.headless
-        
+
         # MPC params
         if name == "MPC_PREDICTION_HORIZON":
             return self.app_config.mpc.prediction_horizon
@@ -1039,18 +1089,18 @@ class SatelliteConfigAdapter:
         if name == "VELOCITY_THRESHOLD":
             return self.app_config.mpc.velocity_threshold
         if name == "POSITION_TOLERANCE":
-            from src.satellite_control.config import mpc_params
-            return mpc_params.POSITION_TOLERANCE
+            # V4.0.0: Use class attribute instead of mpc_params
+            return SatelliteConfig.POSITION_TOLERANCE
         if name == "ANGLE_TOLERANCE":
-            from src.satellite_control.config import mpc_params
-            return mpc_params.ANGLE_TOLERANCE
+            # V4.0.0: Use class attribute instead of mpc_params
+            return SatelliteConfig.ANGLE_TOLERANCE
         if name == "VELOCITY_TOLERANCE":
-            from src.satellite_control.config import mpc_params
-            return mpc_params.VELOCITY_TOLERANCE
+            # V4.0.0: Use class attribute instead of mpc_params
+            return SatelliteConfig.VELOCITY_TOLERANCE
         if name == "ANGULAR_VELOCITY_TOLERANCE":
-            from src.satellite_control.config import mpc_params
-            return mpc_params.ANGULAR_VELOCITY_TOLERANCE
-        
+            # V4.0.0: Use class attribute instead of mpc_params
+            return SatelliteConfig.ANGULAR_VELOCITY_TOLERANCE
+
         # Physics params
         if name == "TOTAL_MASS":
             return self.app_config.physics.total_mass
@@ -1078,8 +1128,10 @@ class SatelliteConfigAdapter:
             return getattr(self.app_config.physics, "disturbance_force_std", 0.0)
         if name == "DISTURBANCE_TORQUE_STD":
             return getattr(self.app_config.physics, "disturbance_torque_std", 0.0)
-        
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )
 
 
 if __name__ == "__main__":

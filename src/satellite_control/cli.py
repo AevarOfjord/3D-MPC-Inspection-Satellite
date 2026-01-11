@@ -6,7 +6,7 @@ Main entry point for the satellite control system.
 Provides commands for running simulations, verification tests, and managing configuration.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 from rich.console import Console
@@ -40,7 +40,9 @@ def run(
     duration: Optional[float] = typer.Option(
         None, "--duration", "-d", help="Override max simulation time in seconds"
     ),
-    no_anim: bool = typer.Option(False, "--no-anim", help="Disable animation (headless mode)"),
+    no_anim: bool = typer.Option(
+        False, "--no-anim", help="Disable animation (headless mode)"
+    ),
     headless: bool = typer.Option(
         False, "--headless", help="Alias for --no-anim (deprecated)", hidden=True
     ),
@@ -76,7 +78,9 @@ def run(
     config_overrides: Optional[Dict[str, Dict[str, Any]]] = None
 
     if auto:
-        console.print("[yellow]Running in AUTO mode with default parameters...[/yellow]")
+        console.print(
+            "[yellow]Running in AUTO mode with default parameters...[/yellow]"
+        )
         # Set auto mode parameters directly (don't mutate global config)
         sim_start_pos = (1.0, 1.0, 0.0)
         sim_target_pos = (0.0, 0.0, 0.0)
@@ -84,7 +88,7 @@ def run(
         sim_target_angle = (0.0, 0.0, 0.0)
     # Mission configuration from CLI (v2.0.0: uses SimulationConfig)
     mission_simulation_config = None
-    
+
     if auto:
         # Auto mode - skip menu and use defaults set above
         pass
@@ -116,7 +120,9 @@ def run(
             mode = interactive_cli.show_mission_menu()
 
             if mode == "waypoint":
-                mission_preset = interactive_cli.select_mission_preset(return_simulation_config=True)
+                mission_preset = interactive_cli.select_mission_preset(
+                    return_simulation_config=True
+                )
                 if mission_preset is None:
                     # Custom mission flow
                     mission_config = interactive_cli.run_custom_waypoint_mission()
@@ -168,7 +174,10 @@ def run(
                 console.print("[red]Mission cancelled.[/red]")
                 raise typer.Exit()
             # Extract SimulationConfig if available
-            if isinstance(mission_result, dict) and "simulation_config" in mission_result:
+            if (
+                isinstance(mission_result, dict)
+                and "simulation_config" in mission_result
+            ):
                 mission_simulation_config = mission_result["simulation_config"]
 
     # Load MPC configuration preset if specified (CLI option)
@@ -193,7 +202,9 @@ def run(
                 console.print("[yellow]Warning: Invalid preset type[/yellow]")
         except ValueError as e:
             console.print(f"[bold red]Invalid preset:[/bold red] {e}")
-            console.print(f"[yellow]Available presets: {', '.join(ConfigPreset.all())}[/yellow]")
+            console.print(
+                f"[yellow]Available presets: {', '.join(ConfigPreset.all())}[/yellow]"
+            )
             raise typer.Exit(code=1)
 
     # Validate configuration at startup
@@ -218,7 +229,7 @@ def run(
 
     # Create SimulationConfig (v2.0.0 pattern)
     from src.satellite_control.config.simulation_config import SimulationConfig
-    
+
     simulation_config = None
     if mission_simulation_config:
         # Use SimulationConfig from mission CLI (preferred, v2.0.0)
@@ -233,7 +244,7 @@ def run(
         simulation_config = SimulationConfig.create_with_overrides(
             config_overrides or {}
         )
-    
+
     # Initialize Simulation with explicit parameters (avoid global state mutation)
     try:
         sim = SatelliteMPCLinearizedSimulation(
@@ -244,12 +255,12 @@ def run(
             config_overrides=config_overrides,  # Keep for backward compatibility
             simulation_config=simulation_config,  # New preferred way
         )
-        
+
         # Apply duration override directly to simulation if needed
         # V4.0.0: No global state mutation
         if duration:
             sim.max_simulation_time = duration
-        
+
         console.print("[green]Simulation initialized successfully.[/green]")
         console.print("Starting Simulation loop...")
 
@@ -259,6 +270,7 @@ def run(
         console.print("\n[yellow]Simulation stopping (KeyboardInterrupt)...[/yellow]")
     except Exception as e:
         import traceback
+
         console.print(f"\n[bold red]Error running simulation:[/bold red] {e}")
         console.print("[dim]Full traceback:[/dim]")
         console.print(traceback.format_exc())
@@ -274,7 +286,9 @@ def interactive(
     duration: Optional[float] = typer.Option(
         None, "--duration", "-d", help="Override max simulation time in seconds"
     ),
-    no_anim: bool = typer.Option(False, "--no-anim", help="Disable animation (headless mode)"),
+    no_anim: bool = typer.Option(
+        False, "--no-anim", help="Disable animation (headless mode)"
+    ),
     preset: Optional[str] = typer.Option(
         None,
         "--preset",
@@ -348,11 +362,13 @@ def bench(
 
 @app.command()
 def presets(
-    list_all: bool = typer.Option(False, "--list", "-l", help="List all available presets"),
+    list_all: bool = typer.Option(
+        False, "--list", "-l", help="List all available presets"
+    ),
 ):
     """
     Manage configuration presets.
-    
+
     Presets provide pre-configured settings optimized for different use cases.
     """
     if list_all:
@@ -361,9 +377,7 @@ def presets(
         for preset_name, description in presets_dict.items():
             console.print(f"[bold cyan]{preset_name.upper()}[/bold cyan]")
             console.print(f"  {description}\n")
-        console.print(
-            "[dim]Usage: python run_simulation.py run --preset <name>[/dim]"
-        )
+        console.print("[dim]Usage: python run_simulation.py run --preset <name>[/dim]")
     else:
         console.print("[yellow]Use --list to see available presets[/yellow]")
 
@@ -385,23 +399,23 @@ def export_config(
 ):
     """
     Export current configuration to file (V3.0.0).
-    
+
     Saves the current SimulationConfig to a YAML or JSON file.
     The file can be loaded later with 'load-config' command.
     """
     from src.satellite_control.config.io import ConfigIO
     from src.satellite_control.config.simulation_config import SimulationConfig
-    
+
     try:
         # Create default config (or could use current simulation config)
         config = SimulationConfig.create_default()
-        
+
         # Save to file
         ConfigIO.save(config, output, format=format)
-        
+
         console.print(f"[green]✓ Configuration exported to {output}[/green]")
         console.print(f"[dim]Version: {ConfigIO.CURRENT_CONFIG_VERSION}[/dim]")
-        
+
     except Exception as e:
         console.print(f"[bold red]Failed to export config:[/bold red] {e}")
         raise typer.Exit(code=1)
@@ -409,7 +423,9 @@ def export_config(
 
 @app.command()
 def load_config(
-    file_path: str = typer.Argument(..., help="Path to config file (.yaml, .yml, or .json)"),
+    file_path: str = typer.Argument(
+        ..., help="Path to config file (.yaml, .yml, or .json)"
+    ),
     migrate: bool = typer.Option(
         True,
         "--migrate/--no-migrate",
@@ -423,55 +439,60 @@ def load_config(
 ):
     """
     Load configuration from file (V3.0.0).
-    
+
     Loads a SimulationConfig from a YAML or JSON file.
     Older config versions will be automatically migrated if --migrate is enabled.
     """
     from pathlib import Path
     from src.satellite_control.config.io import ConfigIO
     from src.satellite_control.config.simulation_config import SimulationConfig
-    
+
     try:
         config_file = Path(file_path)
-        
+
         if not config_file.exists():
             console.print(f"[bold red]Config file not found: {file_path}[/bold red]")
             raise typer.Exit(code=1)
-        
+
         # Load config
         config = ConfigIO.load(config_file, migrate=migrate)
-        
+
         console.print(f"[green]✓ Configuration loaded from {file_path}[/green]")
-        
+
         # Validate if requested
         if validate:
             from src.satellite_control.config.validator import ConfigValidator
-            
+
             validator = ConfigValidator()
             issues = validator.validate_all(config.app_config)
-            
+
             if issues:
-                console.print("[bold yellow]Configuration validation warnings:[/bold yellow]")
+                console.print(
+                    "[bold yellow]Configuration validation warnings:[/bold yellow]"
+                )
                 for issue in issues:
                     console.print(f"  [yellow]⚠[/yellow] {issue}")
             else:
                 console.print("[green]✓ Configuration is valid[/green]")
-        
+
         # Show summary
         console.print("\n[bold]Configuration Summary:[/bold]")
         console.print(f"  MPC dt: {config.app_config.mpc.dt}s")
         console.print(f"  Simulation dt: {config.app_config.simulation.dt}s")
         console.print(f"  Max duration: {config.app_config.simulation.max_duration}s")
         console.print(f"  Control dt: {config.app_config.simulation.control_dt}s")
-        
-        console.print("\n[dim]To use this config, pass it to SimulationConfig.create_with_overrides()[/dim]")
-        
+
+        console.print(
+            "\n[dim]To use this config, pass it to SimulationConfig.create_with_overrides()[/dim]"
+        )
+
     except FileNotFoundError:
         console.print(f"[bold red]Config file not found: {file_path}[/bold red]")
         raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[bold red]Failed to load config:[/bold red] {e}")
         import traceback
+
         console.print("[dim]Traceback:[/dim]")
         console.print(traceback.format_exc())
         raise typer.Exit(code=1)
@@ -480,7 +501,9 @@ def load_config(
 @app.command()
 def config(
     dump: bool = typer.Option(False, "--dump", help="Dump current effective config"),
-    validate: bool = typer.Option(True, "--validate/--no-validate", help="Validate configuration"),
+    validate: bool = typer.Option(
+        True, "--validate/--no-validate", help="Validate configuration"
+    ),
 ):
     """
     Inspect or validate configuration.
@@ -488,7 +511,7 @@ def config(
     try:
         # V4.0.0: Create default config (no SatelliteConfig fallback)
         from src.satellite_control.config.simulation_config import SimulationConfig
-        
+
         # Try to get from default config first (v3.0.0)
         try:
             default_config = SimulationConfig.create_default()
@@ -496,6 +519,7 @@ def config(
         except Exception:
             # V4.0.0: Use default config (no SatelliteConfig fallback)
             from src.satellite_control.config.simulation_config import SimulationConfig
+
             default_config = SimulationConfig.create_default()
             app_config = default_config.app_config
 
@@ -510,14 +534,18 @@ def config(
                 issues = validator.validate_all(app_config)
 
                 if issues:
-                    console.print("[bold red]Configuration validation failed:[/bold red]")
+                    console.print(
+                        "[bold red]Configuration validation failed:[/bold red]"
+                    )
                     for issue in issues:
                         console.print(f"  [red]✗[/red] {issue}")
                     raise typer.Exit(code=1)
                 else:
                     console.print("[bold green]✓ Configuration is valid.[/bold green]")
 
-            mode_str = "Realistic" if app_config.physics.use_realistic_physics else "Idealized"
+            mode_str = (
+                "Realistic" if app_config.physics.use_realistic_physics else "Idealized"
+            )
             console.print(f"Physics Mode: {mode_str}")
 
     except ValueError as e:
@@ -530,94 +558,108 @@ def config(
 
 @app.command("list-missions")
 def list_missions(
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed plugin information"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed plugin information"
+    ),
 ):
     """
     List all available mission plugins.
-    
+
     Shows built-in and discovered mission plugins with their descriptions.
     """
     # Discover plugins from search paths
     registry = get_registry()
     discovered_count = discover_plugins()
-    
+
     console.print(Panel.fit("Available Mission Plugins", style="bold blue"))
-    
+
     plugins = registry.list_plugins()
     if not plugins:
         console.print("[yellow]No mission plugins found.[/yellow]")
         return
-    
+
     console.print(f"\nFound {len(plugins)} mission plugin(s):\n")
-    
+
     for name in plugins:
         info = registry.get_plugin_info(name)
         if info is None:
             continue
-        
+
         console.print(f"[bold cyan]{info['display_name']}[/bold cyan] ({name})")
         console.print(f"  Version: {info['version']}")
-        if info['author']:
+        if info["author"]:
             console.print(f"  Author: {info['author']}")
         console.print(f"  Description: {info['description']}")
-        
+
         if verbose:
             console.print(f"  File: {info['file_path']}")
-            if info['required_parameters']:
-                console.print(f"  Required parameters: {', '.join(info['required_parameters'])}")
-        
+            if info["required_parameters"]:
+                console.print(
+                    f"  Required parameters: {', '.join(info['required_parameters'])}"
+                )
+
         console.print()
 
 
 @app.command("install-mission")
 def install_mission(
-    plugin_path: str = typer.Argument(..., help="Path to Python file containing mission plugin"),
+    plugin_path: str = typer.Argument(
+        ..., help="Path to Python file containing mission plugin"
+    ),
 ):
     """
     Install a custom mission plugin from a file.
-    
+
     The plugin file must contain a class that inherits from MissionPlugin.
     """
     from pathlib import Path
-    
+
     file_path = Path(plugin_path).expanduser().resolve()
-    
+
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
-    
+
     if not file_path.is_file():
         console.print(f"[red]Error: Not a file: {file_path}[/red]")
         raise typer.Exit(1)
-    
+
     if not file_path.suffix == ".py":
-        console.print(f"[red]Error: File must be a Python file (.py): {file_path}[/red]")
+        console.print(
+            f"[red]Error: File must be a Python file (.py): {file_path}[/red]"
+        )
         raise typer.Exit(1)
-    
+
     registry = get_registry()
     plugin = registry.load_plugin_from_file(file_path)
-    
+
     if plugin is None:
         console.print(f"[red]Error: Failed to load plugin from {file_path}[/red]")
-        console.print("[yellow]Make sure the file contains a class inheriting from MissionPlugin[/yellow]")
+        console.print(
+            "[yellow]Make sure the file contains a class inheriting from MissionPlugin[/yellow]"
+        )
         raise typer.Exit(1)
-    
-    console.print(f"[green]✓ Successfully installed plugin: {plugin.get_display_name()}[/green]")
+
+    console.print(
+        f"[green]✓ Successfully installed plugin: {plugin.get_display_name()}[/green]"
+    )
     console.print(f"  Name: {plugin.get_name()}")
     console.print(f"  Version: {plugin.get_version()}")
-    console.print(f"\nUse 'satellite-control list-missions' to see all available plugins.")
+    console.print(
+        f"\nUse 'satellite-control list-missions' to see all available plugins."
+    )
 
 
 @app.command("studio")
 def studio():
     """
     Launch interactive studio mode.
-    
+
     Opens an interactive menu system for running simulations, analyzing results,
     configuring satellites, and viewing visualizations - all in Python, no web server.
     """
     from src.satellite_control.studio import run_studio
-    
+
     try:
         run_studio()
     except KeyboardInterrupt:
@@ -630,27 +672,74 @@ def studio():
 @app.command("visualize")
 def visualize(
     data_path: str = typer.Argument(..., help="Path to simulation data directory"),
-    interactive: bool = typer.Option(True, "--interactive/--static", help="Open interactive plots (default) or generate static images"),
+    interactive: bool = typer.Option(
+        True,
+        "--interactive/--static",
+        help="Open interactive plots (default) or generate static images",
+    ),
 ):
     """
     Visualize simulation results using Python-native matplotlib.
-    
+
     Opens interactive matplotlib windows for trajectory, telemetry, and performance analysis.
     No web server required - everything runs in Python.
     """
     from pathlib import Path
     from src.satellite_control.visualize import visualize_simulation_data
-    
+
     data_dir = Path(data_path).expanduser().resolve()
-    
+
     if not data_dir.exists():
         console.print(f"[red]Error: Data directory not found: {data_dir}[/red]")
         raise typer.Exit(1)
-    
+
     try:
         visualize_simulation_data(data_dir, interactive=interactive)
     except Exception as e:
         console.print(f"[red]Error visualizing data: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def hydra_run(
+    overrides: Optional[List[str]] = typer.Argument(
+        None, help="Hydra overrides list (e.g. 'vehicle=cube_sat_6u')"
+    ),
+):
+    """
+    Run simulation using the new Hydra configuration system.
+    """
+    from omegaconf import OmegaConf
+
+    # Initialize Hydra (needs absolute path or relative to calling script, complicated with pip install)
+    # We will use the Compose API with a relative path assuming we are running from project root or installed package
+    from hydra import compose, initialize
+    from hydra.core.global_hydra import GlobalHydra
+
+    # Clear global hydra instance if it exists
+    GlobalHydra.instance().clear()
+
+    console.print("[bold green]Running with Hydra Configuration...[/bold green]")
+
+    try:
+        # Relative path to config directory from this file
+        # src/satellite_control/cli.py -> ../../../config
+        # But for installed package, we need to find where 'config' is.
+        # Ideally config is package data or we are running from source root.
+        # Let's assume source root execution for now as per instructions.
+
+        with initialize(version_base=None, config_path="../../config"):
+            # Compose config
+            cfg = compose(config_name="main", overrides=overrides or [])
+
+            console.print(f"Loaded Config: [dim]{cfg.vehicle.mass}kg, {cfg.env}[/dim]")
+
+            # Start Simulation
+            sim = SatelliteMPCLinearizedSimulation(cfg=cfg, use_mujoco_viewer=True)
+            sim.run_simulation()
+
+    except Exception:
+        console.print_exception()
         raise typer.Exit(1)
 
 

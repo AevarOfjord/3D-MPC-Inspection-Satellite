@@ -14,8 +14,7 @@ This module handles:
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -45,7 +44,7 @@ logger = logging.getLogger(__name__)
 class SimulationInitializer:
     """
     Handles initialization of simulation components.
-    
+
     This class encapsulates all the setup logic that was previously
     in SatelliteMPCLinearizedSimulation._initialize_from_active_config.
     """
@@ -58,7 +57,7 @@ class SimulationInitializer:
     ):
         """
         Initialize the simulation initializer.
-        
+
         Args:
             simulation: The simulation instance to initialize
             simulation_config: Optional SimulationConfig (preferred)
@@ -81,7 +80,7 @@ class SimulationInitializer:
     ) -> None:
         """
         Initialize all simulation components.
-        
+
         Args:
             start_pos: Starting position (x, y, z)
             target_pos: Target position (x, y, z)
@@ -94,7 +93,9 @@ class SimulationInitializer:
         """
         # V3.0.0: Always require simulation_config
         if self.simulation_config is None:
-            raise ValueError("simulation_config is required (V3.0.0: no SatelliteConfig fallback)")
+            raise ValueError(
+                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+            )
         app_config = self.simulation_config.app_config
 
         # Use Constants for default positions (these are not mutable)
@@ -108,7 +109,9 @@ class SimulationInitializer:
             target_angle = Constants.DEFAULT_TARGET_ANGLE
 
         # Initialize satellite physics
-        self._initialize_satellite_physics(start_pos, start_angle, start_vx, start_vy, start_vz, start_omega)
+        self._initialize_satellite_physics(
+            start_pos, start_angle, start_vx, start_vy, start_vz, start_omega
+        )
 
         # Initialize target state
         self._initialize_target_state(target_pos, target_angle)
@@ -147,7 +150,39 @@ class SimulationInitializer:
         self._initialize_simulation_context()
 
         # Log initialization summary
-        self._log_initialization_summary(start_pos, target_pos, start_angle, target_angle, app_config)
+        # Log initialization summary
+        self._log_initialization_summary(
+            start_pos, target_pos, start_angle, target_angle, app_config
+        )
+
+        # Initialize visualization attributes (colors, etc)
+        self._initialize_visualization_attributes(app_config)
+
+    def _initialize_visualization_attributes(self, app_config: Any) -> None:
+        """Initialize attributes needed for visualization (e.g. thruster colors)."""
+        # Define a palette of colors
+        colors = [
+            "#FF0000",
+            "#00FF00",
+            "#0000FF",
+            "#FFFF00",
+            "#00FFFF",
+            "#FF00FF",
+            "#800000",
+            "#008000",
+            "#000080",
+            "#808000",
+            "#008080",
+            "#800080",
+        ]
+
+        self.simulation.satellite.thruster_colors = {}
+        thruster_positions = app_config.physics.thruster_positions
+
+        # Assign colors
+        for i, tid in enumerate(sorted(thruster_positions.keys())):
+            color_idx = i % len(colors)
+            self.simulation.satellite.thruster_colors[tid] = colors[color_idx]
 
     def _initialize_satellite_physics(
         self,
@@ -163,7 +198,7 @@ class SimulationInitializer:
             raise ValueError(
                 "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
             )
-        
+
         # V4.0.0: Pass app_config to MuJoCoSatelliteSimulator
         self.simulation.satellite = SatelliteThrusterTester(
             use_mujoco_viewer=self.use_mujoco_viewer,
@@ -178,7 +213,9 @@ class SimulationInitializer:
             sp = np.pad(sp, (0, 1), "constant")
         self.simulation.satellite.position = sp
 
-        self.simulation.satellite.velocity = np.array([start_vx, start_vy, start_vz], dtype=np.float64)
+        self.simulation.satellite.velocity = np.array(
+            [start_vx, start_vy, start_vz], dtype=np.float64
+        )
         self.simulation.satellite.angle = start_angle
         # Type ignore: Property setter accepts float, getter returns ndarray
         self.simulation.satellite.angular_velocity = start_omega  # type: ignore
@@ -209,8 +246,7 @@ class SimulationInitializer:
         # Velocities = 0
 
         logger.info(
-            f"INFO: POINT-TO-POINT MODE: "
-            f"Target ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
+            f"INFO: POINT-TO-POINT MODE: Target ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
         )
 
     def _initialize_simulation_timing(self, app_config: Any) -> None:
@@ -220,7 +256,9 @@ class SimulationInitializer:
         self.simulation.max_simulation_time = app_config.simulation.max_duration
         self.simulation.control_update_interval = app_config.mpc.dt
         self.simulation.last_control_update = 0.0
-        self.simulation.next_control_simulation_time = 0.0  # Track next scheduled control update
+        self.simulation.next_control_simulation_time = (
+            0.0  # Track next scheduled control update
+        )
 
     def _initialize_thruster_manager(self, app_config: Any) -> None:
         """Initialize thruster manager with delays and physics settings."""
@@ -270,8 +308,12 @@ class SimulationInitializer:
         self.simulation.previous_command: Optional[np.ndarray] = None
 
         # Current control
-        self.simulation.current_thrusters = np.zeros(self.simulation.num_thrusters, dtype=np.float64)
-        self.simulation.previous_thrusters = np.zeros(self.simulation.num_thrusters, dtype=np.float64)
+        self.simulation.current_thrusters = np.zeros(
+            self.simulation.num_thrusters, dtype=np.float64
+        )
+        self.simulation.previous_thrusters = np.zeros(
+            self.simulation.num_thrusters, dtype=np.float64
+        )
 
     def _initialize_data_logging(self) -> None:
         """Initialize data loggers."""
@@ -288,6 +330,7 @@ class SimulationInitializer:
         # TODO: Migrate mission_report_generator.py to accept SimulationConfig directly
         # For now, create a compatibility adapter that provides flat attribute interface
         from src.satellite_control.config.satellite_config import SatelliteConfigAdapter
+
         adapter = SatelliteConfigAdapter(self.simulation_config)
         self.simulation.report_generator = create_mission_report_generator(adapter)
         self.simulation.data_save_path = None
@@ -300,21 +343,102 @@ class SimulationInitializer:
 
     def _initialize_tolerances(self) -> None:
         """Initialize tolerance values."""
-        # Tolerances are in mpc_params but not in AppConfig model yet
-        # Use constants directly (they're not mutable)
-        from src.satellite_control.config import mpc_params
+        # V4.0.0: Use SatelliteConfig class attributes instead of mpc_params
+        from src.satellite_control.config.satellite_config import SatelliteConfig
 
-        self.simulation.position_tolerance = mpc_params.POSITION_TOLERANCE
-        self.simulation.angle_tolerance = mpc_params.ANGLE_TOLERANCE
-        self.simulation.velocity_tolerance = mpc_params.VELOCITY_TOLERANCE
-        self.simulation.angular_velocity_tolerance = mpc_params.ANGULAR_VELOCITY_TOLERANCE
+        self.simulation.position_tolerance = SatelliteConfig.POSITION_TOLERANCE
+        self.simulation.angle_tolerance = SatelliteConfig.ANGLE_TOLERANCE
+        self.simulation.velocity_tolerance = SatelliteConfig.VELOCITY_TOLERANCE
+        self.simulation.angular_velocity_tolerance = (
+            SatelliteConfig.ANGULAR_VELOCITY_TOLERANCE
+        )
 
     def _initialize_mpc_controller(self, app_config: Any) -> None:
         """Initialize MPC controller."""
         logger.info("Initializing MPC Controller (Mode: PWM/OSQP)...")
-        self.simulation.mpc_controller = MPCController(
-            satellite_params=app_config.physics, mpc_params=app_config.mpc
-        )
+        # Check if we are in new Hydra mode
+        if hasattr(self.simulation, "cfg") and self.simulation.cfg is not None:
+            self.simulation.mpc_controller = MPCController(cfg=self.simulation.cfg)
+        else:
+            # V4.0.0: Load Hydra configs and construct cfg for MPCController
+            from omegaconf import OmegaConf
+            from pathlib import Path
+
+            # Find config directory relative to this file
+            config_dir = Path(__file__).parent.parent.parent.parent / "config"
+
+            # Load MPC config
+            mpc_yaml = config_dir / "control" / "mpc" / "default.yaml"
+            if mpc_yaml.exists():
+                mpc_cfg = OmegaConf.load(mpc_yaml)
+            else:
+                # Construct from app_config as fallback
+                mpc_cfg = OmegaConf.create(
+                    {
+                        "prediction_horizon": app_config.mpc.prediction_horizon,
+                        "solver_time_limit": app_config.mpc.solver_time_limit,
+                        "weights": {
+                            "position": app_config.mpc.q_position,
+                            "velocity": app_config.mpc.q_velocity,
+                            "angle": app_config.mpc.q_angle,
+                            "angular_velocity": app_config.mpc.q_angular_velocity,
+                            "thrust": app_config.mpc.r_thrust,
+                            "rw_torque": app_config.mpc.r_rw_torque,
+                            "switch": 0.0,
+                        },
+                        "constraints": {
+                            "max_velocity": app_config.mpc.max_velocity,
+                            "max_angular_velocity": app_config.mpc.max_angular_velocity,
+                            "position_bounds": app_config.mpc.position_bounds,
+                        },
+                        "adaptive": {
+                            "damping_zone": app_config.mpc.damping_zone,
+                            "velocity_threshold": app_config.mpc.velocity_threshold,
+                            "max_velocity_weight": app_config.mpc.max_velocity_weight,
+                        },
+                        "settings": {
+                            "dt": app_config.mpc.dt,
+                            "thruster_type": app_config.mpc.thruster_type,
+                            "enable_rw_yaw": app_config.mpc.enable_rw_yaw,
+                            "enable_z_tilt": app_config.mpc.enable_z_tilt,
+                            "z_tilt_gain": app_config.mpc.z_tilt_gain,
+                            "z_tilt_max_deg": app_config.mpc.z_tilt_max_deg,
+                            "verbose_mpc": app_config.mpc.verbose_mpc,
+                        },
+                    }
+                )
+
+            # Load vehicle config
+            vehicle_yaml = config_dir / "vehicle" / "cube_sat_6u.yaml"
+            if vehicle_yaml.exists():
+                vehicle_cfg = OmegaConf.load(vehicle_yaml)
+            else:
+                # Fallback to minimal config - this shouldn't happen
+                logger.warning("Vehicle config not found, using minimal fallback")
+                inertia_val = app_config.physics.moment_of_inertia
+                if hasattr(inertia_val, "__iter__") and not isinstance(
+                    inertia_val, str
+                ):
+                    inertia_list = list(inertia_val)
+                else:
+                    inertia_list = [float(inertia_val)] * 3
+                vehicle_cfg = OmegaConf.create(
+                    {
+                        "mass": app_config.physics.total_mass,
+                        "inertia": inertia_list,
+                        "center_of_mass": [0.0, 0.0, 0.0],
+                        "thrusters": [],
+                        "reaction_wheels": [],
+                    }
+                )
+
+            cfg = OmegaConf.create(
+                {
+                    "control": {"mpc": mpc_cfg},
+                    "vehicle": vehicle_cfg,
+                }
+            )
+            self.simulation.mpc_controller = MPCController(cfg=cfg)
 
     def _initialize_mission_manager(self) -> None:
         """Initialize mission state manager (V4.0.0: simulation_config required)."""
@@ -322,11 +446,11 @@ class SimulationInitializer:
             raise ValueError(
                 "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
             )
-        
+
         # V4.0.0: simulation_config is required, so mission_state and app_config are always available
         mission_state = self.simulation_config.mission_state
         app_config = self.simulation_config.app_config
-        
+
         self.simulation.mission_manager = MissionStateManager(
             mission_state=mission_state,  # V4.0.0: Required
             app_config=app_config,  # V4.0.0: Required
@@ -381,16 +505,25 @@ class SimulationInitializer:
 
         logger.info(f"INFO: Start: {start_pos} m, {s_ang_str}")
         logger.info(f"INFO: Target: {target_pos} m, {t_ang_str}")
-        logger.info(f"INFO: Control update rate: " f"{1 / self.simulation.control_update_interval:.1f} Hz")
+        logger.info(
+            f"INFO: Control update rate: "
+            f"{1 / self.simulation.control_update_interval:.1f} Hz"
+        )
         logger.info(f"INFO: Prediction horizon: {app_config.mpc.prediction_horizon}")
         logger.info(f"INFO: Control horizon: {app_config.mpc.control_horizon}")
 
         if app_config.physics.use_realistic_physics:
             logger.info("WARNING: REALISTIC PHYSICS ENABLED:")
-            logger.info(f"WARNING: - Valve delay: " f"{self.simulation.VALVE_DELAY * 1000:.0f} ms")
-            logger.info(f"WARNING: - Ramp-up time: " f"{self.simulation.THRUST_RAMPUP_TIME * 1000:.0f} ms")
             logger.info(
-                f"WARNING: - Linear damping: " f"{app_config.physics.damping_linear:.3f} N/(m/s)"
+                f"WARNING: - Valve delay: {self.simulation.VALVE_DELAY * 1000:.0f} ms"
+            )
+            logger.info(
+                f"WARNING: - Ramp-up time: "
+                f"{self.simulation.THRUST_RAMPUP_TIME * 1000:.0f} ms"
+            )
+            logger.info(
+                f"WARNING: - Linear damping: "
+                f"{app_config.physics.damping_linear:.3f} N/(m/s)"
             )
             logger.info(
                 f"WARNING: - Rotational damping: "
@@ -401,8 +534,7 @@ class SimulationInitializer:
             position_noise_std = 0.0  # Default: no noise
             angle_noise_std = 0.0  # Default: no noise
             logger.info(
-                f"WARNING: - Position noise: "
-                f"{position_noise_std * 1000:.2f} mm std"
+                f"WARNING: - Position noise: {position_noise_std * 1000:.2f} mm std"
             )
             angle_noise_deg = np.degrees(angle_noise_std)
             logger.info(f"WARNING: - Angle noise: {angle_noise_deg:.2f}° std")

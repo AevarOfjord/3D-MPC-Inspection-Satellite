@@ -21,8 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-# V3.0.0: No longer import SatelliteConfig
-from src.satellite_control.config import use_structured_config
+# V4.0.0: Legacy imports removed - using dependency injection
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 class SimulationLoop:
     """
     Handles the main simulation loop execution.
-    
+
     This class encapsulates all the loop logic that was previously
     in SatelliteMPCLinearizedSimulation._run_simulation_with_globals
     and update_simulation.
@@ -39,39 +38,51 @@ class SimulationLoop:
     def __init__(self, simulation: Any):
         """
         Initialize the simulation loop.
-        
+
         Args:
             simulation: The SatelliteMPCLinearizedSimulation instance
         """
         self.simulation = simulation
-    
+
     def _get_mission_state(self):
         """Get mission_state from simulation_config (V3.0.0: required)."""
-        if not hasattr(self.simulation, 'simulation_config') or not self.simulation.simulation_config:
-            raise ValueError("simulation_config is required (V3.0.0: no SatelliteConfig fallback)")
+        if (
+            not hasattr(self.simulation, "simulation_config")
+            or not self.simulation.simulation_config
+        ):
+            raise ValueError(
+                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+            )
         return self.simulation.simulation_config.mission_state
-    
+
     def _get_app_config(self):
         """Get app_config from simulation_config (V3.0.0: required)."""
-        if not hasattr(self.simulation, 'simulation_config') or not self.simulation.simulation_config:
-            raise ValueError("simulation_config is required (V3.0.0: no SatelliteConfig fallback)")
+        if (
+            not hasattr(self.simulation, "simulation_config")
+            or not self.simulation.simulation_config
+        ):
+            raise ValueError(
+                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+            )
         return self.simulation.simulation_config.app_config
-    
+
     def _is_waypoint_mode(self) -> bool:
         """Check if waypoint mode is enabled."""
         mission_state = self._get_mission_state()
-        return mission_state.enable_waypoint_mode or mission_state.enable_multi_point_mode
-    
+        return (
+            mission_state.enable_waypoint_mode or mission_state.enable_multi_point_mode
+        )
+
     def _is_dxf_mode(self) -> bool:
         """Check if DXF shape mode is enabled."""
         mission_state = self._get_mission_state()
         return mission_state.dxf_shape_mode_active
-    
+
     def _get_current_target_index(self) -> int:
         """Get current target index."""
         mission_state = self._get_mission_state()
         return mission_state.current_target_index
-    
+
     def _get_waypoint_targets(self):
         """Get waypoint targets list."""
         mission_state = self._get_mission_state()
@@ -84,24 +95,21 @@ class SimulationLoop:
     ) -> Optional[Path]:
         """
         Run the simulation loop.
-        
+
         Args:
             show_animation: Whether to display animation during simulation
             structured_config: Structured config to use (for context manager)
-        
+
         Returns:
             Path to data save directory, or None
         """
-        if structured_config is not None:
-            with use_structured_config(structured_config.clone()):
-                return self._run_with_globals(show_animation=show_animation)
-        else:
-            return self._run_with_globals(show_animation=show_animation)
+        # V4.0.0: Removed legacy use_structured_config context manager
+        return self._run_with_globals(show_animation=show_animation)
 
     def _run_with_globals(self, show_animation: bool = True) -> Optional[Path]:
         """
         Run linearized MPC simulation.
-        
+
         Args:
             show_animation: Whether to display animation during simulation
         """
@@ -248,7 +256,9 @@ class SimulationLoop:
                 for _ in range(fast_batch_steps):
                     # Inline logic for speed
                     self.simulation.process_command_queue()
-                    self.simulation.satellite.update_physics(self.simulation.satellite.dt)
+                    self.simulation.satellite.update_physics(
+                        self.simulation.satellite.dt
+                    )
                     self.simulation.simulation_time = (
                         self.simulation.satellite.simulation_time
                     )
@@ -282,10 +292,10 @@ class SimulationLoop:
     def update_step(self, frame: Optional[int]) -> List[Any]:
         """
         Update simulation step (called by matplotlib animation or batch loop).
-        
+
         Args:
             frame: Current frame number (None for batch mode)
-        
+
         Returns:
             List of artists for matplotlib animation
         """
@@ -330,7 +340,7 @@ class SimulationLoop:
     def _check_termination_conditions(self) -> bool:
         """
         Check if simulation should terminate.
-        
+
         Returns:
             True if simulation should stop, False otherwise
         """
@@ -342,7 +352,9 @@ class SimulationLoop:
             if target_currently_reached:
                 if self.simulation.target_reached_time is None:
                     # First time reaching target
-                    self.simulation.target_reached_time = self.simulation.simulation_time
+                    self.simulation.target_reached_time = (
+                        self.simulation.simulation_time
+                    )
                     print(
                         f"\nTARGET REACHED! Time: {self.simulation.simulation_time:.1f}s"
                         " - MPC will maintain position"
@@ -350,7 +362,8 @@ class SimulationLoop:
                 else:
                     # Update maintenance tracking
                     self.simulation.target_maintenance_time = (
-                        self.simulation.simulation_time - self.simulation.target_reached_time
+                        self.simulation.simulation_time
+                        - self.simulation.target_reached_time
                     )
                     current_state = self.simulation.get_current_state()
                     pos_error = np.linalg.norm(
@@ -376,7 +389,7 @@ class SimulationLoop:
 
         app_config = self._get_app_config()
         use_final_stab = app_config.simulation.use_final_stabilization
-        
+
         if (
             not use_final_stab
             and self.simulation.target_reached_time is not None
@@ -414,7 +427,7 @@ class SimulationLoop:
     def _handle_waypoint_advancement(self) -> bool:
         """
         Handle waypoint advancement logic.
-        
+
         Returns:
             True if simulation should stop, False otherwise
         """
@@ -428,7 +441,7 @@ class SimulationLoop:
         app_config = self._get_app_config()
         targets = self._get_waypoint_targets()
         current_idx = self._get_current_target_index()
-        
+
         is_final_target = current_idx >= len(targets) - 1
         # V3.0.0: Use timing from SimulationParams
         if is_final_target:
@@ -439,13 +452,17 @@ class SimulationLoop:
         if stabilization_time >= required_hold_time:
             # Advance to next target (V3.0.0: always use mission_manager)
             if not self.simulation.mission_manager:
-                raise ValueError("mission_manager is required (V3.0.0: no SatelliteConfig fallback)")
-            
+                raise ValueError(
+                    "mission_manager is required (V3.0.0: no SatelliteConfig fallback)"
+                )
+
             next_available = self.simulation.mission_manager._advance_to_next_target()
-            
+
             if next_available:
                 # Update target state to next target with obstacle avoidance
-                target_pos, target_angle = self.simulation.mission_manager._get_current_waypoint_target()
+                target_pos, target_angle = (
+                    self.simulation.mission_manager._get_current_waypoint_target()
+                )
                 if target_pos is not None:
                     roll_deg, pitch_deg, yaw_deg = np.degrees(target_angle)
                     logger.info(
@@ -466,7 +483,7 @@ class SimulationLoop:
                     self.simulation.target_maintenance_time = 0.0
             else:
                 # All targets completed - end simulation
-                logger.info("WAYPOINT MISSION COMPLETED! " "All targets visited.")
+                logger.info("WAYPOINT MISSION COMPLETED! All targets visited.")
                 app_config = self._get_app_config()
                 use_stab = app_config.simulation.use_final_stabilization
                 if not use_stab:
@@ -481,7 +498,7 @@ class SimulationLoop:
     def _check_final_stabilization(self) -> bool:
         """
         Check final stabilization conditions.
-        
+
         Returns:
             True if simulation should stop, False otherwise
         """
@@ -494,7 +511,7 @@ class SimulationLoop:
         app_config = self._get_app_config()
         # V3.0.0: Use timing from SimulationParams
         stab_time = app_config.simulation.waypoint_final_stabilization_time
-        
+
         if not self._is_dxf_mode():
             # Single waypoint (no ENABLE_WAYPOINT_MODE set)
             if not self._is_waypoint_mode():

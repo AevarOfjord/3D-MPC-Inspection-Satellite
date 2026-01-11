@@ -79,7 +79,9 @@ class MissionExecutor:
             from pathlib import Path
 
             self.model_path = str(
-                Path(__file__).parent.parent.parent.parent.parent / "models" / "satellite_3d.xml"
+                Path(__file__).parent.parent.parent.parent.parent
+                / "models"
+                / "satellite_3d.xml"
             )
 
         self.model = mujoco.MjModel.from_xml_path(self.model_path)
@@ -87,23 +89,46 @@ class MissionExecutor:
         logger.info(f"Loaded model: {self.model_path}")
 
     def load_controller(self):
-        """Load the hybrid MPC controller."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        """Load the hybrid MPC controller using Hydra configs."""
+        from pathlib import Path
+        from omegaconf import OmegaConf
         from src.satellite_control.control.mpc_controller import MPCController
 
-        base_config = SimulationConfig.create_default()
-        mpc_params = base_config.app_config.mpc.model_copy(
-            update={
-                "prediction_horizon": 30,
-                "control_horizon": 30,
-                "dt": self.control_dt,
-            }
-        )
+        # Resolve config paths relative to this file
+        # src/satellite_control/mission -> src/satellite_control -> src -> PROJECT_ROOT
+        root_dir = Path(__file__).resolve().parent.parent.parent.parent
+        config_dir = root_dir / "config"
 
-        self.controller = MPCController(
-            satellite_params=base_config.app_config.physics,
-            mpc_params=mpc_params,
-        )
+        mpc_path = config_dir / "control" / "mpc" / "default.yaml"
+        vehicle_path = config_dir / "vehicle" / "cube_sat_6u.yaml"
+
+        # Guard against missing files
+        if not mpc_path.exists():
+            # Try 3 levels up if 4 was too many (structure varies)
+            root_dir = Path(__file__).resolve().parent.parent.parent
+            config_dir = root_dir / "config"
+            mpc_path = config_dir / "control" / "mpc" / "default.yaml"
+            vehicle_path = config_dir / "vehicle" / "cube_sat_6u.yaml"
+
+        if not mpc_path.exists():
+            raise FileNotFoundError(f"Config default.yaml not found at {mpc_path}")
+
+        mpc_conf = OmegaConf.load(mpc_path)
+        vehicle_conf = OmegaConf.load(vehicle_path)
+
+        # Overrides for specific mission execution context
+        mpc_conf.prediction_horizon = 30
+        mpc_conf.control_horizon = 30
+
+        # Ensure 'settings' exists
+        if "settings" not in mpc_conf:
+            mpc_conf.settings = {}
+        mpc_conf.settings.dt = self.control_dt
+
+        # Assemble full config mimicking Hydra structure
+        cfg = OmegaConf.create({"control": {"mpc": mpc_conf}, "vehicle": vehicle_conf})
+
+        self.controller = MPCController(cfg=cfg)
         logger.info("Controller loaded")
 
     def execute(
@@ -148,7 +173,9 @@ class MissionExecutor:
             )
 
         # Set initial position
-        sat_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite")
+        sat_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite"
+        )
         self.data.qpos[0:3] = mission.start_position
         self.data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]  # Identity quaternion
         self.data.qvel[:] = 0.0
@@ -201,14 +228,18 @@ class MissionExecutor:
                 for i in range(self.controller.num_thrusters):
                     force_body = thruster_cmd[i] * self.controller.body_frame_forces[i]
                     net_force += R @ force_body
-                    net_torque_body += thruster_cmd[i] * self.controller.body_frame_torques[i]
+                    net_torque_body += (
+                        thruster_cmd[i] * self.controller.body_frame_torques[i]
+                    )
 
                 net_torque_body += rw_torque_body
                 net_torque_world = R @ net_torque_body
 
                 # Add CW orbital forces
                 from src.satellite_control.config.orbital_config import OrbitalConfig
-                from src.satellite_control.physics.orbital_dynamics import compute_cw_force
+                from src.satellite_control.physics.orbital_dynamics import (
+                    compute_cw_force,
+                )
 
                 orbital_config = OrbitalConfig()
                 cw_force = compute_cw_force(pos, vel, 10.0, orbital_config)
@@ -224,7 +255,9 @@ class MissionExecutor:
                 if error < 0.05:
                     if hold_start_time is None:
                         hold_start_time = t
-                        logger.info(f"Reached waypoint {waypoint_idx + 1}: {current_target.name}")
+                        logger.info(
+                            f"Reached waypoint {waypoint_idx + 1}: {current_target.name}"
+                        )
 
                     # Check hold time
                     if t - hold_start_time >= current_target.hold_time:

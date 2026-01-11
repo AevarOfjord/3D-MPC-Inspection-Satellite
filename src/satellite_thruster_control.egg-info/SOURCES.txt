@@ -13,13 +13,13 @@ src/satellite_control/config/constants.py
 src/satellite_control/config/io.py
 src/satellite_control/config/mission_state.py
 src/satellite_control/config/models.py
-src/satellite_control/config/mpc_params.py
 src/satellite_control/config/obstacles.py
 src/satellite_control/config/orbital_config.py
 src/satellite_control/config/physics.py
 src/satellite_control/config/presets.py
 src/satellite_control/config/reaction_wheel_config.py
 src/satellite_control/config/satellite_config.py
+src/satellite_control/config/schema.py
 src/satellite_control/config/simulation_config.py
 src/satellite_control/config/thruster_config.py
 src/satellite_control/config/timing.py

@@ -83,13 +83,15 @@ class SatellitePhysicalParams(BaseModel):
         cls, v: Dict[int, Tuple[float, float, float]]
     ) -> Dict[int, Tuple[float, float, float]]:
         """Validate thruster positions are within satellite bounds."""
-        if len(v) not in [6, 8]:
-            raise ValueError(f"Expected 6 or 8 thrusters, got {len(v)}")
+        if len(v) not in [6, 8, 12]:
+            raise ValueError(f"Expected 6, 8 or 12 thrusters, got {len(v)}")
         for tid, pos in v.items():
-            if not (1 <= tid <= 8):
-                raise ValueError(f"Thruster ID must be 1-8, got {tid}")
+            if not (1 <= tid <= 12):
+                raise ValueError(f"Thruster ID must be 1-12, got {tid}")
             if abs(pos[0]) > 1.0 or abs(pos[1]) > 1.0 or abs(pos[2]) > 1.0:
-                raise ValueError(f"Thruster {tid} position {pos} exceeds satellite bounds (±1m)")
+                raise ValueError(
+                    f"Thruster {tid} position {pos} exceeds satellite bounds (±1m)"
+                )
         return v
 
     @field_validator("thruster_forces")
@@ -100,15 +102,21 @@ class SatellitePhysicalParams(BaseModel):
             if force <= 0:
                 raise ValueError(f"Thruster {tid} force must be positive, got {force}")
             if force > 100:  # 100N is very high for a small satellite
-                raise ValueError(f"Thruster {tid} force {force}N exceeds reasonable maximum (100N)")
+                raise ValueError(
+                    f"Thruster {tid} force {force}N exceeds reasonable maximum (100N)"
+                )
         return v
 
     @field_validator("com_offset")
     @classmethod
-    def validate_com_offset(cls, v: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    def validate_com_offset(
+        cls, v: Tuple[float, float, float]
+    ) -> Tuple[float, float, float]:
         """Validate COM offset is within satellite bounds."""
         if abs(v[0]) > 0.5 or abs(v[1]) > 0.5 or abs(v[2]) > 0.5:
-            raise ValueError(f"COM offset {v} is too large (should be within ±0.5m of center)")
+            raise ValueError(
+                f"COM offset {v} is too large (should be within ±0.5m of center)"
+            )
         return v
 
 
@@ -286,7 +294,9 @@ class MPCParams(BaseModel):
     @model_validator(mode="after")
     def validate_weight_balance(self) -> "MPCParams":
         """Check that weights are reasonably balanced."""
-        total_q = self.q_position + self.q_velocity + self.q_angle + self.q_angular_velocity
+        total_q = (
+            self.q_position + self.q_velocity + self.q_angle + self.q_angular_velocity
+        )
         if total_q == 0 and self.r_thrust > 0:
             raise ValueError(
                 "All Q weights are zero but R_thrust is nonzero - "
@@ -333,7 +343,7 @@ class SimulationParams(BaseModel):
         False,
         description="Require final stabilization hold before terminating missions",
     )
-    
+
     # Timing parameters (V3.0.0: moved from SatelliteConfig/timing.py)
     control_dt: float = Field(
         0.050,
