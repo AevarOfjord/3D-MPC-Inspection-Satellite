@@ -15,10 +15,6 @@ import scipy.sparse as sp
 # from src.satellite_control.config import mpc_params
 # from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
 # from src.satellite_control.config.models import MPCParams, SatellitePhysicalParams
-from src.satellite_control.core.error_handling import with_error_context
-from src.satellite_control.core.exceptions import (
-    OptimizationError,
-)  # , SolverTimeoutError
 from src.satellite_control.utils.caching import cached
 from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
@@ -537,7 +533,6 @@ class MPCController(Controller):
             "max_solve_time": max(self.solve_times),
         }
 
-    @with_error_context("MPC solve", reraise=True)
     def get_control_action(
         self,
         x_current: np.ndarray,
@@ -625,7 +620,7 @@ class MPCController(Controller):
             res = self.prob.solve()
         except Exception as e:
             logger.error(f"OSQP solver raised exception: {e}")
-            raise OptimizationError("solver_exception", f"OSQP solver failed: {e}")
+            raise RuntimeError(f"OSQP solver failed: {e}")
 
         solve_time = time.time() - start_time
         self.solve_times.append(solve_time)
@@ -645,7 +640,7 @@ class MPCController(Controller):
         if res.info.status not in ["solved", "solved_inaccurate"]:
             status_msg = res.info.status if hasattr(res.info, "status") else "unknown"
             logger.warning(f"MPC solver status: {status_msg}")
-            raise OptimizationError(status_msg, f"Solver returned status: {status_msg}")
+            raise RuntimeError(f"Solver returned status: {status_msg}")
 
         u_idx = (self.N + 1) * self.nx
         u_opt = res.x[u_idx : u_idx + self.nu]
