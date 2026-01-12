@@ -57,10 +57,8 @@ from src.satellite_control.utils.orientation_utils import (
 )
 
 
-# Set up logger with simple format for clean output
-logger = setup_logging(
-    __name__, log_file=f"{Constants.DATA_DIR}/simulation.log", simple_format=True
-)
+# Set up logger with simple format for clean output (console only)
+logger = setup_logging(__name__, log_file=None, simple_format=True)
 
 
 # Use centralized FFMPEG path from Constants (handles all platforms)
