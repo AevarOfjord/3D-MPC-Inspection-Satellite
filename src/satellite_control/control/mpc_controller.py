@@ -12,6 +12,18 @@ import numpy as np
 import osqp
 import scipy.sparse as sp
 
+# C++ Backend
+try:
+    from satellite_control.cpp._cpp_mpc import (
+        SatelliteParams,
+        Linearizer as CppLinearizer,
+    )
+
+    USE_CPP_LINEARIZER = True
+except ImportError:
+    USE_CPP_LINEARIZER = False
+    CppLinearizer = None
+
 # from src.satellite_control.config import mpc_params
 # from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
 # from src.satellite_control.config.models import MPCParams, SatellitePhysicalParams
@@ -155,7 +167,28 @@ class MPCController(Controller):
         # Performance tracking
         self.solve_times: list[float] = []
 
-        # Precompute thruster forces (body frame)
+        # Initialize C++ Linearizer if available
+        if USE_CPP_LINEARIZER:
+            cpp_params = SatelliteParams()
+            cpp_params.dt = self._dt
+            cpp_params.mass = self.total_mass
+            cpp_params.inertia = self.moment_of_inertia
+            cpp_params.num_thrusters = self.num_thrusters
+            cpp_params.num_rw = self.num_rw_axes
+            cpp_params.thruster_positions = [
+                np.array(p) for p in self.thruster_positions
+            ]
+            cpp_params.thruster_directions = [
+                np.array(d) for d in self.thruster_directions
+            ]
+            cpp_params.thruster_forces = self.thruster_forces
+            cpp_params.rw_torque_limits = list(self.rw_torque_limits)
+            cpp_params.com_offset = self.com_offset
+            self._cpp_linearizer = CppLinearizer(cpp_params)
+        else:
+            self._cpp_linearizer = None
+
+        # Precompute thruster forces (body frame) - still needed for Python fallback
         self._precompute_thruster_forces()
 
         # Precompute Q_diag (used frequently in get_control_action)
@@ -247,8 +280,13 @@ class MPCController(Controller):
         """
         Linearize dynamics around current state (quaternion).
 
-        Uses caching for expensive rotation matrix computation.
+        Uses C++ backend if available, otherwise falls back to Python.
         """
+        # Use C++ backend if available
+        if self._cpp_linearizer is not None:
+            return self._cpp_linearizer.linearize(x_current)
+
+        # Python fallback
         # x = [px, py, pz, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
         # Indices:
         # P: 0-2 (3)
