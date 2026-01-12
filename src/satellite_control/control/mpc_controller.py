@@ -69,6 +69,9 @@ class MPCController(Controller):
         self.reaction_wheels = self.vehicle_cfg.reaction_wheels
         self.num_rw_axes = len(self.reaction_wheels)
         self.rw_torque_limits = [float(rw.max_torque) for rw in self.reaction_wheels]
+        self.max_rw_torque = (
+            max(self.rw_torque_limits) if self.rw_torque_limits else 0.0
+        )
 
         # MPC parameters
         self.N = int(getattr(self.mpc_cfg, "prediction_horizon", 50))
