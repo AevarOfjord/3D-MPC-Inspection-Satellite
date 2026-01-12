@@ -1,0 +1,22 @@
+vehicle:
+  name: "Inspector_Sat_V1"
+  mass: 12.0
+  inertia: [0.05, 0.05, 0.05]
+  
+  reaction_wheels:
+    max_torque: 0.1
+    max_speed: 500.0
+    
+  thrusters:
+    - id: "t_pos_x"
+      position: [-0.1, 0.0, 0.0]
+      direction: [1.0, 0.0, 0.0]
+      max_thrust: 1.0
+    - id: "t_neg_x"
+      position: [0.1, 0.0, 0.0]
+      direction: [-1.0, 0.0, 0.0]
+      max_thrust: 1.0
+      
+control:
+  dt: 0.1
+  horizon: 10

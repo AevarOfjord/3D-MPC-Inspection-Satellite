@@ -28,4 +28,7 @@ htmlcov/
 
 # Project Specific
 data/
+Data/
+Cplusplus_build/Data/
+
 simulation.log

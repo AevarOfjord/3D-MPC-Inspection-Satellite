@@ -1,0 +1,38 @@
+[2026-01-12 10:43:06.538] [info] ========================================
+[2026-01-12 10:43:06.539] [info]    Satellite Control System (C++)       
+[2026-01-12 10:43:06.539] [info]    Fault Tolerant Mode                  
+[2026-01-12 10:43:06.539] [info] ========================================
+[2026-01-12 10:43:06.539] [info] Loading Vehicle Config: config/mission/simple_point.yaml
+[2026-01-12 10:43:06.539] [info] Loaded Vehicle 'TestSatellite' with 6 thrusters
+[2026-01-12 10:43:06.540] [info] Loaded Mission 'Simple Point-to-Point' with 1 waypoints
+[2026-01-12 10:43:06.540] [info] Config Loaded. Vehicle: TestSatellite, 6 thrusters
+[2026-01-12 10:43:06.540] [info] FaultManager: Initialized with 9 actuators (6 thrusters, 3 RW axes)
+[2026-01-12 10:43:06.540] [info] Control Allocation Matrix B Computed (6x6)
+[2026-01-12 10:43:06.540] [info] Loading Vehicle Config: config/mission/simple_point.yaml
+[2026-01-12 10:43:06.540] [info] Loaded Vehicle 'TestSatellite' with 6 thrusters
+[2026-01-12 10:43:06.540] [info] Loaded Mission 'Simple Point-to-Point' with 1 waypoints
+[2026-01-12 10:43:06.540] [info] Control Allocation Matrix B Computed (6x6)
+[2026-01-12 10:43:06.540] [info] MissionManager: Initialized with 1 waypoints
+[2026-01-12 10:43:06.540] [info] Loading MuJoCo Model: models/satellite_3d.xml
+[2026-01-12 10:43:06.543] [info] Model Loaded. nv=6, nq=7
+[2026-01-12 10:43:06.543] [info] Physics Engine Initialized.
+Data Logger: Created directory Data/Simulation/12-01-2026_10-43-06
+[2026-01-12 10:43:06.543] [info] Starting Simulation (fault will be injected at 20s)...
+[2026-01-12 10:43:06.544] [info] T=0.0s | Faults:NO | MaxThrust: 1.00N | Err: 1.732m
+[2026-01-12 10:43:06.554] [info] T=1.0s | Faults:NO | MaxThrust: 1.00N | Err: 1.644m
+[2026-01-12 10:43:06.564] [info] T=2.1s | Faults:NO | MaxThrust: 1.00N | Err: 1.346m
+[2026-01-12 10:43:06.573] [info] T=3.2s | Faults:NO | MaxThrust: 1.00N | Err: 0.840m
+[2026-01-12 10:43:06.583] [info] T=4.3s | Faults:NO | MaxThrust: 1.00N | Err: 0.160m
+[2026-01-12 10:43:06.584] [info] Transition: Reached Waypoint 0 (1.00, 1.00, 1.00). Holding for 5.0s
+[2026-01-12 10:43:06.592] [info] T=5.4s | Faults:NO | MaxThrust: 1.00N | Err: 0.383m
+[2026-01-12 10:43:06.600] [info] T=6.5s | Faults:NO | MaxThrust: 1.00N | Err: 0.716m
+[2026-01-12 10:43:06.609] [info] T=7.6s | Faults:NO | MaxThrust: 1.00N | Err: 0.839m
+[2026-01-12 10:43:06.618] [info] T=8.6s | Faults:NO | MaxThrust: 1.00N | Err: 0.764m
+[2026-01-12 10:43:06.627] [info] Transition: Hold Complete for Waypoint 0.
+[2026-01-12 10:43:06.627] [info] Mission Complete!
+[2026-01-12 10:43:06.627] [info] Mission Complete at 9.55s
+[2026-01-12 10:43:06.627] [info] Simulation Ended.
+[2026-01-12 10:43:06.627] [info] ========== FAULT TOLERANCE SUMMARY ==========
+[2026-01-12 10:43:06.627] [info] Active faults: NO
+[2026-01-12 10:43:06.627] [info] Healthy thrusters: 6/6
+[2026-01-12 10:43:06.627] [info] Mission completed despite thruster failure.

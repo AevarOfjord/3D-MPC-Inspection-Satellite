@@ -1,0 +1,17 @@
+# Main Configuration Entry Point
+# This file defines defaults and references sub-configs
+
+defaults:
+  - vehicle: cube_sat_6u
+  - control/mpc: smooth
+  - mission: station_keeping
+  - env: deep_space
+
+# Override any values here
+simulation:
+  model_file: "../models/satellite_3d.xml"
+  physics_dt: 0.001
+  control_dt: 0.05
+  headless: true
+
+config_version: "1.0"

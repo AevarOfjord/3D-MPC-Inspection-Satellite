@@ -1,3 +1,0 @@
-[console_scripts]
-sat-sim = src.satellite_control.cli:app
-satellite-control = src.satellite_control.cli:app

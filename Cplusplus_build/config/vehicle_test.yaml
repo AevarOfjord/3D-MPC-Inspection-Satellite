@@ -1,0 +1,38 @@
+vehicle:
+  name: "TestSatellite"
+  mass: 10.0
+  inertia: [0.5, 0.5, 0.1]
+  reaction_wheels:
+    max_torque: 0.05
+    max_speed: 500.0
+  thrusters:
+    # +X
+    - id: "thr_px"
+      position: [-0.1, 0.0, 0.0]
+      direction: [1.0, 0.0, 0.0]
+      max_thrust: 10.0
+    # -X
+    - id: "thr_nx"
+      position: [0.1, 0.0, 0.0]
+      direction: [-1.0, 0.0, 0.0]
+      max_thrust: 10.0
+    # +Y
+    - id: "thr_py"
+      position: [0.0, -0.1, 0.0]
+      direction: [0.0, 1.0, 0.0]
+      max_thrust: 10.0
+    # -Y
+    - id: "thr_ny"
+      position: [0.0, 0.1, 0.0]
+      direction: [0.0, -1.0, 0.0]
+      max_thrust: 10.0
+    # +Z
+    - id: "thr_pz"
+      position: [0.0, 0.0, -0.1]
+      direction: [0.0, 0.0, 1.0]
+      max_thrust: 10.0
+    # -Z
+    - id: "thr_nz"
+      position: [0.0, 0.0, 0.1]
+      direction: [0.0, 0.0, -1.0]
+      max_thrust: 10.0

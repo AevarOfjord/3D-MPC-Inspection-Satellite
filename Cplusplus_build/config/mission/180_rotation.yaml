@@ -1,0 +1,46 @@
+# Auto-generated mission: 180 Rotation
+vehicle:
+  name: "Satellite"
+  mass: 10.0
+  inertia_diag: [1.0, 1.0, 1.0]
+  center_of_mass: [0.0, 0.0, 0.0]
+  reaction_wheels:
+    max_torque: 0.1
+    max_speed_rad_s: 600.0
+    inertia: 0.001
+    enabled: true
+  thrusters:
+    - id: "T1"
+      position: [-0.15, 0, 0]
+      direction: [1, 0, 0]
+      max_thrust: 1.0
+    - id: "T2"
+      position: [0.15, 0, 0]
+      direction: [-1, 0, 0]
+      max_thrust: 1.0
+    - id: "T3"
+      position: [0, -0.15, 0]
+      direction: [0, 1, 0]
+      max_thrust: 1.0
+    - id: "T4"
+      position: [0, 0.15, 0]
+      direction: [0, -1, 0]
+      max_thrust: 1.0
+    - id: "T5"
+      position: [0, 0, -0.15]
+      direction: [0, 0, 1]
+      max_thrust: 1.0
+    - id: "T6"
+      position: [0, 0, 0.15]
+      direction: [0, 0, -1]
+      max_thrust: 1.0
+
+mission:
+  name: "180 Rotation"
+  max_duration: 120.0
+  loop: false
+  waypoints:
+    - position: [0.0, 0.0, 0.0]
+      attitude: [1.0, 0.0, 0.0, 0.0]
+      hold_time: 15.0
+      pos_tolerance: 0.1

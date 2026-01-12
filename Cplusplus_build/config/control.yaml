@@ -1,0 +1,14 @@
+control:
+  mpc:
+    dt: 0.05
+    horizon: 100
+    weights:
+      position: 100.0
+      velocity: 100.0
+      attitude: 100.0
+      angular_velocity: 1.0
+      thrust: 0.1
+      reaction_wheel: 0.1
+    max_iterations: 1000
+    tolerance: 1e-4
+    verbose: false
