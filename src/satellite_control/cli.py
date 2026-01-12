@@ -361,7 +361,7 @@ def verify(
 
     console.print("[bold]Running Verification Tests...[/bold]")
 
-    args = ["tests/e2e/test_simulation_runner.py", "-v"]
+    args = ["-v"]
     if not full:
         # Skip slow tests if not full? Currently E2E are marked slow but we want to run them.
         # Let's just run E2E by default as they are high value.

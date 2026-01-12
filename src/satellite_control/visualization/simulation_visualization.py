@@ -134,6 +134,7 @@ class SimulationVisualizationManager:
             # V4.0.0: Create defaults if not provided (no SatelliteConfig fallback)
             from src.satellite_control.config.simulation_config import SimulationConfig
             from src.satellite_control.config.mission_state import create_mission_state
+
             default_config = SimulationConfig.create_default()
             self.app_config = default_config.app_config
             self.mission_state = create_mission_state()
@@ -211,8 +212,12 @@ class SimulationVisualizationManager:
         self.satellite.ax_main.set_ylim(ylim)
         self.satellite.ax_main.set_aspect("equal")
         self.satellite.ax_main.grid(True, alpha=0.3)
-        self.satellite.ax_main.set_xlabel("X Position (m)", fontsize=12, fontweight="bold")
-        self.satellite.ax_main.set_ylabel("Y Position (m)", fontsize=12, fontweight="bold")
+        self.satellite.ax_main.set_xlabel(
+            "X Position (m)", fontsize=12, fontweight="bold"
+        )
+        self.satellite.ax_main.set_ylabel(
+            "Y Position (m)", fontsize=12, fontweight="bold"
+        )
 
         # Draw target elements FIRST with highest z-order
         if self.target_state is not None:
@@ -222,7 +227,8 @@ class SimulationVisualizationManager:
             # Yaw from Quat [w, x, y, z] -> [3:7]
             q_t = self.target_state[3:7]
             target_angle = np.arctan2(
-                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]), 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2)
+                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
+                1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
             )
         else:
             target_x, target_y, target_angle = 0.0, 0.0, 0.0
@@ -242,9 +248,9 @@ class SimulationVisualizationManager:
 
         # Target orientation arrow
         target_arrow_length = 0.2
-        target_arrow_end = np.array([target_x, target_y]) + target_arrow_length * np.array(
-            [np.cos(target_angle), np.sin(target_angle)]
-        )
+        target_arrow_end = np.array(
+            [target_x, target_y]
+        ) + target_arrow_length * np.array([np.cos(target_angle), np.sin(target_angle)])
         arrow = self.satellite.ax_main.annotate(
             "",
             xy=target_arrow_end,
@@ -282,7 +288,8 @@ class SimulationVisualizationManager:
             # Recalculate target angle for error
             q_t = self.target_state[3:7]
             targ_yaw = np.arctan2(
-                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]), 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2)
+                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
+                1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
             )
 
             ang_error = abs(self.angle_difference(targ_yaw, curr_yaw))
@@ -306,12 +313,16 @@ class SimulationVisualizationManager:
         obstacles = []
         if self.mission_state:
             obstacles_enabled = self.mission_state.obstacles_enabled
-            obstacles = list(self.mission_state.obstacles) if self.mission_state.obstacles else []
+            obstacles = (
+                list(self.mission_state.obstacles)
+                if self.mission_state.obstacles
+                else []
+            )
         else:
             # V4.0.0: No fallback - if no mission_state, obstacles are empty
             obstacles_enabled = False
             obstacles = []
-        
+
         if obstacles_enabled and obstacles:
             for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
                 # Draw obstacle as red circle (XY projection)
@@ -450,7 +461,9 @@ class SimulationVisualizationManager:
 
         # Draw thrusters with color coding
         for thruster_id, local_pos in self.satellite.thrusters.items():
-            global_pos = rotation_matrix @ np.array(local_pos)[:2] + self.satellite.position[:2]
+            global_pos = (
+                rotation_matrix @ np.array(local_pos)[:2] + self.satellite.position[:2]
+            )
             color = self.satellite.thruster_colors[thruster_id]
             is_active = thruster_id in self.satellite.active_thrusters
 
@@ -494,7 +507,8 @@ class SimulationVisualizationManager:
             targ_x, targ_y = self.target_state[0], self.target_state[1]
             q_t = self.target_state[3:7]
             targ_yaw = np.arctan2(
-                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]), 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2)
+                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
+                1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
             )
 
             pos_error = float(np.linalg.norm(current_state[:2] - self.target_state[:2]))
@@ -511,7 +525,9 @@ class SimulationVisualizationManager:
 
         # Get active thrusters
         active_thrusters = (
-            list(sorted(self.satellite.active_thrusters)) if self.satellite.active_thrusters else []
+            list(sorted(self.satellite.active_thrusters))
+            if self.satellite.active_thrusters
+            else []
         )
 
         mpc_time = self.mpc_solve_times[-1] if self.mpc_solve_times else 0.0
@@ -586,16 +602,20 @@ class SimulationVisualizationManager:
         # Print brief success message
         final_state = self.get_current_state()
         if self.target_state is not None:
-            pos_error_final = float(np.linalg.norm(final_state[:2] - self.target_state[:2]))
+            pos_error_final = float(
+                np.linalg.norm(final_state[:2] - self.target_state[:2])
+            )
 
             q_c = final_state[3:7]
             curr_yaw = np.arctan2(
-                2 * (q_c[0] * q_c[3] + q_c[1] * q_c[2]), 1 - 2 * (q_c[2] ** 2 + q_c[3] ** 2)
+                2 * (q_c[0] * q_c[3] + q_c[1] * q_c[2]),
+                1 - 2 * (q_c[2] ** 2 + q_c[3] ** 2),
             )
 
             q_t = self.target_state[3:7]
             targ_yaw = np.arctan2(
-                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]), 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2)
+                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
+                1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
             )
 
             ang_error_final = abs(self.angle_difference(targ_yaw, curr_yaw))
@@ -660,7 +680,9 @@ class SimulationVisualizationManager:
         # Reset trajectory
         self.satellite.trajectory = [self.satellite.position.copy()]
 
-    def save_mujoco_video(self, output_dir: Path, width: int = 1920, height: int = 1072) -> None:
+    def save_mujoco_video(
+        self, output_dir: Path, width: int = 1920, height: int = 1072
+    ) -> None:
         """
         Render a MuJoCo 3D animation from recorded data (CSV) to MP4.
 
@@ -712,7 +734,9 @@ class SimulationVisualizationManager:
         fps = max(1, min(fps, 60))
 
         try:
-            from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+            from src.satellite_control.utils.orientation_utils import (
+                euler_xyz_to_quat_wxyz,
+            )
 
             is_3d = "Current_Z" in df.columns or "Current_Roll" in df.columns
 
@@ -744,7 +768,9 @@ class SimulationVisualizationManager:
                         data.qpos[2] = row.get("Current_Yaw", 0.0)  # theta
                         data.qvel[0] = row.get("Current_VX", 0.0)
                         data.qvel[1] = row.get("Current_VY", 0.0)
-                        data.qvel[2] = row.get("Current_Angular_Vel", row.get("Current_WZ", 0.0))
+                        data.qvel[2] = row.get(
+                            "Current_Angular_Vel", row.get("Current_WZ", 0.0)
+                        )
 
                     # Update physics to propogate kinematics
                     mujoco.mj_forward(self.satellite.model, data)
@@ -757,7 +783,9 @@ class SimulationVisualizationManager:
                         cmd_vals = [float(x) for x in cmd_str.replace(",", " ").split()]
                         thruster_count = len(cmd_vals)
                         if hasattr(self.satellite, "thrusters"):
-                            thruster_count = max(thruster_count, len(self.satellite.thrusters))
+                            thruster_count = max(
+                                thruster_count, len(self.satellite.thrusters)
+                            )
                         # Active indices (1-based)
                         active_thrusters_indices = [
                             i + 1 for i, val in enumerate(cmd_vals) if val > 0.5
@@ -788,7 +816,9 @@ class SimulationVisualizationManager:
                                             for i in range(1, thruster_count + 1)
                                         }
                                         self.satellite.model.site_rgba[site_id] = (
-                                            original_colors.get(thruster_idx, [0.5, 0.5, 0.5, 0.3])
+                                            original_colors.get(
+                                                thruster_idx, [0.5, 0.5, 0.5, 0.3]
+                                            )
                                         )
                         except Exception:
                             pass
@@ -807,7 +837,9 @@ class SimulationVisualizationManager:
         This replaces the need for a separate visualization script.
         """
         if UnifiedVisualizationGenerator is None:
-            print("  Visualization components not available. Skipping auto-visualization.")
+            print(
+                "  Visualization components not available. Skipping auto-visualization."
+            )
             return
 
         if self.data_save_path is None:
@@ -857,19 +889,23 @@ class SimulationVisualizationManager:
             # Generate animation SECOND (takes longer)
             try:
                 print("\nCreating animation...")
-                animation_path = self.data_save_path / "Simulation_animation.mp4"
+                animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
                 print(f"Saving animation to: {animation_path}")
 
-                # Allow progress output but suppress other verbose output
                 old_stdout = sys.stdout
                 sys.stdout = ProgressSuppressor(sys.stdout)
                 try:
-                    generator.generate_animation()
+                    # Use MuJoCo native renderer (much faster)
+                    self.save_mujoco_video(self.data_save_path)
+                    animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
                 finally:
                     sys.stdout = old_stdout
 
-                print(" Animation saved successfully!")
-                print(f" File location: {animation_path}")
+                if animation_path.exists():
+                    print(" Animation saved successfully!")
+                    print(f" File location: {animation_path}")
+                else:
+                    print(" Animation generation failed (no file created).")
             except Exception as anim_err:
                 print(f"  Animation generation failed: {anim_err}")
 

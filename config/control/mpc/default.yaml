@@ -5,11 +5,11 @@ control_horizon: 50
 solver_time_limit: 0.05
 
 weights:
-  position: 1000.0
-  velocity: 1000.0
-  angle: 1000.0
-  angular_velocity: 1000.0
-  thrust: 0.1
+  position: 10.0
+  velocity: 1.0
+  angle: 10.0
+  angular_velocity: 1.0
+  thrust: 1.0
   rw_torque: 0.1
   switch: 0.0
 
@@ -28,7 +28,7 @@ settings:
   solver_type: "OSQP"
   verbose_mpc: false
   thruster_type: "PWM"
-  enable_rw_yaw: false
+  enable_rw_yaw: true
   enable_z_tilt: true
   z_tilt_gain: 0.35
   z_tilt_max_deg: 20.0

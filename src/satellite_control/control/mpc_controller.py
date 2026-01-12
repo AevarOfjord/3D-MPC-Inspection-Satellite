@@ -145,6 +145,34 @@ class MPCController(Controller):
         """Prediction horizon."""
         return self.N
 
+    @property
+    def body_frame_forces(self) -> list[np.ndarray]:
+        """Compute body frame force vector for each thruster."""
+        forces = []
+        for i in range(self.num_thrusters):
+            f_mag = self.thruster_forces[i]
+            f_dir = np.array(self.thruster_directions[i])
+            forces.append(f_mag * f_dir)
+        return forces
+
+    @property
+    def body_frame_torques(self) -> list[np.ndarray]:
+        """Compute body frame torque vector for each thruster."""
+        torques = []
+        forces = self.body_frame_forces
+        for i in range(self.num_thrusters):
+            pos = np.array(self.thruster_positions[i])
+            r = pos - self.com_offset
+            torques.append(np.cross(r, forces[i]))
+        return torques
+
+    @property
+    def max_thrust(self) -> float:
+        """Maximum thrust force (assumes uniform thrusters)."""
+        if not self.thruster_forces:
+            return 0.0
+        return max(self.thruster_forces)
+
     def split_control(self, control: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Split control vector into RW torques and thruster commands."""
         rw_torques = control[: self.num_rw_axes]
