@@ -21,7 +21,6 @@ from .validator import ConfigValidator, validate_config_at_startup
 
 # Legacy exports (for backward compatibility during transition)
 # TODO: Remove in V5.0.0
-from .satellite_config import SatelliteConfig
 
 __all__ = [
     # Primary API (V4.0.0+)
@@ -46,6 +45,4 @@ __all__ = [
     # Validation
     "ConfigValidator",
     "validate_config_at_startup",
-    # Legacy (deprecated)
-    "SatelliteConfig",
 ]

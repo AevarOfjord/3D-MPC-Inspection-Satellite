@@ -1,0 +1,29 @@
+{
+  "mpc": {
+    "solve_count": 11,
+    "timeout_count": 0,
+    "timeout_rate": 0.0,
+    "mean_ms": 9.420481595126066,
+    "p50_ms": 6.91986083984375,
+    "p95_ms": 19.333958625793457,
+    "p99_ms": 24.99639987945557,
+    "max_ms": 26.412010192871094
+  },
+  "physics": {
+    "step_count": 11,
+    "avg_ms": 0.30140918181817156,
+    "max_ms": 1.7856670000000463
+  },
+  "control_loop": {
+    "loop_count": 11,
+    "timing_violations": 11,
+    "violation_rate": 1.0,
+    "avg_ms": 1768249426980.0515
+  },
+  "simulation": {
+    "total_time_s": 0.37460445799999986,
+    "total_steps": 11,
+    "fps": 29.364306177050366,
+    "peak_memory_mb": null
+  }
+}

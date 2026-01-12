@@ -36,9 +36,9 @@ from matplotlib.patches import Circle
 from src.satellite_control.config.mission_state import MissionState
 from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.simulation_config import SimulationConfig
+from src.satellite_control.config.constants import Constants
 
-# V4.0.0: mpc_params removed - use SatelliteConfig if needed
-from src.satellite_control.config.satellite_config import SatelliteConfig
+# V4.0.0: mpc_params removed
 from src.satellite_control.visualization.shape_utils import (
     get_demo_shape,
     load_dxf_shape,
@@ -1561,8 +1561,8 @@ class UnifiedVisualizationGenerator:
         if self.app_config and hasattr(self.app_config.mpc, "position_tolerance"):
             target_threshold = self.app_config.mpc.position_tolerance
         else:
-            # Use constant from SatelliteConfig
-            target_threshold = SatelliteConfig.POSITION_TOLERANCE
+            # Use constant from Constants
+            target_threshold = Constants.POSITION_TOLERANCE
 
         ax.plot(
             time,
@@ -1692,8 +1692,8 @@ class UnifiedVisualizationGenerator:
         if self.app_config and hasattr(self.app_config.mpc, "angle_tolerance"):
             target_threshold_rad = self.app_config.mpc.angle_tolerance
         else:
-            # Use constant from SatelliteConfig
-            target_threshold_rad = SatelliteConfig.ANGLE_TOLERANCE
+            # Use constant from Constants
+            target_threshold_rad = Constants.ANGLE_TOLERANCE
         target_threshold_deg = np.degrees(target_threshold_rad)
 
         ax.plot(

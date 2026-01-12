@@ -21,7 +21,7 @@ from typing import Dict, Any
 
 from .models import MPCParams
 from . import timing
-from .satellite_config import SatelliteConfig
+from src.satellite_control.config.constants import Constants
 
 
 class ConfigPreset:
@@ -52,8 +52,8 @@ def _create_fast_mpc() -> MPCParams:
         prediction_horizon=40,  # Slightly shorter for speed
         control_horizon=40,
         dt=timing.CONTROL_DT,
-        solver_time_limit=SatelliteConfig.MPC_SOLVER_TIME_LIMIT,
-        solver_type=SatelliteConfig.MPC_SOLVER_TYPE,
+        solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
+        solver_type=Constants.MPC_SOLVER_TYPE,
         q_position=2000.0,  # Higher position weight
         q_velocity=5000.0,  # Lower velocity weight (allows faster movement)
         q_angle=2000.0,  # Higher angle weight
@@ -61,11 +61,11 @@ def _create_fast_mpc() -> MPCParams:
         r_thrust=0.5,  # Lower thrust penalty (more aggressive)
         max_velocity=0.8,  # Higher max velocity
         max_angular_velocity=2.0,  # Higher max angular velocity
-        position_bounds=SatelliteConfig.POSITION_BOUNDS,
+        position_bounds=Constants.POSITION_BOUNDS,
         damping_zone=0.15,  # Smaller damping zone
         velocity_threshold=0.05,
         max_velocity_weight=500.0,  # Lower velocity weight near target
-        thruster_type=SatelliteConfig.THRUSTER_TYPE,
+        thruster_type=Constants.THRUSTER_TYPE,
     )
 
 
@@ -79,23 +79,23 @@ def _create_balanced_mpc() -> MPCParams:
     - Standard settings
     """
     return MPCParams(
-        prediction_horizon=SatelliteConfig.MPC_PREDICTION_HORIZON,
-        control_horizon=SatelliteConfig.MPC_CONTROL_HORIZON,
+        prediction_horizon=Constants.MPC_PREDICTION_HORIZON,
+        control_horizon=Constants.MPC_CONTROL_HORIZON,
         dt=timing.CONTROL_DT,
-        solver_time_limit=SatelliteConfig.MPC_SOLVER_TIME_LIMIT,
-        solver_type=SatelliteConfig.MPC_SOLVER_TYPE,
-        q_position=SatelliteConfig.Q_POSITION,
-        q_velocity=SatelliteConfig.Q_VELOCITY,
-        q_angle=SatelliteConfig.Q_ANGLE,
-        q_angular_velocity=SatelliteConfig.Q_ANGULAR_VELOCITY,
-        r_thrust=SatelliteConfig.R_THRUST,
-        max_velocity=SatelliteConfig.MAX_VELOCITY,
-        max_angular_velocity=SatelliteConfig.MAX_ANGULAR_VELOCITY,
-        position_bounds=SatelliteConfig.POSITION_BOUNDS,
-        damping_zone=SatelliteConfig.DAMPING_ZONE,
-        velocity_threshold=SatelliteConfig.VELOCITY_THRESHOLD,
-        max_velocity_weight=SatelliteConfig.MAX_VELOCITY_WEIGHT,
-        thruster_type=SatelliteConfig.THRUSTER_TYPE,
+        solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
+        solver_type=Constants.MPC_SOLVER_TYPE,
+        q_position=Constants.Q_POSITION,
+        q_velocity=Constants.Q_VELOCITY,
+        q_angle=Constants.Q_ANGLE,
+        q_angular_velocity=Constants.Q_ANGULAR_VELOCITY,
+        r_thrust=Constants.R_THRUST,
+        max_velocity=Constants.MAX_VELOCITY,
+        max_angular_velocity=Constants.MAX_ANGULAR_VELOCITY,
+        position_bounds=Constants.POSITION_BOUNDS,
+        damping_zone=Constants.DAMPING_ZONE,
+        velocity_threshold=Constants.VELOCITY_THRESHOLD,
+        max_velocity_weight=Constants.MAX_VELOCITY_WEIGHT,
+        thruster_type=Constants.THRUSTER_TYPE,
     )
 
 
@@ -113,8 +113,8 @@ def _create_stable_mpc() -> MPCParams:
         prediction_horizon=50,  # Longer horizon for stability
         control_horizon=50,
         dt=timing.CONTROL_DT,
-        solver_time_limit=SatelliteConfig.MPC_SOLVER_TIME_LIMIT,
-        solver_type=SatelliteConfig.MPC_SOLVER_TYPE,
+        solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
+        solver_type=Constants.MPC_SOLVER_TYPE,
         q_position=1000.0,  # Standard position weight
         q_velocity=15000.0,  # Higher velocity weight (smoother)
         q_angle=1000.0,  # Standard angle weight
@@ -122,11 +122,11 @@ def _create_stable_mpc() -> MPCParams:
         r_thrust=2.0,  # Higher thrust penalty (less aggressive)
         max_velocity=0.3,  # Lower max velocity
         max_angular_velocity=1.0,  # Lower max angular velocity
-        position_bounds=SatelliteConfig.POSITION_BOUNDS,
+        position_bounds=Constants.POSITION_BOUNDS,
         damping_zone=0.4,  # Larger damping zone
         velocity_threshold=0.02,
         max_velocity_weight=2000.0,  # Higher velocity weight near target
-        thruster_type=SatelliteConfig.THRUSTER_TYPE,
+        thruster_type=Constants.THRUSTER_TYPE,
     )
 
 
@@ -144,8 +144,8 @@ def _create_precision_mpc() -> MPCParams:
         prediction_horizon=60,  # Longer horizon for precision
         control_horizon=60,
         dt=timing.CONTROL_DT,
-        solver_time_limit=SatelliteConfig.MPC_SOLVER_TIME_LIMIT,
-        solver_type=SatelliteConfig.MPC_SOLVER_TYPE,
+        solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
+        solver_type=Constants.MPC_SOLVER_TYPE,
         q_position=5000.0,  # Very high position weight
         q_velocity=20000.0,  # Very high velocity weight
         q_angle=5000.0,  # Very high angle weight
@@ -153,11 +153,11 @@ def _create_precision_mpc() -> MPCParams:
         r_thrust=3.0,  # High thrust penalty (conservative)
         max_velocity=0.2,  # Very low max velocity
         max_angular_velocity=0.5,  # Very low max angular velocity
-        position_bounds=SatelliteConfig.POSITION_BOUNDS,
+        position_bounds=Constants.POSITION_BOUNDS,
         damping_zone=0.5,  # Very large damping zone
         velocity_threshold=0.01,
         max_velocity_weight=5000.0,  # Very high velocity weight near target
-        thruster_type=SatelliteConfig.THRUSTER_TYPE,
+        thruster_type=Constants.THRUSTER_TYPE,
     )
 
 

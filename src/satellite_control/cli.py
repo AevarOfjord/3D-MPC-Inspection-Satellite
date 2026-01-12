@@ -23,7 +23,9 @@ from src.satellite_control.config.presets import (
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.mission_manager import MissionManager
 from src.satellite_control.mission.plugin import get_registry, discover_plugins
-from src.satellite_control.mission.plugins import *  # Auto-register built-in plugins
+from src.satellite_control.mission import (
+    plugins,
+)  # Auto-register built-in plugins (side-effects)
 
 app = typer.Typer(
     help="Satellite Control System - MPC Simulation and Verification CLI",
@@ -227,23 +229,60 @@ def run(
         config_overrides["simulation"]["max_duration"] = duration
         console.print(f"  Override: Duration = {duration}s")
 
-    # Create SimulationConfig (v2.0.0 pattern)
+    # Create SimulationConfig (v2.0.0 pattern) or Hydra Config (v4.0.0 pattern)
     from src.satellite_control.config.simulation_config import SimulationConfig
 
     simulation_config = None
-    if mission_simulation_config:
-        # Use SimulationConfig from mission CLI (preferred, v2.0.0)
-        simulation_config = mission_simulation_config
-        # Apply overrides if provided
-        if config_overrides:
+    hydra_cfg = None
+
+    # Check if we should use legacy Pydantic flow (Presets or Interactive Mission)
+    is_legacy_mode = (mission_simulation_config is not None) or (preset is not None)
+
+    if is_legacy_mode:
+        if mission_simulation_config:
+            # Use SimulationConfig from mission CLI (preferred, v2.0.0)
+            simulation_config = mission_simulation_config
+            # Apply overrides if provided
+            if config_overrides:
+                simulation_config = SimulationConfig.create_with_overrides(
+                    config_overrides, base_config=simulation_config
+                )
+        elif preset:
+            # Create config with overrides (no mission config available)
             simulation_config = SimulationConfig.create_with_overrides(
-                config_overrides, base_config=simulation_config
+                config_overrides or {}
             )
-    elif config_overrides or preset:
-        # Create config with overrides (no mission config available)
-        simulation_config = SimulationConfig.create_with_overrides(
-            config_overrides or {}
-        )
+    else:
+        # Default/Auto run -> Use Hydra (V4.0.0)
+        # "refactor CLI to use Hydra as the primary configuration loading mechanism"
+        from hydra import compose, initialize
+        from hydra.core.global_hydra import GlobalHydra
+
+        GlobalHydra.instance().clear()
+        try:
+            # Assume config is in ../../config relative to src/satellite_control/cli.py
+            with initialize(version_base=None, config_path="../../config"):
+                hydra_cfg = compose(config_name="main")
+                console.print("[green]Loaded configuration via Hydra[/green]")
+
+                # Apply CLI overrides to Hydra config
+                if duration:
+                    if hasattr(hydra_cfg, "sim"):
+                        hydra_cfg.sim.duration = duration
+                        console.print(f"  Override: Duration = {duration}s")
+        except Exception as e:
+            console.print(
+                f"[yellow]Failed to load Hydra config: {e}. Falling back to default Pydantic config.[/yellow]"
+            )
+            simulation_config = SimulationConfig.create_default()
+            # Apply overrides manually since create_default doesn't take them
+            if duration:
+                if config_overrides is None:
+                    config_overrides = {}
+                    config_overrides["simulation"] = {"max_duration": duration}
+                simulation_config = SimulationConfig.create_with_overrides(
+                    config_overrides
+                )
 
     # Initialize Simulation with explicit parameters (avoid global state mutation)
     try:
@@ -253,12 +292,13 @@ def run(
             start_angle=sim_start_angle,
             target_angle=sim_target_angle,
             config_overrides=config_overrides,  # Keep for backward compatibility
-            simulation_config=simulation_config,  # New preferred way
+            simulation_config=simulation_config,  # Pydantic Config (Legacy/Preset)
+            cfg=hydra_cfg,  # Hydra Config (New Default)
         )
 
         # Apply duration override directly to simulation if needed
         # V4.0.0: No global state mutation
-        if duration:
+        if duration and sim.max_simulation_time != duration:
             sim.max_simulation_time = duration
 
         console.print("[green]Simulation initialized successfully.[/green]")
@@ -445,7 +485,6 @@ def load_config(
     """
     from pathlib import Path
     from src.satellite_control.config.io import ConfigIO
-    from src.satellite_control.config.simulation_config import SimulationConfig
 
     try:
         config_file = Path(file_path)
@@ -569,18 +608,18 @@ def list_missions(
     """
     # Discover plugins from search paths
     registry = get_registry()
-    discovered_count = discover_plugins()
+    discover_plugins()
 
     console.print(Panel.fit("Available Mission Plugins", style="bold blue"))
 
-    plugins = registry.list_plugins()
-    if not plugins:
+    plugin_list = registry.list_plugins()
+    if not plugin_list:
         console.print("[yellow]No mission plugins found.[/yellow]")
         return
 
-    console.print(f"\nFound {len(plugins)} mission plugin(s):\n")
+    console.print(f"\nFound {len(plugin_list)} mission plugin(s):\n")
 
-    for name in plugins:
+    for name in plugin_list:
         info = registry.get_plugin_info(name)
         if info is None:
             continue
@@ -646,7 +685,7 @@ def install_mission(
     console.print(f"  Name: {plugin.get_name()}")
     console.print(f"  Version: {plugin.get_version()}")
     console.print(
-        f"\nUse 'satellite-control list-missions' to see all available plugins."
+        "\nUse 'satellite-control list-missions' to see all available plugins."
     )
 
 
@@ -709,7 +748,7 @@ def hydra_run(
     """
     Run simulation using the new Hydra configuration system.
     """
-    from omegaconf import OmegaConf
+    # from omegaconf import OmegaConf
 
     # Initialize Hydra (needs absolute path or relative to calling script, complicated with pip install)
     # We will use the Compose API with a relative path assuming we are running from project root or installed package

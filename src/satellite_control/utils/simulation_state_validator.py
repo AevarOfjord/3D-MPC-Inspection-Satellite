@@ -31,7 +31,7 @@ import numpy as np
 
 # V4.0.0: SatelliteConfig removed - use AppConfig only
 from src.satellite_control.config.models import AppConfig
-from src.satellite_control.config.satellite_config import SatelliteConfig
+from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.utils.navigation_utils import (
     angle_difference,
@@ -581,28 +581,28 @@ def create_state_validator_from_config(
     if app_config and app_config.mpc:
         # Use constants from SatelliteConfig (v4.0.0)
         position_tolerance = config.get(
-            "position_tolerance", SatelliteConfig.POSITION_TOLERANCE
+            "position_tolerance", Constants.POSITION_TOLERANCE
         )
-        angle_tolerance = config.get("angle_tolerance", SatelliteConfig.ANGLE_TOLERANCE)
+        angle_tolerance = config.get("angle_tolerance", Constants.ANGLE_TOLERANCE)
         # Note: velocity_tolerance and angular_velocity_tolerance not in MPCParams
         velocity_tolerance = config.get(
-            "velocity_tolerance", SatelliteConfig.VELOCITY_TOLERANCE
+            "velocity_tolerance", Constants.VELOCITY_TOLERANCE
         )
         angular_velocity_tolerance = config.get(
-            "angular_velocity_tolerance", SatelliteConfig.ANGULAR_VELOCITY_TOLERANCE
+            "angular_velocity_tolerance", Constants.ANGULAR_VELOCITY_TOLERANCE
         )
     else:
         # V4.0.0: Use SatelliteConfig constants if not in config
         position_tolerance = config.get(
-            "position_tolerance", SatelliteConfig.POSITION_TOLERANCE
+            "position_tolerance", Constants.POSITION_TOLERANCE
         )
-        angle_tolerance = config.get("angle_tolerance", SatelliteConfig.ANGLE_TOLERANCE)
+        angle_tolerance = config.get("angle_tolerance", Constants.ANGLE_TOLERANCE)
         velocity_tolerance = config.get(
-            "velocity_tolerance", SatelliteConfig.VELOCITY_TOLERANCE
+            "velocity_tolerance", Constants.VELOCITY_TOLERANCE
         )
         angular_velocity_tolerance = config.get(
             "angular_velocity_tolerance",
-            SatelliteConfig.ANGULAR_VELOCITY_TOLERANCE,
+            Constants.ANGULAR_VELOCITY_TOLERANCE,
         )
 
     # V4.0.0: Get bounds from app_config (required, no fallback)

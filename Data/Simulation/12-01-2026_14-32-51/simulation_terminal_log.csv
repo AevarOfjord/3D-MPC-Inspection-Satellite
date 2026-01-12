@@ -1,0 +1,12 @@
+Time,Status,Stabilization_Time,Position_Error_m,Angle_Error_deg,Active_Thrusters,Solve_Time_s,Next_Update_s
+0.0000,Traveling to Target (t = 0.0s),,1.41421,0.00,"[1, 2, 5, 6]",0.0256,0.0100
+0.0100,Traveling to Target (t = 0.0s),,1.41419,0.00,"[1, 2, 5, 6]",0.0057,0.0200
+0.0200,Traveling to Target (t = 0.0s),,1.41413,0.00,"[1, 2, 5, 6]",0.0071,0.0300
+0.0300,Traveling to Target (t = 0.0s),,1.41402,0.00,"[1, 2, 5, 6]",0.0129,0.0400
+0.0400,Traveling to Target (t = 0.0s),,1.41387,0.00,"[1, 2, 5, 6]",0.0084,0.0500
+0.0500,Traveling to Target (t = 0.1s),,1.41368,0.00,"[1, 2, 5, 6]",0.0059,0.0600
+0.0600,Traveling to Target (t = 0.1s),,1.41345,0.00,"[1, 2, 5, 6]",0.0066,0.0700
+0.0700,Traveling to Target (t = 0.1s),,1.41317,0.00,"[1, 2, 5, 6]",0.0057,0.0800
+0.0800,Traveling to Target (t = 0.1s),,1.41286,0.00,"[1, 2, 5, 6]",0.0067,0.0900
+0.0900,Traveling to Target (t = 0.1s),,1.41250,0.00,"[1, 2, 5, 6]",0.0108,0.1000
+0.1000,Traveling to Target (t = 0.1s),,1.41209,0.00,"[1, 2, 5, 6]",0.0084,0.1100

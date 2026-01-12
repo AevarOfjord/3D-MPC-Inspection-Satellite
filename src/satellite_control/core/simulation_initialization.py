@@ -18,12 +18,12 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 
-# V3.0.0: Import SatelliteConfig only for report generator compatibility (TODO: migrate report generator)
-# V4.0.0: SatelliteConfig removed - use SimulationConfig only
+# V4.0.0: SatelliteConfig removed - using SimulationConfig and Constants
+from src.satellite_control.config.adapter import SatelliteConfigAdapter
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.core.mujoco_satellite import SatelliteThrusterTester
+from src.satellite_control.core.mujoco_satellite import MuJoCoSatelliteSimulator
 from src.satellite_control.core.simulation_io import SimulationIO
 from src.satellite_control.core.thruster_manager import ThrusterManager
 from src.satellite_control.mission.mission_report_generator import (
@@ -200,7 +200,7 @@ class SimulationInitializer:
             )
 
         # V4.0.0: Pass app_config to MuJoCoSatelliteSimulator
-        self.simulation.satellite = SatelliteThrusterTester(
+        self.simulation.satellite = MuJoCoSatelliteSimulator(
             use_mujoco_viewer=self.use_mujoco_viewer,
             app_config=self.simulation_config.app_config,
         )
@@ -329,7 +329,6 @@ class SimulationInitializer:
         # V4.0.0: Pass simulation_config to report generator
         # TODO: Migrate mission_report_generator.py to accept SimulationConfig directly
         # For now, create a compatibility adapter that provides flat attribute interface
-        from src.satellite_control.config.satellite_config import SatelliteConfigAdapter
 
         adapter = SatelliteConfigAdapter(self.simulation_config)
         self.simulation.report_generator = create_mission_report_generator(adapter)
@@ -343,14 +342,14 @@ class SimulationInitializer:
 
     def _initialize_tolerances(self) -> None:
         """Initialize tolerance values."""
-        # V4.0.0: Use SatelliteConfig class attributes instead of mpc_params
-        from src.satellite_control.config.satellite_config import SatelliteConfig
+        # V4.0.0: Use Constants class attributes
+        from src.satellite_control.config.constants import Constants
 
-        self.simulation.position_tolerance = SatelliteConfig.POSITION_TOLERANCE
-        self.simulation.angle_tolerance = SatelliteConfig.ANGLE_TOLERANCE
-        self.simulation.velocity_tolerance = SatelliteConfig.VELOCITY_TOLERANCE
+        self.simulation.position_tolerance = Constants.POSITION_TOLERANCE
+        self.simulation.angle_tolerance = Constants.ANGLE_TOLERANCE
+        self.simulation.velocity_tolerance = Constants.VELOCITY_TOLERANCE
         self.simulation.angular_velocity_tolerance = (
-            SatelliteConfig.ANGULAR_VELOCITY_TOLERANCE
+            Constants.ANGULAR_VELOCITY_TOLERANCE
         )
 
     def _initialize_mpc_controller(self, app_config: Any) -> None:
@@ -361,83 +360,36 @@ class SimulationInitializer:
             self.simulation.mpc_controller = MPCController(cfg=self.simulation.cfg)
         else:
             # V4.0.0: Load Hydra configs and construct cfg for MPCController
-            from omegaconf import OmegaConf
-            from pathlib import Path
+            # Use standardized conversion from SimulationConfig
+            cfg = self.simulation_config.to_hydra_cfg()
 
-            # Find config directory relative to this file
-            config_dir = Path(__file__).parent.parent.parent.parent / "config"
+            # Attempt to augment with Reaction Wheel data from default YAML if missing
+            # (Since AppConfig doesn't support RWs yet)
+            if not cfg.vehicle.reaction_wheels:
+                from pathlib import Path
+                from omegaconf import OmegaConf
 
-            # Load MPC config
-            mpc_yaml = config_dir / "control" / "mpc" / "default.yaml"
-            if mpc_yaml.exists():
-                mpc_cfg = OmegaConf.load(mpc_yaml)
-            else:
-                # Construct from app_config as fallback
-                mpc_cfg = OmegaConf.create(
-                    {
-                        "prediction_horizon": app_config.mpc.prediction_horizon,
-                        "solver_time_limit": app_config.mpc.solver_time_limit,
-                        "weights": {
-                            "position": app_config.mpc.q_position,
-                            "velocity": app_config.mpc.q_velocity,
-                            "angle": app_config.mpc.q_angle,
-                            "angular_velocity": app_config.mpc.q_angular_velocity,
-                            "thrust": app_config.mpc.r_thrust,
-                            "rw_torque": app_config.mpc.r_rw_torque,
-                            "switch": 0.0,
-                        },
-                        "constraints": {
-                            "max_velocity": app_config.mpc.max_velocity,
-                            "max_angular_velocity": app_config.mpc.max_angular_velocity,
-                            "position_bounds": app_config.mpc.position_bounds,
-                        },
-                        "adaptive": {
-                            "damping_zone": app_config.mpc.damping_zone,
-                            "velocity_threshold": app_config.mpc.velocity_threshold,
-                            "max_velocity_weight": app_config.mpc.max_velocity_weight,
-                        },
-                        "settings": {
-                            "dt": app_config.mpc.dt,
-                            "thruster_type": app_config.mpc.thruster_type,
-                            "enable_rw_yaw": app_config.mpc.enable_rw_yaw,
-                            "enable_z_tilt": app_config.mpc.enable_z_tilt,
-                            "z_tilt_gain": app_config.mpc.z_tilt_gain,
-                            "z_tilt_max_deg": app_config.mpc.z_tilt_max_deg,
-                            "verbose_mpc": app_config.mpc.verbose_mpc,
-                        },
-                    }
-                )
+                # Find config directory relative to this file
+                # src/satellite_control/core/simulation_initialization.py -> ../../../config
+                config_dir = Path(__file__).parent.parent.parent.parent / "config"
+                vehicle_yaml = config_dir / "vehicle" / "cube_sat_6u.yaml"
 
-            # Load vehicle config
-            vehicle_yaml = config_dir / "vehicle" / "cube_sat_6u.yaml"
-            if vehicle_yaml.exists():
-                vehicle_cfg = OmegaConf.load(vehicle_yaml)
-            else:
-                # Fallback to minimal config - this shouldn't happen
-                logger.warning("Vehicle config not found, using minimal fallback")
-                inertia_val = app_config.physics.moment_of_inertia
-                if hasattr(inertia_val, "__iter__") and not isinstance(
-                    inertia_val, str
-                ):
-                    inertia_list = list(inertia_val)
-                else:
-                    inertia_list = [float(inertia_val)] * 3
-                vehicle_cfg = OmegaConf.create(
-                    {
-                        "mass": app_config.physics.total_mass,
-                        "inertia": inertia_list,
-                        "center_of_mass": [0.0, 0.0, 0.0],
-                        "thrusters": [],
-                        "reaction_wheels": [],
-                    }
-                )
+                if vehicle_yaml.exists():
+                    try:
+                        # Load only for reaction wheels
+                        default_vehicle = OmegaConf.load(vehicle_yaml)
+                        if hasattr(default_vehicle, "reaction_wheels"):
+                            cfg.vehicle.reaction_wheels = (
+                                default_vehicle.reaction_wheels
+                            )
+                            # Also ensure inertia is correct dimensionality if missing?
+                            # to_hydra_cfg handles inertia well, so we likely trust it.
+                            logger.info(
+                                "Loaded default Reaction Wheel structure from YAML"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to load default RW config: {e}")
 
-            cfg = OmegaConf.create(
-                {
-                    "control": {"mpc": mpc_cfg},
-                    "vehicle": vehicle_cfg,
-                }
-            )
             self.simulation.mpc_controller = MPCController(cfg=cfg)
 
     def _initialize_mission_manager(self) -> None:

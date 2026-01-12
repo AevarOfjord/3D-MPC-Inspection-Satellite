@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional
 
 from .models import AppConfig
 from .mission_state import MissionState, create_mission_state
-from .satellite_config import _create_default_config
+from .defaults import create_default_app_config
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class SimulationConfig:
             SimulationConfig with default settings
         """
         return cls(
-            app_config=_create_default_config(),
+            app_config=create_default_app_config(),
             mission_state=create_mission_state(),
         )
 
@@ -256,3 +256,98 @@ class SimulationConfig:
             app_config=app_config,
             mission_state=create_mission_state(),  # Default mission state
         )
+
+    def to_hydra_cfg(self) -> Any:
+        """
+        Convert to Hydra DictConfig format.
+
+        Returns:
+            OmegaConf DictConfig mirroring the structure expected by MPCController
+        """
+        from omegaconf import OmegaConf
+
+        # 1. Vehicle Config
+        physics = self.app_config.physics
+
+        # Convert scalar inertia to list if needed
+        inertia = physics.moment_of_inertia
+        if isinstance(inertia, (int, float)):
+            inertia_list = [float(inertia)] * 3
+        else:
+            inertia_list = list(inertia)
+
+        # Reconstruct thruster list from dicts
+        thrusters_list = []
+        # Sort by ID to ensure consistent order
+        for tid in sorted(physics.thruster_positions.keys()):
+            thrusters_list.append(
+                {
+                    "position": list(physics.thruster_positions[tid]),
+                    "direction": list(physics.thruster_directions[tid]),
+                    "max_thrust": physics.thruster_forces[tid],
+                }
+            )
+
+        vehicle_dict = {
+            "mass": physics.total_mass,
+            "inertia": inertia_list,
+            "center_of_mass": list(physics.com_offset),
+            "thrusters": thrusters_list,
+            "reaction_wheels": [],  # V4.0.0: AppConfig doesn't track RWs yet, using defaults
+            "size": physics.satellite_size,
+        }
+
+        # 2. Control Config (MPC)
+        mpc = self.app_config.mpc
+
+        mpc_dict = {
+            "prediction_horizon": mpc.prediction_horizon,
+            "control_horizon": mpc.control_horizon,
+            "solver_time_limit": mpc.solver_time_limit,
+            "weights": {
+                "position": mpc.q_position,
+                "velocity": mpc.q_velocity,
+                "angle": mpc.q_angle,
+                "angular_velocity": mpc.q_angular_velocity,
+                "thrust": mpc.r_thrust,
+                "rw_torque": mpc.r_rw_torque,
+                "switch": 0.0,  # Legacy
+            },
+            "constraints": {
+                "max_velocity": mpc.max_velocity,
+                "max_angular_velocity": mpc.max_angular_velocity,
+                "position_bounds": mpc.position_bounds,
+            },
+            "adaptive": {
+                "damping_zone": mpc.damping_zone,
+                "velocity_threshold": mpc.velocity_threshold,
+                "max_velocity_weight": mpc.max_velocity_weight,
+            },
+            "settings": {
+                "dt": mpc.dt,
+                "thruster_type": mpc.thruster_type,
+                "enable_rw_yaw": mpc.enable_rw_yaw,
+                "enable_z_tilt": mpc.enable_z_tilt,
+                "z_tilt_gain": mpc.z_tilt_gain,
+                "z_tilt_max_deg": mpc.z_tilt_max_deg,
+                "verbose_mpc": getattr(mpc, "verbose_mpc", False),
+            },
+        }
+
+        # 3. Simulation Config
+        sim = self.app_config.simulation
+        sim_dict = {
+            "dt": sim.dt,
+            "duration": sim.max_duration,
+            "headless": sim.headless,
+        }
+
+        # Assemble full config
+        full_config = {
+            "vehicle": vehicle_dict,
+            "control": {"mpc": mpc_dict},
+            "sim": sim_dict,
+            "env": "simulation",  # Default env tag
+        }
+
+        return OmegaConf.create(full_config)

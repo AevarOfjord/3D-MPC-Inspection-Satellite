@@ -43,7 +43,7 @@ import numpy as np
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
 from src.satellite_control.config import SimulationConfig
 from src.satellite_control.config.constants import Constants
-from src.satellite_control.config.satellite_config import initialize_config
+
 from src.satellite_control.core.simulation_loop import SimulationLoop
 from src.satellite_control.utils.logging_config import setup_logging
 from src.satellite_control.utils.navigation_utils import (
@@ -56,7 +56,6 @@ from src.satellite_control.utils.orientation_utils import (
     quat_wxyz_to_euler_xyz,
 )
 
-initialize_config()
 
 # Set up logger with simple format for clean output
 logger = setup_logging(

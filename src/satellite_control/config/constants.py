@@ -101,6 +101,40 @@ class Constants:
     DEFAULT_TARGET_ANGLE = (0.0, 0.0, np.deg2rad(90))  # Roll, Pitch, Yaw
 
     # ========================================================================
+    # TOLERANCES
+    # ========================================================================
+
+    POSITION_TOLERANCE = 0.05
+    ANGLE_TOLERANCE = np.deg2rad(3)
+    VELOCITY_TOLERANCE = 0.05
+    ANGULAR_VELOCITY_TOLERANCE = np.deg2rad(3)
+
+    # ========================================================================
+    # MPC DEFAULTS
+    # ========================================================================
+
+    MPC_PREDICTION_HORIZON = 50
+    MPC_CONTROL_HORIZON = 50
+    MPC_SOLVER_TIME_LIMIT = 0.04  # Default solver limit (50ms - 10ms margin)
+    MPC_SOLVER_TYPE = "OSQP"
+
+    Q_POSITION = 1000.0
+    Q_VELOCITY = 1000.0
+    Q_ANGLE = 1000.0
+    Q_ANGULAR_VELOCITY = 1000.0
+    R_THRUST = 0.1
+    R_RW_TORQUE = 0.1
+
+    MAX_VELOCITY = 0.5
+    MAX_ANGULAR_VELOCITY = np.pi / 2
+    POSITION_BOUNDS = 3.0
+    DAMPING_ZONE = 0.25
+    VELOCITY_THRESHOLD = 0.03
+    MAX_VELOCITY_WEIGHT = 1000.0
+
+    THRUSTER_TYPE = "CON"
+
+    # ========================================================================
     # HELPER METHODS
     # ========================================================================
 
@@ -125,7 +159,7 @@ class Constants:
         print("=" * 80)
 
         print("\nUI/VISUALIZATION:")
-        print("   Window size:            " f"{cls.WINDOW_WIDTH}x{cls.WINDOW_HEIGHT}")
+        print(f"   Window size:            {cls.WINDOW_WIDTH}x{cls.WINDOW_HEIGHT}")
 
         print("\nDATA MANAGEMENT:")
         print(f"   Data directory:         {cls.DATA_DIR}")
