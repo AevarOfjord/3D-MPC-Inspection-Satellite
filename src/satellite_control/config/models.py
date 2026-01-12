@@ -77,6 +77,64 @@ class SatellitePhysicalParams(BaseModel):
         description="Angular damping coefficient N*m/(rad/s)",
     )
 
+    # Delays & Noise (Realistic Physics)
+    thruster_valve_delay: float = Field(
+        0.05,
+        ge=0,
+        le=0.5,
+        description="Thruster valve open/close delay in seconds",
+    )
+    thruster_rampup_time: float = Field(
+        0.015,
+        ge=0,
+        le=0.5,
+        description="Thruster thrust ramp-up time in seconds",
+    )
+    thrust_force_noise_percent: float = Field(
+        0.0,
+        ge=0,
+        le=20.0,
+        description="Thruster force noise (percentage std dev)",
+    )
+
+    # Sensor Noise
+    position_noise_std: float = Field(
+        0.0,
+        ge=0,
+        description="Position measurement noise (std dev) in meters",
+    )
+    velocity_noise_std: float = Field(
+        0.0,
+        ge=0,
+        description="Velocity measurement noise (std dev) in m/s",
+    )
+    angle_noise_std: float = Field(
+        0.0,
+        ge=0,
+        description="Angle measurement noise (std dev) in rad",
+    )
+    angular_velocity_noise_std: float = Field(
+        0.0,
+        ge=0,
+        description="Angular velocity measurement noise (std dev) in rad/s",
+    )
+
+    # External Disturbances
+    random_disturbances_enabled: bool = Field(
+        False,
+        description="Enable random external force/torque disturbances",
+    )
+    disturbance_force_std: float = Field(
+        0.0,
+        ge=0,
+        description="External disturbance force (std dev) in N",
+    )
+    disturbance_torque_std: float = Field(
+        0.0,
+        ge=0,
+        description="External disturbance torque (std dev) in N*m",
+    )
+
     @field_validator("thruster_positions")
     @classmethod
     def validate_thruster_positions(

@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config.actuator_config import create_actuator_config
+
 from src.satellite_control.config.orbital_config import (
     OrbitalConfig,
     InspectionScenario,

@@ -29,6 +29,9 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 
+from src.satellite_control.config.constants import Constants
+
+
 class ObstacleManager:
     """
     Manager for obstacle avoidance configuration.
@@ -39,12 +42,16 @@ class ObstacleManager:
     def __init__(self) -> None:
         """Initialize obstacle manager with default settings."""
         self.enabled: bool = False
-        self.obstacles: List[Tuple[float, float, float, float]] = []  # (x, y, z, radius)
-        self.default_obstacle_radius: float = 0.5  # meters
-        self.safety_margin: float = 0.1  # meters
-        self.min_obstacle_distance: float = 0.5  # meters
-        self.path_resolution: float = 0.1  # meters
-        self.waypoint_stabilization_time: float = 0.5  # seconds
+        self.obstacles: List[
+            Tuple[float, float, float, float]
+        ] = []  # (x, y, z, radius)
+        self.default_obstacle_radius: float = Constants.DEFAULT_OBSTACLE_RADIUS
+        self.safety_margin: float = Constants.OBSTACLE_SAFETY_MARGIN
+        self.min_obstacle_distance: float = Constants.MIN_OBSTACLE_DISTANCE
+        self.path_resolution: float = Constants.OBSTACLE_PATH_RESOLUTION
+        self.waypoint_stabilization_time: float = (
+            Constants.OBSTACLE_WAYPOINT_STABILIZATION_TIME
+        )
 
     def set_obstacles(self, obstacles: List[Tuple[float, float, float, float]]) -> None:
         """
@@ -57,7 +64,9 @@ class ObstacleManager:
         self.enabled = len(obstacles) > 0
 
         if self.enabled:
-            print(f"\n OBSTACLE AVOIDANCE ENABLED: {len(obstacles)} " "obstacles configured")
+            print(
+                f"\n OBSTACLE AVOIDANCE ENABLED: {len(obstacles)} obstacles configured"
+            )
             for i, (x, y, z, radius) in enumerate(obstacles, 1):
                 print(
                     f"  Obstacle {i}: ({x:.2f}, {y:.2f}, {z:.2f}) m, "
@@ -85,9 +94,7 @@ class ObstacleManager:
         self.obstacles.append(obstacle)
         self.enabled = True
 
-        print(
-            f" Added obstacle: ({x:.2f}, {y:.2f}, {z:.2f}) m, radius {radius:.2f} m"
-        )
+        print(f" Added obstacle: ({x:.2f}, {y:.2f}, {z:.2f}) m, radius {radius:.2f} m")
 
     def clear_obstacles(self) -> None:
         """Clear all obstacles and disable obstacle avoidance."""
@@ -133,7 +140,7 @@ class ObstacleManager:
         for obs_x, obs_y, obs_z, obs_radius in self.obstacles:
             obs_center = np.array([obs_x, obs_y, obs_z])
             # Use consistent safety margin from module constant
-            effective_radius = obs_radius + OBSTACLE_AVOIDANCE_SAFETY_MARGIN
+            effective_radius = obs_radius + Constants.OBSTACLE_AVOIDANCE_SAFETY_MARGIN
 
             distance = self._point_to_line_distance(obs_center, start, end)
 
@@ -184,7 +191,7 @@ class ObstacleManager:
         print(f"Safety margin: {self.safety_margin:.2f} m")
         print(f"Min obstacle distance: {self.min_obstacle_distance:.2f} m")
         print(f"Path resolution: {self.path_resolution:.2f} m")
-        print(f"Waypoint stabilization time: " f"{self.waypoint_stabilization_time:.1f} s")
+        print(f"Waypoint stabilization time: {self.waypoint_stabilization_time:.1f} s")
 
         if self.obstacles:
             print("\nConfigured obstacles:")
@@ -197,18 +204,6 @@ class ObstacleManager:
         print("=" * 80 + "\n")
 
 
-# DEFAULT OBSTACLE PARAMETERS
-# ============================================================================
-
-DEFAULT_OBSTACLE_RADIUS = 0.5  # meters
-OBSTACLE_SAFETY_MARGIN = 0.1  # meters
-MIN_OBSTACLE_DISTANCE = 0.5  # meters
-OBSTACLE_PATH_RESOLUTION = 0.1  # meters
-OBSTACLE_WAYPOINT_STABILIZATION_TIME = 0.5  # seconds (legacy)
-OBSTACLE_FLYTHROUGH_TOLERANCE = 0.15  # meters - dist to advance
-OBSTACLE_AVOIDANCE_SAFETY_MARGIN = 0.25  # meters - added to radius
-
-
 def create_obstacle_manager() -> ObstacleManager:
     """
     Create a new obstacle manager with default settings.
@@ -217,9 +212,5 @@ def create_obstacle_manager() -> ObstacleManager:
         ObstacleManager initialized with defaults
     """
     manager = ObstacleManager()
-    manager.default_obstacle_radius = DEFAULT_OBSTACLE_RADIUS
-    manager.safety_margin = OBSTACLE_SAFETY_MARGIN
-    manager.min_obstacle_distance = MIN_OBSTACLE_DISTANCE
-    manager.path_resolution = OBSTACLE_PATH_RESOLUTION
-    manager.waypoint_stabilization_time = OBSTACLE_WAYPOINT_STABILIZATION_TIME
+    # Defaults are now set in __init__ from Constants
     return manager

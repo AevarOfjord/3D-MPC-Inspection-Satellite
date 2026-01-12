@@ -110,6 +110,18 @@ class Constants:
     ANGULAR_VELOCITY_TOLERANCE = np.deg2rad(3)
 
     # ========================================================================
+    # OBSTACLE AVOIDANCE DEFAULTS
+    # ========================================================================
+
+    DEFAULT_OBSTACLE_RADIUS = 0.5
+    OBSTACLE_SAFETY_MARGIN = 0.1
+    MIN_OBSTACLE_DISTANCE = 0.5
+    OBSTACLE_PATH_RESOLUTION = 0.1
+    OBSTACLE_WAYPOINT_STABILIZATION_TIME = 0.5
+    OBSTACLE_FLYTHROUGH_TOLERANCE = 0.15
+    OBSTACLE_AVOIDANCE_SAFETY_MARGIN = 0.25
+
+    # ========================================================================
     # MPC DEFAULTS
     # ========================================================================
 

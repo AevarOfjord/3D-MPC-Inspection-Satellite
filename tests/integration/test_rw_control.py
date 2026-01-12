@@ -8,14 +8,13 @@ Tests the full control loop:
 3. Closed-loop attitude and translation control
 """
 
-import time
 from pathlib import Path
 
+import sys
 import mujoco
 import numpy as np
 
 # Add project root to path
-import sys
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -74,7 +73,7 @@ def test_reaction_wheel_control():
 
     controller = MPCController(hydra_cfg)
 
-    print(f"\nController initialized:")
+    print("\nController initialized:")
     print(f"  State dimension: {controller.nx}")
     print(f"  Control dimension: {controller.nu}")
     print(f"  Max RW torque: {controller.max_rw_torque} N·m")

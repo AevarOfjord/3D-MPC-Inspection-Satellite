@@ -19,7 +19,6 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 
 # V4.0.0: SatelliteConfig removed - using SimulationConfig and Constants
-from src.satellite_control.config.adapter import SatelliteConfigAdapter
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.control.mpc_controller import MPCController
@@ -269,9 +268,8 @@ class SimulationInitializer:
         # V3.0.0: Use defaults until these are added to SatellitePhysicalParams
         # TODO: Add thruster_valve_delay and thruster_rampup_time to SatellitePhysicalParams
         if app_config.physics.use_realistic_physics:
-            # Default values: 50ms valve delay, 15ms ramp-up time
-            self.simulation.VALVE_DELAY = 0.05  # 50ms valve open/close delay
-            self.simulation.THRUST_RAMPUP_TIME = 0.015  # 15ms ramp-up after valve opens
+            self.simulation.VALVE_DELAY = app_config.physics.thruster_valve_delay
+            self.simulation.THRUST_RAMPUP_TIME = app_config.physics.thruster_rampup_time
         else:
             self.simulation.VALVE_DELAY = 0.0  # Instant response for idealized physics
             self.simulation.THRUST_RAMPUP_TIME = 0.0
@@ -327,11 +325,9 @@ class SimulationInitializer:
         )
 
         # V4.0.0: Pass simulation_config to report generator
-        # TODO: Migrate mission_report_generator.py to accept SimulationConfig directly
-        # For now, create a compatibility adapter that provides flat attribute interface
-
-        adapter = SatelliteConfigAdapter(self.simulation_config)
-        self.simulation.report_generator = create_mission_report_generator(adapter)
+        self.simulation.report_generator = create_mission_report_generator(
+            self.simulation_config
+        )
         self.simulation.data_save_path = None
 
     def _initialize_performance_monitoring(self) -> None:
@@ -481,10 +477,10 @@ class SimulationInitializer:
                 f"WARNING: - Rotational damping: "
                 f"{app_config.physics.damping_angular:.4f} N*m/(rad/s)"
             )
-            # V3.0.0: Use defaults until noise parameters are added to SatellitePhysicalParams
-            # TODO: Add position_noise_std and angle_noise_std to SatellitePhysicalParams
-            position_noise_std = 0.0  # Default: no noise
-            angle_noise_std = 0.0  # Default: no noise
+
+            position_noise_std = app_config.physics.position_noise_std
+            angle_noise_std = app_config.physics.angle_noise_std
+
             logger.info(
                 f"WARNING: - Position noise: {position_noise_std * 1000:.2f} mm std"
             )

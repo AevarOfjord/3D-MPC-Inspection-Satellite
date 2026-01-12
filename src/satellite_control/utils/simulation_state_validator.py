@@ -579,7 +579,7 @@ def create_state_validator_from_config(
 
     # Get tolerances from config dict, app_config, or fallback to constants
     if app_config and app_config.mpc:
-        # Use constants from SatelliteConfig (v4.0.0)
+        # Use constants from Constants (v4.0.0)
         position_tolerance = config.get(
             "position_tolerance", Constants.POSITION_TOLERANCE
         )

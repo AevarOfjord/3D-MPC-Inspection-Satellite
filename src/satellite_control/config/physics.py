@@ -104,7 +104,7 @@ class PhysicsConfig:
 # Mass properties
 TOTAL_MASS = 10.0  # kg
 # Mass properties
-TOTAL_MASS = 10.0  # kg
+
 SATELLITE_SIZE = 0.30  # m (cube side length)
 
 # Moment of Inertia for a solid cube: I = (1/6) * m * s^2
@@ -112,21 +112,21 @@ MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 
 # Thruster configuration (6 Thrusters - one centered on each face)
 THRUSTER_POSITIONS = {
-    1: (0.15, 0.0, 0.0),    # +X Face
-    2: (-0.15, 0.0, 0.0),   # -X Face
-    3: (0.0, 0.15, 0.0),    # +Y Face
-    4: (0.0, -0.15, 0.0),   # -Y Face
-    5: (0.0, 0.0, 0.15),    # +Z Face
-    6: (0.0, 0.0, -0.15),   # -Z Face
+    1: (0.15, 0.0, 0.0),  # +X Face
+    2: (-0.15, 0.0, 0.0),  # -X Face
+    3: (0.0, 0.15, 0.0),  # +Y Face
+    4: (0.0, -0.15, 0.0),  # -Y Face
+    5: (0.0, 0.0, 0.15),  # +Z Face
+    6: (0.0, 0.0, -0.15),  # -Z Face
 }
 
 THRUSTER_DIRECTIONS = {
     1: np.array([-1, 0, 0]),  # Pushes -X (on +X face)
-    2: np.array([1, 0, 0]),   # Pushes +X (on -X face)
+    2: np.array([1, 0, 0]),  # Pushes +X (on -X face)
     3: np.array([0, -1, 0]),  # Pushes -Y (on +Y face)
-    4: np.array([0, 1, 0]),   # Pushes +Y (on -Y face)
+    4: np.array([0, 1, 0]),  # Pushes +Y (on -Y face)
     5: np.array([0, 0, -1]),  # Pushes -Z (on +Z face)
-    6: np.array([0, 0, 1]),   # Pushes +Z (on -Z face)
+    6: np.array([0, 0, 1]),  # Pushes +Z (on -Z face)
 }
 
 THRUSTER_FORCES = {
@@ -273,7 +273,9 @@ def validate_physics_params(config: PhysicsConfig) -> bool:
         issues.append(f"Expected 6 thrusters, got {len(config.thruster_positions)}")
 
     if len(config.thruster_directions) != 6:
-        issues.append(f"Expected 6 thruster directions, got " f"{len(config.thruster_directions)}")
+        issues.append(
+            f"Expected 6 thruster directions, got {len(config.thruster_directions)}"
+        )
 
     if len(config.thruster_forces) != 6:
         issues.append(f"Expected 6 thruster forces, got {len(config.thruster_forces)}")
