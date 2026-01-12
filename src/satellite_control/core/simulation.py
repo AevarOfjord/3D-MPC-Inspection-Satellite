@@ -112,7 +112,7 @@ class SatelliteMPCLinearizedSimulation:
         config: Optional[Any] = None,
         config_overrides: Optional[Any] = None,
         simulation_config: Optional[Any] = None,
-        use_mujoco_viewer: bool = True,
+        use_mujoco_viewer: bool = False,  # Run headless by default
     ):
         """
         Initialize linearized MPC simulation.
@@ -608,12 +608,12 @@ class SatelliteMPCLinearizedSimulation:
                 control_loop_time, timing_violation=timing_violation
             )
 
-            # Verify timing constraint
-            if timing_violation:
-                logger.warning(
-                    f"WARNING: MPC computation time "
-                    f"({mpc_computation_time:.3f}s) exceeds real-time!"
-                )
+            # Timing violation monitoring (silent - simulation runs as fast as possible)
+            # if timing_violation:
+            #     logger.warning(
+            #         f"WARNING: MPC computation time "
+            #         f"({mpc_computation_time:.3f}s) exceeds real-time!"
+            #     )
 
             # Print status with timing information
             pos_error = np.linalg.norm(current_state[:3] - self.target_state[:3])
@@ -739,6 +739,9 @@ class SatelliteMPCLinearizedSimulation:
 
     def draw_simulation(self) -> None:
         """Draw the simulation with satellite, target, and trajectory."""
+        # Skip visualization in headless mode
+        if self.satellite.ax is None:
+            return
         self.visualizer.sync_from_controller()
         self.visualizer.draw_simulation()
 
@@ -756,6 +759,9 @@ class SatelliteMPCLinearizedSimulation:
 
     def update_mpc_info_panel(self) -> None:
         """Update the information panel to match visualization format."""
+        # Skip visualization in headless mode
+        if self.satellite.ax is None:
+            return
         self.visualizer.sync_from_controller()
         self.visualizer.update_mpc_info_panel()
 

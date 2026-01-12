@@ -102,10 +102,13 @@ void MPCControllerCpp::init_solver() {
         int x_kp1_idx = (k + 1) * nx_;
         int u_k_idx = (N_ + 1) * nx_ + k * nu_;
         
-        // -A
+        // -A (dynamics matrix)
         for (int r = 0; r < nx_; ++r) {
             for (int c = 0; c < nx_; ++c) {
-                if (std::abs(A_dyn(r, c)) > 1e-12) {
+                // Always include G-block (rows 3-6, cols 10-12) for quaternion dynamics
+                // These entries change with orientation and all may be non-zero
+                bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
+                if (is_g_block || std::abs(A_dyn(r, c)) > 1e-12) {
                     A_triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
                 }
             }
@@ -114,10 +117,13 @@ void MPCControllerCpp::init_solver() {
         for (int r = 0; r < nx_; ++r) {
             A_triplets.emplace_back(row_idx + r, x_kp1_idx + r, 1.0);
         }
-        // -B
+        // -B (always include all entries as they depend on orientation)
         for (int r = 0; r < nx_; ++r) {
             for (int c = 0; c < nu_; ++c) {
-                if (std::abs(B_dyn(r, c)) > 1e-12) {
+                // Always include velocity and angular velocity rows (7-12)
+                // as these change with body orientation
+                bool is_velocity_row = (r >= 7);
+                if (is_velocity_row || std::abs(B_dyn(r, c)) > 1e-12) {
                     A_triplets.emplace_back(row_idx + r, u_k_idx + c, -B_dyn(r, c));
                 }
             }

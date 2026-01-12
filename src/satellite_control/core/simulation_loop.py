@@ -141,11 +141,16 @@ class SimulationLoop:
         try:
             # When using MuJoCo viewer, skip matplotlib animation (MuJoCo
             # viewer updates itself)
-            if show_animation and not self.simulation.use_mujoco_viewer:
+            # In headless mode, also skip matplotlib animation
+            has_fig = (
+                hasattr(self.simulation.satellite, "fig")
+                and self.simulation.satellite.fig is not None
+            )
+            if show_animation and not self.simulation.use_mujoco_viewer and has_fig:
                 # Matplotlib animation mode (legacy)
                 return self._run_matplotlib_animation()
             else:
-                # Run with MuJoCo viewer or without animation
+                # Run headless batch mode (no visualization)
                 return self._run_batch_mode()
 
         except KeyboardInterrupt:

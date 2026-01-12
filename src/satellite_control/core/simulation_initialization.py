@@ -53,7 +53,7 @@ class SimulationInitializer:
         self,
         simulation: Any,  # SatelliteMPCLinearizedSimulation instance
         simulation_config: Optional[SimulationConfig] = None,
-        use_mujoco_viewer: bool = True,
+        use_mujoco_viewer: bool = False,  # Run headless by default
     ):
         """
         Initialize the simulation initializer.
