@@ -1,0 +1,78 @@
+# Mission: Multi-Axis Tour (Requested by User)
+# Start: 0,0,0 (Identity)
+# 1: 1,0,0 (Roll 180)
+# 2: 0,1,0 (Pitch 180)
+# 3: 0,0,1 (Yaw 180)
+# 4: 0,0,0 (180,180,180 -> Identity)
+
+vehicle:
+  name: "TestSatellite"
+  mass: 10.0
+  inertia_diag: [1.0, 1.0, 1.0]
+  center_of_mass: [0.0, 0.0, 0.0]
+
+  reaction_wheels:
+    max_torque: 0.1
+    max_speed_rad_s: 600.0
+    inertia: 0.001
+    enabled: true
+
+  thrusters:
+    - id: "T1"
+      position: [-0.15, 0.0, 0.0]
+      direction: [1.0, 0.0, 0.0]
+      max_thrust: 1.0
+    - id: "T2"
+      position: [0.15, 0.0, 0.0]
+      direction: [-1.0, 0.0, 0.0]
+      max_thrust: 1.0
+    - id: "T3"
+      position: [0.0, -0.15, 0.0]
+      direction: [0.0, 1.0, 0.0]
+      max_thrust: 1.0
+    - id: "T4"
+      position: [0.0, 0.15, 0.0]
+      direction: [0.0, -1.0, 0.0]
+      max_thrust: 1.0
+    - id: "T5"
+      position: [0.0, 0.0, -0.15]
+      direction: [0.0, 0.0, 1.0]
+      max_thrust: 1.0
+    - id: "T6"
+      position: [0.0, 0.0, 0.15]
+      direction: [0.0, 0.0, -1.0]
+      max_thrust: 1.0
+
+mission:
+  name: "Multi-Axis Tour"
+  max_duration: 120.0 # Standard duration
+  loop: false
+
+  waypoints:
+    # Point 1: 1,0,0 | Roll 180 (x=1)
+    - position: [1.0, 0.0, 0.0]
+      attitude: [0.0, 1.0, 0.0, 0.0]
+      hold_time: 5.0
+      pos_tolerance: 0.1
+      att_tolerance: 0.1
+
+    # Point 2: 0,1,0 | Pitch 180 (y=1)
+    - position: [0.0, 1.0, 0.0]
+      attitude: [0.0, 0.0, 1.0, 0.0]
+      hold_time: 5.0
+      pos_tolerance: 0.1
+      att_tolerance: 0.1
+
+    # Point 3: 0,0,1 | Yaw 180 (z=1)
+    - position: [0.0, 0.0, 1.0]
+      attitude: [0.0, 0.0, 0.0, 1.0]
+      hold_time: 5.0
+      pos_tolerance: 0.1
+      att_tolerance: 0.1
+
+    # Point 4: 0,0,0 | 180,180,180 (Identity)
+    - position: [0.0, 0.0, 0.0]
+      attitude: [1.0, 0.0, 0.0, 0.0]
+      hold_time: 5.0
+      pos_tolerance: 0.1
+      att_tolerance: 0.1
