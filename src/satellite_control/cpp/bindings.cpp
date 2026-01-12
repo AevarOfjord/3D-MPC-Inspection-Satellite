@@ -3,13 +3,16 @@
 #include <pybind11/eigen.h>
 #include <pybind11/stl.h>
 #include "linearizer.hpp"
+#include "mpc_controller.hpp"
 
 namespace py = pybind11;
 using namespace satellite_dt;
+using namespace satellite_mpc;
 
 PYBIND11_MODULE(_cpp_mpc, m) {
     m.doc() = "C++ backend for Satellite MPC controller";
 
+    // Satellite Parameters
     py::class_<SatelliteParams>(m, "SatelliteParams")
         .def(py::init<>())
         .def_readwrite("dt", &SatelliteParams::dt)
@@ -23,9 +26,46 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("rw_torque_limits", &SatelliteParams::rw_torque_limits)
         .def_readwrite("com_offset", &SatelliteParams::com_offset);
 
+    // Linearizer
     py::class_<Linearizer>(m, "Linearizer")
         .def(py::init<const SatelliteParams&>())
         .def("linearize", &Linearizer::linearize, "Compute Linearized Dynamics (A, B)");
+
+    // MPC Parameters
+    py::class_<MPCParams>(m, "MPCParams")
+        .def(py::init<>())
+        .def_readwrite("prediction_horizon", &MPCParams::prediction_horizon)
+        .def_readwrite("dt", &MPCParams::dt)
+        .def_readwrite("solver_time_limit", &MPCParams::solver_time_limit)
+        .def_readwrite("Q_pos", &MPCParams::Q_pos)
+        .def_readwrite("Q_vel", &MPCParams::Q_vel)
+        .def_readwrite("Q_ang", &MPCParams::Q_ang)
+        .def_readwrite("Q_angvel", &MPCParams::Q_angvel)
+        .def_readwrite("R_thrust", &MPCParams::R_thrust)
+        .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
+        .def_readwrite("max_velocity", &MPCParams::max_velocity)
+        .def_readwrite("max_angular_velocity", &MPCParams::max_angular_velocity)
+        .def_readwrite("enable_z_tilt", &MPCParams::enable_z_tilt)
+        .def_readwrite("z_tilt_gain", &MPCParams::z_tilt_gain)
+        .def_readwrite("z_tilt_max_rad", &MPCParams::z_tilt_max_rad);
+
+    // Control Result
+    py::class_<ControlResult>(m, "ControlResult")
+        .def(py::init<>())
+        .def_readwrite("u", &ControlResult::u)
+        .def_readwrite("status", &ControlResult::status)
+        .def_readwrite("solve_time", &ControlResult::solve_time)
+        .def_readwrite("timeout", &ControlResult::timeout);
+
+    // MPC Controller
+    py::class_<MPCControllerCpp>(m, "MPCControllerCpp")
+        .def(py::init<const SatelliteParams&, const MPCParams&>())
+        .def("get_control_action", &MPCControllerCpp::get_control_action,
+             py::arg("x_current"), py::arg("x_target"),
+             "Compute optimal control action")
+        .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
+        .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
+        .def_property_readonly("dt", &MPCControllerCpp::dt);
 
     m.def("add", [](int i, int j) { return i + j; }, "A function that adds two numbers");
 }

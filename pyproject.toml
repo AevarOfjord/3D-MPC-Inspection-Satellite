@@ -22,6 +22,7 @@ dependencies = [
 [tool.scikit-build]
 cmake.version = ">=3.20"
 cmake.build-type = "Release"
+cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 # Setup for development install (editable)
 editable.rebuild = true
 build-dir = "build/{wheel_tag}"
