@@ -1006,6 +1006,8 @@ class MissionStateManager:
         if target_pos is None:
             return None
 
+        target_pos_arr = np.array(target_pos)
+
         target_orientation = get_path_tangent_orientation(
             path, path_s, self.mission_state.dxf_closest_point_index
         )

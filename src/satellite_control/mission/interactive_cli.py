@@ -835,17 +835,26 @@ class InteractiveMissionCLI:
         from pathlib import Path
 
         # Find DXF files in the DXF folder
-        dxf_folder = Path("DXF/DXF_Files")
+        # Try new location first: models/meshes/DXF_Files relative to project root
+        project_root = Path(__file__).parents[3]
+        dxf_folder = project_root / "models" / "meshes" / "DXF_Files"
+
         if not dxf_folder.exists():
-            # Try alternate locations
-            dxf_folder = Path(__file__).parents[3] / "DXF" / "DXF_Files"
+            # Try relative path from CWD
+            dxf_folder = Path("models/meshes/DXF_Files")
+        
+        if not dxf_folder.exists():
+            # Try legacy locations
+            dxf_folder = Path("DXF/DXF_Files")
+            if not dxf_folder.exists():
+                dxf_folder = project_root / "DXF" / "DXF_Files"
 
         dxf_files = []
         if dxf_folder.exists():
             dxf_files = sorted([f for f in dxf_folder.glob("*.dxf")])
 
         if not dxf_files:
-            console.print("[yellow]No DXF files found in DXF/DXF_Files/[/yellow]")
+            console.print(f"[yellow]No DXF files found in {dxf_folder}[/yellow]")
             console.print("[yellow]Using Circle instead.[/yellow]")
             return "circle"
 

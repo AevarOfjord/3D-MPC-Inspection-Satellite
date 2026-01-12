@@ -241,10 +241,13 @@ class MissionLogic:
             # meters
             boundary = extract_boundary_polygon(msp)
             boundary = sanitize_boundary(boundary, to_m)
-            boundary_m = (
-                [(float(x) * to_m, float(y) * to_m, 0.0) for (x, y) in boundary] if boundary else []
-            )
-
+            boundary_m = []
+            if boundary:
+                 for p in boundary:
+                     # Handle both 2D and 3D tuples
+                     if len(p) >= 2:
+                         boundary_m.append((float(p[0]) * to_m, float(p[1]) * to_m, 0.0))
+            
             if not boundary_m:
                 raise ValueError("No usable DXF boundary could be constructed.")
 
