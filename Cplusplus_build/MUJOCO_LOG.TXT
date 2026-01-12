@@ -1,6 +1,0 @@
-Mon Jan 12 10:01:56 2026
-WARNING: mju_openResource: unknown file '../models/satellite_3d.xml'
-
-Mon Jan 12 10:06:30 2026
-WARNING: mju_openResource: unknown file 'config/models/satellite_3d.xml'
-
