@@ -102,8 +102,8 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         # Realistic physics flags
         self.use_realistic_physics = self._physics_params.use_realistic_physics
-        self.linear_damping_coeff = self._physics_params.damping_linear
-        self.rotational_damping_coeff = self._physics_params.damping_angular
+        self.linear_damping_coeff = 0.0  # self._physics_params.damping_linear
+        self.rotational_damping_coeff = 0.0  # self._physics_params.damping_angular
 
         # Active thrusters tracking (same as SatelliteThrusterTester)
         self.active_thrusters: Set[int] = set()

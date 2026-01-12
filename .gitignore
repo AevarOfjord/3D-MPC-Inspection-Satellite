@@ -43,3 +43,4 @@ htmlcov/
 .DS_Store
 Thumbs.db
 Data/simulation.log
+simulation.log
