@@ -61,7 +61,7 @@ class SatellitePhysicalParams(BaseModel):
 
     # Physics Engine
     engine: str = Field(
-        "mujoco",
+        "cpp",
         pattern="^(mujoco|cpp)$",
         description="Physics engine backend ('mujoco' or 'cpp')",
     )

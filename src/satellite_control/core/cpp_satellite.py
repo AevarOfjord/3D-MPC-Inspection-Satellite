@@ -15,6 +15,7 @@ from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
 )
 from src.satellite_control.config.orbital_config import OrbitalConfig
+from src.satellite_control.config.timing import SIMULATION_DT
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +42,13 @@ class CppSatelliteSimulator:
             )
 
         self.app_config = app_config
-        self.dt = app_config.mpc.dt  # Use MPC dt or Physics dt? Usually physics dt.
-        # Physics DT check:
-        if hasattr(app_config.physics, "dt"):
-            self.dt = app_config.physics.dt
+        # Get physics dt from simulation config (preferred) then mpc, then fallback
+        if hasattr(app_config, "simulation") and hasattr(app_config.simulation, "dt"):
+            self.dt = app_config.simulation.dt
+        elif hasattr(app_config, "mpc") and hasattr(app_config.mpc, "dt"):
+            self.dt = app_config.mpc.dt
         else:
-            # Fallback
-            self.dt = 0.005  # 200Hz default from MuJoCo
+            self.dt = SIMULATION_DT  # Single source of truth from timing.py
 
         self.simulation_time = 0.0
 

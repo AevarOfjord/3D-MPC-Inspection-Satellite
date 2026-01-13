@@ -60,8 +60,9 @@ class TimingConfig:
 # ============================================================================
 
 # Simulation and control intervals
-SIMULATION_DT = 0.005  # seconds
-CONTROL_DT = 0.050  # 50 ms
+# SIMULATION_DT is the SINGLE SOURCE OF TRUTH for physics timestep
+SIMULATION_DT = 0.001  # 1ms / 1000Hz physics
+CONTROL_DT = 0.050  # 50 ms (MPC update rate)
 MAX_SIMULATION_TIME = 500.0  # seconds
 
 # Stabilization timers
@@ -121,7 +122,9 @@ def validate_timing_params(config: TimingConfig) -> bool:
         issues.append(f"Control interval must be positive: {config.control_dt}")
 
     if config.max_simulation_time <= 0:
-        issues.append(f"Max simulation time must be positive: " f"{config.max_simulation_time}")
+        issues.append(
+            f"Max simulation time must be positive: {config.max_simulation_time}"
+        )
 
     # Report validation results
     if issues:
@@ -140,7 +143,9 @@ def print_stabilization_times(config: TimingConfig) -> None:
     Args:
         config: TimingConfig to print
     """
-    simulation_mode = "ENABLED" if config.use_final_stabilization_in_simulation else "DISABLED"
+    simulation_mode = (
+        "ENABLED" if config.use_final_stabilization_in_simulation else "DISABLED"
+    )
     logger.info("STABILIZATION TIME CONFIGURATION:")
     logger.info(f"  Final stabilization in simulation: {simulation_mode}")
     logger.info(

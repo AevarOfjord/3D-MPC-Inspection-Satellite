@@ -70,7 +70,7 @@ def create_default_app_config() -> AppConfig:
 
     # Simulation
     sim = SimulationParams(
-        dt=0.005,
+        dt=timing.SIMULATION_DT,  # Single source of truth from timing.py
         max_duration=timing.MAX_SIMULATION_TIME,
         headless=constants.Constants.HEADLESS_MODE,
         window_width=constants.Constants.WINDOW_WIDTH,

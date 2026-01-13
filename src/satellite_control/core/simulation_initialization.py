@@ -22,7 +22,8 @@ import numpy as np
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.core.mujoco_satellite import MuJoCoSatelliteSimulator
+
+# MuJoCoSatelliteSimulator now only used for post-simulation replay/viewer
 from src.satellite_control.core.simulation_io import SimulationIO
 from src.satellite_control.core.thruster_manager import ThrusterManager
 from src.satellite_control.mission.mission_report_generator import (
@@ -198,31 +199,23 @@ class SimulationInitializer:
                 "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
             )
 
-        # V4.0.0: Pass app_config to MuJoCoSatelliteSimulator or CppSatelliteSimulator
-        engine_type = getattr(
-            self.simulation_config.app_config.physics, "engine", "mujoco"
-        )
+        # V2.0.0: C++ is now the ONLY physics engine. MuJoCo used for visualization only.
+        logger.info("Initializing C++ Physics Engine...")
+        try:
+            from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
 
-        if engine_type == "cpp":
-            logger.info("Initializing C++ Physics Engine...")
-            try:
-                from src.satellite_control.core.cpp_satellite import (
-                    CppSatelliteSimulator,
-                )
-
-                self.simulation.satellite = CppSatelliteSimulator(
-                    app_config=self.simulation_config.app_config,
-                )
-                logger.info("C++ Physics Engine initialized successfully.")
-            except ImportError as e:
-                logger.error(f"Failed to load C++ engine: {e}. Falling back to MuJoCo.")
-                engine_type = "mujoco"
-
-        if engine_type == "mujoco":
-            self.simulation.satellite = MuJoCoSatelliteSimulator(
-                use_mujoco_viewer=self.use_mujoco_viewer,
+            self.simulation.satellite = CppSatelliteSimulator(
                 app_config=self.simulation_config.app_config,
             )
+            logger.info("C++ Physics Engine initialized successfully.")
+        except ImportError as e:
+            raise RuntimeError(
+                f"C++ Physics Engine required but not found: {e}. "
+                "Please run 'pip install -e .' to compile."
+            ) from e
+
+        # MuJoCo is kept only for visualization/replay (launched separately)
+        self._mujoco_viewer_available = self.use_mujoco_viewer
 
         self.simulation.satellite.external_simulation_mode = True
 
