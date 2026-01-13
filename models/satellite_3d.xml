@@ -31,26 +31,27 @@
       <!-- 
         Cubic Body: 30x30x30 cm
         Mujoco box size is half-extent: 0.15 0.15 0.15
+        Alpha set to 0.75 (25% Translucent)
       -->
       
       <!-- Core Grey Body (slightly smaller to show colored plates) -->
-      <geom name="core" type="box" size="0.145 0.145 0.145" rgba="0.2 0.2 0.2 1" mass="12"/>
+      <geom name="core" type="box" size="0.145 0.145 0.145" rgba="0.2 0.2 0.2 0.75" mass="12"/>
 
       <!-- Colored Plates for Faces -->
       <!-- +X (Red) -->
-      <geom name="face_px" type="box" pos="0.15 0 0" size="0.005 0.15 0.15" rgba="1 0 0 1"/>
+      <geom name="face_px" type="box" pos="0.15 0 0" size="0.005 0.15 0.15" rgba="1 0 0 0.75"/>
       <!-- -X (Dark Red) -->
-      <geom name="face_nx" type="box" pos="-0.15 0 0" size="0.005 0.15 0.15" rgba="0.5 0 0 1"/>
+      <geom name="face_nx" type="box" pos="-0.15 0 0" size="0.005 0.15 0.15" rgba="0.5 0 0 0.75"/>
       
       <!-- +Y (Blue) -->
-      <geom name="face_py" type="box" pos="0 0.15 0" size="0.15 0.005 0.15" rgba="0 0 1 1"/>
+      <geom name="face_py" type="box" pos="0 0.15 0" size="0.15 0.005 0.15" rgba="0 0 1 0.75"/>
       <!-- -Y (Dark Blue) -->
-      <geom name="face_ny" type="box" pos="0 -0.15 0" size="0.15 0.005 0.15" rgba="0 0 0.5 1"/>
+      <geom name="face_ny" type="box" pos="0 -0.15 0" size="0.15 0.005 0.15" rgba="0 0 0.5 0.75"/>
       
       <!-- +Z (Green) -->
-      <geom name="face_pz" type="box" pos="0 0 0.15" size="0.15 0.15 0.005" rgba="0 1 0 1"/>
+      <geom name="face_pz" type="box" pos="0 0 0.15" size="0.15 0.15 0.005" rgba="0 1 0 0.75"/>
       <!-- -Z (Dark Green) -->
-      <geom name="face_nz" type="box" pos="0 0 -0.15" size="0.15 0.15 0.005" rgba="0 0.5 0 1"/>
+      <geom name="face_nz" type="box" pos="0 0 -0.15" size="0.15 0.15 0.005" rgba="0 0.5 0 0.75"/>
 
       <!-- 
         Thrusters: 1 centered per face
