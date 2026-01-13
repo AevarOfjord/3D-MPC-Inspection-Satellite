@@ -6,6 +6,7 @@
 #include <memory>
 #include "osqp.h"
 #include "linearizer.hpp"
+#include "obstacle.hpp"
 
 namespace satellite_mpc {
 
@@ -36,6 +37,10 @@ struct MPCParams {
     bool enable_z_tilt = true;
     double z_tilt_gain = 0.35;
     double z_tilt_max_rad = 0.35;  // ~20 deg
+    
+    // Collision avoidance (V3.0.0)
+    bool enable_collision_avoidance = false;
+    double obstacle_margin = 0.5;  // Safety margin [m]
 };
 
 struct ControlResult {
@@ -52,6 +57,10 @@ public:
 
     // Main interface
     ControlResult get_control_action(const VectorXd& x_current, const VectorXd& x_target);
+    
+    // Collision avoidance (V3.0.0)
+    void set_obstacles(const satellite_collision::ObstacleSet& obstacles);
+    void clear_obstacles();
     
     // Accessors
     int num_controls() const { return nu_; }
@@ -112,6 +121,10 @@ private:
     
     // A matrix index map for dynamics matrix updates (only non-identity entries)
     std::vector<std::vector<int>> A_idx_map_;
+    
+    // Collision avoidance (V3.0.0)
+    satellite_collision::ObstacleSet obstacles_;
+    void apply_obstacle_constraints(const VectorXd& x_current);
 };
 
 } // namespace satellite_mpc

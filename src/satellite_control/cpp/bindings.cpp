@@ -47,7 +47,10 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("max_angular_velocity", &MPCParams::max_angular_velocity)
         .def_readwrite("enable_z_tilt", &MPCParams::enable_z_tilt)
         .def_readwrite("z_tilt_gain", &MPCParams::z_tilt_gain)
-        .def_readwrite("z_tilt_max_rad", &MPCParams::z_tilt_max_rad);
+        .def_readwrite("z_tilt_max_rad", &MPCParams::z_tilt_max_rad)
+        // Collision avoidance (V3.0.0)
+        .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
+        .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin);
 
     // Control Result
     py::class_<ControlResult>(m, "ControlResult")
@@ -63,6 +66,8 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("get_control_action", &MPCControllerCpp::get_control_action,
              py::arg("x_current"), py::arg("x_target"),
              "Compute optimal control action")
+        .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
+        .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
         .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
         .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
         .def_property_readonly("dt", &MPCControllerCpp::dt);

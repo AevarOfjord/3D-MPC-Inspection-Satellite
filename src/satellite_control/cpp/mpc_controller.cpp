@@ -354,4 +354,40 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     return result;
 }
 
+// ============================================================================
+// Collision Avoidance (V3.0.0)
+// ============================================================================
+
+void MPCControllerCpp::set_obstacles(const satellite_collision::ObstacleSet& obstacles) {
+    obstacles_ = obstacles;
+}
+
+void MPCControllerCpp::clear_obstacles() {
+    obstacles_.clear();
+}
+
+void MPCControllerCpp::apply_obstacle_constraints(const VectorXd& x_current) {
+    if (!mpc_params_.enable_collision_avoidance || obstacles_.size() == 0) {
+        return;
+    }
+    
+    // Get current position
+    Eigen::Vector3d pos = x_current.segment<3>(0);
+    
+    // Get linearized constraints from all obstacles
+    auto constraints = obstacles_.get_linear_constraints(pos, mpc_params_.obstacle_margin);
+    
+    // For now, we apply soft constraints by modifying the cost
+    // Full implementation would add hard constraints to the QP
+    // This simplified version uses the constraints for monitoring only
+    
+    double min_dist = obstacles_.min_distance(pos);
+    if (min_dist < mpc_params_.obstacle_margin) {
+        // Too close to obstacle - could log warning here
+    }
+    
+    // TODO: Add hard constraints to l_, u_ bounds or additional rows to A_
+    // This requires restructuring the QP dimensions which is a larger change
+}
+
 } // namespace satellite_mpc

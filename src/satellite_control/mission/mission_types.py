@@ -88,6 +88,48 @@ class MissionPhase:
         )
 
 
+class ObstacleType(Enum):
+    """Types of obstacles for collision avoidance."""
+
+    SPHERE = "sphere"
+    CYLINDER = "cylinder"
+    BOX = "box"
+
+
+@dataclass
+class Obstacle:
+    """
+    An obstacle for collision avoidance (V3.0.0).
+
+    Defines keep-out zones the satellite must avoid.
+    """
+
+    type: ObstacleType = ObstacleType.SPHERE
+    position: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    radius: float = 0.5  # For sphere/cylinder [m]
+    size: np.ndarray = field(default_factory=lambda: np.ones(3))  # For box [m]
+    name: str = "obstacle"
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type.value,
+            "position": self.position.tolist(),
+            "radius": self.radius,
+            "size": self.size.tolist(),
+            "name": self.name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Obstacle":
+        return cls(
+            type=ObstacleType(data.get("type", "sphere")),
+            position=np.array(data.get("position", [0, 0, 0])),
+            radius=data.get("radius", 0.5),
+            size=np.array(data.get("size", [1, 1, 1])),
+            name=data.get("name", "obstacle"),
+        )
+
+
 @dataclass
 class Mission:
     """
@@ -103,12 +145,17 @@ class Mission:
     name: str
     mission_type: MissionType
     phases: List[MissionPhase] = field(default_factory=list)
-    start_position: np.ndarray = field(default_factory=lambda: np.array([5.0, 0.0, 0.0]))
+    start_position: np.ndarray = field(
+        default_factory=lambda: np.array([5.0, 0.0, 0.0])
+    )
     description: str = ""
 
     # Safety parameters
     keep_out_radius: float = 2.0  # Minimum distance from target (m)
     max_speed: float = 0.1  # Maximum approach speed (m/s)
+
+    # Collision avoidance obstacles (V3.0.0)
+    obstacles: List[Obstacle] = field(default_factory=list)
 
     # Execution state
     status: MissionStatus = MissionStatus.PENDING
@@ -148,6 +195,7 @@ class Mission:
             "keep_out_radius": self.keep_out_radius,
             "max_speed": self.max_speed,
             "phases": [phase.to_dict() for phase in self.phases],
+            "obstacles": [obs.to_dict() for obs in self.obstacles],
         }
 
     @classmethod
@@ -160,6 +208,7 @@ class Mission:
             keep_out_radius=data.get("keep_out_radius", 2.0),
             max_speed=data.get("max_speed", 0.1),
             phases=[MissionPhase.from_dict(p) for p in data.get("phases", [])],
+            obstacles=[Obstacle.from_dict(o) for o in data.get("obstacles", [])],
         )
 
     def save(self, filepath: Path):
@@ -270,7 +319,7 @@ def create_circumnavigation_mission(
                 position=np.array([x, y, 0.0]),
                 hold_time=hold_time,
                 approach_speed=0.03,
-                name=f"Point {i+1}",
+                name=f"Point {i + 1}",
             )
         )
 
@@ -367,7 +416,7 @@ def create_inspection_mission(
             position=pt.copy(),
             hold_time=hold_time,
             approach_speed=0.02,
-            name=f"Inspection point {i+1}",
+            name=f"Inspection point {i + 1}",
         )
         for i, pt in enumerate(inspection_points)
     ]
