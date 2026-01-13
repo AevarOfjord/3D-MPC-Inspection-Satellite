@@ -1,97 +1,69 @@
-# 6U CubeSat Configuration
+# 30cm Cubic Satellite Configuration
+# Replaced 6U configuration with symmetric 1-per-face layout
 mass: 12.0
-inertia: [0.08, 0.08, 0.08] # Diagonal approximations
+# Inertia for solid cube: 1/6 * m * s^2. s=0.3 -> s^2=0.09. 12*0.09 = 1.08. /6 = 0.18
+inertia: [0.18, 0.18, 0.18]
 center_of_mass: [0.0, 0.0, 0.0]
 
-geometry_file: "models/meshes/CubeSat_6U.obj"
+geometry_file: "models/meshes/CubeSat_6U.obj" # Metric might overlap, but visualization relies on XML mostly
 mesh_scale: [1.0, 1.0, 1.0]
 
 thrusters:
-  # +X Face (Right)
-  - position: [0.15, 0.05, 0.1]
+  # 1. +X Face (Right) -> Pushes -X (Left)
+  - position: [0.15, 0.0, 0.0]
     direction: [-1.0, 0.0, 0.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [0.15, -0.05, -0.1]
-    direction: [-1.0, 0.0, 0.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
-  # -X Face (Left)
-  - position: [-0.15, 0.05, 0.1]
+  # 2. -X Face (Left) -> Pushes +X (Right)
+  - position: [-0.15, 0.0, 0.0]
     direction: [1.0, 0.0, 0.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [-0.15, -0.05, -0.1]
-    direction: [1.0, 0.0, 0.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
-  # +Y Face (Front)
-  - position: [0.1, 0.1, 0.05]
+  # 3. +Y Face (Front) -> Pushes -Y (Back)
+  - position: [0.0, 0.15, 0.0]
     direction: [0.0, -1.0, 0.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [-0.1, 0.1, -0.05]
-    direction: [0.0, -1.0, 0.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
-  # -Y Face (Back)
-  - position: [0.1, -0.1, 0.05]
+  # 4. -Y Face (Back) -> Pushes +Y (Front)
+  - position: [0.0, -0.15, 0.0]
     direction: [0.0, 1.0, 0.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [-0.1, -0.1, -0.05]
-    direction: [0.0, 1.0, 0.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
-  # +Z Face (Top)
-  - position: [0.05, 0.1, 0.15]
+  # 5. +Z Face (Top) -> Pushes -Z (Down)
+  - position: [0.0, 0.0, 0.15]
     direction: [0.0, 0.0, -1.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [-0.05, -0.1, 0.15]
-    direction: [0.0, 0.0, -1.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
-  # -Z Face (Bottom)
-  - position: [0.05, 0.1, -0.15]
+  # 6. -Z Face (Bottom) -> Pushes +Z (Up)
+  - position: [0.0, 0.0, -0.15]
     direction: [0.0, 0.0, 1.0]
-    max_thrust: 1.5
-    min_impulse_bit: 0.001
-    group: "main"
-  - position: [-0.05, -0.1, -0.15]
-    direction: [0.0, 0.0, 1.0]
-    max_thrust: 1.5
+    max_thrust: 2.0
     min_impulse_bit: 0.001
     group: "main"
 
 reaction_wheels:
   - axis: [1.0, 0.0, 0.0]
-    max_torque: 0.1
-    max_momentum: 1.0
+    max_torque: 0.2
+    max_momentum: 2.0
     max_speed_rad_s: 600.0
     inertia: 0.0001
   - axis: [0.0, 1.0, 0.0]
-    max_torque: 0.1
-    max_momentum: 1.0
+    max_torque: 0.2
+    max_momentum: 2.0
     max_speed_rad_s: 600.0
     inertia: 0.0001
   - axis: [0.0, 0.0, 1.0]
-    max_torque: 0.1
-    max_momentum: 1.0
+    max_torque: 0.2
+    max_momentum: 2.0
     max_speed_rad_s: 600.0
     inertia: 0.0001

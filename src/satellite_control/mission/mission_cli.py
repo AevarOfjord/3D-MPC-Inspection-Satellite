@@ -405,7 +405,7 @@ class MissionCLI:
         """
         print("\n=== Mission Setup ===")
         print("1. Custom mission (manual entry)")
-        print("2. Demo: Simple (1,1,1) → (0,0,0)")
+        print("2. Demo: Simple (0,0,0) → (1,1,1) [Rotated]")
         print("3. Demo: Diagonal with obstacle")
         print("4. Demo: Multi-waypoint square")
         print("5. Demo: Corridor navigation")
@@ -417,8 +417,8 @@ class MissionCLI:
         mission_state = simulation_config.mission_state
 
         if choice == "2":
-            # Simple demo: corner to origin
-            print("\n  Preset: Simple navigation (1,1,1) → (0,0,0)")
+            # Simple demo: origin to corner
+            print("\n  Preset: Simple navigation (0,0,0) → (1,1,1) [Rotated]")
             obstacles = []
             mission_state.obstacles = []
             mission_state.obstacles_enabled = False
@@ -428,17 +428,17 @@ class MissionCLI:
 
             # Configure waypoints
             self._configure_preset_waypoints(
-                start_pos=(1.0, 1.0, 1.0),
-                start_angle=(0.0, 0.0, np.radians(90)),
-                targets=[((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))],
+                start_pos=(0.0, 0.0, 0.0),
+                start_angle=(0.0, 0.0, 0.0),
+                targets=[((1.0, 1.0, 1.0), (np.radians(180), np.radians(180), np.radians(180)))],
                 mission_state=mission_state,
             )
 
             result = {
                 "mission_type": "waypoint_navigation",
                 "mode": "multi_point",
-                "start_pos": (1.0, 1.0, 1.0),
-                "start_angle": (0.0, 0.0, np.radians(90)),
+                "start_pos": (0.0, 0.0, 0.0),
+                "start_angle": (0.0, 0.0, 0.0),
                 "start_vx": 0.0,
                 "start_vy": 0.0,
                 "start_vz": 0.0,

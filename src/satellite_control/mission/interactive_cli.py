@@ -124,7 +124,7 @@ class InteractiveMissionCLI:
             ),
             questionary.Separator("─── Quick Start Demos ───"),
             questionary.Choice(
-                title="●  Simple: (1,1,1) → (0,0,0)",
+                title="●  Simple: (0,0,0) → (1,1,1) [Rotated]",
                 value="simple",
             ),
             questionary.Choice(
@@ -172,9 +172,9 @@ class InteractiveMissionCLI:
         presets = {
             "simple": {
                 "name": "Simple Navigation",
-                "start_pos": (1.0, 1.0, 1.0),
-                "start_angle": (0.0, 0.0, np.radians(90)),
-                "targets": [((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))],
+                "start_pos": (0.0, 0.0, 0.0),
+                "start_angle": (0.0, 0.0, 0.0),
+                "targets": [((1.0, 1.0, 1.0), (np.radians(180), np.radians(180), np.radians(180)))],
                 "obstacles": [],
             },
             "obstacle": {

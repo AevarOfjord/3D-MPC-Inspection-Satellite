@@ -99,6 +99,7 @@ class PlotGenerator:
         self.generate_solver_health_plot(plot_dir)
         self.generate_waypoint_progress_plot(plot_dir)
         self.generate_timing_intervals_plot(plot_dir)
+        self.generate_interactive_report(plot_dir)
         
         print(f"Performance plots saved to: {plot_dir}")
     
@@ -178,7 +179,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Tracking")
         
-        PlotStyle.save_figure(fig, plot_dir / "position_tracking.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_tracking_position.png")
     
     def generate_position_error_plot(self, plot_dir: Path) -> None:
         """Generate position error plot."""
@@ -235,7 +236,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Error")
         
-        PlotStyle.save_figure(fig, plot_dir / "position_error.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_error_position.png")
     
     def generate_angular_tracking_plot(self, plot_dir: Path) -> None:
         """Generate angular tracking plot."""
@@ -308,7 +309,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Tracking")
         
-        PlotStyle.save_figure(fig, plot_dir / "angular_tracking.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_tracking_attitude.png")
     
     def generate_angular_error_plot(self, plot_dir: Path) -> None:
         """Generate angular error plot."""
@@ -370,7 +371,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Error")
         
-        PlotStyle.save_figure(fig, plot_dir / "angular_error.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_error_attitude.png")
 
     def generate_error_norms_plot(self, plot_dir: Path) -> None:
         """Generate error norm summary plot."""
@@ -447,7 +448,7 @@ class PlotGenerator:
         axes[1, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "error_norms.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_error_norms.png")
     
     def generate_trajectory_plot(self, plot_dir: Path) -> None:
         """Generate trajectory plot."""
@@ -583,7 +584,7 @@ class PlotGenerator:
             bbox=PlotStyle.TEXTBOX_STYLE,
         )
         
-        PlotStyle.save_figure(fig, plot_dir / "trajectory.png")
+        PlotStyle.save_figure(fig, plot_dir / "01_trajectory_2d.png")
     
     def generate_trajectory_3d_interactive_plot(self, plot_dir: Path) -> None:
         """Generate interactive 3D trajectory plot (HTML)."""
@@ -665,8 +666,141 @@ class PlotGenerator:
             margin=dict(l=0, r=0, t=40, b=0),
         )
 
-        output_path = plot_dir / "trajectory_3d_interactive.html"
+        output_path = plot_dir / "01_trajectory_3d_interactive.html"
         fig.write_html(output_path, include_plotlyjs="cdn")
+
+    def generate_interactive_report(self, plot_dir: Path) -> None:
+        """Generate comprehensive interactive mission report (HTML)."""
+        try:
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+        except ImportError:
+            import sys
+            print(
+                "Plotly not installed; skipping interactive mission report.",
+                file=sys.stderr,
+            )
+            return
+
+        # Time vector
+        t = self._col("Time")
+        if len(t) == 0:
+            return
+
+        # Data extraction helpers
+        def get_col_safe(name, default_val=0.0):
+            val = self._col(name)
+            if len(val) == 0:
+                pass 
+            return val
+
+        # Position
+        x = get_col_safe("Current_X")
+        y = get_col_safe("Current_Y")
+        z = get_col_safe("Current_Z")
+        tgt_x = get_col_safe("Target_X")
+        tgt_y = get_col_safe("Target_Y")
+        tgt_z = get_col_safe("Target_Z")
+
+        # Velocity
+        vx = get_col_safe("Current_VX")
+        vy = get_col_safe("Current_VY")
+        vz = get_col_safe("Current_VZ")
+        
+        # Attitude (Degrees)
+        roll = np.degrees(get_col_safe("Current_Roll"))
+        pitch = np.degrees(get_col_safe("Current_Pitch"))
+        yaw = np.degrees(get_col_safe("Current_Yaw"))
+        tgt_roll = np.degrees(get_col_safe("Target_Roll"))
+        tgt_pitch = np.degrees(get_col_safe("Target_Pitch"))
+        tgt_yaw = np.degrees(get_col_safe("Target_Yaw"))
+
+        # Create subplots
+        fig = make_subplots(
+            rows=3, cols=2,
+            subplot_titles=(
+                "Position Tracking", "Velocity Tracking",
+                "Attitude Tracking (Deg)", "Control Forces",
+                "Thruster Activation", "Angular Rates (Deg/s)"
+            ),
+            vertical_spacing=0.1,
+            horizontal_spacing=0.08
+        )
+
+        # 1. Position
+        if len(x) > 0:
+            fig.add_trace(go.Scatter(x=t, y=x, name="X", line=dict(color='red'), legendgroup="pos"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=t, y=y, name="Y", line=dict(color='green'), legendgroup="pos"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=t, y=z, name="Z", line=dict(color='blue'), legendgroup="pos"), row=1, col=1)
+        if len(tgt_x) > 0:
+             fig.add_trace(go.Scatter(x=t, y=tgt_x, name="Ref X", line=dict(color='red', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
+             fig.add_trace(go.Scatter(x=t, y=tgt_y, name="Ref Y", line=dict(color='green', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
+             fig.add_trace(go.Scatter(x=t, y=tgt_z, name="Ref Z", line=dict(color='blue', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
+
+        # 2. Velocity
+        if len(vx) > 0:
+            fig.add_trace(go.Scatter(x=t, y=vx, name="Vx", line=dict(color='red'), legendgroup="vel"), row=1, col=2)
+            fig.add_trace(go.Scatter(x=t, y=vy, name="Vy", line=dict(color='green'), legendgroup="vel"), row=1, col=2)
+            fig.add_trace(go.Scatter(x=t, y=vz, name="Vz", line=dict(color='blue'), legendgroup="vel"), row=1, col=2)
+
+        # 3. Attitude
+        if len(roll) > 0:
+            fig.add_trace(go.Scatter(x=t, y=roll, name="Roll", line=dict(color='red'), legendgroup="att"), row=2, col=1)
+            fig.add_trace(go.Scatter(x=t, y=pitch, name="Pitch", line=dict(color='green'), legendgroup="att"), row=2, col=1)
+            fig.add_trace(go.Scatter(x=t, y=yaw, name="Yaw", line=dict(color='blue'), legendgroup="att"), row=2, col=1)
+        if len(tgt_roll) > 0:
+             fig.add_trace(go.Scatter(x=t, y=tgt_roll, name="Ref Roll", line=dict(color='red', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
+             fig.add_trace(go.Scatter(x=t, y=tgt_pitch, name="Ref Pitch", line=dict(color='green', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
+             fig.add_trace(go.Scatter(x=t, y=tgt_yaw, name="Ref Yaw", line=dict(color='blue', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
+
+        # 4. Control Forces
+        fx = get_col_safe("Force_X")
+        fy = get_col_safe("Force_Y")
+        fz = get_col_safe("Force_Z")
+        if len(fx) > 0:
+            fig.add_trace(go.Scatter(x=t, y=fx, name="Fx", line=dict(color='red'), legendgroup="force"), row=2, col=2)
+            fig.add_trace(go.Scatter(x=t, y=fy, name="Fy", line=dict(color='green'), legendgroup="force"), row=2, col=2)
+            fig.add_trace(go.Scatter(x=t, y=fz, name="Fz", line=dict(color='blue'), legendgroup="force"), row=2, col=2)
+
+        # 5. Thruster Activation
+        # Detect thruster count if possible
+        found_thruster_cols = []
+        for i in range(1, 13):
+            col_name = f"Thruster_{i}_Val" # Try Val first
+            if len(self._col(col_name)) > 0:
+                found_thruster_cols.append(col_name)
+            else:
+                 col_name = f"Thruster_{i}" # Try basic name
+                 if len(self._col(col_name)) > 0:
+                     found_thruster_cols.append(col_name)
+        
+        if found_thruster_cols:
+             for tc in found_thruster_cols:
+                 fig.add_trace(go.Scatter(x=t, y=self._col(tc), name=tc, stackgroup='one', legendgroup="thruster"), row=3, col=1)
+
+        # 6. Angular Rates
+        wx = get_col_safe("Current_WX") # Alternative names might exist
+        if len(wx) == 0: wx = get_col_safe("Current_AngVel_X")
+        wy = get_col_safe("Current_WY")
+        if len(wy) == 0: wy = get_col_safe("Current_AngVel_Y")
+        wz = get_col_safe("Current_WZ")
+        if len(wz) == 0: wz = get_col_safe("Current_AngVel_Z")
+        
+        if len(wx) > 0:
+            fig.add_trace(go.Scatter(x=t, y=np.degrees(wx), name="Wx", line=dict(color='red'), legendgroup="rate"), row=3, col=2)
+            fig.add_trace(go.Scatter(x=t, y=np.degrees(wy), name="Wy", line=dict(color='green'), legendgroup="rate"), row=3, col=2)
+            fig.add_trace(go.Scatter(x=t, y=np.degrees(wz), name="Wz", line=dict(color='blue'), legendgroup="rate"), row=3, col=2)
+
+        fig.update_layout(
+            height=1200,
+            title_text=f"Mission Interactive Report - {self.system_title}",
+            template="plotly_white",
+            showlegend=True
+        )
+        
+        output_path = plot_dir / "00_mission_dashboard.html"
+        fig.write_html(output_path, include_plotlyjs="cdn")
+        print(f"Interactive mission dashboard saved to: {output_path}")
 
     def generate_trajectory_3d_orientation_plot(self, plot_dir: Path) -> None:
         """Generate 3D trajectory plot with orientation arrows."""
@@ -740,7 +874,7 @@ class PlotGenerator:
         ax.set_title(f"3D Trajectory with Orientation - {self.system_title}")
         ax.legend()
 
-        PlotStyle.save_figure(fig, plot_dir / "trajectory_3d_orientation.png")
+        PlotStyle.save_figure(fig, plot_dir / "01_trajectory_3d_orientation.png")
     
     def generate_thruster_usage_plot(self, plot_dir: Path) -> None:
         """Generate thruster usage plot using actual valve states."""
@@ -846,7 +980,7 @@ class PlotGenerator:
             bbox=PlotStyle.TEXTBOX_STYLE,
         )
 
-        PlotStyle.save_figure(fig, plot_dir / "thruster_usage.png")
+        PlotStyle.save_figure(fig, plot_dir / "03_thruster_usage.png")
     
     def generate_thruster_valve_activity_plot(self, plot_dir: Path) -> None:
         """Generate detailed valve activity plot for each thruster (0.0 to 1.0)."""
@@ -962,7 +1096,7 @@ class PlotGenerator:
             plt.tight_layout()
             # Save individual plot
             plt.savefig(
-                plot_dir / f"thruster_{thruster_id}_valve_activity.png",
+                plot_dir / f"03_thruster_{thruster_id}_valve_activity.png",
                 dpi=300,
                 bbox_inches="tight",
             )
@@ -977,7 +1111,7 @@ class PlotGenerator:
         plt.tight_layout()
         plt.subplots_adjust(top=0.92)
         plt.savefig(
-            plot_dir / "thruster_valve_activity.png",
+            plot_dir / "03_thruster_valve_activity.png",
             dpi=300,
             bbox_inches="tight",
         )
@@ -1129,7 +1263,7 @@ class PlotGenerator:
 
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.1)
-        plt.savefig(plot_dir / "pwm_duty_cycles.png", dpi=300, bbox_inches="tight")
+        plt.savefig(plot_dir / "03_pwm_duty_cycles.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def generate_pwm_duty_cycles_from_physics(self, plot_dir: Path) -> None:
@@ -1240,7 +1374,7 @@ class PlotGenerator:
         ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
         
-        PlotStyle.save_figure(fig, plot_dir / "control_effort.png")
+        PlotStyle.save_figure(fig, plot_dir / "03_control_effort.png")
 
     def generate_reaction_wheel_output_plot(self, plot_dir: Path) -> None:
         """Generate reaction wheel torque output plot."""
@@ -1293,7 +1427,7 @@ class PlotGenerator:
             axes[0].set_title(f"Reaction Wheel Output - {self.system_title}")
             for ax in axes[1:]:
                 ax.axis("off")
-            PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
+            PlotStyle.save_figure(fig, plot_dir / "03_reaction_wheel_output.png")
             return
 
         def get_series(name: str) -> np.ndarray:
@@ -1352,7 +1486,7 @@ class PlotGenerator:
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
+        PlotStyle.save_figure(fig, plot_dir / "03_reaction_wheel_output.png")
 
     def generate_actuator_limits_plot(self, plot_dir: Path) -> None:
         """Generate actuator outputs with limit overlays."""
@@ -1508,7 +1642,7 @@ class PlotGenerator:
             )
             axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "actuator_limits.png")
+        PlotStyle.save_figure(fig, plot_dir / "03_actuator_limits.png")
 
     def generate_constraint_violations_plot(self, plot_dir: Path) -> None:
         """Generate constraint violation plot."""
@@ -1556,7 +1690,7 @@ class PlotGenerator:
                     transform=ax.transAxes,
                     fontsize=PlotStyle.ANNOTATION_SIZE,
                 )
-            PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
+            PlotStyle.save_figure(fig, plot_dir / "06_constraint_violations.png")
             return
 
         pos_violation = np.maximum(
@@ -1602,7 +1736,7 @@ class PlotGenerator:
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
+        PlotStyle.save_figure(fig, plot_dir / "06_constraint_violations.png")
 
     def generate_z_tilt_coupling_plot(self, plot_dir: Path) -> None:
         """Generate Z-tilt coupling plot."""
@@ -1634,7 +1768,7 @@ class PlotGenerator:
                     transform=ax.transAxes,
                     fontsize=PlotStyle.ANNOTATION_SIZE,
                 )
-            PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+            PlotStyle.save_figure(fig, plot_dir / "04_z_tilt_coupling.png")
             return
 
         axes[0].plot(
@@ -1678,7 +1812,7 @@ class PlotGenerator:
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+        PlotStyle.save_figure(fig, plot_dir / "04_z_tilt_coupling.png")
 
     def generate_thruster_impulse_proxy_plot(self, plot_dir: Path) -> None:
         """Generate thruster impulse proxy plot."""
@@ -1744,7 +1878,7 @@ class PlotGenerator:
                 transform=axes[0].transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-            PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+            PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
             return
 
         force_matrix = []
@@ -1771,7 +1905,7 @@ class PlotGenerator:
                 transform=axes[0].transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-            PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+            PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
             return
 
         commands = []
@@ -1846,7 +1980,7 @@ class PlotGenerator:
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+        PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
 
     def generate_phase_position_velocity_plot(self, plot_dir: Path) -> None:
         """Generate position vs velocity phase plots."""
@@ -1875,7 +2009,7 @@ class PlotGenerator:
         axes[2].set_ylabel("VZ (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        PlotStyle.save_figure(fig, plot_dir / "phase_position_velocity.png")
+        PlotStyle.save_figure(fig, plot_dir / "05_phase_plot_pos_vel.png")
 
     def generate_phase_attitude_rate_plot(self, plot_dir: Path) -> None:
         """Generate attitude vs rate phase plots."""
@@ -1904,7 +2038,7 @@ class PlotGenerator:
         axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        PlotStyle.save_figure(fig, plot_dir / "phase_attitude_rate.png")
+        PlotStyle.save_figure(fig, plot_dir / "05_phase_plot_att_rate.png")
 
     def generate_solver_health_plot(self, plot_dir: Path) -> None:
         """Generate solver health summary plot."""
@@ -2001,7 +2135,7 @@ class PlotGenerator:
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
 
-        PlotStyle.save_figure(fig, plot_dir / "solver_health.png")
+        PlotStyle.save_figure(fig, plot_dir / "06_solver_health.png")
 
     def generate_waypoint_progress_plot(self, plot_dir: Path) -> None:
         """Generate waypoint/mission phase progress plot."""
@@ -2061,7 +2195,7 @@ class PlotGenerator:
                     transform=ax.transAxes,
                     fontsize=PlotStyle.ANNOTATION_SIZE,
                 )
-            PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
+            PlotStyle.save_figure(fig, plot_dir / "01_waypoint_progress.png")
             return
 
         min_len = min(len(time), len(waypoint_vals), len(phase_vals))
@@ -2088,7 +2222,7 @@ class PlotGenerator:
         axes[1].set_ylabel("Mission Phase", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
+        PlotStyle.save_figure(fig, plot_dir / "01_waypoint_progress.png")
     
     def generate_velocity_tracking_plot(self, plot_dir: Path) -> None:
         """Generate velocity tracking over time plot."""
@@ -2129,7 +2263,7 @@ class PlotGenerator:
         plot_velocity(axes[2], "Z", "Current_VZ", "Target_VZ")
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         
-        PlotStyle.save_figure(fig, plot_dir / "velocity_tracking.png")
+        PlotStyle.save_figure(fig, plot_dir / "02_tracking_velocity.png")
     
     def generate_velocity_magnitude_plot(self, plot_dir: Path) -> None:
         """Generate velocity magnitude over time plot (speed vs time)."""
@@ -2145,7 +2279,7 @@ class PlotGenerator:
                 va="center",
                 transform=ax.transAxes,
             )
-            PlotStyle.save_figure(fig, plot_dir / "velocity_magnitude.png")
+            PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
             return
         
         time = np.arange(n) * float(self.dt)
@@ -2176,7 +2310,7 @@ class PlotGenerator:
         ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
         
-        PlotStyle.save_figure(fig, plot_dir / "velocity_magnitude.png")
+        PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
     
     def generate_mpc_performance_plot(self, plot_dir: Path) -> None:
         """Generate MPC performance plot."""
@@ -2334,7 +2468,7 @@ class PlotGenerator:
             )
             ax.set_title(f"MPC Computation Time - {self.system_title}")
         
-        PlotStyle.save_figure(fig, plot_dir / "mpc_performance.png")
+        PlotStyle.save_figure(fig, plot_dir / "06_mpc_performance.png")
     
     def generate_timing_intervals_plot(self, plot_dir: Path) -> None:
         """Generate timing intervals plot."""
@@ -2417,4 +2551,4 @@ class PlotGenerator:
             )
             ax.set_title(f"Timing Intervals - {self.system_title}")
         
-        PlotStyle.save_figure(fig, plot_dir / "timing_intervals.png")
+        PlotStyle.save_figure(fig, plot_dir / "06_timing_intervals.png")
