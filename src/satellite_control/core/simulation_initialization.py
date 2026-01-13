@@ -198,11 +198,32 @@ class SimulationInitializer:
                 "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
             )
 
-        # V4.0.0: Pass app_config to MuJoCoSatelliteSimulator
-        self.simulation.satellite = MuJoCoSatelliteSimulator(
-            use_mujoco_viewer=self.use_mujoco_viewer,
-            app_config=self.simulation_config.app_config,
+        # V4.0.0: Pass app_config to MuJoCoSatelliteSimulator or CppSatelliteSimulator
+        engine_type = getattr(
+            self.simulation_config.app_config.physics, "engine", "mujoco"
         )
+
+        if engine_type == "cpp":
+            logger.info("Initializing C++ Physics Engine...")
+            try:
+                from src.satellite_control.core.cpp_satellite import (
+                    CppSatelliteSimulator,
+                )
+
+                self.simulation.satellite = CppSatelliteSimulator(
+                    app_config=self.simulation_config.app_config,
+                )
+                logger.info("C++ Physics Engine initialized successfully.")
+            except ImportError as e:
+                logger.error(f"Failed to load C++ engine: {e}. Falling back to MuJoCo.")
+                engine_type = "mujoco"
+
+        if engine_type == "mujoco":
+            self.simulation.satellite = MuJoCoSatelliteSimulator(
+                use_mujoco_viewer=self.use_mujoco_viewer,
+                app_config=self.simulation_config.app_config,
+            )
+
         self.simulation.satellite.external_simulation_mode = True
 
         # Set initial state (including velocities)

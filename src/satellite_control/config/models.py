@@ -59,6 +59,13 @@ class SatellitePhysicalParams(BaseModel):
         description="Map of thruster ID (1-6 or 1-8) to max force in Newtons",
     )
 
+    # Physics Engine
+    engine: str = Field(
+        "mujoco",
+        pattern="^(mujoco|cpp)$",
+        description="Physics engine backend ('mujoco' or 'cpp')",
+    )
+
     # Damping
     use_realistic_physics: bool = Field(
         False,

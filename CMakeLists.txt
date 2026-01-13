@@ -22,9 +22,11 @@ FetchContent_Declare(
 set(OSQP_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(osqp)
 
+# Common Dependencies
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
+# --- Module: _cpp_mpc ---
 add_library(_cpp_mpc MODULE 
     src/satellite_control/cpp/bindings.cpp
     src/satellite_control/cpp/linearizer.cpp
@@ -33,9 +35,27 @@ add_library(_cpp_mpc MODULE
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python::Module Eigen3::Eigen osqpstatic)
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
 target_compile_features(_cpp_mpc PRIVATE cxx_std_17)
-
-# Avoid 'lib' prefix on Unix-like systems for Python modules
 set_target_properties(_cpp_mpc PROPERTIES PREFIX "")
-
-# Install into the package directory (relative to site-packages root)
 install(TARGETS _cpp_mpc DESTINATION satellite_control/cpp)
+
+# Helper macro for future modules
+macro(add_satellite_module name sources)
+    add_library(${name} MODULE ${sources} ${ARGN})
+    target_link_libraries(${name} PRIVATE pybind11::headers Python::Module Eigen3::Eigen)
+    target_compile_features(${name} PRIVATE cxx_std_17)
+    set_target_properties(${name} PROPERTIES PREFIX "")
+    install(TARGETS ${name} DESTINATION satellite_control/cpp)
+endmacro()
+
+# Module: _cpp_sim
+add_satellite_module(_cpp_sim
+    src/satellite_control/cpp/bindings_sim.cpp
+    src/satellite_control/cpp/simulation_engine.cpp
+    src/satellite_control/cpp/orbital_dynamics.cpp
+)
+
+# Module: _cpp_physics
+add_satellite_module(_cpp_physics
+    src/satellite_control/cpp/bindings_physics.cpp
+    src/satellite_control/cpp/orbital_dynamics.cpp
+)

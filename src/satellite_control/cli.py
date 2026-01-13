@@ -46,6 +46,9 @@ def run(
     classic: bool = typer.Option(
         False, "--classic", help="Use classic text-based menu instead of interactive"
     ),
+    engine: Optional[str] = typer.Option(
+        None, "--engine", "-e", help="Physics engine: 'mujoco' (default) or 'cpp'"
+    ),
 ):
     """
     Run the Satellite MPC Simulation.
@@ -190,6 +193,14 @@ def run(
             config_overrides["simulation"] = {}
         config_overrides["simulation"]["max_duration"] = duration
         console.print(f"  Override: Duration = {duration}s")
+
+    if engine:
+        if config_overrides is None:
+            config_overrides = {}
+        if "physics" not in config_overrides:
+            config_overrides["physics"] = {}
+        config_overrides["physics"]["engine"] = engine
+        console.print(f"  Override: Engine = {engine}")
 
     # Create SimulationConfig (v2.0.0 pattern) or Hydra Config (v4.0.0 pattern)
     from src.satellite_control.config.simulation_config import SimulationConfig

@@ -27,14 +27,24 @@ class CWDynamics:
 
     Computes accelerations due to gravity gradient effects
     for a chaser satellite relative to a target in circular orbit.
+
+    V2.0.0: Uses C++ backend (`_cpp_physics`) for performance if available.
     """
 
     orbital_config: OrbitalConfig
 
     def __post_init__(self):
-        """Cache frequently used values."""
+        """Initialize C++ backend or fallback to Python."""
         self.n = self.orbital_config.mean_motion
         self.n_sq = self.n**2
+        self._cpp_backend = None
+
+        try:
+            from satellite_control.cpp._cpp_physics import CWDynamics as CppCWDynamics
+
+            self._cpp_backend = CppCWDynamics(self.n)
+        except ImportError:
+            pass  # Fallback to pure Python (below)
 
     def compute_acceleration(
         self,
@@ -51,6 +61,9 @@ class CWDynamics:
         Returns:
             Gravitational acceleration [ax, ay, az] [m/s²]
         """
+        if self._cpp_backend:
+            return self._cpp_backend.compute_acceleration(position, velocity)
+
         x, y, z = position[0], position[1], position[2]
         vx, vy, vz = velocity[0], velocity[1], velocity[2]
 
@@ -73,6 +86,9 @@ class CWDynamics:
         Returns:
             (A, B) discrete-time matrices where x_{k+1} = A @ x_k + B @ u_k
         """
+        if self._cpp_backend:
+            return self._cpp_backend.get_state_matrices(dt)
+
         n = self.n
 
         # Continuous-time A matrix (6x6)
@@ -120,6 +136,9 @@ class CWDynamics:
         Returns:
             (A_cw, B_cw) matrices to add to existing MPC dynamics
         """
+        if self._cpp_backend:
+            return self._cpp_backend.get_mpc_dynamics_matrices(dt)
+
         n = self.n
 
         # Additional A terms for velocity due to CW (affects positions 7-9)
