@@ -5,7 +5,6 @@ Provides factory functions to create default configuration objects.
 This replaces the implicit defaults in the legacy SatelliteConfig.
 """
 
-import numpy as np
 from src.satellite_control.config import constants, physics, timing
 from src.satellite_control.config.models import (
     AppConfig,
@@ -44,24 +43,24 @@ def create_default_app_config() -> AppConfig:
 
     # MPC
     mpc = MPCParams(
-        prediction_horizon=50,
-        control_horizon=50,
+        prediction_horizon=constants.Constants.MPC_PREDICTION_HORIZON,
+        control_horizon=constants.Constants.MPC_CONTROL_HORIZON,
         dt=timing.CONTROL_DT,
-        solver_time_limit=timing.CONTROL_DT - 0.01,
-        solver_type="OSQP",
-        q_position=1000.0,
-        q_velocity=1000.0,
-        q_angle=1000.0,
-        q_angular_velocity=1000.0,
-        r_thrust=0.1,
-        r_rw_torque=0.1,
-        max_velocity=0.5,
-        max_angular_velocity=np.pi / 2,
-        position_bounds=3.0,
-        damping_zone=0.25,
-        velocity_threshold=0.03,
-        max_velocity_weight=1000.0,
-        thruster_type="CON",
+        solver_time_limit=constants.Constants.MPC_SOLVER_TIME_LIMIT,
+        solver_type=constants.Constants.MPC_SOLVER_TYPE,
+        q_position=constants.Constants.Q_POSITION,
+        q_velocity=constants.Constants.Q_VELOCITY,
+        q_angle=constants.Constants.Q_ANGLE,
+        q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,
+        r_thrust=constants.Constants.R_THRUST,
+        r_rw_torque=constants.Constants.R_RW_TORQUE,
+        max_velocity=constants.Constants.MAX_VELOCITY,
+        max_angular_velocity=constants.Constants.MAX_ANGULAR_VELOCITY,
+        position_bounds=constants.Constants.POSITION_BOUNDS,
+        damping_zone=constants.Constants.DAMPING_ZONE,
+        velocity_threshold=constants.Constants.VELOCITY_THRESHOLD,
+        max_velocity_weight=constants.Constants.MAX_VELOCITY_WEIGHT,
+        thruster_type=constants.Constants.THRUSTER_TYPE,
         enable_rw_yaw=True,
         enable_z_tilt=True,
         z_tilt_gain=0.35,

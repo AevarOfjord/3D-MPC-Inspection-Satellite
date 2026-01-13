@@ -14,7 +14,7 @@ from .mission_state import MissionState
 from .models import AppConfig, MPCParams, SatellitePhysicalParams, SimulationParams
 from .obstacles import ObstacleManager
 from .physics import PhysicsConfig, get_physics_params
-from .presets import ConfigPreset, get_preset_description, list_presets, load_preset
+
 from .simulation_config import SimulationConfig
 from .timing import TimingConfig, get_timing_params
 from .validator import ConfigValidator, validate_config_at_startup
@@ -37,11 +37,6 @@ __all__ = [
     "ObstacleManager",
     "get_physics_params",
     "get_timing_params",
-    # Presets
-    "ConfigPreset",
-    "get_preset_description",
-    "list_presets",
-    "load_preset",
     # Validation
     "ConfigValidator",
     "validate_config_at_startup",

@@ -125,13 +125,13 @@ class Constants:
     # MPC DEFAULTS
     # ========================================================================
 
-    MPC_PREDICTION_HORIZON = 50
-    MPC_CONTROL_HORIZON = 50
+    MPC_PREDICTION_HORIZON = 100
+    MPC_CONTROL_HORIZON = 100
     MPC_SOLVER_TIME_LIMIT = 0.04  # Default solver limit (50ms - 10ms margin)
     MPC_SOLVER_TYPE = "OSQP"
 
-    Q_POSITION = 1000.0
-    Q_VELOCITY = 1000.0
+    Q_POSITION = 10000.0
+    Q_VELOCITY = 10000.0
     Q_ANGLE = 1000.0
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1

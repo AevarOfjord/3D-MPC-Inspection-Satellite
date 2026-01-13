@@ -14,12 +14,7 @@ from rich.panel import Panel
 
 # Import internal modules (lazy import where possible to speed up help)
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
-from src.satellite_control.config.presets import (
-    ConfigPreset,
-    get_preset_description,
-    load_preset,
-    list_presets,
-)
+
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.mission_manager import MissionManager
 from src.satellite_control.mission.plugin import get_registry, discover_plugins
@@ -50,12 +45,6 @@ def run(
     ),
     classic: bool = typer.Option(
         False, "--classic", help="Use classic text-based menu instead of interactive"
-    ),
-    preset: Optional[str] = typer.Option(
-        None,
-        "--preset",
-        "-p",
-        help=f"Use configuration preset: {', '.join(ConfigPreset.all())}",
     ),
 ):
     """
@@ -182,33 +171,6 @@ def run(
             ):
                 mission_simulation_config = mission_result["simulation_config"]
 
-    # Load MPC configuration preset if specified (CLI option)
-    # Note: This is different from mission presets from interactive CLI
-    if preset:
-        try:
-            # preset is a string from CLI option (e.g., "fast", "balanced")
-            if isinstance(preset, str):
-                preset_config = load_preset(preset)
-                if config_overrides is None:
-                    config_overrides = {}
-                # Merge preset config into overrides
-                for key, value in preset_config.items():
-                    if key not in config_overrides:
-                        config_overrides[key] = {}
-                    config_overrides[key].update(value)
-                console.print(f"[green]Loaded MPC preset: {preset}[/green]")
-                preset_desc = get_preset_description(preset)
-                console.print(f"[dim]{preset_desc}[/dim]")
-            else:
-                # Should not happen - preset from CLI option is always a string
-                console.print("[yellow]Warning: Invalid preset type[/yellow]")
-        except ValueError as e:
-            console.print(f"[bold red]Invalid preset:[/bold red] {e}")
-            console.print(
-                f"[yellow]Available presets: {', '.join(ConfigPreset.all())}[/yellow]"
-            )
-            raise typer.Exit(code=1)
-
     # Validate configuration at startup
     try:
         from src.satellite_control.config.validator import validate_config_at_startup
@@ -235,8 +197,8 @@ def run(
     simulation_config = None
     hydra_cfg = None
 
-    # Check if we should use legacy Pydantic flow (Presets or Interactive Mission)
-    is_legacy_mode = (mission_simulation_config is not None) or (preset is not None)
+    # Check if we should use legacy Pydantic flow (Interactive Mission)
+    is_legacy_mode = mission_simulation_config is not None
 
     if is_legacy_mode:
         if mission_simulation_config:
@@ -247,11 +209,7 @@ def run(
                 simulation_config = SimulationConfig.create_with_overrides(
                     config_overrides, base_config=simulation_config
                 )
-        elif preset:
-            # Create config with overrides (no mission config available)
-            simulation_config = SimulationConfig.create_with_overrides(
-                config_overrides or {}
-            )
+
     else:
         # Default/Auto run -> Use Hydra (V4.0.0)
         # "refactor CLI to use Hydra as the primary configuration loading mechanism"
@@ -329,12 +287,6 @@ def interactive(
     no_anim: bool = typer.Option(
         False, "--no-anim", help="Disable animation (headless mode)"
     ),
-    preset: Optional[str] = typer.Option(
-        None,
-        "--preset",
-        "-p",
-        help=f"Use configuration preset: {', '.join(ConfigPreset.all())}",
-    ),
 ):
     """
     Run the interactive mission selector and start a simulation.
@@ -346,7 +298,7 @@ def interactive(
         no_anim=no_anim,
         headless=False,
         classic=False,
-        preset=preset,
+        preset=None,
     )
 
 
@@ -398,28 +350,6 @@ def bench(
     else:
         console.print("\n[bold red]Benchmarks failed.[/bold red]")
         raise typer.Exit(code=ret_code)
-
-
-@app.command()
-def presets(
-    list_all: bool = typer.Option(
-        False, "--list", "-l", help="List all available presets"
-    ),
-):
-    """
-    Manage configuration presets.
-
-    Presets provide pre-configured settings optimized for different use cases.
-    """
-    if list_all:
-        console.print("[bold]Available Configuration Presets:[/bold]\n")
-        presets_dict = list_presets()
-        for preset_name, description in presets_dict.items():
-            console.print(f"[bold cyan]{preset_name.upper()}[/bold cyan]")
-            console.print(f"  {description}\n")
-        console.print("[dim]Usage: python run_simulation.py run --preset <name>[/dim]")
-    else:
-        console.print("[yellow]Use --list to see available presets[/yellow]")
 
 
 @app.command()

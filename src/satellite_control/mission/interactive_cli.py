@@ -139,6 +139,10 @@ class InteractiveMissionCLI:
                 title="▫  Corridor: navigate through gap + Z",
                 value="corridor",
             ),
+            questionary.Choice(
+                title="↝  Zig Zag: Reaction Wheel Test",
+                value="zigzag",
+            ),
         ]
 
         result = questionary.select(
@@ -174,7 +178,9 @@ class InteractiveMissionCLI:
                 "name": "Simple Navigation",
                 "start_pos": (0.0, 0.0, 0.0),
                 "start_angle": (0.0, 0.0, 0.0),
-                "targets": [((1.0, 1.0, 1.0), (np.radians(180), np.radians(180), np.radians(180)))],
+                "targets": [
+                    ((1.0, 1.0, 1.0), (np.radians(45), np.radians(45), np.radians(45)))
+                ],
                 "obstacles": [],
             },
             "obstacle": {
@@ -202,6 +208,31 @@ class InteractiveMissionCLI:
                 "start_angle": (0.0, 0.0, np.radians(180)),
                 "targets": [((-1.0, 0.0, 0.5), (0.0, 0.0, np.radians(180)))],
                 "obstacles": [(0.0, 0.5, 0.0, 0.3), (0.0, -0.5, 0.0, 0.3)],
+            },
+            "zigzag": {
+                "name": "Zig Zag (RW Test)",
+                "start_pos": (-2.0, -2.0, -2.0),
+                "start_angle": (0.0, 0.0, 0.0),
+                "targets": [
+                    (
+                        (-1.0, 2.0, 2.0),
+                        (np.radians(45), np.radians(45), np.radians(45)),
+                    ),
+                    (
+                        (0.0, -2.0, 2.0),
+                        (np.radians(-45), np.radians(45), np.radians(-45)),
+                    ),
+                    (
+                        (1.0, 2.0, -2.0),
+                        (np.radians(45), np.radians(-45), np.radians(45)),
+                    ),
+                    (
+                        (2.0, -2.0, -2.0),
+                        (np.radians(90), np.radians(0), np.radians(90)),
+                    ),
+                    ((2.0, 0.0, 0.0), (np.radians(0), np.radians(0), np.radians(0))),
+                ],
+                "obstacles": [],
             },
         }
 
@@ -235,7 +266,9 @@ class InteractiveMissionCLI:
         sp = preset["start_pos"]
         sa = self._format_euler_deg(preset["start_angle"])
         if len(sp) == 3:
-            table.add_row("Start Position", f"({sp[0]:.1f}, {sp[1]:.1f}, {sp[2]:.1f}) m")
+            table.add_row(
+                "Start Position", f"({sp[0]:.1f}, {sp[1]:.1f}, {sp[2]:.1f}) m"
+            )
         else:
             table.add_row("Start Position", f"({sp[0]:.1f}, {sp[1]:.1f}) m")
         table.add_row("Start Angle", sa)
@@ -249,7 +282,9 @@ class InteractiveMissionCLI:
                     f"({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) m @ {a_deg}",
                 )
             else:
-                table.add_row(f"Waypoint {i}", f"({pos[0]:.1f}, {pos[1]:.1f}) m @ {a_deg}")
+                table.add_row(
+                    f"Waypoint {i}", f"({pos[0]:.1f}, {pos[1]:.1f}) m @ {a_deg}"
+                )
 
         # Obstacles
         if preset["obstacles"]:
@@ -277,21 +312,23 @@ class InteractiveMissionCLI:
 
     def _apply_preset(self, preset: Dict[str, Any], mission_state) -> None:
         """Apply preset configuration.
-        
+
         Args:
             preset: Preset configuration dictionary
             mission_state: MissionState to update (required in V3.0.0).
         """
         obstacles = preset.get("obstacles", [])
-        
+
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
-            raise ValueError("mission_state is required (V3.0.0: no SatelliteConfig fallback)")
-        
+            raise ValueError(
+                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
+            )
+
         # Update MissionState
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = len(obstacles) > 0
-        
+
         targets = preset.get("targets", [])
         # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
         waypoint_angles = [
@@ -300,7 +337,7 @@ class InteractiveMissionCLI:
             else (0.0, 0.0, float(t[1]))
             for t in targets
         ]
-        
+
         mission_state.enable_waypoint_mode = True
         mission_state.enable_multi_point_mode = True
         mission_state.waypoint_targets = [t[0] for t in targets]
@@ -388,17 +425,19 @@ class InteractiveMissionCLI:
         self, mission_state
     ) -> Tuple[List[Tuple[float, float, float, float]], bool]:
         """Configure obstacles with interactive menu.
-        
+
         Args:
             mission_state: MissionState to update (required in V3.0.0).
-            
+
         Returns:
             Tuple of (obstacles list, obstacles_enabled bool).
         """
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
-            raise ValueError("mission_state is required (V3.0.0: no SatelliteConfig fallback)")
-        
+            raise ValueError(
+                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
+            )
+
         console.print()
         console.print(Panel("Obstacle Configuration", style="yellow"))
 
@@ -441,21 +480,21 @@ class InteractiveMissionCLI:
             obstacles = self._add_custom_obstacles(mission_state)
 
         obstacles_enabled = len(obstacles) > 0
-        
+
         # Update MissionState
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
-        
+
         return obstacles, obstacles_enabled
 
     def _add_custom_obstacles(
         self, mission_state
     ) -> List[Tuple[float, float, float, float]]:
         """Add custom obstacles interactively.
-        
+
         Args:
             mission_state: MissionState to update (required in V3.0.0).
-        
+
         Returns:
             List of obstacles as (x, y, z, radius) tuples.
         """
@@ -481,11 +520,11 @@ class InteractiveMissionCLI:
             r = float(radius or 0.3)
             obstacles.append((pos[0], pos[1], pos[2] if len(pos) > 2 else 0.0, r))
             console.print(f"[green]+ Added obstacle at {pos}[/green]")
-        
+
         # V3.0.0: Update mission_state directly
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = len(obstacles) > 0
-        
+
         return obstacles
 
     def run_custom_waypoint_mission(self) -> Dict[str, Any]:
@@ -493,7 +532,7 @@ class InteractiveMissionCLI:
         # Create SimulationConfig for v2.0.0 pattern
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
-        
+
         console.print()
         console.print(Panel("Custom Waypoint Mission", style="green"))
 
@@ -533,7 +572,9 @@ class InteractiveMissionCLI:
         self.configure_obstacles_interactive(mission_state)
 
         # Show summary
-        self._show_custom_mission_summary(start_pos, start_angle, waypoints, mission_state)
+        self._show_custom_mission_summary(
+            start_pos, start_angle, waypoints, mission_state
+        )
 
         if not self._confirm_mission("Custom Waypoint Mission"):
             return {}
@@ -545,7 +586,7 @@ class InteractiveMissionCLI:
             else (0.0, 0.0, float(wp[1]))
             for wp in waypoints
         ]
-        
+
         # Update MissionState (V3.0.0)
         mission_state.enable_waypoint_mode = True
         mission_state.enable_multi_point_mode = True
@@ -585,10 +626,13 @@ class InteractiveMissionCLI:
             a_deg = self._format_euler_deg(angle)
             if len(pos) == 3:
                 table.add_row(
-                    f"Waypoint {i}", f"({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) @ {a_deg}"
+                    f"Waypoint {i}",
+                    f"({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) @ {a_deg}",
                 )
             else:
-                table.add_row(f"Waypoint {i}", f"({pos[0]:.2f}, {pos[1]:.2f}) @ {a_deg}")
+                table.add_row(
+                    f"Waypoint {i}", f"({pos[0]:.2f}, {pos[1]:.2f}) @ {a_deg}"
+                )
 
         # V3.0.0: Read from mission_state instead of SatelliteConfig
         obstacles = mission_state.obstacles if mission_state else []
@@ -634,7 +678,9 @@ class InteractiveMissionCLI:
         console.print("[dim]Track a moving target along a shape path[/dim]\n")
 
         # Get start position
-        start_pos = self.get_position_interactive("Starting Position", default=(1.0, 1.0, 0.0))
+        start_pos = self.get_position_interactive(
+            "Starting Position", default=(1.0, 1.0, 0.0)
+        )
         start_angle = self.get_angle_interactive("Starting Angle", (0.0, 0.0, 90.0))
 
         # Select shape type
@@ -644,7 +690,9 @@ class InteractiveMissionCLI:
             return {}
 
         # Get shape parameters
-        shape_center = self.get_position_interactive("Shape Center", default=(0.0, 0.0, 0.0))
+        shape_center = self.get_position_interactive(
+            "Shape Center", default=(0.0, 0.0, 0.0)
+        )
 
         rotation_deg = float(
             questionary.text(
@@ -708,7 +756,9 @@ class InteractiveMissionCLI:
             shape_points = self.logic.generate_demo_shape(shape_type)
 
         rotation_rad = np.radians(rotation_deg)
-        transformed = self.logic.transform_shape(shape_points, shape_center, rotation_rad)
+        transformed = self.logic.transform_shape(
+            shape_points, shape_center, rotation_rad
+        )
         upscaled_path = self.logic.upscale_shape(transformed, offset)
         path_length = self.logic.calculate_path_length(upscaled_path)
 
@@ -719,7 +769,8 @@ class InteractiveMissionCLI:
         # 1. Time from start to first path point
         first_path_point = upscaled_path[0]
         dist_to_start = np.sqrt(
-            (start_pos[0] - first_path_point[0]) ** 2 + (start_pos[1] - first_path_point[1]) ** 2
+            (start_pos[0] - first_path_point[0]) ** 2
+            + (start_pos[1] - first_path_point[1]) ** 2
         )
         transit_to_path = dist_to_start / TRANSIT_SPEED
 
@@ -842,7 +893,7 @@ class InteractiveMissionCLI:
         if not dxf_folder.exists():
             # Try relative path from CWD
             dxf_folder = Path("models/meshes/DXF_Files")
-        
+
         if not dxf_folder.exists():
             # Try legacy locations
             dxf_folder = Path("DXF/DXF_Files")
@@ -901,7 +952,9 @@ class InteractiveMissionCLI:
         try:
             # Load DXF using MissionLogic
             shape_points = self.logic.load_dxf_shape(result)
-            console.print(f"[green]+ Loaded {len(shape_points)} points from DXF[/green]")
+            console.print(
+                f"[green]+ Loaded {len(shape_points)} points from DXF[/green]"
+            )
             # Store the loaded points for later use
             self._custom_dxf_points = shape_points
             return "custom_dxf"
@@ -932,7 +985,8 @@ class InteractiveMissionCLI:
         sa = self._format_euler_deg(start_angle)
         if len(start_pos) == 3:
             table.add_row(
-                "Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}, {start_pos[2]:.1f}) @ {sa}"
+                "Start",
+                f"({start_pos[0]:.1f}, {start_pos[1]:.1f}, {start_pos[2]:.1f}) @ {sa}",
             )
         else:
             table.add_row("Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}) @ {sa}")
@@ -972,7 +1026,7 @@ class InteractiveMissionCLI:
         mission_state,
     ) -> None:
         """Apply shape following configuration to MissionState.
-        
+
         Args:
             start_pos: Starting position (x, y, z)
             start_angle: Starting angle (roll, pitch, yaw)
@@ -990,14 +1044,30 @@ class InteractiveMissionCLI:
         """
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
-            raise ValueError("mission_state is required (V3.0.0: no SatelliteConfig fallback)")
-        
+            raise ValueError(
+                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
+            )
+
         # Convert 2D to 3D for mission_state (add z=0.0)
-        start_pos_3d = (start_pos[0], start_pos[1], 0.0) if len(start_pos) == 2 else start_pos
-        shape_center_3d = (shape_center[0], shape_center[1], 0.0) if len(shape_center) == 2 else shape_center
-        upscaled_path_3d = [(p[0], p[1], 0.0) if len(p) == 2 else p for p in upscaled_path]
-        transformed_shape_3d = [(p[0], p[1], 0.0) if len(p) == 2 else p for p in transformed_shape]
-        return_pos_3d = (return_pos[0], return_pos[1], 0.0) if return_pos and len(return_pos) == 2 else return_pos
+        start_pos_3d = (
+            (start_pos[0], start_pos[1], 0.0) if len(start_pos) == 2 else start_pos
+        )
+        shape_center_3d = (
+            (shape_center[0], shape_center[1], 0.0)
+            if len(shape_center) == 2
+            else shape_center
+        )
+        upscaled_path_3d = [
+            (p[0], p[1], 0.0) if len(p) == 2 else p for p in upscaled_path
+        ]
+        transformed_shape_3d = [
+            (p[0], p[1], 0.0) if len(p) == 2 else p for p in transformed_shape
+        ]
+        return_pos_3d = (
+            (return_pos[0], return_pos[1], 0.0)
+            if return_pos and len(return_pos) == 2
+            else return_pos
+        )
 
         # Update MissionState
         mission_state.dxf_shape_mode_active = True

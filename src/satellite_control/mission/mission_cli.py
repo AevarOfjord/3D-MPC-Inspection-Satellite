@@ -26,21 +26,22 @@ class MissionCLI:
 
     def show_mission_menu(self) -> str:
         """Show main mission selection menu.
-        
+
         V4.0.0: Phase 2 - Now uses plugin system to discover available missions.
         """
         from src.satellite_control.mission.plugin import get_registry
+
         # Import plugins module to trigger auto-registration
         import src.satellite_control.mission.plugins  # noqa: F401
-        
+
         registry = get_registry()
         plugins = registry.list_plugins()
-        
+
         print(f"\n{'=' * 50}")
         print(f"  {self.system_title.upper()}")
         print(f"{'=' * 50}")
         print("Select Mission Mode:")
-        
+
         # Build menu from plugins
         plugin_map = {}
         for idx, plugin_name in enumerate(plugins, start=1):
@@ -50,7 +51,7 @@ class MissionCLI:
                 print(f"{idx}. {display_name}")
                 plugin_map[str(idx)] = plugin_name
                 plugin_map[plugin_name] = plugin_name
-        
+
         print("q. Quit")
 
         while True:
@@ -75,17 +76,23 @@ class MissionCLI:
         """Get position input from user."""
         while True:
             try:
-                x_input = input(f"{position_type.title()} X position (meters): ").strip()
+                x_input = input(
+                    f"{position_type.title()} X position (meters): "
+                ).strip()
                 if x_input == "" and default_pos is not None:
                     return default_pos
                 x = float(x_input)
 
-                y_input = input(f"{position_type.title()} Y position (meters): ").strip()
+                y_input = input(
+                    f"{position_type.title()} Y position (meters): "
+                ).strip()
                 if y_input == "" and default_pos is not None:
                     return default_pos
                 y = float(y_input)
 
-                z_input = input(f"{position_type.title()} Z position (meters): ").strip()
+                z_input = input(
+                    f"{position_type.title()} Z position (meters): "
+                ).strip()
                 if z_input == "" and default_pos is not None:
                     return default_pos
                 # Default Z to 0.0 if not provided and no default passed,
@@ -109,7 +116,9 @@ class MissionCLI:
         default_angle: Optional[Tuple[float, float, float]] = None,
     ) -> Tuple[float, float, float]:
         """Get orientation input from user as 3D Euler angles (degrees)."""
-        default_deg = tuple(np.degrees(default_angle)) if default_angle is not None else None
+        default_deg = (
+            tuple(np.degrees(default_angle)) if default_angle is not None else None
+        )
 
         def _read_component(label: str, default_rad: Optional[float]) -> float:
             if default_rad is not None:
@@ -128,9 +137,15 @@ class MissionCLI:
 
         while True:
             try:
-                roll = _read_component("roll", default_angle[0] if default_angle else None)
-                pitch = _read_component("pitch", default_angle[1] if default_angle else None)
-                yaw = _read_component("yaw", default_angle[2] if default_angle else None)
+                roll = _read_component(
+                    "roll", default_angle[0] if default_angle else None
+                )
+                pitch = _read_component(
+                    "pitch", default_angle[1] if default_angle else None
+                )
+                yaw = _read_component(
+                    "yaw", default_angle[2] if default_angle else None
+                )
                 return (roll, pitch, yaw)
             except ValueError:
                 print("Invalid input. Please enter numeric values.")
@@ -170,9 +185,15 @@ class MissionCLI:
         """
         while True:
             try:
-                vx_input = input(f"X velocity (m/s, default: {default_vx:.3f}): ").strip()
-                vy_input = input(f"Y velocity (m/s, default: {default_vy:.3f}): ").strip()
-                vz_input = input(f"Z velocity (m/s, default: {default_vz:.3f}): ").strip()
+                vx_input = input(
+                    f"X velocity (m/s, default: {default_vx:.3f}): "
+                ).strip()
+                vy_input = input(
+                    f"Y velocity (m/s, default: {default_vy:.3f}): "
+                ).strip()
+                vz_input = input(
+                    f"Z velocity (m/s, default: {default_vz:.3f}): "
+                ).strip()
                 wx_input = input(
                     f"Angular velocity X (rad/s, default: {default_wx:.3f}): "
                 ).strip()
@@ -205,7 +226,9 @@ class MissionCLI:
 
     def confirm_mission(self, mission_type: str) -> bool:
         """Confirm mission start."""
-        confirm = input(f"\nProceed with {mission_type} simulation? (y/n): ").strip().lower()
+        confirm = (
+            input(f"\nProceed with {mission_type} simulation? (y/n): ").strip().lower()
+        )
         if confirm != "y":
             print("Mission cancelled.")
             return False
@@ -215,10 +238,10 @@ class MissionCLI:
         self, mission_state
     ) -> List[Tuple[float, float, float, float]]:
         """Configure obstacles with preset menu or custom input.
-        
+
         Args:
             mission_state: MissionState to update (required in V3.0.0).
-            
+
         Returns:
             List of obstacles as (x, y, z, radius) tuples.
         """
@@ -265,8 +288,10 @@ class MissionCLI:
 
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
-            raise ValueError("mission_state is required (V3.0.0: no SatelliteConfig fallback)")
-        
+            raise ValueError(
+                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
+            )
+
         # Update mission_state directly
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = len(obstacles) > 0
@@ -274,7 +299,7 @@ class MissionCLI:
             num_obs = len(obstacles)
             print(f"\nObstacles enabled: {num_obs} obstacle(s) configured.")
             self._obstacle_edit_menu_with_state(mission_state)
-        
+
         return obstacles
 
     def _obstacle_edit_menu_with_state(self, mission_state) -> None:
@@ -343,7 +368,7 @@ class MissionCLI:
         obstacles = mission_state.obstacles
         old = obstacles[idx]
         print(
-            f"  Editing obstacle {idx+1}: "
+            f"  Editing obstacle {idx + 1}: "
             f"({old[0]:.2f}, {old[1]:.2f}, {old[2]:.2f}) r={old[3]:.2f}"
         )
         try:
@@ -365,7 +390,7 @@ class MissionCLI:
 
     def _configure_obstacles_manual(self) -> List[Tuple[float, float, float, float]]:
         """Manual obstacle entry.
-        
+
         Returns:
             List of obstacles as (x, y, z, radius) tuples.
         """
@@ -390,16 +415,18 @@ class MissionCLI:
                 raise
 
             add_obs = input("Add another obstacle? (y/n): ").strip().lower()
-        
+
         # V3.0.0: Return obstacles list only, caller updates mission_state
         return obstacles
 
-    def select_mission_preset(self, return_simulation_config: bool = False) -> Optional[Dict[str, Any]]:
+    def select_mission_preset(
+        self, return_simulation_config: bool = False
+    ) -> Optional[Dict[str, Any]]:
         """Select a mission preset for quick start.
 
         Args:
             return_simulation_config: If True, includes SimulationConfig in returned dict.
-            
+
         Returns:
             Mission config dict if preset selected, None for custom mission.
         """
@@ -409,8 +436,9 @@ class MissionCLI:
         print("3. Demo: Diagonal with obstacle")
         print("4. Demo: Multi-waypoint square")
         print("5. Demo: Corridor navigation")
+        print("6. Demo: Zig Zag Reaction Wheel Test")
 
-        choice = input("Select option (1-5, default 1): ").strip()
+        choice = input("Select option (1-6, default 1): ").strip()
 
         # Create SimulationConfig for v2.0.0 pattern
         simulation_config = SimulationConfig.create_default()
@@ -430,7 +458,9 @@ class MissionCLI:
             self._configure_preset_waypoints(
                 start_pos=(0.0, 0.0, 0.0),
                 start_angle=(0.0, 0.0, 0.0),
-                targets=[((1.0, 1.0, 1.0), (np.radians(180), np.radians(180), np.radians(180)))],
+                targets=[
+                    ((1.0, 1.0, 1.0), (np.radians(45), np.radians(45), np.radians(45)))
+                ],
                 mission_state=mission_state,
             )
 
@@ -551,6 +581,46 @@ class MissionCLI:
                 result["simulation_config"] = simulation_config
             return result
 
+        elif choice == "6":
+            # Zig Zag demo
+            print("\n  Preset: Zig Zag Reaction Wheel Test")
+            print("    (-2,-2,-2) -> Zig Zag pattern with RW orientation tests")
+            obstacles = []
+            mission_state.obstacles = []
+            mission_state.obstacles_enabled = False
+
+            if not self.confirm_mission("zigzag demo"):
+                return {}
+
+            targets = [
+                ((-1.0, 2.0, 2.0), (np.radians(45), np.radians(45), np.radians(45))),
+                ((0.0, -2.0, 2.0), (np.radians(-45), np.radians(45), np.radians(-45))),
+                ((1.0, 2.0, -2.0), (np.radians(45), np.radians(-45), np.radians(45))),
+                ((2.0, -2.0, -2.0), (np.radians(90), np.radians(0), np.radians(90))),
+                ((2.0, 0.0, 0.0), (np.radians(0), np.radians(0), np.radians(0))),
+            ]
+
+            self._configure_preset_waypoints(
+                start_pos=(-2.0, -2.0, -2.0),
+                start_angle=(0.0, 0.0, 0.0),
+                targets=targets,
+                mission_state=mission_state,
+            )
+
+            result = {
+                "mission_type": "waypoint_navigation",
+                "mode": "multi_point",
+                "start_pos": (-2.0, -2.0, -2.0),
+                "start_angle": (0.0, 0.0, 0.0),
+                "start_vx": 0.0,
+                "start_vy": 0.0,
+                "start_vz": 0.0,
+                "start_omega": (0.0, 0.0, 0.0),
+            }
+            if return_simulation_config:
+                result["simulation_config"] = simulation_config
+            return result
+
         # Default: return None for custom mission flow
         return None
 
@@ -562,7 +632,7 @@ class MissionCLI:
         mission_state,
     ) -> None:
         """Configure waypoint missions.
-        
+
         Args:
             start_pos: Starting position (x, y, z)
             start_angle: Starting angle (roll, pitch, yaw)
@@ -580,8 +650,10 @@ class MissionCLI:
 
         # V3.0.0: Always require mission_state (no legacy fallback)
         if mission_state is None:
-            raise ValueError("mission_state is required (V3.0.0: no SatelliteConfig fallback)")
-        
+            raise ValueError(
+                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
+            )
+
         # Update MissionState
         mission_state.enable_waypoint_mode = True
         mission_state.enable_multi_point_mode = True
@@ -590,19 +662,21 @@ class MissionCLI:
         mission_state.current_target_index = 0
         mission_state.target_stabilization_start_time = None
 
-    def run_multi_point_mode(self, return_simulation_config: bool = False) -> Dict[str, Any]:
+    def run_multi_point_mode(
+        self, return_simulation_config: bool = False
+    ) -> Dict[str, Any]:
         """Run the multi-point waypoint mission workflow.
-        
+
         Args:
             return_simulation_config: If True, returns SimulationConfig in dict. If False, returns legacy dict.
-            
+
         Returns:
             Dictionary with mission configuration. If return_simulation_config=True, includes 'simulation_config' key.
         """
         # Create SimulationConfig for v2.0.0 pattern
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
-        
+
         # 1. Try to select a preset first
         preset_config = self.select_mission_preset()
         if preset_config:
@@ -680,8 +754,8 @@ class MissionCLI:
             "start_vz": start_vz,
             "start_omega": start_omega,
         }
-        
+
         if return_simulation_config:
             result["simulation_config"] = simulation_config
-            
+
         return result

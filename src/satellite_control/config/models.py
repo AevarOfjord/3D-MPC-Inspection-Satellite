@@ -188,14 +188,14 @@ class MPCParams(BaseModel):
     prediction_horizon: int = Field(
         ...,
         gt=0,
-        le=50,
-        description="Prediction horizon N (1-50 steps)",
+        le=5000,
+        description="Prediction horizon N (1-5000 steps)",
     )
     control_horizon: int = Field(
         ...,
         gt=0,
-        le=50,
-        description="Control horizon M (1-50 steps, must be <= N)",
+        le=5000,
+        description="Control horizon M (1-5000 steps, must be <= N)",
     )
     dt: float = Field(
         ...,
