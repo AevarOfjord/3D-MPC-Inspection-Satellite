@@ -717,10 +717,33 @@ class SimulationVisualizationManager:
 
         video_path = output_dir / "Simulation_3D_Render.mp4"
         try:
-            renderer = mujoco.Renderer(self.satellite.model, width=width, height=height)
-            data = mujoco.MjData(self.satellite.model)
-        except AttributeError:
-            logger.warning("WARNING: Satellite model not available for 3D render.")
+            if hasattr(self.satellite, "model") and self.satellite.model is not None:
+                 model = self.satellite.model
+            else:
+                 # Fallback: Load model from XML file typical for V3/V4
+                 model_path = Path("models/satellite.xml")
+                 if not model_path.exists():
+                     # Try searching in standard locations
+                     possible_paths = [
+                         Path("models/satellite.xml"),
+                         Path("../models/satellite.xml"), 
+                         Path("../../models/satellite.xml")
+                     ]
+                     for p in possible_paths:
+                         if p.exists():
+                             model_path = p
+                             break
+                 
+                 if model_path.exists():
+                     print(f"Loading MuJoCo model from file for 3D render: {model_path}")
+                     model = mujoco.MjModel.from_xml_path(str(model_path))
+                 else:
+                     raise AttributeError("Model attribute missing and file not found")
+
+            renderer = mujoco.Renderer(model, width=width, height=height)
+            data = mujoco.MjData(model)
+        except (AttributeError, ValueError) as e:
+            logger.warning(f"WARNING: Satellite model not available for 3D render: {e}")
             return
 
         # Estimate FPS from data
@@ -773,7 +796,7 @@ class SimulationVisualizationManager:
                         )
 
                     # Update physics to propogate kinematics
-                    mujoco.mj_forward(self.satellite.model, data)
+                    mujoco.mj_forward(model, data)
 
                     # Manual Visual Update for Glow Check
                     # Parse Command_Vector string "[0, 0, 1, ...]"

@@ -148,7 +148,12 @@ class MissionStateManager:
         
         target_pos = targets[self.mission_state.current_target_index]
         # Handle angle format (could be single float or tuple)
-        target_angle_raw = angles[self.mission_state.current_target_index]
+        try:
+             target_angle_raw = angles[self.mission_state.current_target_index]
+        except IndexError:
+             # Fallback: if angles list shorter than targets, default to 0
+             target_angle_raw = (0.0, 0.0, 0.0)
+
         if isinstance(target_angle_raw, (int, float)):
             target_angle = (0.0, 0.0, float(target_angle_raw))
         else:
