@@ -60,7 +60,7 @@ def test_reaction_wheel_control():
     ]
 
     # Override parameters for this test
-    hydra_cfg.control.mpc.prediction_horizon = 20
+    hydra_cfg.control.mpc.prediction_horizon = 50
     hydra_cfg.control.mpc.dt = 0.05
 
     # Tune weights for stable RW control

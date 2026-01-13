@@ -72,7 +72,7 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     for(int i=0; i < params_.num_rw; ++i) {
         if(params_.rw_torque_limits[i] == 0.0) continue;
         // B[10+i, i]
-        B(10 + i, i) = (1.0 / params_.inertia[i]) * dt; 
+        B(10 + i, i) = -(1.0 / params_.inertia[i]) * dt; 
         // Note: Python didn't multiply by max_torque here in B assignment line 289?
         // Wait, Python code: self.rw_torque_limits[i] / self.moment_of_inertia[i] * self.dt
         // In python, the control input is normalized [-1, 1], so we multiply by max_torque in B.
