@@ -315,9 +315,10 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     // Apply Z-tilt to target
     VectorXd x_targ = apply_z_tilt(x_current, x_target);
     
-    // Update dynamics if quaternion changed significantly
+    // Update dynamics if quaternion changed (Successive Linearization)
+    // V2.2.0: Lower threshold for near-continuous re-linearization (was 0.05)
     Eigen::Vector4d quat = x_current.segment<4>(3);
-    if ((quat - prev_quat_).norm() > 0.05) {
+    if ((quat - prev_quat_).norm() > 0.001) {
         update_dynamics(x_current);
         prev_quat_ = quat;
     }
