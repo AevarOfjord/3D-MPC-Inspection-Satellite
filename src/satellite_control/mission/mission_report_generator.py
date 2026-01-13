@@ -319,7 +319,12 @@ class MissionReportGenerator:
             f.write("OBSTACLE CONFIGURATION:\n")
             f.write("  Obstacle Avoidance:      ENABLED\n")
             f.write(f"  Number of Obstacles:     {len(self.mission_state.obstacles)}\n")
-            for i, (ox, oy, oz, orad) in enumerate(self.mission_state.obstacles, 1):
+            for i, obs in enumerate(self.mission_state.obstacles, 1):
+                if hasattr(obs, 'position'):
+                    ox, oy, oz = obs.position
+                    orad = obs.radius
+                else:
+                    ox, oy, oz, orad = obs
                 f.write(
                     f"  Obstacle {i}:              ({ox:.3f}, {oy:.3f}, {oz:.3f}) m, radius {orad:.3f} m\n"
                 )

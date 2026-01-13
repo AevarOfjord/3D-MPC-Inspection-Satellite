@@ -318,51 +318,65 @@ class VideoRenderer:
             )
 
     def draw_obstacles(self, mission_state: Optional[MissionState] = None) -> None:
-        """Draw obstacles if they are configured (V4.0.0: mission_state required, no fallback).
+        """Draw obstacles if they are configured.
         
-        Args:
-            mission_state: Optional MissionState to get obstacles from (v4.0.0).
-                          If None, uses self.mission_state if available. No fallback.
+        Supports new V3.0.0 Obstacle objects (Sphere, Cylinder, Box).
         """
         assert self.ax_xy is not None, "ax_xy must be initialized"
+        assert self.ax_xz is not None, "ax_xz must be initialized"
 
-        # V4.0.0: Get obstacles from mission_state (required, no fallback)
-        obstacles_enabled = False
         obstacles = []
-        state_to_use = mission_state or self.mission_state
-        if state_to_use:
-            obstacles_enabled = state_to_use.obstacles_enabled
-            obstacles = list(state_to_use.obstacles) if state_to_use.obstacles else []
-        # V4.0.0: No fallback - if no mission_state, obstacles are empty
+        # Try retrieving obstacles from data_accessor if available (usually UnifiedVisualizer)
+        if hasattr(self.data_accessor, "mission_state") and self.data_accessor.mission_state and getattr(self.data_accessor.mission_state, "obstacles", None):
+             obstacles = self.data_accessor.mission_state.obstacles
         
-        if obstacles_enabled and obstacles:
-            for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
-                # Draw obstacle as red filled circle (XY projection)
-                obstacle_circle = Circle(
-                    (obs_x, obs_y),
-                    obs_radius,
-                    fill=True,
-                    color="red",
-                    alpha=0.6,
-                    edgecolor="darkred",
-                    linewidth=2,
-                    zorder=15,
-                    label="Obstacle" if i == 1 else "",
-                )
-                self.ax_xy.add_patch(obstacle_circle)
+        # Also check local mission_state arg or member
+        state_to_use = mission_state or getattr(self, "mission_state", None)
+        if state_to_use and getattr(state_to_use, "obstacles", None):
+            obstacles = state_to_use.obstacles
 
-                # Add obstacle label
-                self.ax_xy.text(
-                    obs_x,
-                    obs_y,
-                    f"O{i}",
-                    fontsize=8,
-                    color="white",
-                    ha="center",
-                    va="center",
-                    fontweight="bold",
-                    zorder=16,
-                )
+        from matplotlib.patches import Rectangle, Circle
+
+        for i, obs in enumerate(obstacles, 1):
+            # Handle different obstacle formats
+            # 1. New V3.0.0 Object format
+            if hasattr(obs, "type") and hasattr(obs, "position"):
+                pos = obs.position
+                obs_type = getattr(obs.type, "value", obs.type)
+                name = getattr(obs, "name", f"O{i}")
+                
+                # XY Projection
+                if obs_type == "sphere":
+                    radius = getattr(obs, "radius", 0.5)
+                    self.ax_xy.add_patch(Circle((pos[0], pos[1]), radius, color="red", alpha=0.3, zorder=15))
+                    self.ax_xz.add_patch(Circle((pos[0], pos[2]), radius, color="red", alpha=0.3, zorder=15))
+                
+                elif obs_type == "cylinder":
+                    # Assume Z-axis aligned for now
+                    radius = getattr(obs, "radius", 0.5)
+                    self.ax_xy.add_patch(Circle((pos[0], pos[1]), radius, color="orange", alpha=0.3, zorder=15))
+                    # In XZ it looks like a rectangle (infinite or finite?) 
+                    # If finite, we need height. Assuming infinite for visualization or huge
+                    self.ax_xz.add_patch(Rectangle((pos[0]-radius, -10), 2*radius, 20, color="orange", alpha=0.3, zorder=15))
+                
+                elif obs_type == "box":
+                    size = getattr(obs, "size", [1, 1, 1])
+                    # XY: Rectangle centered at pos[0], pos[1] with size[0]*2, size[1]*2
+                    self.ax_xy.add_patch(Rectangle((pos[0]-size[0], pos[1]-size[1]), size[0]*2, size[1]*2, color="magenta", alpha=0.3, zorder=15))
+                    # XZ: Rectangle centered at pos[0], pos[2] with size[0]*2, size[2]*2
+                    self.ax_xz.add_patch(Rectangle((pos[0]-size[0], pos[2]-size[2]), size[0]*2, size[2]*2, color="magenta", alpha=0.3, zorder=15))
+                
+            # 2. Legacy tuple format (x, y, z, r)
+            elif isinstance(obs, (tuple, list)) and len(obs) >= 4:
+                obs_x, obs_y, obs_z, obs_radius = obs[:4]
+                self.ax_xy.add_patch(Circle((obs_x, obs_y), obs_radius, color="red", alpha=0.3, zorder=15))
+                self.ax_xz.add_patch(Circle((obs_x, obs_z), obs_radius, color="red", alpha=0.3, zorder=15))
+                
+            # Add labels if possible (on XY)
+            label_x = pos[0] if 'pos' in locals() else (obs[0] if isinstance(obs, (tuple, list)) else 0)
+            label_y = pos[1] if 'pos' in locals() else (obs[1] if isinstance(obs, (tuple, list)) else 0)
+            self.ax_xy.text(label_x, label_y, f"O{i}", fontsize=8, color="black", ha="center", va="center", zorder=16)
+
 
     def update_info_panel(self, step: int, current_data: Any) -> None:
         """Update information panel with current data using professional styling."""

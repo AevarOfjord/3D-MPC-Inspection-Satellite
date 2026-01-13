@@ -849,9 +849,25 @@ class SimulationVisualizationManager:
         try:
             print("\n Animation, Plots and Summary will now be generated!")
 
+            # Check for MissionState (V4.0.0)
+            mission_state = None
+            if hasattr(self.controller, "mission_manager") and getattr(
+                self.controller.mission_manager, "mission_state", None
+            ):
+                mission_state = self.controller.mission_manager.mission_state
+
+            # Check for AppConfig (V4.0.0)
+            app_config = None
+            if hasattr(self.controller, "simulation_config") and getattr(
+                self.controller.simulation_config, "app_config", None
+            ):
+                app_config = self.controller.simulation_config.app_config
+
             generator = UnifiedVisualizationGenerator(
                 data_directory=str(self.data_save_path.parent),
                 prefer_pandas=True,
+                app_config=app_config,
+                mission_state=mission_state,
             )
 
             # Override paths to use current simulation data

@@ -139,6 +139,16 @@ class SimulationInitializer:
 
         # Initialize mission manager
         self._initialize_mission_manager()
+        
+        # Configure Obstacles on Controller (V3.0.0)
+        if (
+            hasattr(self.simulation.mpc_controller, "set_obstacles")
+            and self.simulation.mission_manager.mission_state.obstacles_enabled
+        ):
+            logger.info("Configuring MPC Controller with obstacles...")
+            self.simulation.mpc_controller.set_obstacles(
+                self.simulation.mission_manager.mission_state.obstacles
+            )
 
         # Initialize state validator
         self._initialize_state_validator()

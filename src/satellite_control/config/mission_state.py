@@ -24,7 +24,7 @@ Key features:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
 
 @dataclass
@@ -100,6 +100,11 @@ class MissionState:
     dxf_return_position: Optional[Tuple[float, float, float]] = None
     dxf_return_angle: Optional[Tuple[float, float, float]] = None
     dxf_return_start_time: Optional[float] = None
+    
+    # Obstacle Avoidance (V3.0.0)
+    obstacles_enabled: bool = False
+    obstacles: List[Any] = field(default_factory=list)  # List of Obstacle objects
+
 
     # Obstacle avoidance (spherical obstacles)
     obstacles_enabled: bool = False

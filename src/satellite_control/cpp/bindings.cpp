@@ -4,10 +4,12 @@
 #include <pybind11/stl.h>
 #include "linearizer.hpp"
 #include "mpc_controller.hpp"
+#include "obstacle.hpp"
 
 namespace py = pybind11;
 using namespace satellite_dt;
 using namespace satellite_mpc;
+using namespace satellite_collision;
 
 PYBIND11_MODULE(_cpp_mpc, m) {
     m.doc() = "C++ backend for Satellite MPC controller";
@@ -59,6 +61,28 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("status", &ControlResult::status)
         .def_readwrite("solve_time", &ControlResult::solve_time)
         .def_readwrite("timeout", &ControlResult::timeout);
+
+    // Obstacle Types
+    py::enum_<ObstacleType>(m, "ObstacleType")
+        .value("SPHERE", ObstacleType::SPHERE)
+        .value("CYLINDER", ObstacleType::CYLINDER)
+        .value("BOX", ObstacleType::BOX)
+        .export_values();
+
+    py::class_<Obstacle>(m, "Obstacle")
+        .def(py::init<>())
+        .def_readwrite("type", &Obstacle::type)
+        .def_readwrite("position", &Obstacle::position)
+        .def_readwrite("radius", &Obstacle::radius)
+        .def_readwrite("size", &Obstacle::size)
+        .def_readwrite("axis", &Obstacle::axis)
+        .def_readwrite("name", &Obstacle::name);
+
+    py::class_<ObstacleSet>(m, "ObstacleSet")
+        .def(py::init<>())
+        .def("add", &ObstacleSet::add)
+        .def("clear", &ObstacleSet::clear)
+        .def("size", &ObstacleSet::size);
 
     // MPC Controller
     py::class_<MPCControllerCpp>(m, "MPCControllerCpp")

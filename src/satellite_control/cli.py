@@ -49,6 +49,9 @@ def run(
     engine: Optional[str] = typer.Option(
         None, "--engine", "-e", help="Physics engine: 'mujoco' (default) or 'cpp'"
     ),
+    mission_file: Optional[str] = typer.Option(
+        None, "--mission", "-m", help="Path to mission file (JSON) to execute"
+    ),
 ):
     """
     Run the Satellite MPC Simulation.
@@ -86,6 +89,52 @@ def run(
     if auto:
         # Auto mode - skip menu and use defaults set above
         pass
+    elif mission_file:
+        # Load specific mission file
+        from pathlib import Path
+        import json
+        from src.satellite_control.mission.mission_types import Mission
+        from src.satellite_control.config.simulation_config import SimulationConfig
+
+        m_path = Path(mission_file)
+        if not m_path.exists():
+            console.print(f"[red]Mission file not found: {m_path}[/red]")
+            raise typer.Exit(code=1)
+        
+        console.print(f"[green]Loading mission from {m_path}[/green]")
+        
+        # Load mission to get params
+        mission = Mission.load(m_path)
+        
+        # Override start parameters
+        sim_start_pos = mission.start_position.tolist()
+        
+        # Create simulation config handling (simplified for now)
+        # Ideally we convert Mission to SimulationConfig/MissionState
+        # For this demo, we'll try to rely on SimulationConfig.create_default() 
+        # and populate it with mission data if needed, or rely on MissionManager to load it later.
+        
+        # However, to properly inject obstacles into the simulation, we need to populate MissionState
+        simulation_config = SimulationConfig.create_default()
+        
+        # Map Mission params to MissionState
+        ms = simulation_config.mission_state
+        
+        # Add obstacles
+        ms.obstacles_enabled = len(mission.obstacles) > 0
+        ms.obstacles = mission.obstacles
+        
+        # Map waypoints if any (assuming single phase for simplicity or extracting all)
+        waypoints = mission.get_all_waypoints()
+        if waypoints:
+            ms.enable_waypoint_mode = True
+            ms.waypoint_targets = [tuple(wp.position.tolist()) for wp in waypoints]
+            # Initialize angles to zero (required by MissionStateManager)
+            ms.waypoint_angles = [(0.0, 0.0, 0.0)] * len(waypoints)
+            # Assuming approach speed etc handled by controller or dynamic logic
+            
+        mission_simulation_config = simulation_config
+
     elif classic:
         # Use classic text-based menu
         mission_manager = MissionManager()

@@ -16,6 +16,9 @@ from satellite_control.cpp._cpp_mpc import (
     SatelliteParams,
     MPCParams as CppMPCParams,
     MPCControllerCpp,
+    Obstacle,
+    ObstacleSet,
+    ObstacleType,
 )
 
 from src.satellite_control.utils.orientation_utils import (
@@ -204,3 +207,40 @@ class MPCController(Controller):
             "status": result.status,
             "solve_time": result.solve_time,
         }
+
+    def set_obstacles(self, mission_obstacles: list) -> None:
+        """
+        Set collision avoidance obstacles.
+
+        Args:
+            mission_obstacles: List of mission_types.Obstacle objects
+        """
+        cpp_obstacle_set = ObstacleSet()
+        
+        for obs in mission_obstacles:
+            cpp_obs = Obstacle()
+            # Map parameters
+            cpp_obs.position = np.array(obs.position)
+            cpp_obs.radius = float(obs.radius)
+            cpp_obs.size = np.array(obs.size)
+            cpp_obs.name = str(obs.name)
+            
+            # Map type (string value from enum to C++ enum)
+            type_val = obs.type.value
+            
+            if type_val == "sphere":
+                cpp_obs.type = ObstacleType.SPHERE
+            elif type_val == "cylinder":
+                cpp_obs.type = ObstacleType.CYLINDER
+                # Default Z-axis for cylinder if not specified
+                cpp_obs.axis = np.array([0., 0., 1.])
+            elif type_val == "box":
+                cpp_obs.type = ObstacleType.BOX
+                
+            cpp_obstacle_set.add(cpp_obs)
+            
+        self._cpp_controller.set_obstacles(cpp_obstacle_set)
+
+    def clear_obstacles(self) -> None:
+        """Clear all collision avoidance obstacles."""
+        self._cpp_controller.clear_obstacles()

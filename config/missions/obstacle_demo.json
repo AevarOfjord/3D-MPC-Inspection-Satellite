@@ -1,0 +1,39 @@
+{
+  "name": "Collision Avoidance Demo",
+  "mission_type": "inspection",
+  "description": "Navigate around obstacles to reach target",
+  "start_position": [5.0, 0.0, 0.0],
+  "keep_out_radius": 2.0,
+  "max_speed": 0.5,
+  "obstacles": [
+    {
+      "type": "sphere",
+      "position": [2.5, 0.0, 0.0],
+      "radius": 1.0,
+      "name": "Central Barrier"
+    },
+    {
+       "type": "cylinder",
+       "position": [0.0, 2.0, 0.0],
+       "radius": 1.5,
+       "name": "Solar Array Axis"
+    }
+  ],
+  "phases": [
+    {
+      "name": "Approach",
+      "waypoints": [
+        {
+          "position": [0.0, 5.0, 0.0],
+          "hold_time": 5.0,
+          "approach_speed": 0.1
+        },
+        {
+            "position": [-5.0, 0.0, 0.0],
+            "hold_time": 5.0,
+            "approach_speed": 0.1
+        }
+      ]
+    }
+  ]
+}

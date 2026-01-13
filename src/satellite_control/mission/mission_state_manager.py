@@ -610,7 +610,14 @@ class MissionStateManager:
             # Generate spline if needed (first time through obstacle zone)
             if self.avoidance_spline is None:
                 # Try to create spline for first blocking obstacle
-                for obs_x, obs_y, obs_z, obs_radius in obstacles:
+                for obs in obstacles:
+                    # Support both object and tuple
+                    if hasattr(obs, 'position'):
+                        obs_x, obs_y, obs_z = obs.position
+                        obs_radius = obs.radius
+                    else:
+                        obs_x, obs_y, obs_z, obs_radius = obs
+
                     spline = create_obstacle_avoidance_spline(
                         start_pos=current_position,
                         target_pos=np.array(final_target_pos),

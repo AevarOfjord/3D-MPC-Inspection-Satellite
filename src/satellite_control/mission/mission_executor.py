@@ -155,6 +155,11 @@ class MissionExecutor:
             self.load_controller()
 
         self.current_mission = mission
+
+        # Configure collision avoidance (V3.0.0)
+        if hasattr(self.controller, "set_obstacles"):
+            self.controller.set_obstacles(mission.obstacles)
+
         mission.status = MissionStatus.RUNNING
         mission.current_phase_idx = 0
         mission.current_waypoint_idx = 0
