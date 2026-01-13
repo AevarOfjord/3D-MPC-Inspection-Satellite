@@ -18,8 +18,13 @@ public:
      * 
      * @param params Satellite parameters (mass, inertia, thrusters)
      * @param mean_motion Orbital mean motion [rad/s]
+     * @param mu Gravitational parameter [m³/s²] (default: Earth)
+     * @param target_radius Target orbital radius [m]
+     * @param use_nonlinear Use full two-body dynamics instead of CW
      */
-    SimulationEngine(const SatelliteParams& params, double mean_motion);
+    SimulationEngine(const SatelliteParams& params, double mean_motion,
+                     double mu = 3.986004418e14, double target_radius = 6.778e6,
+                     bool use_nonlinear = true);
 
     /**
      * @brief reset state to initial conditions
@@ -54,6 +59,8 @@ public:
 private:
     SatelliteParams params_;
     CWDynamics cw_dynamics_;
+    TwoBodyDynamics two_body_dynamics_;
+    bool use_nonlinear_;
 
     // State vector: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
     // Note: Quaternions are stored [w, x, y, z] to match customized layout

@@ -26,8 +26,11 @@ PYBIND11_MODULE(_cpp_sim, m) {
         .def_readwrite("com_offset", &SatelliteParams::com_offset);
 
     py::class_<SimulationEngine>(m, "SimulationEngine")
-        .def(py::init<const SatelliteParams&, double>(), 
-             py::arg("params"), py::arg("mean_motion"))
+        .def(py::init<const SatelliteParams&, double, double, double, bool>(), 
+             py::arg("params"), py::arg("mean_motion"),
+             py::arg("mu") = 3.986004418e14,
+             py::arg("target_radius") = 6.778e6,
+             py::arg("use_nonlinear") = true)
         .def("reset", &SimulationEngine::reset, 
              py::arg("state"), "Reset simulation state")
         .def("step", &SimulationEngine::step,

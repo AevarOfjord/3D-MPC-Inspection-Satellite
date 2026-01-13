@@ -3,8 +3,12 @@
 
 namespace satellite_sim {
 
-SimulationEngine::SimulationEngine(const SatelliteParams& params, double mean_motion)
-    : params_(params), cw_dynamics_(mean_motion) {
+SimulationEngine::SimulationEngine(const SatelliteParams& params, double mean_motion,
+                                   double mu, double target_radius, bool use_nonlinear)
+    : params_(params),
+      cw_dynamics_(mean_motion),
+      two_body_dynamics_(mu, target_radius),
+      use_nonlinear_(use_nonlinear) {
     state_ = Eigen::VectorXd::Zero(13);
     // Initialize quaternion to [1, 0, 0, 0]
     state_(3) = 1.0;
@@ -113,6 +117,11 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     // Re-normalize quaternion
     state_.segment<4>(3).normalize();
     
+    // Propagate target orbit (for nonlinear dynamics)
+    if (use_nonlinear_) {
+        two_body_dynamics_.propagate_target(dt);
+    }
+    
     // Update RW speeds (simple Euler integration: omega_dot = T / I_wheel)
     // T_rw = I_w * alpha => alpha = T_rw / I_w
     // assuming RW aligned with body axes for now (or simplified)
@@ -163,12 +172,20 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     dxdt(6) = 0.5 * (q(0)*w(2) + q(1)*w(1) - q(2)*w(0));
     
 
-    // 3. Velocity Derivative: CW Gravity + Forces/Mass
+    // 3. Velocity Derivative: Gravity + Forces/Mass
     Eigen::Vector3d r = s.segment<3>(0);
     Eigen::Vector3d v = s.segment<3>(7);
     
-    // CW Gravity (Hill Frame)
-    Eigen::Vector3d cw_acc = cw_dynamics_.compute_acceleration(r, v);
+    // Orbital gravity acceleration (Hill Frame)
+    Eigen::Vector3d grav_acc;
+    if (use_nonlinear_) {
+        // Full two-body (nonlinear) gravity
+        Eigen::Vector3d target_pos = two_body_dynamics_.get_target_position();
+        grav_acc = two_body_dynamics_.compute_relative_acceleration(r, v, target_pos);
+    } else {
+        // Linear CW approximation
+        grav_acc = cw_dynamics_.compute_acceleration(r, v);
+    }
     
     // External Forces (Thrusters) - Rotate from Body to Hill/Inertial
     // R * F_body
@@ -180,7 +197,7 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     Eigen::Vector3d f_inertial = R * body_force;
     Eigen::Vector3d acc_thrust = f_inertial / params_.mass;
     
-    dxdt.segment<3>(7) = cw_acc + acc_thrust;
+    dxdt.segment<3>(7) = grav_acc + acc_thrust;
     
     // 4. Angular Velocity Derivative: Euler's Eqs
     // I * w_dot + w x (I * w) = Torque

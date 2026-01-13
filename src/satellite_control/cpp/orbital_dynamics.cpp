@@ -1,4 +1,5 @@
 #include "orbital_dynamics.hpp"
+#include <cmath>
 
 namespace satellite_control {
 
@@ -87,6 +88,74 @@ std::pair<Eigen::Matrix<double, 16, 16>, Eigen::Matrix<double, 16, 9>> CWDynamic
     Eigen::Matrix<double, 16, 9> B_cw = Eigen::Matrix<double, 16, 9>::Zero();
 
     return {A_cw, B_cw};
+}
+
+// ============================================================================
+// TwoBodyDynamics Implementation
+// ============================================================================
+
+TwoBodyDynamics::TwoBodyDynamics(double mu, double target_radius)
+    : mu_(mu),
+      target_radius_(target_radius),
+      mean_motion_(std::sqrt(mu / (target_radius * target_radius * target_radius))),
+      orbit_phase_(0.0),
+      target_pos_(target_radius, 0.0, 0.0),
+      target_vel_(0.0, mean_motion_ * target_radius, 0.0)
+{
+}
+
+Eigen::Vector3d TwoBodyDynamics::compute_acceleration(const Eigen::Vector3d& abs_position) const {
+    // Newton's law of gravitation: a = -μ/|r|³ × r
+    double r_mag = abs_position.norm();
+    if (r_mag < 1.0) {
+        // Prevent singularity at center
+        return Eigen::Vector3d::Zero();
+    }
+    double r_cubed = r_mag * r_mag * r_mag;
+    return (-mu_ / r_cubed) * abs_position;
+}
+
+Eigen::Vector3d TwoBodyDynamics::compute_relative_acceleration(
+    const Eigen::Vector3d& rel_position,
+    const Eigen::Vector3d& rel_velocity,
+    const Eigen::Vector3d& target_pos
+) const {
+    // Inspector absolute position = target + relative
+    Eigen::Vector3d inspector_pos = target_pos + rel_position;
+    
+    // Gravitational accelerations
+    Eigen::Vector3d a_inspector = compute_acceleration(inspector_pos);
+    Eigen::Vector3d a_target = compute_acceleration(target_pos);
+    
+    // Relative acceleration (differential gravity)
+    // Note: rel_velocity is unused here but kept for interface consistency
+    // and potential future additions (drag, etc.)
+    (void)rel_velocity;
+    
+    return a_inspector - a_target;
+}
+
+void TwoBodyDynamics::propagate_target(double dt) {
+    // Simple circular orbit propagation
+    // For circular orbit: phase increases at rate n
+    orbit_phase_ += mean_motion_ * dt;
+    
+    // Wrap phase to [0, 2π)
+    while (orbit_phase_ >= 2.0 * M_PI) {
+        orbit_phase_ -= 2.0 * M_PI;
+    }
+    
+    // Update target position (circular orbit in x-y plane)
+    double r = target_radius_;
+    target_pos_.x() = r * std::cos(orbit_phase_);
+    target_pos_.y() = r * std::sin(orbit_phase_);
+    target_pos_.z() = 0.0;
+    
+    // Update target velocity (tangent to orbit)
+    double v = mean_motion_ * r;
+    target_vel_.x() = -v * std::sin(orbit_phase_);
+    target_vel_.y() =  v * std::cos(orbit_phase_);
+    target_vel_.z() = 0.0;
 }
 
 } // namespace satellite_control
