@@ -10,6 +10,7 @@ import { useMissionStore } from '../store/missionStore';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 import { Trajectory } from './Trajectory';
+import { PlannedPath } from './PlannedPath';
 
 function Obstacles() {
   const [params, setParams] = useState<{
@@ -78,6 +79,7 @@ export function Viewport({ viewMode }: ViewportProps) {
         <EditableObstacles />
         <SatelliteModel />
         <Trajectory />
+        <PlannedPath />
         
         <GizmoHelper alignment="top-right" margin={[80, 80]}>
           <GizmoViewport axisColors={['red', 'green', 'blue']} labelColor="black" />

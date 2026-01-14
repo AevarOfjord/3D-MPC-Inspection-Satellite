@@ -15,6 +15,7 @@ export interface TelemetryData {
   solve_time?: number;
   pos_error?: number; // meters
   ang_error?: number; // radians
+  planned_path?: [number, number, number][];
 }
 
 type TelemetryCallback = (data: TelemetryData) => void;

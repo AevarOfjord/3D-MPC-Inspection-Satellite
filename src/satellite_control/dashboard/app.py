@@ -163,6 +163,8 @@ async def run_simulation_loop():
                 sim_instance.set_target(tgt_pos, tgt_ori)
                 # Ensure we stay in continuous mode
                 sim_instance.set_continuous(True)
+                # Trigger RRT* Replan
+                sim_instance.replan_path()
 
             # Step simulation (~60Hz)
             steps_per_frame = int(0.016 / SIMULATION_DT)

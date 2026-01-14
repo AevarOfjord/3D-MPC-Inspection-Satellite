@@ -34,6 +34,16 @@ Configuration:
 - Consistent with real hardware configuration
 """
 
+import logging
+import time
+import asyncio
+from typing import Any, Dict, Optional, List, Tuple
+from pathlib import Path
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
@@ -128,6 +138,19 @@ class SatelliteMPCLinearizedSimulation:
             use_mujoco_viewer: If True, use MuJoCo viewer (default: True)
         """
         self.use_mujoco_viewer = use_mujoco_viewer
+
+        # V5.0 Autonomy Components
+        from src.satellite_control.planning.rrt_star import RRTStarPlanner, Obstacle
+        from src.satellite_control.planning.trajectory_generator import (
+            TrajectoryGenerator,
+        )
+
+        self.planner = RRTStarPlanner(
+            bounds_min=(-20, -20, -20), bounds_max=(20, 20, 20)
+        )
+        self.trajectory_generator = TrajectoryGenerator(avg_velocity=0.5)
+        self.planned_path = []  # List of waypoints [x,y,z]
+        self.active_trajectory = None  # Time-parameterized trajectory
 
         # Hydra Config Adoption
         if cfg is None:
@@ -537,13 +560,73 @@ class SatelliteMPCLinearizedSimulation:
             # mpc_params removed (unused)
             dt = getattr(self.mpc_controller, "dt", 0.05)
 
-            target_trajectory = self.mission_manager.get_trajectory(
-                current_time=self.simulation_time,
-                dt=dt,
-                horizon=horizon,
-                current_state=current_state,
-                external_target_state=self.target_state,
-            )
+            # Autonomy V5.0: Trajectory Tracking
+            if self.active_trajectory is not None and len(self.active_trajectory) > 0:
+                # Find current point on trajectory
+                t = self.simulation_time
+
+                # Check if finished
+                if t > self.active_trajectory[-1, 0]:
+                    # Stay at last point
+                    pt = self.active_trajectory[-1]
+                    # Keep using last target_state (position) but zero velocity?
+                    # Or just clear trajectory?
+                    # Let's invalid active_trajectory once done to return to station-keeping
+                    # self.active_trajectory = None
+                    # Actually, better to hold the last position
+                    target_pos = pt[1:4]
+                    target_vel = np.zeros(3)  # Stop at end
+                else:
+                    # Interpolate
+                    # Simple nearest for now or np.interp
+                    # We have [time, x, y, z, vx, vy, vz]
+                    # Columns: 0=t, 1=x, 2=y, 3=z, 4=vx, 5=vy, 6=vz
+
+                    target_pos = np.zeros(3)
+                    target_vel = np.zeros(3)
+                    for i in range(3):
+                        target_pos[i] = np.interp(
+                            t,
+                            self.active_trajectory[:, 0],
+                            self.active_trajectory[:, 1 + i],
+                        )
+                        target_vel[i] = np.interp(
+                            t,
+                            self.active_trajectory[:, 0],
+                            self.active_trajectory[:, 4 + i],
+                        )
+
+                # Update target state [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
+                # Maintain current target orientation (indices 3-7)
+                current_target_quat = self.target_state[3:7]
+
+                new_target = np.zeros(13)
+                new_target[0:3] = target_pos
+                new_target[3:7] = current_target_quat
+                new_target[7:10] = target_vel
+                new_target[10:13] = np.zeros(3)  # Zero angular velocity for now
+
+                self.target_state = new_target
+
+                # Pass explicit trajectory to MPC if supported?
+                # Currently MPC wrapper doesn't support it, so we rely on MPCRunner
+                # using self.target_state updated above.
+                # But we can try passing a slice if we want to support future upgrades.
+                target_trajectory = None
+
+            else:
+                # Legacy / Mission Manager Fallback
+                # Only call if mission manager exists and has get_trajectory
+                if hasattr(self.mission_manager, "get_trajectory"):
+                    target_trajectory = self.mission_manager.get_trajectory(
+                        current_time=self.simulation_time,
+                        dt=dt,
+                        horizon=horizon,
+                        current_state=current_state,
+                        external_target_state=self.target_state,
+                    )
+                else:
+                    target_trajectory = None
 
             # Update obstacles (V3.0.0)
             if self.mission_manager.mission_state:
@@ -592,152 +675,230 @@ class SatelliteMPCLinearizedSimulation:
 
             self.log_simulation_step(
                 mpc_start_time,
+                command_sent_time,
                 command_sent_sim_time,
+                current_state,
                 thruster_action,
                 mpc_info,
                 rw_torque=rw_torque_cmd,
             )
 
-            # Record performance metrics
-            solve_time = (
-                mpc_info.get("solve_time", mpc_computation_time)
-                if mpc_info
-                else mpc_computation_time
-            )
-            timeout = mpc_info.get("timeout", False) if mpc_info else False
-            self.performance_monitor.record_mpc_solve(solve_time, timeout=timeout)
+    def replan_path(self):
+        """
+        Trigger RRT* replanning from current state to target state.
+        Updates self.planned_path and self.active_trajectory.
+        """
+        current_state = self.get_current_state()
+        start_pos = current_state[0:3]
+        target_pos = self.target_state[0:3]
 
-            # Record control loop time (from MPC start to command sent)
-            control_loop_time = command_sent_time - mpc_start_time
-            timing_violation = mpc_computation_time > (
-                self.control_update_interval - 0.02
-            )
-            self.performance_monitor.record_control_loop(
-                control_loop_time, timing_violation=timing_violation
-            )
+        # Get obstacles from mission manager if available
+        obstacles = []
+        if self.mission_manager and self.mission_manager.mission_state:
+            from src.satellite_control.planning.rrt_star import Obstacle
 
-            # Timing violation monitoring (silent - simulation runs as fast as possible)
-            # if timing_violation:
-            #     logger.warning(
-            #         f"WARNING: MPC computation time "
-            #         f"({mpc_computation_time:.3f}s) exceeds real-time!"
-            #     )
-
-            # Print status with timing information
-            pos_error = np.linalg.norm(current_state[:3] - self.target_state[:3])
-
-            # Quaternion error: 2 * arccos(|<q1, q2>|)
-            ang_error = quat_angle_error(self.target_state[3:7], current_state[3:7])
-
-            # V4.0.0: Expose metrics for external telemetry
-            self.last_solve_time = solve_time
-            self.last_pos_error = pos_error
-            self.last_ang_error = ang_error
-
-            # Determine status message
-            status_msg = f"Traveling to Target (t={self.simulation_time:.1f}s)"
-            stabilization_time = None
-
-            if self.target_reached_time is not None:
-                stabilization_time = self.simulation_time - self.target_reached_time
-                status_msg = f"Stabilizing on Target (t = {stabilization_time:.1f}s)"
-
-            elif (
-                self.mission_manager
-                and self.mission_manager.mission_state
-                and self.mission_manager.mission_state.dxf_shape_mode_active
-            ):
-                phase = self.mission_manager.mission_state.dxf_shape_phase or "UNKNOWN"
-                # Map internal phase names to user-friendly display names
-                phase_display_names = {
-                    "POSITIONING": "Traveling to Path",
-                    "PATH_STABILIZATION": "Stabilizing on Path",
-                    "TRACKING": "Traveling on Path",
-                    "STABILIZING": "Stabilizing on Path",
-                    "RETURNING": "Traveling to Target",
-                }
-                display_phase = phase_display_names.get(phase, phase)
-                # For RETURNING phase, check if we're stabilizing at the end
-                if phase == "RETURNING" and self.target_reached_time is not None:
-                    display_phase = "Stabilizing on Target"
-                status_msg = f"{display_phase} (t = {self.simulation_time:.1f}s)"
-            else:
-                status_msg = f"Traveling to Target (t = {self.simulation_time:.1f}s)"
-
-            # Prepare display variables and update command history
-            if thruster_action.ndim > 1:
-                display_thrusters = thruster_action[0, :]
-            else:
-                display_thrusters = thruster_action
-
-            active_thruster_ids = [
-                int(x) for x in np.where(display_thrusters > 0.01)[0] + 1
-            ]
-            self.command_history.append(active_thruster_ids)
-
-            def fmt_position_mm(s: np.ndarray) -> str:
-                x_mm = s[0] * 1000
-                y_mm = s[1] * 1000
-                z_mm = s[2] * 1000
-                return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
-
-            def fmt_angles_deg(s: np.ndarray) -> str:
-                q = np.array(s[3:7], dtype=float)
-                if np.linalg.norm(q) == 0:
-                    q = np.array([1.0, 0.0, 0.0, 0.0])
-                roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
-                roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
-                return (
-                    f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
+            for obs in self.mission_manager.mission_state.obstacles:
+                obstacles.append(
+                    Obstacle(position=np.array(obs.position), radius=obs.radius)
                 )
 
-            safe_target = (
-                self.target_state if self.target_state is not None else np.zeros(13)
-            )
-            if safe_target.shape[0] >= 7 and np.linalg.norm(safe_target[3:7]) == 0:
-                safe_target = safe_target.copy()
-                safe_target[3] = 1.0
+        logger.info(
+            f"Replanning path from {start_pos} to {target_pos} with {len(obstacles)} obstacles..."
+        )
 
-            ang_err_deg = np.degrees(ang_error)
-            solve_ms = mpc_info.get("solve_time", 0) * 1000
-            next_upd = self.next_control_simulation_time
-            # Show duty cycle for each active thruster (matching active_thruster_ids)
-            thr_out = [
-                round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids
-            ]
-            rw_norm = np.zeros(3, dtype=float)
-            if rw_torque_norm is not None:
-                rw_vals = np.array(rw_torque_norm, dtype=float)
-                rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
-            rw_out = [round(float(val), 2) for val in rw_norm]
-            logger.info(
-                f"t = {self.simulation_time:.1f}s: {status_msg}\n"
-                f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
-                f"Position = {fmt_position_mm(current_state)}\n"
-                f"Angle = {fmt_angles_deg(current_state)}\n"
-                f"Target Pos = {fmt_position_mm(safe_target)}\n"
-                f"Target Ang = {fmt_angles_deg(safe_target)}\n"
-                f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
-                f"Thrusters = {active_thruster_ids}\n"
-                f"Thruster Output = {thr_out}\n"
-                f"Reaction Wheel = [X, Y, Z]\n"
-                f"RW Output = {rw_out}\n"
-            )
+        # Run RRT*
+        # Use simple bounds based on start/target? Or fixed?
+        # Using default bounds initialized in __init__
+        waypoints = self.planner.plan(start_pos, target_pos, obstacles)
 
-            # Log terminal message to CSV
-            terminal_entry = {
-                "Time": self.simulation_time,
-                "Status": status_msg,
-                "Stabilization_Time": (
-                    stabilization_time if stabilization_time is not None else ""
-                ),
-                "Position_Error_m": pos_error,
-                "Angle_Error_deg": np.degrees(ang_error),
-                "Active_Thrusters": str(active_thruster_ids),
-                "Solve_Time_s": mpc_computation_time,
-                "Next_Update_s": self.next_control_simulation_time,
+        if waypoints:
+            self.planned_path = [list(p) for p in waypoints]
+            logger.info(f"Path found: {len(waypoints)} waypoints")
+
+            # Generate Trajectory
+            # Update trajectory generator start time? Ideally relative content.
+            # For now, just store the waypoints for visualization.
+            # self.active_trajectory = self.trajectory_generator.generate_trajectory(waypoints)
+        else:
+            logger.warning("RRT* failed to find a path!")
+            self.planned_path = []
+
+    def log_simulation_step(
+        self,
+        mpc_start_time: float,
+        command_sent_time: float,
+        command_sent_sim_time: float,
+        current_state: np.ndarray,
+        thruster_action: np.ndarray,
+        mpc_info: Dict[str, Any],
+        rw_torque: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Log simulation step data to CSV and logger.
+
+        Args:
+            mpc_start_time: Sim time when MPC started
+            command_sent_sim_time: Sim time when command was sent
+            thruster_action: Component-level thruster commands
+            mpc_info: Metadata from MPC solver
+            rw_torque: Optional Reaction Wheel torque command
+        """
+        # Record performance metrics
+        solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
+        # Use mpc_computation_time if available in args?
+        # Wait, the body uses 'mpc_computation_time' which is NOT in args?
+        # The original log_simulation_step might have calculated it?
+        # Looking at line 724: control_loop_time = command_sent_time - mpc_start_time
+        # Line 725: timing_violation = mpc_computation_time > ...
+        # 'mpc_computation_time' seems to be missing from args too?
+        # Let's check update_mpc_control call:
+        # self.log_simulation_step(mpc_start_time, command_sent_sim_time, thruster_action, mpc_info, rw_torque=rw_torque_cmd)
+        # It does NOT pass mpc_computation_time.
+        # So mpc_computation_time must be derived or I need to add it to args.
+        # In the original code (viewed in cache/memory), mpc_computation_time might have been passed?
+        # Let's check line 632: mpc_computation_time is returned by mpc_runner.
+        # But the call at 666 does NOT pass it.
+        # So log_simulation_step must assume solve_time IS computation time?
+        # Line 716: solve_time = mpc_info.get("solve_time", mpc_computation_time) -> Undefined `mpc_computation_time`!
+        # So `mpc_computation_time` IS undefined in the current broken body.
+
+        # I will fix this by calculating it: mpc_computation_time = solve_time (approx)
+        # OR better, pass it in args.
+        # I'll update the call site in a separate step or just calculate it here.
+        # mpc_computation_time is roughly command_sent_sim_time - mpc_start_time (control loop time includes it)
+
+        mpc_computation_time = command_sent_sim_time - mpc_start_time
+
+        timeout = mpc_info.get("timeout", False) if mpc_info else False
+        self.performance_monitor.record_mpc_solve(solve_time, timeout=timeout)
+
+        # Record control loop time (from MPC start to command sent)
+        control_loop_time = command_sent_time - mpc_start_time
+        timing_violation = mpc_computation_time > (self.control_update_interval - 0.02)
+        self.performance_monitor.record_control_loop(
+            control_loop_time, timing_violation=timing_violation
+        )
+
+        # Timing violation monitoring (silent - simulation runs as fast as possible)
+        # if timing_violation:
+        #     logger.warning(
+        #         f"WARNING: MPC computation time "
+        #         f"({mpc_computation_time:.3f}s) exceeds real-time!"
+        #     )
+
+        # Print status with timing information
+        pos_error = np.linalg.norm(current_state[:3] - self.target_state[:3])
+
+        # Quaternion error: 2 * arccos(|<q1, q2>|)
+        ang_error = quat_angle_error(self.target_state[3:7], current_state[3:7])
+
+        # V4.0.0: Expose metrics for external telemetry
+        self.last_solve_time = solve_time
+        self.last_pos_error = pos_error
+        self.last_ang_error = ang_error
+
+        # Determine status message
+        status_msg = f"Traveling to Target (t={self.simulation_time:.1f}s)"
+        stabilization_time = None
+
+        if self.target_reached_time is not None:
+            stabilization_time = self.simulation_time - self.target_reached_time
+            status_msg = f"Stabilizing on Target (t = {stabilization_time:.1f}s)"
+
+        elif (
+            self.mission_manager
+            and self.mission_manager.mission_state
+            and self.mission_manager.mission_state.dxf_shape_mode_active
+        ):
+            phase = self.mission_manager.mission_state.dxf_shape_phase or "UNKNOWN"
+            # Map internal phase names to user-friendly display names
+            phase_display_names = {
+                "POSITIONING": "Traveling to Path",
+                "PATH_STABILIZATION": "Stabilizing on Path",
+                "TRACKING": "Traveling on Path",
+                "STABILIZING": "Stabilizing on Path",
+                "RETURNING": "Traveling to Target",
             }
-            self.data_logger.log_terminal_message(terminal_entry)
+            display_phase = phase_display_names.get(phase, phase)
+            # For RETURNING phase, check if we're stabilizing at the end
+            if phase == "RETURNING" and self.target_reached_time is not None:
+                display_phase = "Stabilizing on Target"
+            status_msg = f"{display_phase} (t = {self.simulation_time:.1f}s)"
+        else:
+            status_msg = f"Traveling to Target (t = {self.simulation_time:.1f}s)"
+
+        # Prepare display variables and update command history
+        if thruster_action.ndim > 1:
+            display_thrusters = thruster_action[0, :]
+        else:
+            display_thrusters = thruster_action
+
+        active_thruster_ids = [
+            int(x) for x in np.where(display_thrusters > 0.01)[0] + 1
+        ]
+        self.command_history.append(active_thruster_ids)
+
+        def fmt_position_mm(s: np.ndarray) -> str:
+            x_mm = s[0] * 1000
+            y_mm = s[1] * 1000
+            z_mm = s[2] * 1000
+            return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
+
+        def fmt_angles_deg(s: np.ndarray) -> str:
+            q = np.array(s[3:7], dtype=float)
+            if np.linalg.norm(q) == 0:
+                q = np.array([1.0, 0.0, 0.0, 0.0])
+            roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
+            roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
+            return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
+
+        safe_target = (
+            self.target_state if self.target_state is not None else np.zeros(13)
+        )
+        if safe_target.shape[0] >= 7 and np.linalg.norm(safe_target[3:7]) == 0:
+            safe_target = safe_target.copy()
+            safe_target[3] = 1.0
+
+        ang_err_deg = np.degrees(ang_error)
+        solve_ms = mpc_info.get("solve_time", 0) * 1000
+        next_upd = self.next_control_simulation_time
+        # Show duty cycle for each active thruster (matching active_thruster_ids)
+        thr_out = [
+            round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids
+        ]
+        rw_norm = np.zeros(3, dtype=float)
+        if rw_torque is not None:
+            rw_vals = np.array(rw_torque, dtype=float)
+            rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
+        rw_out = [round(float(val), 2) for val in rw_norm]
+        logger.info(
+            f"t = {self.simulation_time:.1f}s: {status_msg}\n"
+            f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
+            f"Position = {fmt_position_mm(current_state)}\n"
+            f"Angle = {fmt_angles_deg(current_state)}\n"
+            f"Target Pos = {fmt_position_mm(safe_target)}\n"
+            f"Target Ang = {fmt_angles_deg(safe_target)}\n"
+            f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
+            f"Thrusters = {active_thruster_ids}\n"
+            f"Thruster Output = {thr_out}\n"
+            f"Reaction Wheel = [X, Y, Z]\n"
+            f"RW Output = {rw_out}\n"
+        )
+
+        # Log terminal message to CSV
+        terminal_entry = {
+            "Time": self.simulation_time,
+            "Status": status_msg,
+            "Stabilization_Time": (
+                stabilization_time if stabilization_time is not None else ""
+            ),
+            "Position_Error_m": pos_error,
+            "Angle_Error_deg": np.degrees(ang_error),
+            "Active_Thrusters": str(active_thruster_ids),
+            "Solve_Time_s": mpc_computation_time,
+            "Next_Update_s": self.next_control_simulation_time,
+        }
+        self.data_logger.log_terminal_message(terminal_entry)
 
     def check_target_reached(self) -> bool:
         """

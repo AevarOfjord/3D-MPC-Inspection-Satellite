@@ -12,6 +12,7 @@ interface ChartDataPoint {
   posError: number;
   angError: number;
   velocity: number;
+  solveTime: number;
 }
 
 export function TelemetryCharts() {
@@ -34,7 +35,8 @@ export function TelemetryCharts() {
           time: Number(data.time.toFixed(1)),
           posError: data.pos_error || 0,
           angError: (data.ang_error || 0) * (180 / Math.PI), // deg
-          velocity: velocityMag
+          velocity: velocityMag,
+          solveTime: (data.solve_time || 0) * 1000 // ms
         };
 
         const newHistory = [...prev, newPoint];
@@ -136,6 +138,36 @@ export function TelemetryCharts() {
                  labelFormatter={(label) => `Time: ${label}s`}
                />
                <Line type="monotone" dataKey="velocity" stroke="#4ade80" strokeWidth={2} dot={false} isAnimationActive={false} />
+             </LineChart>
+           </ResponsiveContainer>
+        </div>
+      </div>
+
+       {/* Solve Time Chart */}
+       <div className="flex-1 min-w-[300px] flex flex-col">
+        <div className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+          <Activity size={12} className="text-yellow-400" />
+          SOLVE TIME (ms)
+        </div>
+        <div className="flex-1 w-full">
+           <ResponsiveContainer width="100%" height="100%">
+             <LineChart data={history}>
+               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+               <XAxis 
+                  dataKey="time" 
+                  stroke="#666" 
+                  fontSize={10} 
+                  tickFormatter={(val) => `${val}s`}
+                  interval="preserveStartEnd" 
+                  minTickGap={30}
+               />
+               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
+               <Tooltip 
+                 contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
+                 itemStyle={{ fontSize: '12px' }}
+                 labelFormatter={(label) => `Time: ${label}s`}
+               />
+               <Line type="monotone" dataKey="solveTime" stroke="#facc15" strokeWidth={2} dot={false} isAnimationActive={false} />
              </LineChart>
            </ResponsiveContainer>
         </div>
