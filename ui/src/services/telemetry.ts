@@ -1,0 +1,64 @@
+export interface TelemetryData {
+  time: number;
+  position: [number, number, number];
+  quaternion: [number, number, number, number];
+  velocity: [number, number, number];
+  angular_velocity: [number, number, number];
+  thrusters: number[];
+  rw_torque: number[];
+  obstacles: Array<{
+    position: [number, number, number];
+    radius: number;
+  }>;
+}
+
+type TelemetryCallback = (data: TelemetryData) => void;
+
+class TelemetryService {
+  private socket: WebSocket | null = null;
+  private subscribers: Set<TelemetryCallback> = new Set();
+  private isConnected: boolean = false;
+
+  public get connected() {
+    return this.isConnected;
+  }
+
+  connect(url: string = "ws://localhost:8000/ws") {
+    if (this.socket) return;
+
+    this.socket = new WebSocket(url);
+
+    this.socket.onopen = () => {
+      console.log("Telemetry Connected");
+      this.isConnected = true;
+    };
+
+    this.socket.onmessage = (event) => {
+      try {
+        const data: TelemetryData = JSON.parse(event.data);
+        this.notify(data);
+      } catch (e) {
+        console.error("Failed to parse telemetry", e);
+      }
+    };
+
+    this.socket.onclose = () => {
+      console.log("Telemetry Disconnected");
+      this.isConnected = false;
+      this.socket = null;
+      // Reconnect logic could go here
+      setTimeout(() => this.connect(url), 1000);
+    };
+  }
+
+  subscribe(callback: TelemetryCallback) {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+  }
+
+  private notify(data: TelemetryData) {
+    this.subscribers.forEach((cb) => cb(data));
+  }
+}
+
+export const telemetry = new TelemetryService();

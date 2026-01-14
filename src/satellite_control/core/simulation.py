@@ -818,6 +818,46 @@ class SatelliteMPCLinearizedSimulation:
             show_animation=show_animation, structured_config=self.structured_config
         )
 
+    def step(self) -> None:
+        """
+        Execute a single simulation step.
+        v4.0.0: Expose stepping for external runners (e.g. Dashboard).
+        """
+        if not hasattr(self, "loop"):
+            # Lazy init of loop helper
+            from src.satellite_control.core.simulation_loop import SimulationLoop
+
+            self.loop = SimulationLoop(self)
+
+            # Ensure running state setup (subset of Loop.run)
+            self.is_running = True
+
+            # Context setup
+            if not hasattr(self, "context"):
+                from src.satellite_control.core.simulation_context import (
+                    SimulationContext,
+                )
+
+                self.context = SimulationContext()
+                self.context.dt = self.satellite.dt
+                self.context.control_dt = self.control_update_interval
+
+        self.loop.update_step(None)
+
+    def is_complete(self) -> bool:
+        """
+        Check if simulation is complete.
+        v4.0.0: Helper for external runners.
+        """
+        return not self.is_running
+
+    def reset(self) -> None:
+        """
+        Reset simulation.
+        v4.0.0: Alias for reset_simulation.
+        """
+        self.reset_simulation()
+
     def close(self) -> None:
         """
         Clean up simulation resources.

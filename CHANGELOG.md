@@ -1,5 +1,20 @@
 # Changelog
 
+## Version 4.0.0 - January 13, 2026
+
+### Features
+- **Mission Control UI:** Modern React/Three.js web interface replacing legacy viewers.
+- **Interactive Editor:** Design missions (waypoints, obstacles) directly in the browser.
+- **Real-time Telemetry:** Heads-Up Display (HUD) for position, velocity, thrusters, and RW torque.
+- **REST API:** Control the simulation backend via HTTP endpoints (`POST /mission`).
+
+### Technical Details
+- **Frontend:** Built with Vite, React, React Three Fiber, and Tailwind CSS.
+- **Backend:** FastAPI server (`app.py`) bridging C++ physics and WebSockets.
+- **Architecture:** Decoupled UI from simulation loop, enabling remote mission operations.
+
+---
+
 ## Version 3.0.0 - January 13, 2026
 
 ### Features

@@ -49,15 +49,16 @@
 ## ⚡ Quick Start
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
+cd ui && npm install && cd ..
 
-# Run all tests
-python3 scripts/run_all_tests.py
+# 2. Start the Backend Simulation Server (Term 1)
+python run_dashboard.py
 
-# Launch mission designer UI
-cd ui && python3 -m http.server 8080
-# Open http://localhost:8080
+# 3. Start the Mission Control UI (Term 2)
+cd ui && npm run dev
+# Open http://localhost:5173
 ```
 
 ## 🧪 Tests

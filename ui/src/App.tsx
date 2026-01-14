@@ -1,35 +1,41 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import { Viewport } from './components/Viewport';
+import { telemetry } from './services/telemetry';
+import { Overlay } from './components/Overlay';
+import { Editor } from './components/Editor';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [connected] = useState(true); // TODO: implement real connection status
+
+  useEffect(() => {
+    // Connect to backend
+    telemetry.connect();
+    
+    // Simple poller to check connection status for UI (or expose observable from service)
+    // For MVP, just assume connected if no error
+  }, []);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="flex flex-col h-screen w-screen bg-gray-900 text-white">
+      <header className="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center z-10 relative">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <span>🛰️</span> Mission Control
+        </h1>
+        <div className="flex gap-4">
+             <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-green-500 animate-pulse'}`}></div>
+                <span className="text-sm text-gray-400">System Active</span>
+             </div>
+        </div>
+      </header>
+      
+      <main className="flex-1 relative overflow-hidden">
+        <Viewport />
+        <Overlay />
+        <Editor />
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;
