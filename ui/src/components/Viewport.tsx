@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, Stars } from '@react-three/drei';
+import { OrbitControls, Grid, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Vector3 } from 'three';
 import { TargetMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
@@ -70,20 +70,18 @@ export function Viewport({ viewMode }: ViewportProps) {
         />
         <hemisphereLight args={['#ffffff', '#000000', 0.5]} />
         
-        <Grid 
-          infiniteGrid 
-          sectionSize={1} 
-          cellSize={0.5} 
-          fadeDistance={30} 
-          sectionColor="#4a90e2" 
-          cellColor="#2c5282" 
-        />
+        <hemisphereLight args={['#ffffff', '#000000', 0.5]} />
+        
+        {/* Grid Removed */}
         
         <Obstacles />
         <EditableObstacles />
         <SatelliteModel />
         <Trajectory />
         
+        <GizmoHelper alignment="top-right" margin={[80, 80]}>
+          <GizmoViewport axisColors={['red', 'green', 'blue']} labelColor="black" />
+        </GizmoHelper>
       </Canvas>
     </div>
   );

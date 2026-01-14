@@ -48,10 +48,8 @@ export function TelemetryCharts() {
     return () => { unsubscribe(); };
   }, []);
 
-  if (history.length === 0) return null;
-
   return (
-    <div className={`absolute bottom-0 left-0 h-48 bg-black/80 backdrop-blur-md border-t border-white/10 flex p-4 gap-4 z-20 transition-all duration-300 ${isEditing ? 'right-80' : 'right-0'}`}>
+    <div className={`absolute bottom-0 left-0 h-48 bg-black/80 backdrop-blur-md border-t border-white/10 flex p-4 pl-8 gap-4 z-20 transition-all duration-300 ${isEditing ? 'right-80' : 'right-0'}`}>
       
       {/* Position Error Chart */}
       <div className="flex-1 min-w-[300px] flex flex-col">
@@ -71,7 +69,7 @@ export function TelemetryCharts() {
                   interval="preserveStartEnd"
                   minTickGap={30}
                />
-               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={30} />
+               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
                <Tooltip 
                  contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
                  itemStyle={{ fontSize: '12px' }}
@@ -101,7 +99,7 @@ export function TelemetryCharts() {
                   interval="preserveStartEnd" 
                   minTickGap={30}
                />
-               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={30} />
+               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
                <Tooltip 
                  contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
                  itemStyle={{ fontSize: '12px' }}
@@ -131,7 +129,7 @@ export function TelemetryCharts() {
                   interval="preserveStartEnd" 
                   minTickGap={30}
                />
-               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={30} />
+               <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
                <Tooltip 
                  contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
                  itemStyle={{ fontSize: '12px' }}

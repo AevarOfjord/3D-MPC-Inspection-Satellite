@@ -78,41 +78,43 @@ export function Overlay() {
       </div>
       
       {/* Bottom Center: Thrusters */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
+      <div className="absolute bottom-52 left-1/2 -translate-x-1/2 transition-all duration-300">
          <div className="bg-black/60 backdrop-blur-md rounded-lg p-2 border border-white/10 flex gap-2">
-            {thrusters.map((active, i) => (
-               <div 
-                 key={i} 
-                 className={`w-3 h-8 rounded-sm transition-all duration-100 ${active > 0.1 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)] scale-y-110' : 'bg-gray-700'}`}
-                 title={`Thruster ${i}`}
-               />
+            {thrusters.slice(0, 6).map((active, i) => (
+               <div key={i} className="flex flex-col items-center gap-1">
+                  <div 
+                    className={`w-3 h-8 rounded-sm transition-all duration-100 ${active > 0.1 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)] scale-y-110' : 'bg-gray-700'}`}
+                    title={`Thruster ${i}`}
+                  />
+                  <span className="text-[9px] font-mono text-gray-400">
+                    {['+X', '-X', '+Y', '-Y', '+Z', '-Z'][i] || i}
+                  </span>
+                  <span className="text-[8px] font-mono text-gray-500 h-3">
+                     {active > 0.01 ? active.toFixed(1) : ''}
+                  </span>
+               </div>
             ))}
          </div>
       </div>
       
       {/* Bottom Right: Reaction Wheels */}
-      <div className="absolute bottom-6 right-6">
-         <div className="bg-black/60 backdrop-blur-md rounded-lg p-3 border border-white/10 text-white min-w-[180px]">
-            <div className="flex items-center gap-2 mb-2 pb-1 border-b border-white/10">
-               <Cpu size={16} className="text-purple-400" />
-               <span className="font-bold text-sm tracking-wider">RW SYSTEMS</span>
-            </div>
-            <div className="space-y-2">
-               {rw_torque.map((torque, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs font-mono">
-                     <span className="w-4 text-gray-400">W{i+1}</span>
-                     <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
-                        {/* Torque Bar from center? Or 0 to max? Assuming bidirectional */}
-                        {/* Let's visualize magnitude for now. Normalize to assumed max 0.05 Nm */}
-                        <div 
-                          className="h-full bg-purple-500 transition-all duration-100" 
-                          style={{ width: `${Math.min(Math.abs(torque)/0.05 * 100, 100)}%` }}
-                        />
-                     </div>
-                     <span className="w-10 text-right">{torque.toFixed(3)}</span>
-                  </div>
-               ))}
-            </div>
+      <div className="absolute bottom-52 right-6 transition-all duration-300">
+         <div className="bg-black/60 backdrop-blur-md rounded-lg p-2 border border-white/10 flex gap-2 items-center">
+            <span className="text-[10px] font-bold text-gray-500 mr-1 self-start mt-1">RW</span>
+            {(rw_torque.length > 0 ? rw_torque : [0,0,0]).map((torque, i) => (
+               <div key={i} className="flex flex-col items-center gap-1">
+                  <div 
+                    className={`w-3 h-8 rounded-sm transition-all duration-100 ${Math.abs(torque) > 0.00001 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] scale-y-110' : 'bg-gray-700'}`}
+                    title={`RW ${i}`}
+                  />
+                  <span className="text-[9px] font-mono text-gray-400">
+                    {['X', 'Y', 'Z'][i] || i}
+                  </span>
+                   <span className="text-[8px] font-mono text-gray-500 h-3">
+                     {Math.abs(torque) > 0.00001 ? torque.toFixed(3) : '0.0'}
+                  </span>
+               </div>
+            ))}
          </div>
       </div>
     </div>

@@ -14,8 +14,8 @@ export function Trajectory() {
     const unsubscribe = telemetry.subscribe((data) => {
       const [x, y, z] = data.position;
       
-      // Convert to visual coordinates (1/1000 scale, Z-up to Y-up)
-      const vizPos = new Vector3(x / 1000, z / 1000, -y / 1000);
+      // Use raw coordinates to match SatelliteModel (Units: Meters)
+      const vizPos = new Vector3(x, y, z);
 
       setPoints(prev => {
         const last = prev.length > 0 ? prev[prev.length - 1] : null;
