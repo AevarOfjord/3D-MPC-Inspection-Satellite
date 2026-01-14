@@ -185,12 +185,20 @@ async def run_simulation_loop():
                 if hasattr(sim_instance, "target_state")
                 else tgt_pos,
                 "target_orientation": tgt_ori,  # Pass the commanded orientation
-                "thrusters": sim_instance.last_control_output[:12]
-                if hasattr(sim_instance, "last_control_output")
-                else [],
-                "rw_torque": sim_instance.last_control_output[12:]
-                if hasattr(sim_instance, "last_control_output")
-                else [],
+                "thrusters": (
+                    sim_instance.last_control_output[
+                        : getattr(sim_instance.mpc_controller, "num_thrusters", 12)
+                    ]
+                    if hasattr(sim_instance, "last_control_output")
+                    else []
+                ),
+                "rw_torque": (
+                    sim_instance.last_control_output[
+                        getattr(sim_instance.mpc_controller, "num_thrusters", 12) :
+                    ]
+                    if hasattr(sim_instance, "last_control_output")
+                    else []
+                ),
                 "obstacles": [
                     {"position": list(o.position), "radius": o.radius}
                     for o in (
