@@ -28,7 +28,7 @@ export function Overlay() {
 
   if (!data) return null;
 
-  const { position, velocity, thrusters, rw_torque, solve_time = 0, pos_error = 0, ang_error = 0 } = data;
+  const { position, velocity, thrusters, rw_torque, solve_time = 0, pos_error = 0, ang_error = 0, angular_velocity = [0,0,0] } = data;
   const speed = Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2);
   const distance = Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2);
   const angErrorDeg = ang_error * (180 / Math.PI);
@@ -81,6 +81,15 @@ export function Overlay() {
                  <span className="text-right bg-white/5 rounded px-1 text-yellow-200">{fmt(attitude[1])}</span>
                  <span className="text-right bg-white/5 rounded px-1 text-yellow-200">{fmt(attitude[2])}</span>
                  <span className="text-gray-500 pl-1">°</span>
+              </div>
+
+              {/* SPIN (Angular Velocity) Row */}
+              <div className="grid grid-cols-[30px_1fr_1fr_1fr_25px] gap-1 items-center">
+                 <span className="text-gray-400 font-bold">SPIN</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-cyan-200">{fmt(angular_velocity[0] * 180 / Math.PI)}</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-cyan-200">{fmt(angular_velocity[1] * 180 / Math.PI)}</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-cyan-200">{fmt(angular_velocity[2] * 180 / Math.PI)}</span>
+                 <span className="text-gray-500 pl-1">°/s</span>
               </div>
               
               {/* Rotation Axis Labels */}
