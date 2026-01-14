@@ -3,6 +3,7 @@ import { Viewport } from './components/Viewport';
 import { telemetry } from './services/telemetry';
 import { Overlay } from './components/Overlay';
 import { Editor } from './components/Editor';
+import { TelemetryCharts } from './components/TelemetryCharts';
 
 function App() {
   const [connected] = useState(true); // TODO: implement real connection status
@@ -45,6 +46,7 @@ function App() {
       <main className="flex-1 relative overflow-hidden">
         <Viewport viewMode={viewMode} />
         <Overlay />
+        <TelemetryCharts />
         <Editor />
       </main>
     </div>

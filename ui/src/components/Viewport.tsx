@@ -9,6 +9,7 @@ import { EditableObstacles } from './EditableObstacles';
 import { useMissionStore } from '../store/missionStore';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
+import { Trajectory } from './Trajectory';
 
 function Obstacles() {
   const [params, setParams] = useState<{
@@ -81,6 +82,7 @@ export function Viewport({ viewMode }: ViewportProps) {
         <Obstacles />
         <EditableObstacles />
         <SatelliteModel />
+        <Trajectory />
         
       </Canvas>
     </div>
