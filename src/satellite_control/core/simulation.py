@@ -545,6 +545,12 @@ class SatelliteMPCLinearizedSimulation:
                 external_target_state=self.target_state,
             )
 
+            # Update obstacles (V3.0.0)
+            if self.mission_manager.mission_state:
+                self.mpc_runner.update_obstacles(
+                    self.mission_manager.mission_state.obstacles
+                )
+
             # Compute action
             (
                 thruster_action,

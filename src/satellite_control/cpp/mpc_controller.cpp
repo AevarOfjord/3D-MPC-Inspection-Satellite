@@ -62,7 +62,13 @@ void MPCControllerCpp::init_solver() {
     int n_init = nx_;
     int n_bounds_x = (N_ + 1) * nx_;
     int n_bounds_u = N_ * nu_;
-    int n_constraints = n_dyn + n_init + n_bounds_x + n_bounds_u;
+    
+    // Obstacle constraints: 1 per step (Simple Hard Constraint)
+    n_obs_constraints_ = N_;
+    int n_constraints = n_dyn + n_init + n_bounds_x + n_bounds_u + n_obs_constraints_;
+    
+    // Resize index map for obstacle updates
+    obs_A_indices_.resize(N_);
     
     // Build P matrix (diagonal cost)
     std::vector<Eigen::Triplet<double>> P_triplets;
@@ -153,6 +159,38 @@ void MPCControllerCpp::init_solver() {
         }
         row_idx += nu_;
     }
+
+    // Obstacle constraints (Placeholder initialization)
+    // Row layout: [dyn, init, bounds_x, bounds_u, obs]
+    // Each row k corresponds to step k: obs_k^T * p_k >= dist_k
+    for (int k = 0; k < N_; ++k) {
+        int x_k_idx = k * nx_; // Position variables at step k
+        // We will enable/disable these rows dynamically
+        // Initialize x, y, z coefficients (will be updated)
+        for (int i = 0; i < 3; ++i) {
+             A_triplets.emplace_back(row_idx, x_k_idx + i, 0.0);
+             // We need to track the index in A_data_ later
+             // Since we construct A_ from triplets, we can't know the exact index yet
+             // Map building happens after compression.
+        }
+        row_idx++;
+    }
+
+    // Obstacle constraints (Placeholder initialization)
+    // Row layout: [dyn, init, bounds_x, bounds_u, obs]
+    // Each row k corresponds to step k: obs_k^T * p_k >= dist_k
+    for (int k = 0; k < N_; ++k) {
+        int x_k_idx = k * nx_; // Position variables at step k
+        // We will enable/disable these rows dynamically
+        // Initialize x, y, z coefficients (will be updated)
+        for (int i = 0; i < 3; ++i) {
+             A_triplets.emplace_back(row_idx, x_k_idx + i, 0.0);
+             // We need to track the index in A_data_ later
+             // Since we construct A_ from triplets, we can't know the exact index yet
+             // Map building happens after compression.
+        }
+        row_idx++;
+    }
     
     A_.resize(n_constraints, n_vars);
     A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
@@ -213,6 +251,11 @@ void MPCControllerCpp::init_solver() {
         l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_;
         u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_;
     }
+
+    // Set obstacle bounds to -inf initially (inactive)
+    int obs_idx_start = n_dyn + n_init + n_bounds_x + n_bounds_u;
+    l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
+    u_.segment(obs_idx_start, n_obs_constraints_).setConstant(1e20);
     
     // Convert to CSC arrays for OSQP
     P_data_.assign(P_.valuePtr(), P_.valuePtr() + P_.nonZeros());
@@ -326,6 +369,9 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     // Update cost
     update_cost(x_targ);
     
+    // Update obstacle constraints (V3.0.0)
+    update_obstacle_constraints(x_current, x_target);
+
     // Update constraints
     update_constraints(x_current);
     
@@ -388,6 +434,52 @@ void MPCControllerCpp::apply_obstacle_constraints(const VectorXd& x_current) {
     
     // TODO: Add hard constraints to l_, u_ bounds or additional rows to A_
     // This requires restructuring the QP dimensions which is a larger change
+}
+
+void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target) {
+    if (!mpc_params_.enable_collision_avoidance || obstacles_.size() == 0) {
+        // Disable all constraints
+        int obs_idx_start = A_.rows() - n_obs_constraints_;
+        l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
+         osqp_update_bounds(work_, l_.data(), u_.data());
+        return;
+    }
+
+    int obs_idx_start = A_.rows() - n_obs_constraints_;
+    VectorXd p_curr = x_current.segment<3>(0);
+    VectorXd p_targ = x_target.segment<3>(0);
+
+    for (int k = 0; k < N_; ++k) {
+        // Linear interpolation guess for position at step k
+        double alpha = double(k + 1) / double(N_); // Look ahead
+        Eigen::Vector3d p_guess = (p_curr + alpha * (p_targ - p_curr)); 
+
+        // Get constraints (closest obstacle)
+        auto constraints = obstacles_.get_linear_constraints(p_guess, mpc_params_.obstacle_margin);
+        
+        if (constraints.empty()) {
+            // No constraint active
+            l_(obs_idx_start + k) = -1e20;
+             // Zero out A coeffs? Not strictly necessary if bound is -inf, but cleaner
+             for(int i=0; i<3; ++i) A_data_[obs_A_indices_[k][i]] = 0.0;
+        } else {
+            // Use first (primary) constraint: n^T * p >= d
+            
+            Eigen::Vector3d normal = constraints[0].first;
+            double bound_val = constraints[0].second;
+            
+            // Update A matrix coefficients
+            for(int i=0; i<3; ++i) {
+                A_data_[obs_A_indices_[k][i]] = normal(i);
+            }
+            // Update Lower Bound
+            l_(obs_idx_start + k) = bound_val;
+        }
+    }
+    
+    // Update Solver
+    osqp_update_A(work_, A_data_.data(), OSQP_NULL, A_.nonZeros());
+    osqp_update_bounds(work_, l_.data(), u_.data());
 }
 
 } // namespace satellite_mpc

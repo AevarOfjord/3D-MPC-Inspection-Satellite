@@ -1,3 +1,30 @@
+# Changelog
+
+## Version 3.0.0 - January 13, 2026
+
+### Features
+- **Collision Avoidance:** Implemented dynamic obstacle avoidance using hard QP constraints.
+- **Obstacle Types:** Support for Sphere, Cylinder, and Box obstacles.
+- **3D Visualization:** Real-time rendering of obstacles in the simulation view.
+- **Safety:** Hard constraints guarantee minimum separation distances are respected.
+
+### Technical Details
+- **C++ Backend:**
+  - Added `Obstacle` and `ObstacleSet` classes for efficient geometry handling.
+  - Modified `MPCControllerCpp` to dynamically insert linear constraints into the OSQP formulation.
+  - Implemented closest-point calculations for supported geometries.
+- **Python Integration:**
+  - Updated `_cpp_mpc` bindings to expose obstacle management.
+  - Added `Obstacle` dataclasses to `mission_types.py`.
+  - Simplifed `MPCRunner` to pass obstacle data directly to the C++ controller.
+- **Configuration:**
+  - Added `enable_collision_avoidance` and `obstacle_margin` to `MPCParams`.
+
+### Compatibility
+- Fully backward compatible with V2.x missions (obstacles are optional).
+
+---
+
 # Changelog - January 3, 2026
 
 ## Summary

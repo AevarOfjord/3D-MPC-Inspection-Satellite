@@ -326,6 +326,18 @@ class MPCParams(BaseModel):
         description="Enable verbose MPC solver output",
     )
 
+    # Collision Avoidance (V3.0.0)
+    enable_collision_avoidance: bool = Field(
+        False,
+        description="Enable collision avoidance constraints",
+    )
+    obstacle_margin: float = Field(
+        0.5,
+        ge=0.0,
+        le=5.0,
+        description="Safety margin around obstacles in meters",
+    )
+
     @field_validator("thruster_type")
     @classmethod
     def validate_thruster_type(cls, v: str) -> str:

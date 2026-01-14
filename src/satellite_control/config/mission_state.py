@@ -100,15 +100,12 @@ class MissionState:
     dxf_return_position: Optional[Tuple[float, float, float]] = None
     dxf_return_angle: Optional[Tuple[float, float, float]] = None
     dxf_return_start_time: Optional[float] = None
-    
+
     # Obstacle Avoidance (V3.0.0)
     obstacles_enabled: bool = False
-    obstacles: List[Any] = field(default_factory=list)  # List of Obstacle objects
-
-
-    # Obstacle avoidance (spherical obstacles)
-    obstacles_enabled: bool = False
-    obstacles: List[Tuple[float, float, float, float]] = field(default_factory=list)
+    obstacles: List[Any] = field(
+        default_factory=list
+    )  # List of Obstacle objects or tuples
 
     def reset(self) -> None:
         """Reset all mission state to defaults."""
@@ -126,9 +123,15 @@ class MissionState:
             return "SHAPE_FOLLOWING"
         elif self.enable_waypoint_mode or self.enable_multi_point_mode:
             num_targets = len(
-                self.waypoint_targets if self.waypoint_targets else self.multi_point_targets
+                self.waypoint_targets
+                if self.waypoint_targets
+                else self.multi_point_targets
             )
-            return "WAYPOINT_NAVIGATION_MULTI" if num_targets > 1 else "WAYPOINT_NAVIGATION"
+            return (
+                "WAYPOINT_NAVIGATION_MULTI"
+                if num_targets > 1
+                else "WAYPOINT_NAVIGATION"
+            )
         else:
             return "NONE"
 
@@ -153,7 +156,11 @@ def print_mission_state(state: MissionState) -> None:
     print(f"\nMission: {mission_type}")
 
     if state.enable_waypoint_mode or state.enable_multi_point_mode:
-        targets = state.waypoint_targets if state.waypoint_targets else state.multi_point_targets
+        targets = (
+            state.waypoint_targets
+            if state.waypoint_targets
+            else state.multi_point_targets
+        )
         print("\nWaypoint Navigation:")
         print(f"  Targets: {len(targets)}")
         print(f"  Current: {state.current_target_index}")

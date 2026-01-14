@@ -16,6 +16,7 @@
 | **Reaction Wheel Control** | 3-axis attitude control with 0.18° precision           |
 | **Orbital Dynamics**       | Hill-Clohessy-Wiltshire gravity gradient model         |
 | **Multi-Satellite Fleet**  | 3 inspectors with collision avoidance                  |
+| **Obstacle Avoidance**     | Dynamic hard constraints for environment obstacles     |
 | **Mission Designer UI**    | Three.js web interface for trajectory planning         |
 | **Mission System**         | Pre-built flyby, circumnavigation, inspection missions |
 

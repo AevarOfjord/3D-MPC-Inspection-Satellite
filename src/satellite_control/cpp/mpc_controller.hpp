@@ -103,10 +103,6 @@ private:
     
     // Internal methods
     void init_solver();
-    void update_dynamics(const VectorXd& x_current);
-    void update_cost(const VectorXd& x_target);
-    void update_constraints(const VectorXd& x_current);
-    VectorXd apply_z_tilt(const VectorXd& x_current, const VectorXd& x_target);
     
     // CSC matrix helpers
     std::vector<c_float> P_data_;
@@ -124,6 +120,18 @@ private:
     
     // Collision avoidance (V3.0.0)
     satellite_collision::ObstacleSet obstacles_;
+    // Obstacle constraints (V3.0.0)
+    int n_obs_constraints_ = 0;
+    std::vector<std::vector<int>> obs_A_indices_; // Map[step][col] -> A index
+    
+    // Updates
+    void update_dynamics(const VectorXd& x_current);
+    void update_cost(const VectorXd& x_target);
+    void update_constraints(const VectorXd& x_current);
+    void update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target);
+    VectorXd apply_z_tilt(const VectorXd& x_current, const VectorXd& x_target);
+    
+    // Deprecated placeholder
     void apply_obstacle_constraints(const VectorXd& x_current);
 };
 

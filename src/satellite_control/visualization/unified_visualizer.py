@@ -271,11 +271,13 @@ class UnifiedVisualizationGenerator:
                 if mission_state.dxf_shape_center
                 else None
             )
-        else:
-            # V4.0.0: Use empty defaults if mission_state not provided
-            self.dxf_base_shape = []
-            self.dxf_offset_path = []
             self.dxf_center = None
+
+        # V3.0.0: Get obstacles from mission_state
+        if mission_state and hasattr(mission_state, "obstacles"):
+            self.obstacles = mission_state.obstacles
+        else:
+            self.obstacles = []
 
         # Get thruster positions and forces from app_config if available
         self.thrusters = {}
@@ -1022,6 +1024,20 @@ class UnifiedVisualizationGenerator:
         assert self.ax_main is not None, "ax_main must be initialized"
 
         try:
+            if self.dxf_base_shape:
+                # Draw DXF if available
+                bx = [p[0] for p in self.dxf_base_shape]
+                by = [p[1] for p in self.dxf_base_shape]
+                bz = [p[2] if len(p) > 2 else 0.0 for p in self.dxf_base_shape]
+                # Close loop
+                bx.append(bx[0])
+                by.append(by[0])
+                bz.append(bz[0])
+                self.ax_main.plot(bx, by, bz, color="purple", alpha=0.5, linewidth=1)
+
+            # Draw 3D obstacles (V3.0.0)
+            self._draw_3d_obstacles(self.ax_main)
+
             if (
                 isinstance(self.dxf_base_shape, (list, tuple))
                 and len(self.dxf_base_shape) >= 3
@@ -1775,6 +1791,7 @@ class UnifiedVisualizationGenerator:
             )
         ax_xy.plot(target_x, target_y, "r*", markersize=20, label="Target")
 
+        # Plot DXF Shape if available
         try:
             if (
                 isinstance(self.dxf_base_shape, (list, tuple))
@@ -1799,24 +1816,82 @@ class UnifiedVisualizationGenerator:
                 ax_xy.plot(
                     px,
                     py,
-                    color="#e67e22",
+                    color="#f1c40f",
                     linewidth=PlotStyle.LINEWIDTH,
-                    alpha=0.8,
                     linestyle="--",
-                    label="Shape Path",
+                    label="Inspection Path",
                 )
-            if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) >= 2:
-                ax_xy.scatter(
-                    self.dxf_center[0],
-                    self.dxf_center[1],
-                    c="#2ecc71",
-                    s=60,
-                    marker="+",
-                    linewidth=PlotStyle.LINEWIDTH,
-                    label="Shape Center",
-                )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Could not plot DXF shapes: {e}")
+
+        # Draw obstacles (V3.0.0)
+        from matplotlib.patches import Circle, Rectangle
+
+        if hasattr(self, "obstacles") and self.obstacles:
+            for obs in self.obstacles:
+                try:
+                    # Handle both dict (from JSON) and object
+                    if isinstance(obs, dict):
+                        etype = obs.get("type", "sphere")
+                        pos = obs.get("position", [0, 0, 0])
+                        radius = obs.get("radius", 0.5)
+                        size = obs.get("size", [1, 1, 1])
+                    else:
+                        etype = (
+                            obs.type.value
+                            if hasattr(obs.type, "value")
+                            else str(obs.type)
+                        )
+                        pos = obs.position
+                        radius = obs.radius
+                        size = getattr(obs, "size", [1, 1, 1])
+
+                    if etype in ["sphere", "cylinder"]:
+                        # Draw circle for sphere/cylinder projection
+                        circle = Circle(
+                            (pos[0], pos[1]),
+                            radius,
+                            color="gray",
+                            alpha=0.3,
+                            label="Obstacle"
+                            if "Obstacle" not in [l.get_label() for l in ax_xy.lines]
+                            else "_nolegend_",
+                        )
+                        ax_xy.add_patch(circle)
+                        # Add safety margin ring
+                        margin = 0.5
+                        safe_circle = Circle(
+                            (pos[0], pos[1]),
+                            radius + margin,
+                            color="red",
+                            fill=False,
+                            linestyle="--",
+                            alpha=0.3,
+                        )
+                        ax_xy.add_patch(safe_circle)
+                    elif etype == "box":
+                        rect = Rectangle(
+                            (pos[0] - size[0] / 2, pos[1] - size[1] / 2),
+                            size[0],
+                            size[1],
+                            color="gray",
+                            alpha=0.3,
+                        )
+                        ax_xy.add_patch(rect)
+                except Exception as e:
+                    print(f"Failed to draw obstacle on 2D plot: {e}")
+
+        # Draw shape center
+        if isinstance(self.dxf_center, (list, tuple)) and len(self.dxf_center) >= 2:
+            ax_xy.scatter(
+                self.dxf_center[0],
+                self.dxf_center[1],
+                c="#2ecc71",
+                s=60,
+                marker="+",
+                linewidth=PlotStyle.LINEWIDTH,
+                label="Shape Center",
+            )
 
         # Add target circle
         circle = Circle(
