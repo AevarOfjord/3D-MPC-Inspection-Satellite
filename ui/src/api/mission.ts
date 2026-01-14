@@ -5,6 +5,8 @@ export interface Obstacle {
 
 export interface MissionConfig {
   start_position: [number, number, number];
+  target_position: [number, number, number];
+  target_orientation: [number, number, number];
   obstacles: Obstacle[];
 }
 

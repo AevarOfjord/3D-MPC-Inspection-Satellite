@@ -103,20 +103,22 @@ class SimulationLoop:
             print("\n" + "=" * 60)
             print("INTERACTIVE REPLAY AVAILABLE")
             print("=" * 60)
-            answer = input(
-                "\nWould you like to open the interactive MuJoCo viewer? (y/N): "
-            ).strip().lower()
+            answer = (
+                input("\nWould you like to open the interactive MuJoCo viewer? (y/N): ")
+                .strip()
+                .lower()
+            )
 
             if answer == "y":
                 # Assuming scripts are in project root relative to CWD
                 # Ideally we find root relative to this file
                 project_root = Path(__file__).resolve().parent.parent.parent.parent
                 script_path = project_root / "scripts" / "mujoco_viewer.py"
-                
+
                 if not script_path.exists():
                     # Fallback if structure is different
                     script_path = Path("scripts/mujoco_viewer.py").absolute()
-                
+
                 data_path = self.simulation.data_save_path.absolute()
 
                 print(f"Launching viewer for: {data_path.name}")
@@ -411,6 +413,10 @@ class SimulationLoop:
             True if simulation should stop, False otherwise
         """
         from src.satellite_control.utils.orientation_utils import quat_angle_error
+
+        # V4.0.0: Continuous Mode override
+        if getattr(self.simulation, "continuous_mode", False):
+            return False
 
         if not self._is_dxf_mode():
             target_currently_reached = self.simulation.check_target_reached()

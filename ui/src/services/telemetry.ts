@@ -4,12 +4,17 @@ export interface TelemetryData {
   quaternion: [number, number, number, number];
   velocity: [number, number, number];
   angular_velocity: [number, number, number];
+  target_position: [number, number, number];
+  target_orientation: [number, number, number];
   thrusters: number[];
   rw_torque: number[];
   obstacles: Array<{
     position: [number, number, number];
     radius: number;
   }>;
+  solve_time?: number;
+  pos_error?: number; // meters
+  ang_error?: number; // radians
 }
 
 type TelemetryCallback = (data: TelemetryData) => void;

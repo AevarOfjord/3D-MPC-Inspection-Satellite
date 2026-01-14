@@ -1,51 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { missionApi } from '../api/mission';
-import type { MissionConfig, Obstacle } from '../api/mission';
+import { useMissionStore } from '../store/missionStore';
 import { Settings, Play, Plus, Trash2 } from 'lucide-react';
 
 export function Editor() {
   const [isOpen, setIsOpen] = useState(false);
-  const [config, setConfig] = useState<MissionConfig>({
-    start_position: [10.0, 0.0, 0.0],
-    obstacles: []
-  });
   const [loading, setLoading] = useState(false);
+  
+  const { 
+      config, 
+      updateStartPos,
+      updateTargetPos,
+      updateTargetOri,
+      addObstacle, 
+      removeObstacle, 
+      updateObstacle,
+      setEditing
+  } = useMissionStore();
 
-  const handleStartPosChange = (index: number, value: string) => {
-    const newPos = [...config.start_position] as [number, number, number];
-    newPos[index] = parseFloat(value) || 0;
-    setConfig({ ...config, start_position: newPos });
-  };
-
-  const addObstacle = () => {
-    setConfig({
-      ...config,
-      obstacles: [...config.obstacles, { position: [5.0, 0.0, 0.0], radius: 1.0 }]
-    });
-  };
-
-  const removeObstacle = (index: number) => {
-    setConfig({
-      ...config,
-      obstacles: config.obstacles.filter((_, i) => i !== index)
-    });
-  };
-
-  const updateObstacle = (index: number, field: keyof Obstacle, value: any, subIndex?: number) => {
-    const newObstacles = [...config.obstacles];
-    if (field === 'position' && typeof subIndex === 'number') {
-        newObstacles[index].position[subIndex] = parseFloat(value) || 0;
-    } else if (field === 'radius') {
-        newObstacles[index].radius = parseFloat(value) || 0;
-    }
-    setConfig({ ...config, obstacles: newObstacles });
-  };
+  // Sync isEditing with isOpen
+  useEffect(() => {
+      setEditing(isOpen);
+  }, [isOpen, setEditing]);
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
       await missionApi.updateMission(config);
-      // Optional: Add toast notification
     } catch (error) {
       console.error(error);
       alert('Failed to update mission');
@@ -81,10 +62,51 @@ export function Editor() {
                          type="number" 
                          step="0.1"
                          value={config.start_position[i]}
-                         onChange={(e) => handleStartPosChange(i, e.target.value)}
+                         onChange={(e) => updateStartPos(i, parseFloat(e.target.value) || 0)}
                          className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
                        />
                        <span className="text-[10px] text-gray-500 text-center mt-1 uppercase">{label}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+
+           {/* Target Position */}
+           <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Target Position (m)</label>
+              <div className="grid grid-cols-3 gap-2">
+                 {['x', 'y', 'z'].map((label, i) => (
+                    <div key={label} className="flex flex-col">
+                       <input 
+                         type="number" 
+                         step="0.1"
+                         value={config.target_position[i]}
+                         onChange={(e) => updateTargetPos(i, parseFloat(e.target.value) || 0)}
+                         className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
+                       />
+                       <span className="text-[10px] text-gray-500 text-center mt-1 uppercase">{label}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+
+           {/* Target Orientation */}
+           <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Target Rotation (deg)</label>
+              <div className="grid grid-cols-3 gap-2">
+                 {['r', 'p', 'y'].map((label, i) => (
+                    <div key={label} className="flex flex-col">
+                       <input 
+                         type="number" 
+                         step="1"
+                         value={Math.round(config.target_orientation[i] * (180/Math.PI))}
+                         onChange={(e) => {
+                             const deg = parseFloat(e.target.value) || 0;
+                             updateTargetOri(i, deg * (Math.PI/180));
+                         }}
+                         className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
+                       />
+                       <span className="text-[10px] text-gray-500 text-center mt-1 uppercase">{label === 'r' ? 'Roll' : label === 'p' ? 'Pitch' : 'Yaw'}</span>
                     </div>
                  ))}
               </div>
@@ -125,7 +147,7 @@ export function Editor() {
                                      type="number"
                                      step="0.5"
                                      value={obs.position[idx]}
-                                     onChange={(e) => updateObstacle(i, 'position', e.target.value, idx)}
+                                     onChange={(e) => updateObstacle(i, 'position', parseFloat(e.target.value) || 0, idx)}
                                      className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-xs w-full"
                                    />
                                 ))}
@@ -139,7 +161,7 @@ export function Editor() {
                             type="number"
                             step="0.1"
                             value={obs.radius}
-                            onChange={(e) => updateObstacle(i, 'radius', e.target.value)}
+                            onChange={(e) => updateObstacle(i, 'radius', parseFloat(e.target.value) || 0)}
                             className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-xs w-full"
                           />
                        </div>

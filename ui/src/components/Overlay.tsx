@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
-import { Cpu, Radio } from 'lucide-react';
+import { Cpu, Radio, Activity } from 'lucide-react';
 
 export function Overlay() {
   const [data, setData] = useState<TelemetryData | null>(null);
@@ -13,9 +13,10 @@ export function Overlay() {
 
   if (!data) return null;
 
-  const { position, velocity, thrusters, rw_torque } = data;
+  const { position, velocity, thrusters, rw_torque, solve_time = 0, pos_error = 0, ang_error = 0 } = data;
   const speed = Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2);
   const distance = Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2);
+  const angErrorDeg = ang_error * (180 / Math.PI);
   
   // Thruster status (assuming 12 thrusters, paired?)
   // Simple indicator: Grey for off, Green for active
@@ -46,6 +47,31 @@ export function Overlay() {
               <div className="flex justify-between">
                  <span className="text-gray-400">SPEED</span>
                  <span className="text-blue-300">{speed.toFixed(3)} m/s</span>
+              </div>
+           </div>
+        </div>
+
+        {/* Controller Stats */}
+        <div className="bg-black/60 backdrop-blur-md rounded-lg p-3 border border-white/10 text-white min-w-[200px]">
+           <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-1">
+             <Activity size={16} className="text-yellow-400" />
+             <span className="font-bold text-sm tracking-wider">CONTROLLER</span>
+           </div>
+           
+           <div className="space-y-1 font-mono text-xs">
+              <div className="flex justify-between">
+                 <span className="text-gray-400">SOLVE</span>
+                 <span className={`${solve_time < 20 ? 'text-green-400' : solve_time < 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                   {(solve_time * 1000).toFixed(1)} ms
+                 </span>
+              </div>
+              <div className="flex justify-between">
+                 <span className="text-gray-400">POS ERR</span>
+                 <span className={pos_error < 0.1 ? 'text-green-400' : 'text-white'}>{pos_error.toFixed(3)} m</span>
+              </div>
+              <div className="flex justify-between">
+                 <span className="text-gray-400">ANG ERR</span>
+                 <span className={angErrorDeg < 1.0 ? 'text-green-400' : 'text-white'}>{angErrorDeg.toFixed(1)}°</span>
               </div>
            </div>
         </div>

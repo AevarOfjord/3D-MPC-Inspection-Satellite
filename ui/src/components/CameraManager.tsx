@@ -1,0 +1,67 @@
+import { useEffect, useRef } from 'react';
+import { useThree, useFrame } from '@react-three/fiber';
+import { Vector3, Quaternion } from 'three';
+import { telemetry } from '../services/telemetry';
+
+type CameraMode = 'free' | 'chase' | 'top';
+
+interface CameraManagerProps {
+  mode: CameraMode;
+}
+
+export function CameraManager({ mode }: CameraManagerProps) {
+  const { camera, controls } = useThree();
+  const satPosRef = useRef(new Vector3());
+  const satQuatRef = useRef(new Quaternion());
+  
+  useEffect(() => {
+    const unsub = telemetry.subscribe(d => {
+       satPosRef.current.set(d.position[0], d.position[1], d.position[2]);
+       const [w, x, y, z] = d.quaternion;
+       satQuatRef.current.set(x, y, z, w);
+    });
+    return () => { unsub(); };
+  }, []);
+
+  // Handle Mode Switching transitions
+  useEffect(() => {
+    if (mode === 'top') {
+       // Move to Top Down
+       camera.position.set(0, 15, 0);
+       camera.lookAt(0, 0, 0);
+       camera.up.set(0, 0, -1); // Orient so +Z is up on screen? Or -Z? standard map view.
+       if (controls) {
+           (controls as any).target.set(0, 0, 0);
+           (controls as any).update();
+       }
+    } else if (mode === 'free') {
+        camera.up.set(0, 1, 0);
+    }
+  }, [mode, camera, controls]);
+
+  useFrame(() => {
+    if (mode === 'chase') {
+        // Simple Chase: Position camera behind satellite
+        // Offset in local space: [-2, 1, 0] (Behind and slightly up)
+        const offset = new Vector3(-2, 1, 0);
+        offset.applyQuaternion(satQuatRef.current);
+        const targetPos = satPosRef.current.clone();
+        
+        const camPos = targetPos.clone().add(offset);
+        
+        // Smooth lerp could go here, but strict follow for now
+        camera.position.lerp(camPos, 0.1);
+        camera.lookAt(targetPos);
+        
+        if (controls) {
+            (controls as any).target.copy(targetPos);
+            (controls as any).update();
+        }
+    } else if (mode === 'top') {
+         // Keep looking at 0,0,0? Or follow sat from top?
+         // Let's just fix it for now to overview. 
+    }
+  });
+
+  return null;
+}

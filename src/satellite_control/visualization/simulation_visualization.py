@@ -645,7 +645,7 @@ class SimulationVisualizationManager:
         initial_pos = getattr(self, "initial_start_pos", (0.0, 0.0, 0.0))
         initial_angle = getattr(self, "initial_start_angle", (0.0, 0.0, 0.0))
         self.satellite.position = np.array(initial_pos)
-        self.satellite.velocity = np.array([0.0, 0.0])
+        self.satellite.velocity = np.array([0.0, 0.0, 0.0])
         self.satellite.angle = initial_angle
         self.satellite.angular_velocity = 0.0
 
@@ -718,27 +718,27 @@ class SimulationVisualizationManager:
         video_path = output_dir / "Simulation_3D_Render.mp4"
         try:
             if hasattr(self.satellite, "model") and self.satellite.model is not None:
-                 model = self.satellite.model
+                model = self.satellite.model
             else:
-                 # Fallback: Load model from XML file typical for V3/V4
-                 model_path = Path("models/satellite.xml")
-                 if not model_path.exists():
-                     # Try searching in standard locations
-                     possible_paths = [
-                         Path("models/satellite.xml"),
-                         Path("../models/satellite.xml"), 
-                         Path("../../models/satellite.xml")
-                     ]
-                     for p in possible_paths:
-                         if p.exists():
-                             model_path = p
-                             break
-                 
-                 if model_path.exists():
-                     print(f"Loading MuJoCo model from file for 3D render: {model_path}")
-                     model = mujoco.MjModel.from_xml_path(str(model_path))
-                 else:
-                     raise AttributeError("Model attribute missing and file not found")
+                # Fallback: Load model from XML file typical for V3/V4
+                model_path = Path("models/satellite.xml")
+                if not model_path.exists():
+                    # Try searching in standard locations
+                    possible_paths = [
+                        Path("models/satellite.xml"),
+                        Path("../models/satellite.xml"),
+                        Path("../../models/satellite.xml"),
+                    ]
+                    for p in possible_paths:
+                        if p.exists():
+                            model_path = p
+                            break
+
+                if model_path.exists():
+                    print(f"Loading MuJoCo model from file for 3D render: {model_path}")
+                    model = mujoco.MjModel.from_xml_path(str(model_path))
+                else:
+                    raise AttributeError("Model attribute missing and file not found")
 
             renderer = mujoco.Renderer(model, width=width, height=height)
             data = mujoco.MjData(model)

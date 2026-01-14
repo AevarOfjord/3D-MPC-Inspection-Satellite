@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional
 
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.mission_types import Mission
@@ -63,13 +63,18 @@ class ObstacleModel(BaseModel):
 
 class MissionConfigModel(BaseModel):
     start_position: List[float]
+    target_position: List[float]
+    target_orientation: List[float]
     obstacles: List[ObstacleModel]
 
 
 # --- Global State ---
 sim_instance = None
 simulation_task = None
-current_mission_config = None  # To persist config across restarts
+current_mission_config: Optional[MissionConfigModel] = (
+    None  # To persist config across restarts
+)
+simulation_paused = True  # Start paused until explicit Run command
 
 
 async def run_simulation_loop():
@@ -84,55 +89,102 @@ async def run_simulation_loop():
         from src.satellite_control.mission import create_flyby_mission
         from src.satellite_control.config.simulation_config import SimulationConfig
         from src.satellite_control.mission.mission_types import Obstacle
+    from src.satellite_control.config.simulation_config import SimulationConfig
+    from src.satellite_control.mission.mission_types import Obstacle
 
-        # Use provided config or default
-        if current_mission_config:
-            start_pos = tuple(current_mission_config.start_position)
-            obstacles = [
-                Obstacle(position=np.array(o.position), radius=o.radius)
-                for o in current_mission_config.obstacles
-            ]
-        else:
-            # Default Flyby
-            default_mission = create_flyby_mission()
-            start_pos = tuple(default_mission.start_position)
-            obstacles = default_mission.obstacles
+    start_pos = (
+        tuple(current_mission_config.start_position)
+        if current_mission_config
+        else (10.0, 0.0, 0.0)
+    )
+    target_pos = (
+        tuple(current_mission_config.target_position)
+        if current_mission_config
+        and getattr(current_mission_config, "target_position", None)
+        else (0.0, 0.0, 0.0)
+    )
+    target_angle = (
+        tuple(current_mission_config.target_orientation)
+        if current_mission_config
+        and getattr(current_mission_config, "target_orientation", None)
+        else (0.0, 0.0, 0.0)
+    )
 
+    obstacles = (
+        [
+            (o.position[0], o.position[1], o.position[2], o.radius)
+            for o in current_mission_config.obstacles
+        ]
+        if current_mission_config
+        else []
+    )
+
+    if sim_instance is None or current_mission_config is not None:
         # Create configuration
         sim_config = SimulationConfig.create_default()
         if obstacles:
-            sim_config.mission_state.obstacles = obstacles
+            # Convert obstacle tuples to Obstacle objects for sim_config
+            sim_config.mission_state.obstacles = [
+                Obstacle(position=np.array(o[:3]), radius=o[3]) for o in obstacles
+            ]
             sim_config.mission_state.obstacles_enabled = len(obstacles) > 0
 
         # Initialize simulation
         sim_instance = SatelliteMPCLinearizedSimulation(
             simulation_config=sim_config,
             start_pos=start_pos,
-            target_pos=(0.0, 0.0, 0.0),
+            target_pos=target_pos,
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            target_angle=target_angle,
         )
 
     try:
         while True:
+            # Check Pause State
+            if simulation_paused:
+                await asyncio.sleep(0.1)
+                continue
+
+            # Sync Target with Config (Enable Dynamic Updates)
+            tgt_pos = target_pos  # Default from init
+            tgt_ori = target_angle  # Default from init
+
+            if sim_instance and current_mission_config:
+                tgt_pos = (
+                    tuple(current_mission_config.target_position)
+                    if hasattr(current_mission_config, "target_position")
+                    else (0.0, 0.0, 0.0)
+                )
+                tgt_ori = (
+                    tuple(current_mission_config.target_orientation)
+                    if hasattr(current_mission_config, "target_orientation")
+                    else (0.0, 0.0, 0.0)
+                )
+                sim_instance.set_target(tgt_pos, tgt_ori)
+                # Ensure we stay in continuous mode
+                sim_instance.set_continuous(True)
+
             # Step simulation (~60Hz)
             steps_per_frame = int(0.016 / SIMULATION_DT)
             for _ in range(steps_per_frame):
                 sim_instance.step()
-                if sim_instance.is_complete():
-                    logger.info("Mission Complete. Resetting...")
-                    sim_instance.reset()
-                    break
+                # Continuous mode enabled: no auto-reset needed
+                # if sim_instance.is_complete():
+                #    ... reset ...
 
             # Broadcast state
-            state = sim_instance.get_current_state()  # FIX: get_current_state()
+            state = sim_instance.get_current_state()
 
             telemetry = {
-                "time": sim_instance.sim_time,
+                "time": sim_instance.simulation_time,
                 "position": state[0:3],
                 "quaternion": state[3:7],
                 "velocity": state[7:10],
                 "angular_velocity": state[10:13],
+                "target_position": sim_instance.target_state[0:3]
+                if hasattr(sim_instance, "target_state")
+                else tgt_pos,
+                "target_orientation": tgt_ori,  # Pass the commanded orientation
                 "thrusters": sim_instance.last_control_output[:12]
                 if hasattr(sim_instance, "last_control_output")
                 else [],
@@ -140,12 +192,17 @@ async def run_simulation_loop():
                 if hasattr(sim_instance, "last_control_output")
                 else [],
                 "obstacles": [
-                    {"position": obs.position.tolist(), "radius": obs.radius}
-                    for obs in sim_instance.simulation_config.mission_state.obstacles
+                    {"position": list(o.position), "radius": o.radius}
+                    for o in (
+                        sim_instance.simulation_config.mission_state.obstacles or []
+                    )
                 ]
-                if sim_instance.simulation_config
-                and sim_instance.simulation_config.mission_state.obstacles
+                if hasattr(sim_instance, "simulation_config")
+                and hasattr(sim_instance.simulation_config, "mission_state")
                 else [],
+                "solve_time": getattr(sim_instance, "last_solve_time", 0.0),
+                "pos_error": getattr(sim_instance, "last_pos_error", 0.0),
+                "ang_error": getattr(sim_instance, "last_ang_error", 0.0),
             }
 
             await manager.broadcast(telemetry)
@@ -160,7 +217,7 @@ async def update_mission(config: MissionConfigModel):
     """
     Update mission parameters and restart simulation.
     """
-    global sim_instance, simulation_task, current_mission_config
+    global sim_instance, simulation_task, current_mission_config, simulation_paused
 
     logger.info(f"Received new mission config: {config}")
 
@@ -178,6 +235,9 @@ async def update_mission(config: MissionConfigModel):
 
     # 3. Restart loop
     simulation_task = asyncio.create_task(run_simulation_loop())
+
+    # 4. Unpause
+    simulation_paused = False
 
     return {"status": "success", "message": "Simulation restarted with new config"}
 

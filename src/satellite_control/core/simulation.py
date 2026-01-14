@@ -576,6 +576,10 @@ class SatelliteMPCLinearizedSimulation:
             self.last_control_update = self.simulation_time
             self.next_control_simulation_time += self.control_update_interval
 
+            # Store last control output for telemetry (thrusters + rw_torque)
+            # Thrusters: 12, RW: 3
+            self.last_control_output = np.concatenate([thruster_action, rw_torque_cmd])
+
             # Update history / command queue
             self.previous_thrusters = thruster_action.copy()
             self.control_history.append(thruster_action.copy())
@@ -624,6 +628,11 @@ class SatelliteMPCLinearizedSimulation:
 
             # Quaternion error: 2 * arccos(|<q1, q2>|)
             ang_error = quat_angle_error(self.target_state[3:7], current_state[3:7])
+
+            # V4.0.0: Expose metrics for external telemetry
+            self.last_solve_time = solve_time
+            self.last_pos_error = pos_error
+            self.last_ang_error = ang_error
 
             # Determine status message
             status_msg = f"Traveling to Target (t={self.simulation_time:.1f}s)"
@@ -795,10 +804,74 @@ class SatelliteMPCLinearizedSimulation:
             self.visualizer.sync_from_controller()
             self.visualizer.print_performance_summary()
 
-    def reset_simulation(self) -> None:
-        """Reset simulation to initial state (delegated)."""
+    def reset(self) -> None:
+        """
+        Reset simulation to initial conditions (Physics + Time).
+        """
+        logger.info("Resetting simulation...")
+
+        # 1. Reset Physics State
+        if hasattr(self, "satellite") and hasattr(self, "initial_start_pos"):
+            self.satellite.position = self.initial_start_pos.copy()
+            self.satellite.velocity = np.zeros(3)
+            self.satellite.angle = self.initial_start_angle
+            self.satellite.angular_velocity = np.zeros(3)
+
+        # 2. Reset Timing & Status
+        self.simulation_time = 0.0
+        self.target_reached_time = None
+        self.target_maintenance_time = 0.0
+        self.times_lost_target = 0
+        self.maintenance_position_errors = []
+        self.maintenance_angle_errors = []
+
+        # 3. Reset Running State
+        self.is_running = True
+
+        # 4. Clear Logs (Partial)
+        self.state_history = []
+
+        # 4b. Reset Metrics
+        self.last_solve_time = 0.0
+        self.last_pos_error = 0.0
+        self.last_ang_error = 0.0
+
+        # 5. Visualizer Reset
         self.visualizer.sync_from_controller()
         self.visualizer.reset_simulation()
+
+    def set_target(
+        self, pos: Tuple[float, ...], angle: Tuple[float, float, float]
+    ) -> None:
+        """
+        Dynamically update the target state.
+
+        Args:
+            pos: Target position (x, y, z)
+            angle: Target orientation (roll, pitch, yaw) in radians
+        """
+        if not hasattr(self, "target_state"):
+            self.target_state = np.zeros(13)
+
+        # Update Position
+        tp = np.array(pos, dtype=np.float64)
+        if tp.shape == (2,):
+            tp = np.pad(tp, (0, 1), "constant")
+        self.target_state[0:3] = tp
+
+        # Update Orientation
+        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+
+        target_quat = euler_xyz_to_quat_wxyz(angle)
+        self.target_state[3:7] = target_quat
+
+        # Reset target reached flags if target moved significantly?
+        # For now, just let MPC handle it. If we were "reached", we might "lose" it and re-acquire.
+        # Ideally we reset target_reached_time if error is large.
+
+    def reset_simulation(self) -> None:
+        """Legacy alias for reset()."""
+        self.reset()
 
     def auto_generate_visualizations(self) -> None:
         """Generate all visualizations after simulation completion."""
@@ -851,12 +924,11 @@ class SatelliteMPCLinearizedSimulation:
         """
         return not self.is_running
 
-    def reset(self) -> None:
-        """
-        Reset simulation.
-        v4.0.0: Alias for reset_simulation.
-        """
-        self.reset_simulation()
+    def set_continuous(self, enabled: bool) -> None:
+        """Enable or disable continuous simulation mode (ignores termination)."""
+        self.continuous_mode = enabled
+        if enabled:
+            self.is_running = True
 
     def close(self) -> None:
         """

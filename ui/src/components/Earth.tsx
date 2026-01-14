@@ -35,11 +35,24 @@ export function Earth() {
   );
 }
 
-export function TargetMarker() {
+interface TargetMarkerProps {
+  position?: [number, number, number];
+  orientation?: [number, number, number];
+}
+
+export function TargetMarker({ position = [0, 0, 0], orientation = [0, 0, 0] }: TargetMarkerProps) {
   return (
-    <mesh position={[0, 0, 0]}>
-      <sphereGeometry args={[0.2, 16, 16]} />
-      <meshStandardMaterial color="#ff4444" emissive="#ff0000" emissiveIntensity={0.5} />
-    </mesh>
+    <group position={position} rotation={orientation}>
+      <mesh>
+        <sphereGeometry args={[0.2, 16, 16]} />
+        <meshStandardMaterial color="#ff4444" emissive="#ff0000" emissiveIntensity={0.5} />
+      </mesh>
+      {/* Interaction/Orientation Arrow Hint */}
+      <axesHelper args={[1]} />
+      <mesh position={[0, 0, 0.5]} rotation={[Math.PI/2, 0, 0]}>
+         <cylinderGeometry args={[0.02, 0.02, 1, 8]} />
+         <meshBasicMaterial color="yellow" opacity={0.5} transparent />
+      </mesh>
+    </group>
   );
 }
