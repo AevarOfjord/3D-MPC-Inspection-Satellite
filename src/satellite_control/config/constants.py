@@ -131,7 +131,7 @@ class Constants:
     MPC_SOLVER_TYPE = "OSQP"
 
     Q_POSITION = 10000.0
-    Q_VELOCITY = 10000.0
+    Q_VELOCITY = 100.0
     Q_ANGLE = 1000.0
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1

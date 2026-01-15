@@ -216,6 +216,7 @@ class UnifiedVisualizationGenerator:
         self.csv_path: Optional[Path] = None
         self.output_dir: Optional[Path] = None
         self.data: Optional[Any] = None  # DataFrame when pandas, self when csv backend
+        self.control_data: Optional[Any] = None
         self.fig: Optional[Figure] = None
         self.ax_main: Optional[Axes] = None
         self.ax_info: Optional[Axes] = None
@@ -494,6 +495,7 @@ class UnifiedVisualizationGenerator:
                             self.control_data = None
                     else:
                         print("Sibling control_data.csv not found.")
+                        self.control_data = None
 
                 # Pre-calculate derived metrics for animation
                 self._detect_timestep()  # Ensure dt is set

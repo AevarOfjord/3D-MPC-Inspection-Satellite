@@ -11,6 +11,12 @@ from typing import Iterable, List, Tuple
 
 import numpy as np
 
+from src.satellite_control.mission.trajectory_utils import (
+    apply_hold_segments,
+    build_time_parameterized_trajectory,
+    compute_curvature,
+    compute_speed_profile,
+)
 
 def load_obj_vertices(obj_path: str) -> np.ndarray:
     """Load vertex positions from an OBJ file."""
@@ -44,26 +50,79 @@ def compute_mesh_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, n
     return min_bounds, max_bounds, center, radius_xy
 
 
+def _generate_circle_ring(
+    center: Iterable[float],
+    radius: float,
+    z: float,
+    points_per_ring: int,
+) -> List[Tuple[float, float, float]]:
+    points_per_ring = max(int(points_per_ring), 6)
+    cx, cy, _cz = center
+    ring: List[Tuple[float, float, float]] = []
+    for i in range(points_per_ring + 1):
+        angle = 2.0 * np.pi * (i / points_per_ring)
+        x = cx + radius * np.cos(angle)
+        y = cy + radius * np.sin(angle)
+        ring.append((float(x), float(y), float(z)))
+    return ring
+
+
+def _generate_square_ring(
+    center: Iterable[float],
+    radius: float,
+    z: float,
+    points_per_ring: int,
+) -> List[Tuple[float, float, float]]:
+    """Generate a square ring around the center with side length 2*radius."""
+    points_per_ring = max(int(points_per_ring), 4)
+    points_per_side = max(2, int(np.ceil(points_per_ring / 4)))
+    cx, cy, _cz = center
+    r = float(radius)
+
+    corners = np.array(
+        [
+            (cx + r, cy + r),
+            (cx - r, cy + r),
+            (cx - r, cy - r),
+            (cx + r, cy - r),
+            (cx + r, cy + r),
+        ],
+        dtype=float,
+    )
+
+    ring: List[Tuple[float, float, float]] = []
+    for i in range(4):
+        start = corners[i]
+        end = corners[i + 1]
+        for step in range(points_per_side):
+            t = step / points_per_side
+            xy = start + t * (end - start)
+            ring.append((float(xy[0]), float(xy[1]), float(z)))
+    ring.append((float(corners[-1][0]), float(corners[-1][1]), float(z)))
+    return ring
+
+
 def generate_cylindrical_scan_path(
     center: Iterable[float],
     radius: float,
     z_levels: Iterable[float],
-    points_per_circle: int,
+    points_per_ring: int,
+    ring_shape: str = "circle",
 ) -> List[Tuple[float, float, float]]:
-    """Generate stacked circular rings with vertical transitions."""
-    points_per_circle = max(int(points_per_circle), 6)
+    """Generate stacked rings (circle/square) with vertical transitions."""
     cx, cy, _cz = center
     z_vals = list(z_levels)
     if not z_vals:
         raise ValueError("z_levels must contain at least one level")
 
+    shape = ring_shape.lower().strip()
     path: List[Tuple[float, float, float]] = []
     for idx, z in enumerate(z_vals):
-        for i in range(points_per_circle + 1):
-            angle = 2.0 * np.pi * (i / points_per_circle)
-            x = cx + radius * np.cos(angle)
-            y = cy + radius * np.sin(angle)
-            path.append((float(x), float(y), float(z)))
+        if shape == "square":
+            ring = _generate_square_ring(center, radius, z, points_per_ring)
+        else:
+            ring = _generate_circle_ring(center, radius, z, points_per_ring)
+        path.extend(ring)
 
         if idx < len(z_vals) - 1:
             next_z = z_vals[idx + 1]
@@ -72,101 +131,37 @@ def generate_cylindrical_scan_path(
     return path
 
 
-def compute_curvature(path: np.ndarray) -> np.ndarray:
-    """Estimate discrete curvature at each path point."""
-    if path.shape[0] < 3:
-        return np.zeros(path.shape[0], dtype=float)
+def compute_scan_sampling(
+    radius: float,
+    standoff: float,
+    fov_deg: float,
+    overlap: float = 0.85,
+) -> Tuple[float, int]:
+    """Compute ring spacing and points-per-ring using FOV and standoff."""
+    fov_rad = np.deg2rad(float(max(fov_deg, 1.0)))
+    overlap = float(min(max(overlap, 0.1), 1.0))
 
-    curvature = np.zeros(path.shape[0], dtype=float)
-    for i in range(1, path.shape[0] - 1):
-        p0 = path[i - 1]
-        p1 = path[i]
-        p2 = path[i + 1]
-        a = p1 - p0
-        b = p2 - p1
-        c = p2 - p0
-        denom = np.linalg.norm(a) * np.linalg.norm(b) * np.linalg.norm(c)
-        if denom < 1e-9:
-            curvature[i] = 0.0
-            continue
-        curvature[i] = 2.0 * np.linalg.norm(np.cross(a, b)) / denom
-    curvature[0] = curvature[1]
-    curvature[-1] = curvature[-2]
-    return curvature
+    coverage = 2.0 * max(standoff, 1e-3) * np.tan(0.5 * fov_rad)
+    ring_step = max(coverage * overlap, 0.01)
+
+    arc_coverage = 2.0 * max(radius + standoff, 1e-3) * np.tan(0.5 * fov_rad)
+    circumference = 2.0 * np.pi * max(radius + standoff, 1e-3)
+    points_per_ring = max(12, int(np.ceil(circumference / max(arc_coverage * overlap, 1e-3))))
+    return ring_step, points_per_ring
 
 
-def compute_speed_profile(
-    curvature: np.ndarray,
-    v_max: float,
-    v_min: float,
-    lateral_accel: float,
+def _apply_pose(
+    points: np.ndarray,
+    position: Iterable[float],
+    rotation_xyz: Iterable[float],
 ) -> np.ndarray:
-    """Compute curvature-limited speeds."""
-    v_max = float(max(v_max, v_min))
-    v_min = float(max(v_min, 0.0))
-    lateral_accel = float(max(lateral_accel, 1e-6))
-    speeds = np.zeros_like(curvature, dtype=float)
-    for i, kappa in enumerate(curvature):
-        if kappa < 1e-6:
-            speeds[i] = v_max
-        else:
-            speeds[i] = min(v_max, np.sqrt(lateral_accel / kappa))
-        speeds[i] = max(speeds[i], v_min)
-    return speeds
+    """Rotate + translate points by Euler XYZ rotation and position."""
+    from scipy.spatial.transform import Rotation
 
-
-def build_time_parameterized_trajectory(
-    path: np.ndarray,
-    speeds: np.ndarray,
-    dt: float,
-) -> Tuple[np.ndarray, float]:
-    """Convert path + speed profile into [t, x, y, z, vx, vy, vz] samples."""
-    if path.shape[0] < 2:
-        return np.zeros((0, 7), dtype=float), 0.0
-
-    dt = float(dt) if dt and dt > 0 else 0.05
-    segment_vectors = path[1:] - path[:-1]
-    segment_lengths = np.linalg.norm(segment_vectors, axis=1)
-    segment_speeds = np.minimum(speeds[:-1], speeds[1:])
-    segment_times = np.zeros_like(segment_lengths)
-    for i, length in enumerate(segment_lengths):
-        if length < 1e-8 or segment_speeds[i] < 1e-6:
-            segment_times[i] = 0.0
-        else:
-            segment_times[i] = length / segment_speeds[i]
-
-    segment_end_times = np.cumsum(segment_times)
-    total_time = float(segment_end_times[-1]) if segment_end_times.size else 0.0
-    if total_time <= 0.0:
-        return np.zeros((0, 7), dtype=float), 0.0
-
-    sample_times = np.arange(0.0, total_time + dt * 0.5, dt)
-    trajectory = np.zeros((sample_times.size, 7), dtype=float)
-    for i, t in enumerate(sample_times):
-        seg_idx = int(np.searchsorted(segment_end_times, t, side="right"))
-        seg_idx = min(seg_idx, len(segment_lengths) - 1)
-        seg_start_time = segment_end_times[seg_idx - 1] if seg_idx > 0 else 0.0
-        seg_time = segment_times[seg_idx]
-        if seg_time <= 1e-9:
-            position = path[seg_idx].copy()
-            velocity = np.zeros(3, dtype=float)
-        else:
-            alpha = (t - seg_start_time) / seg_time
-            alpha = min(max(alpha, 0.0), 1.0)
-            position = path[seg_idx] + alpha * segment_vectors[seg_idx]
-            direction = (
-                segment_vectors[seg_idx] / segment_lengths[seg_idx]
-                if segment_lengths[seg_idx] > 1e-9
-                else np.zeros(3, dtype=float)
-            )
-            velocity = direction * segment_speeds[seg_idx]
-
-        trajectory[i, 0] = t
-        trajectory[i, 1:4] = position
-        trajectory[i, 4:7] = velocity
-
-    trajectory[-1, 4:7] = 0.0
-    return trajectory, total_time
+    rot = Rotation.from_euler("xyz", rotation_xyz, degrees=False)
+    rotated = rot.apply(points)
+    pos = np.array(position, dtype=float)
+    return rotated + pos
 
 
 def build_mesh_scan_trajectory(
@@ -205,3 +200,53 @@ def build_mesh_scan_trajectory(
     trajectory, total_time = build_time_parameterized_trajectory(path_arr, speeds, dt)
     path_length = float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
     return path, trajectory, path_length
+
+
+def build_cylinder_scan_trajectory(
+    center: Iterable[float],
+    rotation_xyz: Iterable[float],
+    radius: float,
+    height: float,
+    standoff: float,
+    fov_deg: float,
+    overlap: float,
+    v_max: float,
+    v_min: float,
+    lateral_accel: float,
+    dt: float,
+    ring_shape: str = "square",
+    hold_start: float = 0.0,
+    hold_end: float = 0.0,
+) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
+    """Generate scan path and trajectory for a cylinder."""
+    ring_step, points_per_ring = compute_scan_sampling(
+        radius=radius,
+        standoff=standoff,
+        fov_deg=fov_deg,
+        overlap=overlap,
+    )
+
+    total_height = float(max(height, ring_step))
+    num_levels = max(1, int(np.ceil(total_height / ring_step)))
+    z_levels = np.linspace(-0.5 * total_height, 0.5 * total_height, num_levels)
+
+    scan_radius = float(radius + max(standoff, 0.0))
+    raw_path = generate_cylindrical_scan_path(
+        center=(0.0, 0.0, 0.0),
+        radius=scan_radius,
+        z_levels=z_levels,
+        points_per_ring=points_per_ring,
+        ring_shape=ring_shape,
+    )
+
+    raw_path_arr = np.array(raw_path, dtype=float)
+    path_arr = _apply_pose(raw_path_arr, position=center, rotation_xyz=rotation_xyz)
+
+    curvature = compute_curvature(path_arr)
+    speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
+    trajectory, total_time = build_time_parameterized_trajectory(path_arr, speeds, dt)
+    trajectory, total_time = apply_hold_segments(
+        trajectory, dt=dt, hold_start=hold_start, hold_end=hold_end
+    )
+    path_length = float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
+    return [tuple(map(float, p)) for p in path_arr], trajectory, path_length

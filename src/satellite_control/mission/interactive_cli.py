@@ -77,12 +77,12 @@ class InteractiveMissionCLI:
 
         choices = [
             questionary.Choice(
-                title="›  Point-to-Point Navigation",
-                value="waypoint",
+                title="›  Mission 1: Point-to-Point Path (trajectory)",
+                value="path_following",
             ),
             questionary.Choice(
-                title="◇  Shape Following (DXF/Demo)",
-                value="shape_following",
+                title="◇  Mission 2: Scan Object (cylinder)",
+                value="scan_object",
             ),
             questionary.Separator(),
             questionary.Choice(
@@ -420,6 +420,274 @@ class InteractiveMissionCLI:
             float(np.radians(float(pitch or pitch_default))),
             float(np.radians(float(yaw or yaw_default))),
         )
+
+    def configure_sphere_obstacles_interactive(
+        self,
+    ) -> Tuple[List[Tuple[float, float, float, float]], bool]:
+        """Configure spherical obstacles with fixed 0.5m radius."""
+        console.print()
+        console.print(Panel("Obstacle Configuration", style="yellow"))
+        add_obs = questionary.confirm(
+            "Add spherical obstacles (radius 0.5m)?",
+            default=False,
+            style=MISSION_STYLE,
+            qmark=QMARK,
+        ).ask()
+
+        obstacles: List[Tuple[float, float, float, float]] = []
+        if not add_obs:
+            return obstacles, False
+
+        count = questionary.text(
+            "How many obstacles?",
+            default="1",
+            validate=lambda x: x.isdigit() and int(x) > 0,
+            style=MISSION_STYLE,
+            qmark=QMARK,
+        ).ask()
+
+        num_obs = int(count or "1")
+        for idx in range(num_obs):
+            pos = self.get_position_interactive(
+                f"Obstacle {idx + 1} position", default=(0.0, 0.0, 0.0)
+            )
+            obstacles.append((pos[0], pos[1], pos[2], 0.5))
+
+        return obstacles, True
+
+    def run_path_following_mission(self) -> Dict[str, Any]:
+        """Mission 1: Point-to-point path with trajectory tracking."""
+        from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.mission.path_following import (
+            build_point_to_point_trajectory,
+        )
+
+        simulation_config = SimulationConfig.create_default()
+        mission_state = simulation_config.mission_state
+
+        console.print()
+        console.print(Panel("Mission 1: Point-to-Point Path", style="green"))
+
+        start_pos = self.get_position_interactive(
+            "Starting Position", default=(0.0, 0.0, 0.0)
+        )
+        start_angle = self.get_angle_interactive("Starting Orientation", (0.0, 0.0, 0.0))
+
+        waypoints: List[Tuple[Tuple[float, float, float], Tuple[float, float, float]]] = []
+        console.print("\n[bold]Define waypoints (at least 1 endpoint required)[/bold]")
+
+        while True:
+            wp_num = len(waypoints) + 1
+            pos = self.get_position_interactive(
+                f"Waypoint {wp_num} position", default=(1.0, 0.0, 0.0)
+            )
+            ang = self.get_angle_interactive(
+                f"Waypoint {wp_num} orientation", (0.0, 0.0, 0.0)
+            )
+            waypoints.append((pos, ang))
+
+            add_more = questionary.confirm(
+                "Add another waypoint?",
+                default=False,
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            if not add_more:
+                break
+
+        speed = float(
+            questionary.text(
+                "Travel speed (m/s) [0.1]:",
+                default="0.1",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.1
+        )
+
+        obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
+
+        positions = [start_pos] + [wp[0] for wp in waypoints]
+        dt = float(simulation_config.app_config.mpc.dt)
+        path, trajectory, total_time = build_point_to_point_trajectory(
+            waypoints=positions,
+            obstacles=obstacles if obstacles_enabled else None,
+            v_max=speed,
+            v_min=0.05,
+            lateral_accel=0.05,
+            dt=dt,
+            hold_start=5.0,
+            hold_end=5.0,
+        )
+
+        mission_state.trajectory_mode_active = True
+        mission_state.trajectory_type = "path"
+        mission_state.trajectory_start_time = None
+        mission_state.trajectory_total_time = total_time
+        mission_state.trajectory_hold_start = 5.0
+        mission_state.trajectory_hold_end = 5.0
+        mission_state.trajectory_start_orientation = start_angle
+        mission_state.trajectory_end_orientation = waypoints[-1][1]
+        mission_state.dxf_target_speed = speed
+        mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
+        mission_state.dxf_trajectory_dt = dt
+        mission_state.dxf_shape_path = path
+        mission_state.dxf_shape_mode_active = False
+        mission_state.mesh_scan_mode_active = False
+        mission_state.enable_waypoint_mode = False
+        mission_state.enable_multi_point_mode = False
+        mission_state.obstacles = obstacles
+        mission_state.obstacles_enabled = obstacles_enabled
+
+        return {
+            "mission_type": "trajectory_path",
+            "start_pos": start_pos,
+            "start_angle": start_angle,
+            "simulation_config": simulation_config,
+        }
+
+    def run_scan_mission(self) -> Dict[str, Any]:
+        """Mission 2: Scan object with circular/square rings."""
+        from pathlib import Path
+
+        from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.mission.mesh_scan import build_cylinder_scan_trajectory
+
+        simulation_config = SimulationConfig.create_default()
+        mission_state = simulation_config.mission_state
+
+        console.print()
+        console.print(Panel("Mission 2: Scan Object", style="blue"))
+
+        start_pos = self.get_position_interactive(
+            "Starting Position", default=(0.0, 0.0, 0.0)
+        )
+        start_angle = self.get_angle_interactive("Starting Orientation", (0.0, 0.0, 0.0))
+
+        mesh_dir = Path("models/meshes")
+        obj_files = sorted(mesh_dir.glob("*.obj")) if mesh_dir.exists() else []
+        choices = [questionary.Choice("Built-in Cylinder (1m x 3m)", value="cylinder")]
+        choices.extend(
+            [
+                questionary.Choice(f.name, value=str(f))
+                for f in obj_files
+            ]
+        )
+
+        selection = questionary.select(
+            "Select object to scan:",
+            choices=choices,
+            style=MISSION_STYLE,
+            qmark=QMARK,
+        ).ask()
+
+        obj_pose = self.get_position_interactive(
+            "Object position", default=(0.0, 0.0, 0.0)
+        )
+        obj_angle = self.get_angle_interactive(
+            "Object orientation", (0.0, 0.0, 0.0)
+        )
+        standoff = float(
+            questionary.text(
+                "Scan standoff distance (m) [0.5]:",
+                default="0.5",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.5
+        )
+
+        speed = float(
+            questionary.text(
+                "Scan travel speed (m/s) [0.1]:",
+                default="0.1",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.1
+        )
+
+        obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
+
+        dt = float(simulation_config.app_config.mpc.dt)
+        if selection == "cylinder":
+            path, trajectory, total_time = build_cylinder_scan_trajectory(
+                center=obj_pose,
+                rotation_xyz=obj_angle,
+                radius=0.5,
+                height=3.0,
+                standoff=standoff,
+                fov_deg=60.0,
+                overlap=0.85,
+                v_max=speed,
+                v_min=0.05,
+                lateral_accel=0.05,
+                dt=dt,
+                ring_shape="square",
+                hold_start=0.0,
+                hold_end=5.0,
+            )
+        else:
+            # Placeholder: default to cylinder if OBJ is not yet supported
+            path, trajectory, total_time = build_cylinder_scan_trajectory(
+                center=obj_pose,
+                rotation_xyz=obj_angle,
+                radius=0.5,
+                height=3.0,
+                standoff=standoff,
+                fov_deg=60.0,
+                overlap=0.85,
+                v_max=speed,
+                v_min=0.05,
+                lateral_accel=0.05,
+                dt=dt,
+                ring_shape="square",
+                hold_start=0.0,
+                hold_end=5.0,
+            )
+            mission_state.mesh_scan_obj_path = selection
+
+        mission_state.trajectory_mode_active = True
+        mission_state.trajectory_type = "scan"
+        mission_state.trajectory_start_time = None
+        mission_state.trajectory_total_time = total_time
+        mission_state.trajectory_hold_start = 0.0
+        mission_state.trajectory_hold_end = 5.0
+        mission_state.trajectory_start_orientation = start_angle
+        mission_state.trajectory_end_orientation = None
+        mission_state.trajectory_object_center = obj_pose
+        mission_state.mesh_scan_mode_active = True
+        mission_state.dxf_target_speed = speed
+        mission_state.mesh_scan_object_pose = (
+            obj_pose[0],
+            obj_pose[1],
+            obj_pose[2],
+            obj_angle[0],
+            obj_angle[1],
+            obj_angle[2],
+        )
+        mission_state.mesh_scan_standoff = standoff
+        mission_state.mesh_scan_fov_deg = 60.0
+        mission_state.mesh_scan_overlap = 0.85
+        mission_state.mesh_scan_ring_shape = "square"
+        mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
+        mission_state.dxf_trajectory_dt = dt
+        mission_state.dxf_shape_path = path
+        mission_state.dxf_shape_mode_active = False
+        mission_state.enable_waypoint_mode = False
+        mission_state.enable_multi_point_mode = False
+        mission_state.obstacles = obstacles
+        mission_state.obstacles_enabled = obstacles_enabled
+
+        return {
+            "mission_type": "scan_object",
+            "start_pos": start_pos,
+            "start_angle": start_angle,
+            "simulation_config": simulation_config,
+        }
 
     def configure_obstacles_interactive(
         self, mission_state

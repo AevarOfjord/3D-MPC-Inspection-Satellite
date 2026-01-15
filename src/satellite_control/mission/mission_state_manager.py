@@ -40,6 +40,7 @@ from src.satellite_control.config.models import AppConfig
 from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
     quat_angle_error,
+    quat_wxyz_from_basis,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,7 @@ class MissionStateManager:
         self.spline_cruise_speed: float = 0.12  # m/s along spline
         self._active_obstacle: Optional[Tuple[float, float, float, float]] = None
         self._last_path_orientation: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+        self._last_traj_quat: np.ndarray = np.array([1.0, 0.0, 0.0, 0.0])
         self._dxf_traj_cache: Optional[np.ndarray] = None
         self._dxf_traj_cache_id: Optional[int] = None
     
@@ -313,6 +315,17 @@ class MissionStateManager:
         return state
 
     @staticmethod
+    def _create_state_from_quat(
+        position: np.ndarray, quat_wxyz: np.ndarray, velocity: np.ndarray
+    ) -> np.ndarray:
+        """Create 13-element state using quaternion and linear velocity."""
+        state = np.zeros(13, dtype=float)
+        state[0:3] = position
+        state[3:7] = quat_wxyz
+        state[7:10] = velocity
+        return state
+
+    @staticmethod
     def _yaw_to_euler(yaw: float) -> Tuple[float, float, float]:
         return (0.0, 0.0, float(yaw))
 
@@ -398,9 +411,97 @@ class MissionStateManager:
 
         # Determine active mode (V4.0.0: mission_state required)
         is_dxf = self.mission_state.dxf_shape_mode_active or self.mission_state.mesh_scan_mode_active
+        is_traj = self.mission_state.trajectory_mode_active or self.mission_state.mesh_scan_mode_active
 
         # 3D Position for internal logic
         curr_pos_3d = current_state[:3]
+
+        if is_traj:
+            traj = self._get_dxf_trajectory_array()
+            if traj is None or traj.size == 0:
+                trajectory[:] = current_state
+                trajectory[:, 7:] = 0
+                return trajectory
+
+            if self.mission_state.trajectory_start_time is None:
+                self.mission_state.trajectory_start_time = current_time
+
+            start_time = float(self.mission_state.trajectory_start_time)
+            total_time = float(self.mission_state.trajectory_total_time or traj[-1, 0])
+            hold_start = float(max(self.mission_state.trajectory_hold_start, 0.0))
+            hold_end = float(max(self.mission_state.trajectory_hold_end, 0.0))
+
+            for k in range(horizon + 1):
+                future_time = current_time + k * dt
+                elapsed = float(future_time - start_time)
+                sample = self._sample_dxf_trajectory(elapsed)
+                if sample is None:
+                    pos = traj[-1, 1:4]
+                    vel = np.zeros(3, dtype=float)
+                else:
+                    pos, vel = sample
+
+                if elapsed >= traj[-1, 0]:
+                    pos = traj[-1, 1:4]
+                    vel = np.zeros(3, dtype=float)
+
+                use_start_hold = (
+                    self.mission_state.trajectory_start_orientation is not None
+                    and elapsed <= hold_start + 1e-6
+                )
+                use_end_hold = (
+                    self.mission_state.trajectory_end_orientation is not None
+                    and elapsed >= total_time - hold_end - 1e-6
+                )
+
+                if use_start_hold or use_end_hold:
+                    orient = (
+                        self.mission_state.trajectory_start_orientation
+                        if use_start_hold
+                        else self.mission_state.trajectory_end_orientation
+                    )
+                    quat = euler_xyz_to_quat_wxyz(orient)
+                    trajectory[k] = self._create_state_from_quat(
+                        pos, quat, np.zeros(3, dtype=float)
+                    )
+                    continue
+
+                if (
+                    self.mission_state.trajectory_type == "scan"
+                    or self.mission_state.mesh_scan_mode_active
+                ):
+                    center = self.mission_state.trajectory_object_center or (0.0, 0.0, 0.0)
+                    radial = np.array(pos) - np.array(center, dtype=float)
+                    radial_norm = np.linalg.norm(radial)
+                    speed = float(np.linalg.norm(vel))
+                    if radial_norm < 1e-6 or speed < 1e-6:
+                        trajectory[k] = self._create_state_from_quat(
+                            pos, self._last_traj_quat, np.zeros(3, dtype=float)
+                        )
+                        continue
+                    x_axis = vel / speed
+                    y_axis = -radial / radial_norm
+                    z_axis = np.cross(x_axis, y_axis)
+                    z_norm = np.linalg.norm(z_axis)
+                    if z_norm < 1e-6:
+                        trajectory[k] = self._create_state_from_quat(
+                            pos, self._last_traj_quat, np.zeros(3, dtype=float)
+                        )
+                        continue
+                    z_axis = z_axis / z_norm
+                    y_axis = np.cross(z_axis, x_axis)
+                    y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-6)
+                    quat = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
+                    self._last_traj_quat = quat
+                    trajectory[k] = self._create_state_from_quat(pos, quat, vel)
+                    continue
+
+                orient = self._velocity_to_orientation(np.array(vel, dtype=float))
+                quat = euler_xyz_to_quat_wxyz(orient)
+                self._last_traj_quat = quat
+                trajectory[k] = self._create_state_from_quat(pos, quat, vel)
+
+            return trajectory
 
         if is_dxf:
             # --- SHAPE FOLLOWING PREDICTION ---
@@ -637,6 +738,9 @@ class MissionStateManager:
         Returns:
             Target state vector [pos(3), quat(4), vel(3), w(3)] or None
         """
+        if self.mission_state.trajectory_mode_active or self.mission_state.mesh_scan_mode_active:
+            return self._handle_trajectory_mode(current_position, current_quat, current_time)
+
         # Waypoint mode (V4.0.0: mission_state required)
         enable_waypoint = (
             self.mission_state.enable_waypoint_mode
@@ -654,6 +758,100 @@ class MissionStateManager:
 
         # Point-to-point mode (no-op, handled by caller)
         return None
+
+    def _handle_trajectory_mode(
+        self,
+        current_position: np.ndarray,
+        current_quat: np.ndarray,
+        current_time: float,
+    ) -> Optional[np.ndarray]:
+        """Handle generic trajectory tracking (path or scan)."""
+        traj = self._get_dxf_trajectory_array()
+        if traj is None or traj.size == 0:
+            return None
+
+        if self.mission_state.trajectory_start_time is None:
+            self.mission_state.trajectory_start_time = current_time
+            if current_quat is not None and np.linalg.norm(current_quat) > 0:
+                self._last_traj_quat = np.array(current_quat, dtype=float)
+
+        elapsed = float(current_time - self.mission_state.trajectory_start_time)
+        total_time = float(self.mission_state.trajectory_total_time or traj[-1, 0])
+        hold_start = float(max(self.mission_state.trajectory_hold_start, 0.0))
+        hold_end = float(max(self.mission_state.trajectory_hold_end, 0.0))
+
+        sample = self._sample_dxf_trajectory(elapsed)
+        if sample is None:
+            position = traj[-1, 1:4]
+            velocity = np.zeros(3, dtype=float)
+        else:
+            position, velocity = sample
+
+        if elapsed >= traj[-1, 0]:
+            position = traj[-1, 1:4]
+            velocity = np.zeros(3, dtype=float)
+
+        use_start_hold = (
+            self.mission_state.trajectory_start_orientation is not None
+            and elapsed <= hold_start + 1e-6
+        )
+        use_end_hold = (
+            self.mission_state.trajectory_end_orientation is not None
+            and elapsed >= total_time - hold_end - 1e-6
+        )
+
+        if use_start_hold or use_end_hold:
+            orient = (
+                self.mission_state.trajectory_start_orientation
+                if use_start_hold
+                else self.mission_state.trajectory_end_orientation
+            )
+            quat = euler_xyz_to_quat_wxyz(orient)
+            self._last_traj_quat = quat
+            return self._create_state_from_quat(position, quat, np.zeros(3, dtype=float))
+
+        if (
+            self.mission_state.trajectory_type == "scan"
+            or self.mission_state.mesh_scan_mode_active
+        ):
+            center = self.mission_state.trajectory_object_center
+            if center is None:
+                center = (0.0, 0.0, 0.0)
+            radial = np.array(position) - np.array(center, dtype=float)
+            radial_norm = np.linalg.norm(radial)
+            speed = float(np.linalg.norm(velocity))
+            if radial_norm < 1e-6 or speed < 1e-6:
+                return self._create_state_from_quat(
+                    position,
+                    np.array(current_quat, dtype=float)
+                    if current_quat is not None and np.linalg.norm(current_quat) > 0
+                    else self._last_traj_quat,
+                    np.zeros(3, dtype=float),
+                )
+
+            x_axis = velocity / speed
+            y_axis = -radial / radial_norm
+            z_axis = np.cross(x_axis, y_axis)
+            z_norm = np.linalg.norm(z_axis)
+            if z_norm < 1e-6:
+                return self._create_state_from_quat(
+                    position,
+                    np.array(current_quat, dtype=float)
+                    if current_quat is not None and np.linalg.norm(current_quat) > 0
+                    else self._last_traj_quat,
+                    np.zeros(3, dtype=float),
+                )
+            z_axis = z_axis / z_norm
+            y_axis = np.cross(z_axis, x_axis)
+            y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-6)
+            quat = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
+            self._last_traj_quat = quat
+            return self._create_state_from_quat(position, quat, velocity)
+
+        orient = self._velocity_to_orientation(np.array(velocity, dtype=float))
+        quat = euler_xyz_to_quat_wxyz(orient)
+        self._last_traj_quat = quat
+        return self._create_state_from_quat(position, quat, velocity)
 
     def _handle_multi_point_mode(
         self,
@@ -751,6 +949,25 @@ class MissionStateManager:
         target_pos_arr = np.array(target_pos, dtype=float)
         if target_pos_arr.shape[0] < 3:
             target_pos_arr = np.pad(target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant")
+
+        # If not using obstacle spline, track a moving reference toward target.
+        if not using_spline:
+            direction = target_pos_arr - current_position
+            dist = float(np.linalg.norm(direction))
+            if dist > 1e-6:
+                direction = direction / dist
+                max_speed = float(
+                    getattr(self.app_config.simulation, "default_target_speed", 0.2)
+                )
+                # Scale speed down as we approach the waypoint.
+                desired_speed = min(max_speed, 0.5 * dist)
+                if dist <= self.position_tolerance:
+                    desired_speed = 0.0
+                target_vx, target_vy, target_vz = (
+                    direction[0] * desired_speed,
+                    direction[1] * desired_speed,
+                    direction[2] * desired_speed,
+                )
 
         target_state = self._create_3d_state(
             target_pos_arr[0],

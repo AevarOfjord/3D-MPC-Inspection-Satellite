@@ -68,6 +68,10 @@ class MissionState:
 
         # Mesh Scan (OBJ) Configuration
         mesh_scan_mode_active: Enable mesh scan path generation
+        mesh_scan_object_pose: Pose (x, y, z, roll, pitch, yaw) of scan object
+        mesh_scan_fov_deg: Camera field-of-view in degrees
+        mesh_scan_overlap: Overlap factor between scan passes (0-1)
+        mesh_scan_ring_shape: Ring shape ("circle" or "square")
         mesh_scan_obj_path: Path to OBJ mesh file
         mesh_scan_standoff: Offset distance from mesh surface
         mesh_scan_levels: Number of Z slices for scan rings
@@ -76,6 +80,19 @@ class MissionState:
         mesh_scan_speed_min: Minimum speed for tight turns
         mesh_scan_lateral_accel: Lateral acceleration limit for curvature speed
         mesh_scan_z_margin: Trim distance from mesh top/bottom
+
+        # Trajectory Tracking (generic path following)
+        trajectory_mode_active: Enable generic trajectory tracking
+        trajectory_type: "path" or "scan"
+        trajectory_start_time: Start time for trajectory tracking
+        trajectory_total_time: Total duration for trajectory (seconds)
+        trajectory_hold_start: Hold duration at trajectory start (seconds)
+        trajectory_hold_end: Hold duration at trajectory end (seconds)
+        trajectory_start_orientation: (roll, pitch, yaw) at start hold
+        trajectory_end_orientation: (roll, pitch, yaw) at end hold
+        trajectory_object_center: Object center for scan orientation
+        trajectory_end_pos_tolerance: Position tolerance for termination (meters)
+        trajectory_end_ang_tolerance_deg: Angle tolerance for termination (degrees)
     """
 
     # Waypoint Navigation
@@ -121,6 +138,7 @@ class MissionState:
     # Mesh Scan (OBJ)
     mesh_scan_mode_active: bool = False
     mesh_scan_obj_path: Optional[str] = None
+    mesh_scan_object_pose: Optional[Tuple[float, float, float, float, float, float]] = None
     mesh_scan_standoff: float = 0.5
     mesh_scan_levels: int = 8
     mesh_scan_points_per_circle: int = 72
@@ -128,6 +146,22 @@ class MissionState:
     mesh_scan_speed_min: float = 0.05
     mesh_scan_lateral_accel: float = 0.05
     mesh_scan_z_margin: float = 0.0
+    mesh_scan_fov_deg: float = 60.0
+    mesh_scan_overlap: float = 0.85
+    mesh_scan_ring_shape: str = "square"
+
+    # Trajectory tracking (generic)
+    trajectory_mode_active: bool = False
+    trajectory_type: str = "path"
+    trajectory_start_time: Optional[float] = None
+    trajectory_total_time: float = 0.0
+    trajectory_hold_start: float = 0.0
+    trajectory_hold_end: float = 0.0
+    trajectory_start_orientation: Optional[Tuple[float, float, float]] = None
+    trajectory_end_orientation: Optional[Tuple[float, float, float]] = None
+    trajectory_object_center: Optional[Tuple[float, float, float]] = None
+    trajectory_end_pos_tolerance: float = 0.01
+    trajectory_end_ang_tolerance_deg: float = 2.0
 
     # Obstacle Avoidance (V3.0.0)
     obstacles_enabled: bool = False
@@ -147,8 +181,10 @@ class MissionState:
             WAYPOINT_NAVIGATION, WAYPOINT_NAVIGATION_MULTI,
             SHAPE_FOLLOWING, or NONE
         """
-        if self.dxf_shape_mode_active or self.mesh_scan_mode_active:
-            return "MESH_SCAN" if self.mesh_scan_mode_active else "SHAPE_FOLLOWING"
+        if self.trajectory_mode_active or self.mesh_scan_mode_active:
+            return "SCAN" if self.mesh_scan_mode_active else "TRAJECTORY"
+        if self.dxf_shape_mode_active:
+            return "SHAPE_FOLLOWING"
         elif self.enable_waypoint_mode or self.enable_multi_point_mode:
             num_targets = len(
                 self.waypoint_targets

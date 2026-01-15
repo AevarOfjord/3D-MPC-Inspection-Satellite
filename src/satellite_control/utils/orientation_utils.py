@@ -47,3 +47,27 @@ def quat_angle_error(q_target: Iterable[float], q_current: Iterable[float]) -> f
     dot = float(np.dot(q1, q2))
     dot = float(np.clip(np.abs(dot), -1.0, 1.0))
     return 2.0 * np.arccos(dot)
+
+
+def quat_wxyz_from_matrix(matrix: np.ndarray) -> np.ndarray:
+    """
+    Convert rotation matrix to quaternion [w, x, y, z].
+    """
+    rot = Rotation.from_matrix(matrix)
+    quat_xyzw = rot.as_quat()
+    return np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=float)
+
+
+def quat_wxyz_from_basis(
+    x_axis: Iterable[float],
+    y_axis: Iterable[float],
+    z_axis: Iterable[float],
+) -> np.ndarray:
+    """
+    Build quaternion from orthonormal body axes (columns of rotation matrix).
+    """
+    x_axis = np.array(list(x_axis), dtype=float)
+    y_axis = np.array(list(y_axis), dtype=float)
+    z_axis = np.array(list(z_axis), dtype=float)
+    matrix = np.column_stack((x_axis, y_axis, z_axis))
+    return quat_wxyz_from_matrix(matrix)

@@ -81,6 +81,11 @@ class SimulationLoop:
         mission_state = self._get_mission_state()
         return mission_state.dxf_shape_mode_active
 
+    def _is_trajectory_mode(self) -> bool:
+        """Check if generic trajectory tracking is enabled."""
+        mission_state = self._get_mission_state()
+        return mission_state.trajectory_mode_active or mission_state.mesh_scan_mode_active
+
     def _get_current_target_index(self) -> int:
         """Get current target index."""
         mission_state = self._get_mission_state()
@@ -418,7 +423,10 @@ class SimulationLoop:
         if getattr(self.simulation, "continuous_mode", False):
             return False
 
-        if not self._is_dxf_mode():
+        if self._is_trajectory_mode():
+            if self._check_trajectory_completion():
+                return True
+        elif not self._is_dxf_mode():
             target_currently_reached = self.simulation.check_target_reached()
 
             if target_currently_reached:
@@ -493,6 +501,58 @@ class SimulationLoop:
             self.simulation.is_running = False
             self.simulation.print_performance_summary()
             return True
+
+        return False
+
+    def _check_trajectory_completion(self) -> bool:
+        """Terminate when endpoint is held within tight tolerances."""
+        from src.satellite_control.utils.orientation_utils import quat_angle_error
+
+        mission_state = self._get_mission_state()
+        if mission_state.trajectory_start_time is None:
+            return False
+
+        traj = mission_state.dxf_trajectory
+        if not traj:
+            return False
+
+        elapsed = self.simulation.simulation_time - mission_state.trajectory_start_time
+        total_time = float(mission_state.trajectory_total_time or traj[-1][0])
+        if elapsed < total_time:
+            self.simulation.trajectory_endpoint_reached_time = None
+            return False
+
+        current_state = self.simulation.get_current_state()
+        pos_error = float(
+            np.linalg.norm(current_state[:3] - self.simulation.target_state[:3])
+        )
+        ang_error = float(
+            quat_angle_error(self.simulation.target_state[3:7], current_state[3:7])
+        )
+
+        pos_tol = float(mission_state.trajectory_end_pos_tolerance)
+        ang_tol = np.deg2rad(float(mission_state.trajectory_end_ang_tolerance_deg))
+        required_hold = float(mission_state.trajectory_hold_end or 5.0)
+
+        if pos_error <= pos_tol and ang_error <= ang_tol:
+            if self.simulation.trajectory_endpoint_reached_time is None:
+                self.simulation.trajectory_endpoint_reached_time = (
+                    self.simulation.simulation_time
+                )
+            hold_time = (
+                self.simulation.simulation_time
+                - self.simulation.trajectory_endpoint_reached_time
+            )
+            if hold_time >= required_hold:
+                print(
+                    f"\nTRAJECTORY COMPLETE! "
+                    f"Held within tolerance for {required_hold:.1f} seconds."
+                )
+                self.simulation.is_running = False
+                self.simulation.print_performance_summary()
+                return True
+        else:
+            self.simulation.trajectory_endpoint_reached_time = None
 
         return False
 

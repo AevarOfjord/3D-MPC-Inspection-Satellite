@@ -642,6 +642,7 @@ class SatelliteMPCLinearizedSimulation:
                     and (
                         mission_state.dxf_shape_mode_active
                         or getattr(mission_state, "mesh_scan_mode_active", False)
+                        or getattr(mission_state, "trajectory_mode_active", False)
                     )
                 )
 
@@ -813,6 +814,9 @@ class SatelliteMPCLinearizedSimulation:
             mpc_info: Metadata from MPC solver
             rw_torque: Optional Reaction Wheel torque command
         """
+        # Store state history for summaries/plots
+        self.state_history.append(current_state.copy())
+
         # Record performance metrics
         solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
         # Use mpc_computation_time if available in args?
@@ -870,6 +874,9 @@ class SatelliteMPCLinearizedSimulation:
         # Determine status message
         status_msg = f"Traveling to Target (t={self.simulation_time:.1f}s)"
         stabilization_time = None
+        mission_phase = (
+            "STABILIZING" if self.target_reached_time is not None else "APPROACHING"
+        )
 
         if self.target_reached_time is not None:
             stabilization_time = self.simulation_time - self.target_reached_time
@@ -881,6 +888,7 @@ class SatelliteMPCLinearizedSimulation:
             and self.mission_manager.mission_state.dxf_shape_mode_active
         ):
             phase = self.mission_manager.mission_state.dxf_shape_phase or "UNKNOWN"
+            mission_phase = phase
             # Map internal phase names to user-friendly display names
             phase_display_names = {
                 "POSITIONING": "Traveling to Path",
@@ -894,6 +902,12 @@ class SatelliteMPCLinearizedSimulation:
             if phase == "RETURNING" and self.target_reached_time is not None:
                 display_phase = "Stabilizing on Target"
             status_msg = f"{display_phase} (t = {self.simulation_time:.1f}s)"
+        elif self.mission_manager and self.mission_manager.mission_state:
+            if (
+                self.mission_manager.mission_state.trajectory_mode_active
+                or self.mission_manager.mission_state.mesh_scan_mode_active
+            ):
+                mission_phase = "TRAJECTORY"
         else:
             status_msg = f"Traveling to Target (t = {self.simulation_time:.1f}s)"
 
@@ -954,6 +968,38 @@ class SatelliteMPCLinearizedSimulation:
             f"Reaction Wheel = [X, Y, Z]\n"
             f"RW Output = {rw_out}\n"
         )
+
+        # Delegate to SimulationLogger for control_data.csv output
+        if not hasattr(self, "logger_helper"):
+            from src.satellite_control.core.simulation_logger import SimulationLogger
+
+            self.logger_helper = SimulationLogger(self.data_logger)
+
+        previous_thruster_action: Optional[np.ndarray] = (
+            self.previous_command if hasattr(self, "previous_command") else None
+        )
+
+        # Update Context
+        self.context.update_state(
+            self.simulation_time, current_state, self.target_state
+        )
+        self.context.step_number = self.data_logger.current_step
+        self.context.mission_phase = mission_phase
+        self.context.previous_thruster_command = previous_thruster_action
+        if rw_torque is not None:
+            self.context.rw_torque_command = np.array(rw_torque, dtype=np.float64)
+
+        mpc_info_safe = mpc_info if mpc_info is not None else {}
+        self.logger_helper.log_step(
+            self.context,
+            mpc_start_time,
+            command_sent_time,
+            thruster_action,
+            mpc_info_safe,
+            rw_torque=self.context.rw_torque_command,
+        )
+
+        self.previous_command = thruster_action.copy()
 
         # Log terminal message to CSV
         terminal_entry = {

@@ -317,6 +317,7 @@ class SimulationInitializer:
         self.simulation.times_lost_target = 0
         self.simulation.maintenance_position_errors: List[float] = []
         self.simulation.maintenance_angle_errors: List[float] = []
+        self.simulation.trajectory_endpoint_reached_time: Optional[float] = None
 
         # Data logging
         self.simulation.state_history: List[np.ndarray] = []

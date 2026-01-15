@@ -162,47 +162,24 @@ def run(
             interactive_cli = InteractiveMissionCLI()
             mode = interactive_cli.show_mission_menu()
 
-            if mode == "waypoint":
-                mission_preset = interactive_cli.select_mission_preset(
-                    return_simulation_config=True
-                )
-                if mission_preset is None:
-                    # Custom mission flow
-                    mission_config = interactive_cli.run_custom_waypoint_mission()
-                    if not mission_config:
-                        console.print("[red]Mission cancelled.[/red]")
-                        raise typer.Exit()
-                    # Extract SimulationConfig if available (v2.0.0)
-                    if "simulation_config" in mission_config:
-                        mission_simulation_config = mission_config["simulation_config"]
-                    # Extract mission parameters from config
-                    if "start_pos" in mission_config:
-                        sim_start_pos = mission_config.get("start_pos")
-                    if "start_angle" in mission_config:
-                        sim_start_angle = mission_config.get("start_angle")
-                elif not mission_preset:
-                    # User cancelled preset
-                    console.print("[red]Mission cancelled.[/red]")
-                    raise typer.Exit()
-                else:
-                    # Extract SimulationConfig if available (v2.0.0)
-                    if "simulation_config" in mission_preset:
-                        mission_simulation_config = mission_preset["simulation_config"]
-                    # Extract mission parameters from preset
-                    if "start_pos" in mission_preset:
-                        sim_start_pos = mission_preset.get("start_pos")
-                    if "start_angle" in mission_preset:
-                        sim_start_angle = mission_preset.get("start_angle")
-            elif mode == "shape_following":
-                # Use new interactive shape following UI
-                mission_config = interactive_cli.run_shape_following_mission()
+            if mode == "path_following":
+                mission_config = interactive_cli.run_path_following_mission()
                 if not mission_config:
                     console.print("[red]Mission cancelled.[/red]")
                     raise typer.Exit()
-                # Extract SimulationConfig if available (v2.0.0)
                 if "simulation_config" in mission_config:
                     mission_simulation_config = mission_config["simulation_config"]
-                # Extract mission parameters from config
+                if "start_pos" in mission_config:
+                    sim_start_pos = mission_config.get("start_pos")
+                if "start_angle" in mission_config:
+                    sim_start_angle = mission_config.get("start_angle")
+            elif mode == "scan_object":
+                mission_config = interactive_cli.run_scan_mission()
+                if not mission_config:
+                    console.print("[red]Mission cancelled.[/red]")
+                    raise typer.Exit()
+                if "simulation_config" in mission_config:
+                    mission_simulation_config = mission_config["simulation_config"]
                 if "start_pos" in mission_config:
                     sim_start_pos = mission_config.get("start_pos")
                 if "start_angle" in mission_config:
