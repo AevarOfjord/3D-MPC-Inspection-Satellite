@@ -63,6 +63,19 @@ class MissionState:
         dxf_return_position: Return position (x, y, z)
         dxf_return_angle: Return orientation (roll, pitch, yaw) in radians
         dxf_return_start_time: Return phase start time
+        dxf_trajectory: Time-parameterized path samples [t, x, y, z, vx, vy, vz]
+        dxf_trajectory_dt: Sampling interval for trajectory in seconds
+
+        # Mesh Scan (OBJ) Configuration
+        mesh_scan_mode_active: Enable mesh scan path generation
+        mesh_scan_obj_path: Path to OBJ mesh file
+        mesh_scan_standoff: Offset distance from mesh surface
+        mesh_scan_levels: Number of Z slices for scan rings
+        mesh_scan_points_per_circle: Points per ring
+        mesh_scan_speed_max: Max tangential speed along path
+        mesh_scan_speed_min: Minimum speed for tight turns
+        mesh_scan_lateral_accel: Lateral acceleration limit for curvature speed
+        mesh_scan_z_margin: Trim distance from mesh top/bottom
     """
 
     # Waypoint Navigation
@@ -100,6 +113,21 @@ class MissionState:
     dxf_return_position: Optional[Tuple[float, float, float]] = None
     dxf_return_angle: Optional[Tuple[float, float, float]] = None
     dxf_return_start_time: Optional[float] = None
+    dxf_trajectory: List[Tuple[float, float, float, float, float, float, float]] = field(
+        default_factory=list
+    )
+    dxf_trajectory_dt: float = 0.05
+
+    # Mesh Scan (OBJ)
+    mesh_scan_mode_active: bool = False
+    mesh_scan_obj_path: Optional[str] = None
+    mesh_scan_standoff: float = 0.5
+    mesh_scan_levels: int = 8
+    mesh_scan_points_per_circle: int = 72
+    mesh_scan_speed_max: float = 0.2
+    mesh_scan_speed_min: float = 0.05
+    mesh_scan_lateral_accel: float = 0.05
+    mesh_scan_z_margin: float = 0.0
 
     # Obstacle Avoidance (V3.0.0)
     obstacles_enabled: bool = False
@@ -119,8 +147,8 @@ class MissionState:
             WAYPOINT_NAVIGATION, WAYPOINT_NAVIGATION_MULTI,
             SHAPE_FOLLOWING, or NONE
         """
-        if self.dxf_shape_mode_active:
-            return "SHAPE_FOLLOWING"
+        if self.dxf_shape_mode_active or self.mesh_scan_mode_active:
+            return "MESH_SCAN" if self.mesh_scan_mode_active else "SHAPE_FOLLOWING"
         elif self.enable_waypoint_mode or self.enable_multi_point_mode:
             num_targets = len(
                 self.waypoint_targets

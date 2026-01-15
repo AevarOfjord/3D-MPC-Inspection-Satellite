@@ -30,13 +30,14 @@ class TelemetryService {
   private subscribers: Set<TelemetryCallback> = new Set();
   private statusSubscribers: Set<ConnectionCallback> = new Set();
   private isConnected: boolean = false;
+  private manualMode: boolean = false;
 
   public get connected() {
     return this.isConnected;
   }
 
   connect(url: string = WS_URL) {
-    if (this.socket) return;
+    if (this.socket || this.manualMode) return;
 
     this.socket = new WebSocket(url);
 
@@ -61,8 +62,24 @@ class TelemetryService {
       this.socket = null;
       this.notifyStatus(false);
       // Reconnect logic could go here
-      setTimeout(() => this.connect(url), 1000);
+      if (!this.manualMode) {
+        setTimeout(() => this.connect(url), 1000);
+      }
     };
+  }
+
+  setManualMode(enabled: boolean) {
+    this.manualMode = enabled;
+    if (enabled && this.socket) {
+      this.socket.close();
+      this.socket = null;
+      this.isConnected = false;
+      this.notifyStatus(false);
+    }
+  }
+
+  emit(data: TelemetryData) {
+    this.notify(data);
   }
 
   subscribe(callback: TelemetryCallback) {

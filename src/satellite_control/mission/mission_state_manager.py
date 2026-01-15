@@ -116,6 +116,9 @@ class MissionStateManager:
         self.spline_arc_progress: float = 0.0
         self.spline_cruise_speed: float = 0.12  # m/s along spline
         self._active_obstacle: Optional[Tuple[float, float, float, float]] = None
+        self._last_path_orientation: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+        self._dxf_traj_cache: Optional[np.ndarray] = None
+        self._dxf_traj_cache_id: Optional[int] = None
     
     def _update_dxf_phase(self, phase: str) -> None:
         """Update DXF shape phase in mission_state (V4.0.0: no SatelliteConfig fallback)."""
@@ -318,6 +321,55 @@ class MissionStateManager:
         roll, pitch, yaw = np.degrees(angle)
         return f"roll={roll:.1f}°, pitch={pitch:.1f}°, yaw={yaw:.1f}°"
 
+    def _velocity_to_orientation(
+        self, velocity: np.ndarray
+    ) -> Tuple[float, float, float]:
+        """Convert velocity vector into roll/pitch/yaw (X+ forward, Z+ up)."""
+        speed = float(np.linalg.norm(velocity))
+        if speed < 1e-6:
+            return self._last_path_orientation
+        yaw = float(np.arctan2(velocity[1], velocity[0]))
+        horiz = float(np.linalg.norm(velocity[:2]))
+        pitch = float(np.arctan2(-velocity[2], horiz))
+        orientation = (0.0, pitch, yaw)
+        self._last_path_orientation = orientation
+        return orientation
+
+    def _get_dxf_trajectory_array(self) -> Optional[np.ndarray]:
+        """Return cached trajectory array if available."""
+        traj = self.mission_state.dxf_trajectory
+        if not traj:
+            self._dxf_traj_cache = None
+            self._dxf_traj_cache_id = None
+            return None
+        traj_id = id(traj)
+        if self._dxf_traj_cache is None or self._dxf_traj_cache_id != traj_id:
+            self._dxf_traj_cache = np.array(traj, dtype=float)
+            self._dxf_traj_cache_id = traj_id
+        return self._dxf_traj_cache
+
+    def _sample_dxf_trajectory(
+        self, elapsed_time: float
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """Sample trajectory position/velocity at elapsed time."""
+        traj = self._get_dxf_trajectory_array()
+        if traj is None or traj.size == 0:
+            return None
+        dt = float(self.mission_state.dxf_trajectory_dt)
+        if dt <= 0:
+            dt = float(getattr(self.app_config.mpc, "dt", 0.05))
+        if dt <= 0:
+            dt = 0.05
+        if elapsed_time <= 0:
+            idx = 0
+        else:
+            idx = int(elapsed_time / dt)
+        idx = min(idx, traj.shape[0] - 1)
+        row = traj[idx]
+        position = row[1:4]
+        velocity = row[4:7]
+        return position, velocity
+
     def get_trajectory(
         self,
         current_time: float,
@@ -345,7 +397,7 @@ class MissionStateManager:
         current_quat = current_state[3:7]
 
         # Determine active mode (V4.0.0: mission_state required)
-        is_dxf = self.mission_state.dxf_shape_mode_active
+        is_dxf = self.mission_state.dxf_shape_mode_active or self.mission_state.mesh_scan_mode_active
 
         # 3D Position for internal logic
         curr_pos_3d = current_state[:3]
@@ -359,7 +411,28 @@ class MissionStateManager:
             path_len = max(self.mission_state.dxf_path_length, 1e-9)
             closest_point_idx = self.mission_state.dxf_closest_point_index
 
-            if phase == "TRACKING" and start_time is not None:
+            traj = self._get_dxf_trajectory_array()
+            if traj is not None and phase == "TRACKING" and start_time is not None:
+                for k in range(horizon + 1):
+                    future_time = current_time + k * dt
+                    elapsed = max(0.0, future_time - start_time)
+                    sample = self._sample_dxf_trajectory(elapsed)
+                    if sample is None:
+                        trajectory[k] = trajectory[k - 1] if k > 0 else current_state
+                        continue
+                    pos, vel = sample
+                    orient = self._velocity_to_orientation(vel)
+                    trajectory[k] = self._create_3d_state(
+                        pos[0],
+                        pos[1],
+                        orient,
+                        vel[0],
+                        vel[1],
+                        0.0,
+                        pos[2],
+                        vel[2],
+                    )
+            elif phase == "TRACKING" and start_time is not None:
 
                 from src.satellite_control.mission.mission_manager import (
                     get_path_tangent_orientation,
@@ -574,7 +647,7 @@ class MissionStateManager:
             return self._handle_multi_point_mode(current_position, current_quat, current_time)
 
         # DXF shape mode (V4.0.0: mission_state required)
-        is_dxf = self.mission_state.dxf_shape_mode_active
+        is_dxf = self.mission_state.dxf_shape_mode_active or self.mission_state.mesh_scan_mode_active
         
         if is_dxf:
             return self._handle_dxf_shape_mode(current_position, current_quat, current_time)
@@ -921,6 +994,55 @@ class MissionStateManager:
         tracking_start = self._get_dxf_tracking_start_time()
         if tracking_start is None:
             return None
+        traj = self._get_dxf_trajectory_array()
+        if traj is not None and traj.size > 0:
+            elapsed = current_time - tracking_start
+            total_time = float(traj[-1, 0])
+            if elapsed >= total_time:
+                current_path_position = (
+                    float(traj[-1, 1]),
+                    float(traj[-1, 2]),
+                    float(traj[-1, 3]),
+                )
+                has_return = self._get_dxf_has_return()
+                if has_return:
+                    if self.final_waypoint_stabilization_start_time is None:
+                        self.final_waypoint_stabilization_start_time = current_time
+                        self._update_dxf_phase("PATH_STABILIZATION")
+                        self.mission_state.dxf_final_position = current_path_position
+                        self._set_dxf_final_position(current_path_position)
+                        stab_time = self._get_shape_positioning_stabilization_time()
+                        logger.info(
+                            f" Stabilizing at final waypoint for {stab_time:.1f} "
+                            "seconds before return..."
+                        )
+                    return None
+                self._update_dxf_phase("STABILIZING")
+                if self.mission_state is not None:
+                    self.mission_state.dxf_final_position = current_path_position
+                self._set_dxf_stabilization_start_time(current_time)
+                self._set_dxf_final_position(current_path_position)
+                logger.info(" Profile traversal completed! Stabilizing at final position...")
+                return None
+
+            sample = self._sample_dxf_trajectory(elapsed)
+            if sample is None:
+                return None
+            pos, vel = sample
+            self._set_dxf_current_target_position(
+                (float(pos[0]), float(pos[1]), float(pos[2]))
+            )
+            target_orientation = self._velocity_to_orientation(vel)
+            return self._create_3d_state(
+                float(pos[0]),
+                float(pos[1]),
+                target_orientation,
+                float(vel[0]),
+                float(vel[1]),
+                0.0,
+                float(pos[2]),
+                float(vel[2]),
+            )
         tracking_time = current_time - tracking_start
         distance_traveled = self._get_dxf_target_speed() * tracking_time
         path_len = max(self._get_dxf_path_length(), 1e-9)

@@ -33,6 +33,7 @@ interface TelemetryState {
   pushSample: (data: TelemetryData) => void;
   addEvent: (level: EventLevel, message: string, simTime?: number) => void;
   clearEvents: () => void;
+  reset: () => void;
 }
 
 export const useTelemetryStore = create<TelemetryState>((set, get) => ({
@@ -103,4 +104,12 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   },
 
   clearEvents: () => set({ events: [] }),
+  reset: () =>
+    set({
+      latest: null,
+      history: [],
+      events: [],
+      lastSampleTime: null,
+      lastReceivedAt: null,
+    }),
 }));

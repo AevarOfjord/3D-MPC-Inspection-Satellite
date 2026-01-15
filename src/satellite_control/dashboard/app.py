@@ -1,10 +1,13 @@
 import asyncio
+import csv
 import json
 import logging
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Literal
+from pathlib import Path
+from fastapi import HTTPException, Query
 
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.mission_types import Mission
@@ -52,7 +55,9 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+DATA_DIR = Path(__file__).resolve().parents[3] / "Data" / "Simulation"
 
 
 # --- Data Models ---
@@ -61,11 +66,23 @@ class ObstacleModel(BaseModel):
     radius: float
 
 
+class MeshScanConfigModel(BaseModel):
+    obj_path: str
+    standoff: float = 0.5
+    levels: int = 8
+    points_per_circle: int = 72
+    speed_max: float = 0.2
+    speed_min: float = 0.05
+    lateral_accel: float = 0.05
+    z_margin: float = 0.0
+
+
 class MissionConfigModel(BaseModel):
-    start_position: List[float]
-    target_position: List[float]
-    target_orientation: List[float]
-    obstacles: List[ObstacleModel]
+    start_position: List[float] = Field(default_factory=lambda: [10.0, 0.0, 0.0])
+    target_position: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    target_orientation: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    obstacles: List[ObstacleModel] = Field(default_factory=list)
+    mesh_scan: Optional[MeshScanConfigModel] = None
 
 
 # --- Global State ---
@@ -130,6 +147,57 @@ async def run_simulation_loop():
                 Obstacle(position=np.array(o[:3]), radius=o[3]) for o in obstacles
             ]
             sim_config.mission_state.obstacles_enabled = len(obstacles) > 0
+
+        mesh_scan = (
+            current_mission_config.mesh_scan
+            if current_mission_config and current_mission_config.mesh_scan
+            else None
+        )
+        if mesh_scan:
+            from src.satellite_control.mission.mesh_scan import (
+                build_mesh_scan_trajectory,
+            )
+            try:
+                mpc_dt = float(sim_config.app_config.mpc.dt)
+                path, trajectory, path_length = build_mesh_scan_trajectory(
+                    obj_path=mesh_scan.obj_path,
+                    standoff=mesh_scan.standoff,
+                    levels=mesh_scan.levels,
+                    points_per_circle=mesh_scan.points_per_circle,
+                    v_max=mesh_scan.speed_max,
+                    v_min=mesh_scan.speed_min,
+                    lateral_accel=mesh_scan.lateral_accel,
+                    dt=mpc_dt,
+                    z_margin=mesh_scan.z_margin,
+                )
+            except Exception as exc:
+                logger.error(f"Mesh scan generation failed: {exc}")
+            else:
+                if path:
+                    target_pos = tuple(path[0])
+
+                mission_state = sim_config.mission_state
+                mission_state.mesh_scan_mode_active = True
+                mission_state.mesh_scan_obj_path = mesh_scan.obj_path
+                mission_state.mesh_scan_standoff = mesh_scan.standoff
+                mission_state.mesh_scan_levels = mesh_scan.levels
+                mission_state.mesh_scan_points_per_circle = mesh_scan.points_per_circle
+                mission_state.mesh_scan_speed_max = mesh_scan.speed_max
+                mission_state.mesh_scan_speed_min = mesh_scan.speed_min
+                mission_state.mesh_scan_lateral_accel = mesh_scan.lateral_accel
+                mission_state.mesh_scan_z_margin = mesh_scan.z_margin
+
+                mission_state.dxf_shape_mode_active = True
+                mission_state.dxf_shape_path = path
+                mission_state.dxf_path_length = path_length
+                mission_state.dxf_target_speed = mesh_scan.speed_max
+                mission_state.dxf_trajectory = trajectory.tolist()
+                mission_state.dxf_trajectory_dt = mpc_dt
+                mission_state.dxf_shape_phase = "POSITIONING"
+                mission_state.dxf_mission_start_time = None
+                mission_state.dxf_tracking_start_time = None
+                mission_state.dxf_stabilization_start_time = None
+                mission_state.dxf_final_position = None
 
         # Initialize simulation
         sim_instance = SatelliteMPCLinearizedSimulation(
@@ -240,6 +308,136 @@ async def run_simulation_loop():
 
     except asyncio.CancelledError:
         logger.info("Simulation loop cancelled.")
+
+
+def _get_run_dir(run_id: str) -> Path:
+    if Path(run_id).name != run_id:
+        raise HTTPException(status_code=400, detail="Invalid run id")
+    run_dir = DATA_DIR / run_id
+    if not run_dir.exists() or not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run_dir
+
+
+@app.get("/simulations")
+async def list_simulations():
+    runs = []
+    if DATA_DIR.exists():
+        for run_dir in sorted(DATA_DIR.iterdir(), reverse=True):
+            if not run_dir.is_dir():
+                continue
+            metrics_path = run_dir / "performance_metrics.json"
+            metrics = {}
+            if metrics_path.exists():
+                try:
+                    metrics = json.loads(metrics_path.read_text())
+                except Exception as exc:
+                    logger.error(f"Failed to read metrics for {run_dir.name}: {exc}")
+            sim_metrics = metrics.get("simulation", {}) if isinstance(metrics, dict) else {}
+            runs.append(
+                {
+                    "id": run_dir.name,
+                    "modified": run_dir.stat().st_mtime,
+                    "has_physics": (run_dir / "physics_data.csv").exists(),
+                    "has_metrics": metrics_path.exists(),
+                    "steps": sim_metrics.get("total_steps"),
+                    "duration": sim_metrics.get("total_time_s"),
+                }
+            )
+    return {"runs": runs}
+
+
+@app.get("/simulations/{run_id}/telemetry")
+async def get_simulation_telemetry(
+    run_id: str,
+    stride: int = Query(1, ge=1, le=1000),
+):
+    run_dir = _get_run_dir(run_id)
+    physics_path = run_dir / "physics_data.csv"
+    if not physics_path.exists():
+        raise HTTPException(status_code=404, detail="physics_data.csv not found")
+
+    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+
+    def to_float(value: Optional[str], default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    with physics_path.open() as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames or []
+        thruster_cols = [
+            name
+            for name in fieldnames
+            if name.startswith("Thruster_") and name.endswith("_Cmd")
+        ]
+
+        def thruster_key(name: str) -> int:
+            parts = name.split("_")
+            return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+
+        thruster_cols.sort(key=thruster_key)
+
+        telemetry = []
+        for idx, row in enumerate(reader):
+            if idx % stride != 0:
+                continue
+
+            roll = to_float(row.get("Current_Roll"))
+            pitch = to_float(row.get("Current_Pitch"))
+            yaw = to_float(row.get("Current_Yaw"))
+            quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
+
+            target_roll = to_float(row.get("Target_Roll"))
+            target_pitch = to_float(row.get("Target_Pitch"))
+            target_yaw = to_float(row.get("Target_Yaw"))
+
+            err_x = to_float(row.get("Error_X"))
+            err_y = to_float(row.get("Error_Y"))
+            err_z = to_float(row.get("Error_Z"))
+            err_roll = to_float(row.get("Error_Roll"))
+            err_pitch = to_float(row.get("Error_Pitch"))
+            err_yaw = to_float(row.get("Error_Yaw"))
+
+            telemetry.append(
+                {
+                    "time": to_float(row.get("Time")),
+                    "position": [
+                        to_float(row.get("Current_X")),
+                        to_float(row.get("Current_Y")),
+                        to_float(row.get("Current_Z")),
+                    ],
+                    "quaternion": list(quat),
+                    "velocity": [
+                        to_float(row.get("Current_VX")),
+                        to_float(row.get("Current_VY")),
+                        to_float(row.get("Current_VZ")),
+                    ],
+                    "angular_velocity": [
+                        to_float(row.get("Current_WX")),
+                        to_float(row.get("Current_WY")),
+                        to_float(row.get("Current_WZ")),
+                    ],
+                    "target_position": [
+                        to_float(row.get("Target_X")),
+                        to_float(row.get("Target_Y")),
+                        to_float(row.get("Target_Z")),
+                    ],
+                    "target_orientation": [target_roll, target_pitch, target_yaw],
+                    "thrusters": [to_float(row.get(col)) for col in thruster_cols],
+                    "rw_torque": [0.0, 0.0, 0.0],
+                    "obstacles": [],
+                    "solve_time": 0.0,
+                    "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
+                    "ang_error": float(
+                        np.linalg.norm([err_roll, err_pitch, err_yaw])
+                    ),
+                }
+            )
+
+    return {"run_id": run_id, "telemetry": telemetry}
 
 
 @app.post("/mission")

@@ -201,7 +201,17 @@ class MPCController(Controller):
         x_target_trajectory: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Compute optimal control action via C++ backend."""
-        result = self._cpp_controller.get_control_action(x_current, x_target)
+        use_traj = x_target_trajectory is not None
+        if use_traj:
+            traj = np.asarray(x_target_trajectory, dtype=float)
+            if traj.ndim == 2 and traj.shape[1] == self.nx and traj.shape[0] > 0:
+                result = self._cpp_controller.get_control_action_trajectory(
+                    x_current, traj
+                )
+            else:
+                result = self._cpp_controller.get_control_action(x_current, x_target)
+        else:
+            result = self._cpp_controller.get_control_action(x_current, x_target)
         self.solve_times.append(result.solve_time)
         return np.array(result.u), {
             "status": result.status,

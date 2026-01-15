@@ -1,5 +1,6 @@
 
 #include "mpc_controller.hpp"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -326,6 +327,26 @@ void MPCControllerCpp::update_cost(const VectorXd& x_target) {
     osqp_update_lin_cost(work_, q_.data());
 }
 
+void MPCControllerCpp::update_cost_trajectory(const MatrixXd& x_target_traj) {
+    VectorXd Q_term = Q_diag_ * 10.0;
+    if (x_target_traj.rows() <= 0) {
+        update_cost(VectorXd::Zero(nx_));
+        return;
+    }
+
+    int last_idx = x_target_traj.rows() - 1;
+    for (int k = 0; k < N_; ++k) {
+        int idx = std::min(k, last_idx);
+        q_.segment(k * nx_, nx_) =
+            -Q_diag_.cwiseProduct(x_target_traj.row(idx).transpose());
+    }
+    int term_idx = std::min(N_, last_idx);
+    q_.segment(N_ * nx_, nx_) =
+        -Q_term.cwiseProduct(x_target_traj.row(term_idx).transpose());
+
+    osqp_update_lin_cost(work_, q_.data());
+}
+
 void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
     int init_start = N_ * nx_;
     l_.segment(init_start, nx_) = x_current;
@@ -397,6 +418,48 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
     result.status = 1;
     
+    return result;
+}
+
+ControlResult MPCControllerCpp::get_control_action_trajectory(
+    const VectorXd& x_current, const MatrixXd& x_target_traj) {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    ControlResult result;
+    result.timeout = false;
+
+    // Update dynamics if quaternion changed (Successive Linearization)
+    Eigen::Vector4d quat = x_current.segment<4>(3);
+    if ((quat - prev_quat_).norm() > 0.001) {
+        update_dynamics(x_current);
+        prev_quat_ = quat;
+    }
+
+    update_cost_trajectory(x_target_traj);
+    if (x_target_traj.rows() > 0) {
+        update_obstacle_constraints(x_current, x_target_traj.row(0).transpose());
+    } else {
+        update_obstacle_constraints(x_current, x_current);
+    }
+    update_constraints(x_current);
+
+    osqp_solve(work_);
+
+    if (work_->info->status_val != OSQP_SOLVED) {
+        result.status = work_->info->status_val;
+        result.u = VectorXd::Zero(nu_);
+    } else {
+        result.status = work_->info->status_val;
+        result.u = VectorXd::Map(work_->solution->x + (N_ + 1) * nx_, nu_);
+    }
+
+    // Clip to bounds
+    result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    result.solve_time = elapsed.count();
+
     return result;
 }
 

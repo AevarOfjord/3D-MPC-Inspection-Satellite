@@ -57,6 +57,7 @@ public:
 
     // Main interface
     ControlResult get_control_action(const VectorXd& x_current, const VectorXd& x_target);
+    ControlResult get_control_action_trajectory(const VectorXd& x_current, const MatrixXd& x_target_traj);
     
     // Collision avoidance (V3.0.0)
     void set_obstacles(const satellite_collision::ObstacleSet& obstacles);
@@ -127,6 +128,7 @@ private:
     // Updates
     void update_dynamics(const VectorXd& x_current);
     void update_cost(const VectorXd& x_target);
+    void update_cost_trajectory(const MatrixXd& x_target_traj);
     void update_constraints(const VectorXd& x_current);
     void update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target);
     VectorXd apply_z_tilt(const VectorXd& x_current, const VectorXd& x_target);

@@ -630,8 +630,22 @@ class SatelliteMPCLinearizedSimulation:
 
             else:
                 # Legacy / Mission Manager Fallback
-                # Only call if mission manager exists and has get_trajectory
-                if hasattr(self.mission_manager, "get_trajectory"):
+                # Only use trajectory tracking for path-following modes.
+                target_trajectory = None
+                mission_state = (
+                    self.mission_manager.mission_state
+                    if self.mission_manager and self.mission_manager.mission_state
+                    else None
+                )
+                use_trajectory = bool(
+                    mission_state
+                    and (
+                        mission_state.dxf_shape_mode_active
+                        or getattr(mission_state, "mesh_scan_mode_active", False)
+                    )
+                )
+
+                if use_trajectory and hasattr(self.mission_manager, "get_trajectory"):
                     target_trajectory = self.mission_manager.get_trajectory(
                         current_time=self.simulation_time,
                         dt=dt,
@@ -639,8 +653,6 @@ class SatelliteMPCLinearizedSimulation:
                         current_state=current_state,
                         external_target_state=self.target_state,
                     )
-                else:
-                    target_trajectory = None
 
             # Update obstacles (V3.0.0)
             if self.mission_manager.mission_state:
@@ -681,7 +693,16 @@ class SatelliteMPCLinearizedSimulation:
                         direction = np.array(physics_cfg.thruster_directions[tid], dtype=np.float64)
                         net_force += force * direction
 
-                    if float(np.dot(net_force, current_state[7:10])) > 0.0:
+                    # Rotate body-frame force into world frame to compare with world velocity.
+                    q = np.array(current_state[3:7], dtype=np.float64)
+                    q_norm = np.linalg.norm(q)
+                    if q_norm > 0:
+                        q = q / q_norm
+                    q_vec = q[1:4]
+                    t = 2.0 * np.cross(q_vec, net_force)
+                    net_force_world = net_force + q[0] * t + np.cross(q_vec, t)
+
+                    if float(np.dot(net_force_world, current_state[7:10])) > 0.0:
                         thruster_action = np.zeros_like(thruster_action)
 
             rw_torque_cmd = np.zeros(3, dtype=np.float64)

@@ -13,6 +13,7 @@ import { useCameraStore } from './store/cameraStore';
 import { useUiStore } from './store/uiStore';
 import { ViewControls } from './components/ViewControls';
 import { controlApi } from './api/control';
+import { PlaybackSelector } from './components/PlaybackSelector';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
@@ -85,6 +86,8 @@ function App() {
                  Reset
                </button>
              </div>
+
+             <PlaybackSelector />
 
              <div className="relative">
                <button

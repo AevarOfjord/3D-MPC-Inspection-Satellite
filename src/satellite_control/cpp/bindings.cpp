@@ -90,6 +90,9 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("get_control_action", &MPCControllerCpp::get_control_action,
              py::arg("x_current"), py::arg("x_target"),
              "Compute optimal control action")
+        .def("get_control_action_trajectory", &MPCControllerCpp::get_control_action_trajectory,
+             py::arg("x_current"), py::arg("x_target_traj"),
+             "Compute optimal control action using a trajectory reference")
         .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
         .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
         .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
