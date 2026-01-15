@@ -11,14 +11,23 @@ export interface TelemetryEvent {
   simTime?: number;
 }
 
+export interface TelemetrySample {
+  time: number;
+  posError: number;
+  angError: number;
+  velocity: number;
+  solveTime: number;
+}
+
 interface TelemetryState {
   connected: boolean;
   lastReceivedAt: number | null;
   latest: TelemetryData | null;
-  history: TelemetryData[];
+  history: TelemetrySample[];
   events: TelemetryEvent[];
   maxHistory: number;
   maxEvents: number;
+  lastSampleTime: number | null;
 
   setConnected: (connected: boolean) => void;
   pushSample: (data: TelemetryData) => void;
@@ -32,23 +41,46 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   latest: null,
   history: [],
   events: [],
-  maxHistory: 5000,
+  maxHistory: 1200,
   maxEvents: 100,
+  lastSampleTime: null,
 
   setConnected: (connected) => set({ connected }),
 
   pushSample: (data) => {
-    const { maxHistory, history } = get();
-    const nextHistory = [...history, data];
+    const { maxHistory, history, lastSampleTime } = get();
+    const now = Date.now();
+
+    set({
+      latest: data,
+      lastReceivedAt: now,
+    });
+
+    if (lastSampleTime !== null && Math.abs(data.time - lastSampleTime) < 0.1) {
+      return;
+    }
+
+    const velocityMag = Math.sqrt(
+      data.velocity[0] ** 2 + data.velocity[1] ** 2 + data.velocity[2] ** 2
+    );
+
+    const sample: TelemetrySample = {
+      time: Number(data.time.toFixed(1)),
+      posError: data.pos_error ?? 0,
+      angError: (data.ang_error ?? 0) * (180 / Math.PI),
+      velocity: velocityMag,
+      solveTime: (data.solve_time ?? 0) * 1000,
+    };
+
+    const nextHistory = [...history, sample];
     const trimmedHistory =
       nextHistory.length > maxHistory
         ? nextHistory.slice(nextHistory.length - maxHistory)
         : nextHistory;
 
     set({
-      latest: data,
-      lastReceivedAt: Date.now(),
       history: trimmedHistory,
+      lastSampleTime: data.time,
     });
   },
 

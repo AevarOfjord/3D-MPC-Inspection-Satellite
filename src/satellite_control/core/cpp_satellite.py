@@ -233,6 +233,7 @@ class CppSatelliteSimulator:
         self.engine.step(dt, self._current_thruster_cmds, self._current_rw_torques)
         self.simulation_time += dt
 
+
     # Visualization Compat (Headless Mocks)
     def is_viewer_paused(self):
         return False

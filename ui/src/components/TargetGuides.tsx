@@ -17,12 +17,13 @@ export function TargetGuides() {
     return () => { unsub(); };
   }, []);
 
-  if (!targetPos || !targetOri || !currentPos) return null;
-
   const targetQuat = useMemo(() => {
+    if (!targetOri) return null;
     const euler = new Euler(targetOri[0], targetOri[1], targetOri[2], 'XYZ');
     return new Quaternion().setFromEuler(euler);
   }, [targetOri]);
+
+  if (!targetPos || !targetOri || !currentPos || !targetQuat) return null;
 
   return (
     <>

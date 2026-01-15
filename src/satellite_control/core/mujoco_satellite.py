@@ -721,6 +721,7 @@ class MuJoCoSatelliteSimulator(SimulationBackend):
 
         self._simulation_time += dt
 
+
         # Update visual elements (thruster glow)
         self._update_visuals()
 

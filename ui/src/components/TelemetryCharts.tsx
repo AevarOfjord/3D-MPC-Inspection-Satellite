@@ -4,14 +4,6 @@ import { Activity } from 'lucide-react';
 import { useMissionStore } from '../store/missionStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 
-interface ChartDataPoint {
-  time: number;
-  posError: number;
-  angError: number;
-  velocity: number;
-  solveTime: number;
-}
-
 export function TelemetryCharts() {
   const history = useTelemetryStore(s => s.history);
   const isEditing = useMissionStore(s => s.isEditing);
@@ -24,27 +16,10 @@ export function TelemetryCharts() {
   });
 
   const chartData = useMemo(() => {
-    const points: ChartDataPoint[] = [];
-    let lastTime = -Infinity;
-    history.forEach((data) => {
-      if (Math.abs(data.time - lastTime) < 0.1) return;
-      lastTime = data.time;
-      const velocityMag = Math.sqrt(
-        data.velocity[0] ** 2 + data.velocity[1] ** 2 + data.velocity[2] ** 2
-      );
-      points.push({
-        time: Number(data.time.toFixed(1)),
-        posError: data.pos_error || 0,
-        angError: (data.ang_error || 0) * (180 / Math.PI),
-        velocity: velocityMag,
-        solveTime: (data.solve_time || 0) * 1000,
-      });
-    });
-
-    if (points.length === 0) return [];
-    const latestTime = points[points.length - 1].time;
-    if (timeWindow === 0) return points;
-    return points.filter((p) => p.time >= latestTime - timeWindow);
+    if (history.length === 0) return [];
+    const latestTime = history[history.length - 1].time;
+    if (timeWindow === 0) return history;
+    return history.filter((p) => p.time >= latestTime - timeWindow);
   }, [history, timeWindow]);
 
   return (
@@ -79,17 +54,17 @@ export function TelemetryCharts() {
         </div>
       </div>
 
-      <div className="flex flex-1 gap-4">
+      <div className="flex flex-1 gap-4 min-h-[120px] min-w-0">
       
       {/* Position Error Chart */}
       {visible.pos && (
-      <div className="flex-1 min-w-[240px] flex flex-col">
+      <div className="flex-1 min-w-[240px] min-h-[120px] min-w-0 flex flex-col">
         <div className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
           <Activity size={12} className="text-blue-400" />
           POSITION ERROR (m)
         </div>
-        <div className="flex-1 w-full">
-           <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-[120px]">
+           <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                <XAxis 
@@ -117,13 +92,13 @@ export function TelemetryCharts() {
 
       {/* Angle Error Chart */}
       {visible.ang && (
-      <div className="flex-1 min-w-[240px] flex flex-col">
+      <div className="flex-1 min-w-[240px] min-h-[120px] min-w-0 flex flex-col">
         <div className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
           <Activity size={12} className="text-purple-400" />
           ANGLE ERROR (deg)
         </div>
-        <div className="flex-1 w-full">
-           <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-[120px]">
+           <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                <XAxis 
@@ -151,13 +126,13 @@ export function TelemetryCharts() {
 
        {/* Velocity Chart */}
        {visible.vel && (
-       <div className="flex-1 min-w-[240px] flex flex-col">
+       <div className="flex-1 min-w-[240px] min-h-[120px] min-w-0 flex flex-col">
         <div className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
           <Activity size={12} className="text-green-400" />
           VELOCITY (m/s)
         </div>
-        <div className="flex-1 w-full">
-           <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-[120px]">
+           <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                <XAxis 
@@ -183,13 +158,13 @@ export function TelemetryCharts() {
 
        {/* Solve Time Chart */}
        {visible.solve && (
-       <div className="flex-1 min-w-[240px] flex flex-col">
+       <div className="flex-1 min-w-[240px] min-h-[120px] min-w-0 flex flex-col">
         <div className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
           <Activity size={12} className="text-yellow-400" />
           SOLVE TIME (ms)
         </div>
-        <div className="flex-1 w-full">
-           <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-[120px]">
+           <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                <XAxis 

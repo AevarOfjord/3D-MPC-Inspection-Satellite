@@ -10,48 +10,23 @@ export function ExportControls() {
 
   const csvPayload = useMemo(() => {
     if (history.length === 0) return null;
-    const maxThrusters = Math.max(...history.map(d => d.thrusters?.length ?? 0));
-    const maxRw = Math.max(...history.map(d => d.rw_torque?.length ?? 0));
 
     const headers = [
       'time',
-      'pos_x', 'pos_y', 'pos_z',
-      'vel_x', 'vel_y', 'vel_z',
-      'ang_vel_x', 'ang_vel_y', 'ang_vel_z',
-      'target_x', 'target_y', 'target_z',
-      'target_roll', 'target_pitch', 'target_yaw',
-      'pos_error', 'ang_error', 'solve_time',
-      'paused', 'sim_speed',
+      'pos_error',
+      'ang_error_deg',
+      'velocity',
+      'solve_time_ms',
     ];
 
-    for (let i = 0; i < maxThrusters; i += 1) {
-      headers.push(`thruster_${i}`);
-    }
-    for (let i = 0; i < maxRw; i += 1) {
-      headers.push(`rw_${i}`);
-    }
-
     const rows = history.map((d) => {
-      const row = [
+      return [
         d.time,
-        d.position[0], d.position[1], d.position[2],
-        d.velocity[0], d.velocity[1], d.velocity[2],
-        d.angular_velocity[0], d.angular_velocity[1], d.angular_velocity[2],
-        d.target_position[0], d.target_position[1], d.target_position[2],
-        d.target_orientation[0], d.target_orientation[1], d.target_orientation[2],
-        d.pos_error ?? 0,
-        d.ang_error ?? 0,
-        d.solve_time ?? 0,
-        d.paused ?? false,
-        d.sim_speed ?? 1.0,
+        d.posError,
+        d.angError,
+        d.velocity,
+        d.solveTime,
       ];
-      for (let i = 0; i < maxThrusters; i += 1) {
-        row.push(d.thrusters?.[i] ?? '');
-      }
-      for (let i = 0; i < maxRw; i += 1) {
-        row.push(d.rw_torque?.[i] ?? '');
-      }
-      return row;
     });
 
     return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

@@ -233,7 +233,7 @@ class SimulationConfig:
             r_thrust=float(getattr(weights, "thrust", 0.1)),
             r_rw_torque=float(getattr(weights, "rw_torque", 0.1)),
             # Constraints (defaults if not in yaml)
-            max_velocity=1.0,
+            max_velocity=0.2,
             max_angular_velocity=1.0,
             position_bounds=100.0,
         )

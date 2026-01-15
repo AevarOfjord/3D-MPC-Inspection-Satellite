@@ -137,7 +137,7 @@ class Constants:
     R_THRUST = 0.1
     R_RW_TORQUE = 0.1
 
-    MAX_VELOCITY = 0.5
+    MAX_VELOCITY = 0.2
     MAX_ANGULAR_VELOCITY = np.pi / 2
     POSITION_BOUNDS = 3.0
     DAMPING_ZONE = 0.25
