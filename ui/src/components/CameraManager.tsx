@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Vector3, Quaternion } from 'three';
 import { telemetry } from '../services/telemetry';
+import { useCameraStore } from '../store/cameraStore';
 
 type CameraMode = 'free' | 'chase' | 'top';
 
@@ -13,6 +14,10 @@ export function CameraManager({ mode }: CameraManagerProps) {
   const { camera, controls } = useThree();
   const satPosRef = useRef(new Vector3());
   const satQuatRef = useRef(new Quaternion());
+  const focusTarget = useCameraStore(s => s.focusTarget);
+  const focusNonce = useCameraStore(s => s.focusNonce);
+  const viewPreset = useCameraStore(s => s.viewPreset);
+  const viewNonce = useCameraStore(s => s.viewNonce);
   
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
@@ -38,6 +43,56 @@ export function CameraManager({ mode }: CameraManagerProps) {
         camera.up.set(0, 1, 0);
     }
   }, [mode, camera, controls]);
+
+  useEffect(() => {
+    if (!focusTarget) return;
+    const target = new Vector3(...focusTarget);
+    const offset = new Vector3(2.5, 2.0, 2.5);
+    camera.position.copy(target.clone().add(offset));
+    camera.lookAt(target);
+    if (controls) {
+      (controls as any).target.copy(target);
+      (controls as any).update();
+    }
+  }, [camera, controls, focusNonce, focusTarget]);
+
+  useEffect(() => {
+    if (!viewPreset) return;
+    const target = focusTarget ? new Vector3(...focusTarget) : new Vector3(0, 0, 0);
+    let offset: Vector3;
+    let up = new Vector3(0, 1, 0);
+
+    switch (viewPreset) {
+      case 'top':
+        offset = new Vector3(0, 10, 0);
+        up = new Vector3(0, 0, -1);
+        break;
+      case 'front':
+        offset = new Vector3(0, 0, 10);
+        break;
+      case 'back':
+        offset = new Vector3(0, 0, -10);
+        break;
+      case 'left':
+        offset = new Vector3(-10, 0, 0);
+        break;
+      case 'right':
+        offset = new Vector3(10, 0, 0);
+        break;
+      case 'iso':
+      default:
+        offset = new Vector3(6, 6, 6);
+        break;
+    }
+
+    camera.up.copy(up);
+    camera.position.copy(target.clone().add(offset));
+    camera.lookAt(target);
+    if (controls) {
+      (controls as any).target.copy(target);
+      (controls as any).update();
+    }
+  }, [camera, controls, focusTarget, viewNonce, viewPreset]);
 
   useFrame(() => {
     if (mode === 'chase') {

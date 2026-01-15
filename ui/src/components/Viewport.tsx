@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { OrbitControls, Stars } from '@react-three/drei';
 import { Vector3 } from 'three';
 import { TargetMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
@@ -11,6 +11,8 @@ import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
+import { TargetGuides } from './TargetGuides';
+import { CanvasRegistrar } from './CanvasRegistrar';
 
 function Obstacles() {
   const [params, setParams] = useState<{
@@ -51,11 +53,14 @@ interface ViewportProps {
 }
 
 export function Viewport({ viewMode }: ViewportProps) {
+  const isEditing = useMissionStore(s => s.isEditing);
+
   return (
     <div className="w-full h-full bg-slate-900">
       <Canvas shadows camera={{ position: [5, 5, 5], fov: 45 }}>
+        <CanvasRegistrar />
         <CameraManager mode={viewMode} />
-        <OrbitControls makeDefault enabled={viewMode === 'free'} />
+        <OrbitControls makeDefault enabled={viewMode === 'free' && !isEditing} />
         
         {/* Environment */}
         <color attach="background" args={['#050510']} />
@@ -78,12 +83,10 @@ export function Viewport({ viewMode }: ViewportProps) {
         <Obstacles />
         <EditableObstacles />
         <SatelliteModel />
+        <TargetGuides />
         <Trajectory />
         <PlannedPath />
         
-        <GizmoHelper alignment="top-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={['red', 'green', 'blue']} labelColor="black" />
-        </GizmoHelper>
       </Canvas>
     </div>
   );

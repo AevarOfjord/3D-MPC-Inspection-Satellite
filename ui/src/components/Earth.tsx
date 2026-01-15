@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Mesh } from 'three';
+import { Euler, Mesh, Quaternion } from 'three';
 
 export function Earth() {
   const earthRef = useRef<Mesh>(null);
@@ -41,8 +41,13 @@ interface TargetMarkerProps {
 }
 
 export function TargetMarker({ position = [0, 0, 0], orientation = [0, 0, 0] }: TargetMarkerProps) {
+  const targetQuat = useMemo(() => {
+    const euler = new Euler(orientation[0], orientation[1], orientation[2], 'XYZ');
+    return new Quaternion().setFromEuler(euler);
+  }, [orientation]);
+
   return (
-    <group position={position} rotation={orientation}>
+    <group position={position} quaternion={targetQuat}>
       <mesh>
         <sphereGeometry args={[0.05, 16, 16]} />
         <meshStandardMaterial color="#ff4444" emissive="#ff0000" emissiveIntensity={0.5} />

@@ -4,9 +4,17 @@ import type { MissionConfig, Obstacle } from '../api/mission';
 interface MissionState {
   config: MissionConfig;
   isEditing: boolean;
+  lastRunConfig: MissionConfig | null;
+  selectedObstacleIndex: number | null;
+  transformAxis: 'free' | 'x' | 'y' | 'z';
+  transformSnap: number | null;
   
   setConfig: (config: MissionConfig) => void;
   setEditing: (isEditing: boolean) => void;
+  setLastRunConfig: (config: MissionConfig | null) => void;
+  setSelectedObstacleIndex: (index: number | null) => void;
+  setTransformAxis: (axis: 'free' | 'x' | 'y' | 'z') => void;
+  setTransformSnap: (snap: number | null) => void;
   
   updateStartPos: (index: number, value: number) => void;
   updateTargetPos: (index: number, value: number) => void;
@@ -25,9 +33,17 @@ export const useMissionStore = create<MissionState>((set) => ({
     obstacles: []
   },
   isEditing: false,
+  lastRunConfig: null,
+  selectedObstacleIndex: null,
+  transformAxis: 'free',
+  transformSnap: 0.5,
 
-  setConfig: (config) => set({ config }),
+  setConfig: (config) => set({ config, selectedObstacleIndex: null }),
   setEditing: (isEditing) => set({ isEditing }),
+  setLastRunConfig: (config) => set({ lastRunConfig: config }),
+  setSelectedObstacleIndex: (index) => set({ selectedObstacleIndex: index }),
+  setTransformAxis: (axis) => set({ transformAxis: axis }),
+  setTransformSnap: (snap) => set({ transformSnap: snap }),
 
   updateStartPos: (index, value) => set((state) => {
     const newPos = [...state.config.start_position] as [number, number, number];
@@ -47,19 +63,33 @@ export const useMissionStore = create<MissionState>((set) => ({
     return { config: { ...state.config, target_orientation: newOri } };
   }),
 
-  addObstacle: () => set((state) => ({
-    config: {
-      ...state.config,
-      obstacles: [...state.config.obstacles, { position: [5.0, 0.0, 0.0], radius: 1.0 }]
-    }
-  })),
+  addObstacle: () => set((state) => {
+    const nextObstacles = [...state.config.obstacles, { position: [5.0, 0.0, 0.0], radius: 1.0 }];
+    return {
+      config: {
+        ...state.config,
+        obstacles: nextObstacles
+      },
+      selectedObstacleIndex: nextObstacles.length - 1
+    };
+  }),
 
-  removeObstacle: (index) => set((state) => ({
-    config: {
-      ...state.config,
-      obstacles: state.config.obstacles.filter((_, i) => i !== index)
+  removeObstacle: (index) => set((state) => {
+    const nextObstacles = state.config.obstacles.filter((_, i) => i !== index);
+    let nextSelected = state.selectedObstacleIndex;
+    if (nextSelected === index) {
+      nextSelected = null;
+    } else if (typeof nextSelected === 'number' && nextSelected > index) {
+      nextSelected -= 1;
     }
-  })),
+    return {
+      config: {
+        ...state.config,
+        obstacles: nextObstacles
+      },
+      selectedObstacleIndex: nextSelected
+    };
+  }),
 
   updateObstacle: (index, field, value, subIndex) => set((state) => {
     const newObstacles = [...state.config.obstacles];

@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../config/endpoints';
+
 export interface Obstacle {
   position: [number, number, number];
   radius: number;
@@ -12,7 +14,7 @@ export interface MissionConfig {
 
 export const missionApi = {
   updateMission: async (config: MissionConfig) => {
-    const response = await fetch('http://localhost:8000/mission', {
+    const response = await fetch(`${API_BASE_URL}/mission`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.mission_types import Mission
@@ -75,13 +75,15 @@ current_mission_config: Optional[MissionConfigModel] = (
     None  # To persist config across restarts
 )
 simulation_paused = True  # Start paused until explicit Run command
+simulation_speed = 1.0  # 1.0x realtime
+pending_steps = 0  # Queue of single-step requests while paused
 
 
 async def run_simulation_loop():
     """
     Background task to run the simulation loop and broadcast state.
     """
-    global sim_instance, current_mission_config
+    global sim_instance, current_mission_config, simulation_paused, simulation_speed, pending_steps
     logger.info("Starting simulation loop...")
 
     # Initialize simulation if not exists
@@ -138,10 +140,12 @@ async def run_simulation_loop():
             target_angle=target_angle,
         )
 
+    frame_dt = 0.016
+
     try:
         while True:
             # Check Pause State
-            if simulation_paused:
+            if simulation_paused and pending_steps <= 0:
                 await asyncio.sleep(0.1)
                 continue
 
@@ -163,13 +167,26 @@ async def run_simulation_loop():
                 sim_instance.set_target(tgt_pos, tgt_ori)
                 # Ensure we stay in continuous mode
                 sim_instance.set_continuous(True)
-                # Trigger RRT* Replan
-                sim_instance.replan_path()
+                # Trigger RRT* only when obstacles exist
+                if current_mission_config.obstacles:
+                    sim_instance.replan_path()
 
-            # Step simulation (~60Hz)
-            steps_per_frame = int(0.016 / SIMULATION_DT)
-            for _ in range(steps_per_frame):
-                sim_instance.step()
+            # Step simulation (~60Hz) with speed multiplier
+            if simulation_speed >= 1.0:
+                steps_per_frame = max(1, int((frame_dt * simulation_speed) / SIMULATION_DT))
+                sleep_time = frame_dt
+            else:
+                steps_per_frame = 1
+                sleep_time = frame_dt / max(simulation_speed, 0.1)
+
+            if simulation_paused and pending_steps > 0:
+                step_count = max(1, pending_steps)
+                pending_steps = 0
+                for _ in range(step_count):
+                    sim_instance.step()
+            else:
+                for _ in range(steps_per_frame):
+                    sim_instance.step()
                 # Continuous mode enabled: no auto-reset needed
                 # if sim_instance.is_complete():
                 #    ... reset ...
@@ -210,13 +227,16 @@ async def run_simulation_loop():
                 if hasattr(sim_instance, "simulation_config")
                 and hasattr(sim_instance.simulation_config, "mission_state")
                 else [],
+                "planned_path": getattr(sim_instance, "planned_path", []),
+                "paused": simulation_paused,
+                "sim_speed": simulation_speed,
                 "solve_time": getattr(sim_instance, "last_solve_time", 0.0),
                 "pos_error": getattr(sim_instance, "last_pos_error", 0.0),
                 "ang_error": getattr(sim_instance, "last_ang_error", 0.0),
             }
 
             await manager.broadcast(telemetry)
-            await asyncio.sleep(0.016)
+            await asyncio.sleep(sleep_time)
 
     except asyncio.CancelledError:
         logger.info("Simulation loop cancelled.")
@@ -250,6 +270,88 @@ async def update_mission(config: MissionConfigModel):
     simulation_paused = False
 
     return {"status": "success", "message": "Simulation restarted with new config"}
+
+
+class ControlCommand(BaseModel):
+    action: Literal["pause", "resume", "step"]
+    steps: int = 1
+
+
+class SpeedCommand(BaseModel):
+    speed: float
+
+
+@app.post("/control")
+async def control_simulation(cmd: ControlCommand):
+    """
+    Pause, resume, or single-step the simulation.
+    """
+    global simulation_paused, pending_steps
+
+    if cmd.action == "pause":
+        simulation_paused = True
+    elif cmd.action == "resume":
+        simulation_paused = False
+    elif cmd.action == "step":
+        simulation_paused = True
+        pending_steps += max(1, cmd.steps)
+
+    return {
+        "status": "success",
+        "paused": simulation_paused,
+        "pending_steps": pending_steps,
+    }
+
+
+@app.post("/speed")
+async def update_speed(cmd: SpeedCommand):
+    """
+    Update simulation speed multiplier.
+    """
+    global simulation_speed
+    simulation_speed = max(0.1, min(cmd.speed, 10.0))
+    return {"status": "success", "sim_speed": simulation_speed}
+
+
+@app.post("/replan")
+async def replan_path():
+    """
+    Trigger an explicit RRT* replanning step.
+    """
+    if not sim_instance:
+        return {"status": "error", "message": "Simulation not initialized"}
+
+    sim_instance.replan_path()
+    return {
+        "status": "success",
+        "waypoints": len(getattr(sim_instance, "planned_path", [])),
+    }
+
+
+@app.post("/reset")
+async def reset_simulation():
+    """
+    Reset the simulation loop as if the server was restarted.
+    """
+    global sim_instance, simulation_task, current_mission_config
+    global simulation_paused, simulation_speed, pending_steps
+
+    if simulation_task:
+        simulation_task.cancel()
+        try:
+            await simulation_task
+        except asyncio.CancelledError:
+            pass
+
+    sim_instance = None
+    current_mission_config = None
+    simulation_paused = True
+    simulation_speed = 1.0
+    pending_steps = 0
+
+    simulation_task = None
+
+    return {"status": "success", "message": "Simulation reset (paused)"}
 
 
 @app.on_event("startup")

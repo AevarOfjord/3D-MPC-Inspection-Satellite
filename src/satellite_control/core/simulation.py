@@ -148,6 +148,12 @@ class SatelliteMPCLinearizedSimulation:
         self.planner = RRTStarPlanner(
             bounds_min=(-20, -20, -20), bounds_max=(20, 20, 20)
         )
+        # Initialize Sequencer (will be populated if mission file is loaded)
+        from src.satellite_control.mission.sequencer import MissionSequencer
+
+        # Mission state is available after full init, but we can set placeholder
+        self.sequencer: Optional[MissionSequencer] = None
+
         self.trajectory_generator = TrajectoryGenerator(avg_velocity=0.5)
         self.planned_path = []  # List of waypoints [x,y,z]
         self.active_trajectory = None  # Time-parameterized trajectory
@@ -220,6 +226,14 @@ class SatelliteMPCLinearizedSimulation:
             start_vz,
             start_omega,
         )
+
+        # Initialize Mission Sequencer if MissionManager is present
+        if (
+            hasattr(self, "mission_manager")
+            and self.mission_manager
+            and self.mission_manager.mission_state
+        ):
+            self.sequencer = MissionSequencer(self.mission_manager.mission_state)
 
     def get_current_state(self) -> np.ndarray:
         """Get current satellite state [pos(3), quat(4), vel(3), ang_vel(3)]."""
@@ -715,7 +729,20 @@ class SatelliteMPCLinearizedSimulation:
             self.planned_path = [list(p) for p in waypoints]
             logger.info(f"Path found: {len(waypoints)} waypoints")
 
-            # Generate Trajectory
+            # Initialize Mission Sequencer if MissionManager is present
+            # This initialization should ideally be in __init__ or when mission_manager is set.
+            # The instruction implies __init__, but the snippet is here.
+            # Assuming the snippet is meant to be a placeholder for a new feature.
+            # The instruction also mentions updating in `step()`, which is not present here.
+            # Given the context, this snippet seems to be a misplacement or a partial instruction.
+            # I will insert the snippet as provided, assuming it's part of the replanning logic
+            # for a new feature, even if it contradicts the "initialize in __init__" instruction.
+            # The line "e trajectory generator start time?" is clearly a typo/cut-off from the original context.
+            # I will remove it and assume the comment was meant to be followed by the sequencer init.
+            if self.mission_manager and self.mission_manager.mission_state:
+                from src.satellite_control.mission.sequencer import MissionSequencer
+
+                self.sequencer = MissionSequencer(self.mission_manager.mission_state)
             # Update trajectory generator start time? Ideally relative content.
             # For now, just store the waypoints for visualization.
             # self.active_trajectory = self.trajectory_generator.generate_trajectory(waypoints)
@@ -1075,6 +1102,14 @@ class SatelliteMPCLinearizedSimulation:
                 self.context = SimulationContext()
                 self.context.dt = self.satellite.dt
                 self.context.control_dt = self.control_update_interval
+
+        # Update Mission Sequencer
+        if hasattr(self, "sequencer") and self.sequencer:
+            self.sequencer.update(self.simulation_time, self.get_current_state())
+
+        # 4. Step the Simulation Loop
+        if hasattr(self, "sequencer") and self.sequencer:
+            self.sequencer.update(self.simulation_time, self.get_current_state())
 
         self.loop.update_step(None)
 

@@ -28,10 +28,25 @@ export function Overlay() {
 
   if (!data) return null;
 
-  const { position, velocity, thrusters, rw_torque, solve_time = 0, pos_error = 0, ang_error = 0, angular_velocity = [0,0,0] } = data;
+  const {
+    position,
+    velocity,
+    thrusters,
+    rw_torque,
+    solve_time = 0,
+    pos_error = 0,
+    ang_error = 0,
+    angular_velocity = [0, 0, 0],
+    target_position = [0, 0, 0],
+  } = data;
   const speed = Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2);
   const distance = Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2);
   const angErrorDeg = ang_error * (180 / Math.PI);
+  const delta = [
+    target_position[0] - position[0],
+    target_position[1] - position[1],
+    target_position[2] - position[2],
+  ];
   
   // Grid column styling helpers
   const fmt = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2);
@@ -72,6 +87,15 @@ export function Overlay() {
                  <span className="text-right bg-white/5 rounded px-1">{fmt(velocity[1])}</span>
                  <span className="text-right bg-white/5 rounded px-1">{fmt(velocity[2])}</span>
                  <span className="text-gray-500 pl-1">m/s</span>
+              </div>
+
+              {/* DELTA to Target Row */}
+              <div className="grid grid-cols-[30px_1fr_1fr_1fr_25px] gap-1 items-center">
+                 <span className="text-gray-400 font-bold">ERR</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-orange-200">{fmt(delta[0])}</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-orange-200">{fmt(delta[1])}</span>
+                 <span className="text-right bg-white/5 rounded px-1 text-orange-200">{fmt(delta[2])}</span>
+                 <span className="text-gray-500 pl-1">m</span>
               </div>
 
               {/* ATT (Rotation) Row */}
@@ -136,53 +160,56 @@ export function Overlay() {
               </div>
            </div>
         </div>
-      </div>
-      
-      {/* Bottom Center: Actuator Status (Thrusters + RW) */}
-      <div className="absolute bottom-52 left-1/2 -translate-x-1/2 transition-all duration-300 flex gap-4">
-         
-         {/* Thrusters Group */}
-         <div className="bg-black/60 backdrop-blur-md rounded-lg p-2 border border-white/10 flex flex-col items-center gap-2 min-w-[120px]">
-            <span className="text-[10px] font-bold text-gray-400 tracking-wider">THRUSTERS</span>
-            <div className="flex gap-2">
-              {thrusters.slice(0, 6).map((active, i) => (
-                 <div key={i} className="flex flex-col items-center gap-1">
-                    <div 
-                      className={`w-3 h-8 rounded-sm transition-all duration-100 ${active > 0.1 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)] scale-y-110' : 'bg-gray-700'}`}
-                      title={`Thruster ${i}`}
-                    />
-                    <span className="text-[9px] font-mono text-gray-400">
-                      {['+X', '-X', '+Y', '-Y', '+Z', '-Z'][i] || i}
-                    </span>
-                    <span className="text-[8px] font-mono text-gray-500 h-3">
-                       {active > 0.01 ? active.toFixed(1) : ''}
-                    </span>
-                 </div>
-              ))}
-            </div>
-         </div>
 
-         {/* Reaction Wheels Group */}
-         <div className="bg-black/60 backdrop-blur-md rounded-lg p-2 border border-white/10 flex flex-col items-center gap-2 min-w-[80px]">
-            <span className="text-[10px] font-bold text-gray-400 tracking-wider">RW</span>
-            <div className="flex gap-2">
-              {(rw_torque.length > 0 ? rw_torque : [0,0,0]).map((torque, i) => (
-                 <div key={i} className="flex flex-col items-center gap-1">
-                    <div 
-                      className={`w-3 h-8 rounded-sm transition-all duration-100 ${Math.abs(torque) > 0.00001 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] scale-y-110' : 'bg-gray-700'}`}
-                      title={`RW ${i}`}
-                    />
-                    <span className="text-[9px] font-mono text-gray-400">
-                      {['X', 'Y', 'Z'][i] || i}
-                    </span>
-                     <span className="text-[8px] font-mono text-gray-500 h-3">
-                       {Math.abs(torque) > 0.00001 ? torque.toFixed(3) : '0.0'}
-                    </span>
-                 </div>
-              ))}
-            </div>
-         </div>
+        {/* Actuator Status (Thrusters + RW) */}
+        <div className="bg-black/60 backdrop-blur-md rounded-lg p-2 border border-white/10 text-white min-w-[200px]">
+           <div className="flex items-center justify-between mb-2">
+             <span className="text-[10px] font-bold text-gray-400 tracking-wider">ACTUATORS</span>
+           </div>
+           <div className="flex gap-3">
+             {/* Thrusters */}
+             <div className="flex flex-col items-center gap-2 min-w-[120px]">
+                <span className="text-[10px] font-bold text-gray-400 tracking-wider">THRUSTERS</span>
+                <div className="flex gap-2">
+                  {thrusters.slice(0, 6).map((active, i) => (
+                     <div key={i} className="flex flex-col items-center gap-1">
+                        <div 
+                          className={`w-3 h-8 rounded-sm transition-all duration-100 ${active > 0.1 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)] scale-y-110' : 'bg-gray-700'}`}
+                          title={`Thruster ${i}`}
+                        />
+                        <span className="text-[9px] font-mono text-gray-400">
+                          {['+X', '-X', '+Y', '-Y', '+Z', '-Z'][i] || i}
+                        </span>
+                        <span className="text-[8px] font-mono text-gray-500 h-3">
+                           {active > 0.01 ? active.toFixed(1) : ''}
+                        </span>
+                     </div>
+                  ))}
+                </div>
+             </div>
 
+             {/* Reaction Wheels */}
+             <div className="flex flex-col items-center gap-2 min-w-[80px]">
+                <span className="text-[10px] font-bold text-gray-400 tracking-wider">RW</span>
+                <div className="flex gap-2">
+                  {(rw_torque.length > 0 ? rw_torque : [0,0,0]).map((torque, i) => (
+                     <div key={i} className="flex flex-col items-center gap-1">
+                        <div 
+                          className={`w-3 h-8 rounded-sm transition-all duration-100 ${Math.abs(torque) > 0.00001 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] scale-y-110' : 'bg-gray-700'}`}
+                          title={`RW ${i}`}
+                        />
+                        <span className="text-[9px] font-mono text-gray-400">
+                          {['X', 'Y', 'Z'][i] || i}
+                        </span>
+                         <span className="text-[8px] font-mono text-gray-500 h-3">
+                           {Math.abs(torque) > 0.00001 ? torque.toFixed(3) : '0.0'}
+                        </span>
+                     </div>
+                  ))}
+                </div>
+             </div>
+           </div>
+        </div>
       </div>
     </div>
   );

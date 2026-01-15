@@ -1,0 +1,22 @@
+name: "The Maze"
+stages:
+  - type: goto
+    target: [10.0, 0.0, 0.0]
+    hold_time: 10.0
+
+obstacles:
+  - type: sphere
+    position: [5.0, 0.0, 0.0]
+    radius: 2.0
+  - type: sphere
+    position: [5.0, 3.0, 0.0]
+    radius: 1.5
+  - type: sphere
+    position: [5.0, -3.0, 0.0]
+    radius: 1.5
+  - type: sphere
+    position: [8.0, 0.0, 2.0]
+    radius: 1.0
+  - type: sphere
+    position: [2.0, 0.0, -2.0]
+    radius: 1.0
