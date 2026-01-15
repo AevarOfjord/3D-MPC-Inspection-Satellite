@@ -161,7 +161,7 @@ void MPCControllerCpp::init_solver() {
         row_idx += nu_;
     }
 
-    // Obstacle constraints (Placeholder initialization)
+    // Obstacle constraints
     // Row layout: [dyn, init, bounds_x, bounds_u, obs]
     // Each row k corresponds to step k: obs_k^T * p_k >= dist_k
     for (int k = 0; k < N_; ++k) {
@@ -169,26 +169,8 @@ void MPCControllerCpp::init_solver() {
         // We will enable/disable these rows dynamically
         // Initialize x, y, z coefficients (will be updated)
         for (int i = 0; i < 3; ++i) {
-             A_triplets.emplace_back(row_idx, x_k_idx + i, 0.0);
-             // We need to track the index in A_data_ later
-             // Since we construct A_ from triplets, we can't know the exact index yet
-             // Map building happens after compression.
-        }
-        row_idx++;
-    }
-
-    // Obstacle constraints (Placeholder initialization)
-    // Row layout: [dyn, init, bounds_x, bounds_u, obs]
-    // Each row k corresponds to step k: obs_k^T * p_k >= dist_k
-    for (int k = 0; k < N_; ++k) {
-        int x_k_idx = k * nx_; // Position variables at step k
-        // We will enable/disable these rows dynamically
-        // Initialize x, y, z coefficients (will be updated)
-        for (int i = 0; i < 3; ++i) {
-             A_triplets.emplace_back(row_idx, x_k_idx + i, 0.0);
-             // We need to track the index in A_data_ later
-             // Since we construct A_ from triplets, we can't know the exact index yet
-             // Map building happens after compression.
+            // Initialize with epsilon to ensure Eigen keeps the entry (prevent pruning)
+             A_triplets.emplace_back(row_idx, x_k_idx + i, 1e-10);
         }
         row_idx++;
     }
@@ -196,6 +178,30 @@ void MPCControllerCpp::init_solver() {
     A_.resize(n_constraints, n_vars);
     A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
     A_.makeCompressed();
+
+    // Build obs_A_indices_
+    int obs_row_start = n_dyn + n_init + n_bounds_x + n_bounds_u;
+    for (int k = 0; k < N_; ++k) {
+        int row = obs_row_start + k;
+        obs_A_indices_[k].resize(3);
+        int x_k_idx = k * nx_;
+        
+        for (int i = 0; i < 3; ++i) {
+            int col = x_k_idx + i;
+            bool found = false;
+            // Search in column 'col' for row 'row'
+            for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                if (A_.innerIndexPtr()[idx] == row) {
+                    obs_A_indices_[k][i] = idx;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                std::cerr << "Error: Could not find obstacle constraint entry at k=" << k << ", i=" << i << std::endl;
+            }
+        }
+    }
     
     // Build B index map for fast updates
     B_idx_map_.resize(nx_ * nu_);

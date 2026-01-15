@@ -944,6 +944,16 @@ class SatelliteMPCLinearizedSimulation:
             safe_target[3] = 1.0
 
         ang_err_deg = np.degrees(ang_error)
+        vel_error = 0.0
+        ang_vel_error = 0.0
+        if current_state.shape[0] >= 13 and safe_target.shape[0] >= 13:
+            vel_error = float(
+                np.linalg.norm(current_state[7:10] - safe_target[7:10])
+            )
+            ang_vel_error = float(
+                np.linalg.norm(current_state[10:13] - safe_target[10:13])
+            )
+        ang_vel_err_deg = np.degrees(ang_vel_error)
         solve_ms = mpc_info.get("solve_time", 0) * 1000
         next_upd = self.next_control_simulation_time
         # Show duty cycle for each active thruster (matching active_thruster_ids)
@@ -958,6 +968,7 @@ class SatelliteMPCLinearizedSimulation:
         logger.info(
             f"t = {self.simulation_time:.1f}s: {status_msg}\n"
             f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
+            f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
             f"Position = {fmt_position_mm(current_state)}\n"
             f"Angle = {fmt_angles_deg(current_state)}\n"
             f"Target Pos = {fmt_position_mm(safe_target)}\n"

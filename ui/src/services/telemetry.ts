@@ -8,6 +8,14 @@ export interface TelemetryData {
   angular_velocity: [number, number, number];
   target_position: [number, number, number];
   target_orientation: [number, number, number];
+  target_quaternion?: [number, number, number, number];
+  scan_object?: {
+    type: 'cylinder';
+    position: [number, number, number];
+    orientation: [number, number, number];
+    radius: number;
+    height: number;
+  };
   thrusters: number[];
   rw_torque: number[];
   obstacles: Array<{

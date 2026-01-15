@@ -214,7 +214,7 @@ def build_cylinder_scan_trajectory(
     v_min: float,
     lateral_accel: float,
     dt: float,
-    ring_shape: str = "square",
+    ring_shape: str = "circle",
     hold_start: float = 0.0,
     hold_end: float = 0.0,
 ) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
@@ -226,9 +226,12 @@ def build_cylinder_scan_trajectory(
         overlap=overlap,
     )
 
-    total_height = float(max(height, ring_step))
-    num_levels = max(1, int(np.ceil(total_height / ring_step)))
-    z_levels = np.linspace(-0.5 * total_height, 0.5 * total_height, num_levels)
+    total_height = float(max(height, 1e-3))
+    z_min = -0.5 * total_height
+    z_max = 0.5 * total_height
+    z_levels = list(np.arange(z_min, z_max + ring_step * 0.5, ring_step))
+    if len(z_levels) == 1 and total_height > 0:
+        z_levels = [z_min, z_max]
 
     scan_radius = float(radius + max(standoff, 0.0))
     raw_path = generate_cylindrical_scan_path(

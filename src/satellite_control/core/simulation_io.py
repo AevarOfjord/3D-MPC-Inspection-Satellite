@@ -6,6 +6,7 @@ Extracted from SatelliteMPCLinearizedSimulation to reduce class size.
 """
 
 import logging
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Union
@@ -113,6 +114,50 @@ class SimulationIO:
             check_target_reached_func=self.sim.check_target_reached,
             test_mode="SIMULATION",
         )
+        self._save_mission_metadata()
+
+    def _save_mission_metadata(self) -> None:
+        """Save mission metadata used by the web visualizer."""
+        if not self.sim.data_save_path:
+            return
+
+        mission_manager = getattr(self.sim, "mission_manager", None)
+        mission_state = getattr(mission_manager, "mission_state", None)
+        if mission_state is None:
+            return
+
+        is_scan = bool(
+            getattr(mission_state, "mesh_scan_mode_active", False)
+            or getattr(mission_state, "trajectory_type", "") == "scan"
+        )
+        if not is_scan:
+            return
+
+        pose = getattr(mission_state, "mesh_scan_object_pose", None)
+        if pose and len(pose) >= 6:
+            pos = [float(pose[0]), float(pose[1]), float(pose[2])]
+            ori = [float(pose[3]), float(pose[4]), float(pose[5])]
+        else:
+            center = getattr(mission_state, "trajectory_object_center", None)
+            pos = [float(val) for val in (center or (0.0, 0.0, 0.0))]
+            ori = [0.0, 0.0, 0.0]
+
+        metadata = {
+            "mission_type": "scan_object",
+            "scan_object": {
+                "type": "cylinder",
+                "position": pos,
+                "orientation": ori,
+                "radius": 0.25,
+                "height": 3.0,
+            },
+        }
+
+        metadata_path = self.sim.data_save_path / "mission_metadata.json"
+        try:
+            metadata_path.write_text(json.dumps(metadata, indent=2))
+        except Exception as exc:
+            logger.warning(f"Failed to save mission metadata: {exc}")
 
     def _load_history_from_csv(self) -> Optional[np.ndarray]:
         """

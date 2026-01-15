@@ -567,7 +567,7 @@ class InteractiveMissionCLI:
 
         mesh_dir = Path("models/meshes")
         obj_files = sorted(mesh_dir.glob("*.obj")) if mesh_dir.exists() else []
-        choices = [questionary.Choice("Built-in Cylinder (1m x 3m)", value="cylinder")]
+        choices = [questionary.Choice("Built-in Cylinder (0.5m dia x 3m)", value="cylinder")]
         choices.extend(
             [
                 questionary.Choice(f.name, value=str(f))
@@ -617,7 +617,7 @@ class InteractiveMissionCLI:
             path, trajectory, total_time = build_cylinder_scan_trajectory(
                 center=obj_pose,
                 rotation_xyz=obj_angle,
-                radius=0.5,
+                radius=0.25,
                 height=3.0,
                 standoff=standoff,
                 fov_deg=60.0,
@@ -626,7 +626,7 @@ class InteractiveMissionCLI:
                 v_min=0.05,
                 lateral_accel=0.05,
                 dt=dt,
-                ring_shape="square",
+                ring_shape="circle",
                 hold_start=0.0,
                 hold_end=5.0,
             )
@@ -635,7 +635,7 @@ class InteractiveMissionCLI:
             path, trajectory, total_time = build_cylinder_scan_trajectory(
                 center=obj_pose,
                 rotation_xyz=obj_angle,
-                radius=0.5,
+                radius=0.25,
                 height=3.0,
                 standoff=standoff,
                 fov_deg=60.0,
@@ -644,7 +644,7 @@ class InteractiveMissionCLI:
                 v_min=0.05,
                 lateral_accel=0.05,
                 dt=dt,
-                ring_shape="square",
+                ring_shape="circle",
                 hold_start=0.0,
                 hold_end=5.0,
             )
@@ -672,7 +672,7 @@ class InteractiveMissionCLI:
         mission_state.mesh_scan_standoff = standoff
         mission_state.mesh_scan_fov_deg = 60.0
         mission_state.mesh_scan_overlap = 0.85
-        mission_state.mesh_scan_ring_shape = "square"
+        mission_state.mesh_scan_ring_shape = "circle"
         mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
         mission_state.dxf_trajectory_dt = dt
         mission_state.dxf_shape_path = path

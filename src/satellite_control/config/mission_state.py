@@ -160,7 +160,7 @@ class MissionState:
     trajectory_start_orientation: Optional[Tuple[float, float, float]] = None
     trajectory_end_orientation: Optional[Tuple[float, float, float]] = None
     trajectory_object_center: Optional[Tuple[float, float, float]] = None
-    trajectory_end_pos_tolerance: float = 0.01
+    trajectory_end_pos_tolerance: float = 0.05
     trajectory_end_ang_tolerance_deg: float = 2.0
 
     # Obstacle Avoidance (V3.0.0)

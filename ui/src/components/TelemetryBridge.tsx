@@ -2,13 +2,12 @@ import { useEffect, useRef } from 'react';
 import { telemetry } from '../services/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
 
-const POS_OK_THRESHOLD = 0.1; // meters
-const ANG_OK_THRESHOLD_DEG = 1.0; // degrees
+const POS_OK_THRESHOLD = 0.03; // meters
+const ANG_OK_THRESHOLD_DEG = 2.0; // degrees
 const SOLVE_WARN_MS = 40;
 
 export function TelemetryBridge() {
   const pushSample = useTelemetryStore(s => s.pushSample);
-  const setConnected = useTelemetryStore(s => s.setConnected);
   const addEvent = useTelemetryStore(s => s.addEvent);
 
   const lastPathLen = useRef<number>(0);
@@ -17,11 +16,6 @@ export function TelemetryBridge() {
   const lastSolveWarn = useRef<number>(-Infinity);
 
   useEffect(() => {
-    const unsubStatus = telemetry.subscribeStatus((connected) => {
-      setConnected(connected);
-      addEvent(connected ? 'info' : 'warn', connected ? 'Telemetry connected' : 'Telemetry disconnected');
-    });
-
     const unsubData = telemetry.subscribe((data) => {
       pushSample(data);
 
@@ -55,10 +49,9 @@ export function TelemetryBridge() {
     });
 
     return () => {
-      unsubStatus();
       unsubData();
     };
-  }, [addEvent, pushSample, setConnected]);
+  }, [addEvent, pushSample]);
 
   return null;
 }

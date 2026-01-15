@@ -5,8 +5,6 @@ import { Vector3 } from 'three';
 import { TargetMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
 import { CameraManager } from './CameraManager';
-import { EditableObstacles } from './EditableObstacles';
-import { useMissionStore } from '../store/missionStore';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 import { Trajectory } from './Trajectory';
@@ -18,16 +16,19 @@ function Obstacles() {
   const [params, setParams] = useState<{
     obstacles: TelemetryData['obstacles'], 
     targetPos: TelemetryData['target_position'],
-    targetOri: TelemetryData['target_orientation']
+    targetOri: TelemetryData['target_orientation'],
+    targetQuat?: TelemetryData['target_quaternion'],
+    scanObject?: TelemetryData['scan_object']
   } | null>(null);
-  const isEditing = useMissionStore(s => s.isEditing);
 
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
        setParams({ 
          obstacles: d.obstacles, 
          targetPos: d.target_position,
-         targetOri: d.target_orientation || [0,0,0]
+         targetOri: d.target_orientation || [0,0,0],
+         targetQuat: d.target_quaternion,
+         scanObject: d.scan_object
        });
     });
     return () => { unsub(); };
@@ -37,8 +38,28 @@ function Obstacles() {
 
   return (
     <group>
-      {!isEditing && <TargetMarker position={params.targetPos} orientation={params.targetOri} />}
-      {!isEditing && params.obstacles.map((obs, i) => (
+      <TargetMarker
+        position={params.targetPos}
+        orientation={params.targetOri}
+        quaternion={params.targetQuat}
+      />
+      {params.scanObject && params.scanObject.type === 'cylinder' && (
+        <mesh
+          position={new Vector3(...params.scanObject.position)}
+          rotation={params.scanObject.orientation as [number, number, number]}
+        >
+          <cylinderGeometry
+            args={[
+              params.scanObject.radius,
+              params.scanObject.radius,
+              params.scanObject.height,
+              32,
+            ]}
+          />
+          <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
+        </mesh>
+      )}
+      {params.obstacles.map((obs, i) => (
         <mesh key={i} position={new Vector3(...obs.position)}>
           <sphereGeometry args={[obs.radius, 32, 32]} />
           <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
@@ -53,14 +74,12 @@ interface ViewportProps {
 }
 
 export function Viewport({ viewMode }: ViewportProps) {
-  const isEditing = useMissionStore(s => s.isEditing);
-
   return (
     <div className="w-full h-full bg-slate-900">
       <Canvas shadows camera={{ position: [5, 5, 5], fov: 45 }}>
         <CanvasRegistrar />
         <CameraManager mode={viewMode} />
-        <OrbitControls makeDefault enabled={viewMode === 'free' && !isEditing} />
+        <OrbitControls makeDefault enabled={viewMode === 'free'} />
         
         {/* Environment */}
         <color attach="background" args={['#050510']} />
@@ -81,7 +100,6 @@ export function Viewport({ viewMode }: ViewportProps) {
         {/* Grid Removed */}
         
         <Obstacles />
-        <EditableObstacles />
         <SatelliteModel />
         <TargetGuides />
         <Trajectory />

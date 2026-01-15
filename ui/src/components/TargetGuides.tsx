@@ -1,33 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Line } from '@react-three/drei';
-import { Euler, Quaternion } from 'three';
 import { telemetry } from '../services/telemetry';
 
 export function TargetGuides() {
   const [targetPos, setTargetPos] = useState<[number, number, number] | null>(null);
-  const [targetOri, setTargetOri] = useState<[number, number, number] | null>(null);
+  const [targetQuat, setTargetQuat] = useState<[number, number, number, number] | null>(null);
   const [currentPos, setCurrentPos] = useState<[number, number, number] | null>(null);
 
   useEffect(() => {
     const unsub = telemetry.subscribe((data) => {
       setTargetPos(data.target_position);
-      setTargetOri(data.target_orientation || [0, 0, 0]);
+      setTargetQuat(data.target_quaternion ?? [1, 0, 0, 0]);
       setCurrentPos(data.position);
     });
     return () => { unsub(); };
   }, []);
 
-  const targetQuat = useMemo(() => {
-    if (!targetOri) return null;
-    const euler = new Euler(targetOri[0], targetOri[1], targetOri[2], 'XYZ');
-    return new Quaternion().setFromEuler(euler);
-  }, [targetOri]);
-
-  if (!targetPos || !targetOri || !currentPos || !targetQuat) return null;
+  if (!targetPos || !currentPos || !targetQuat) return null;
+  const [w, x, y, z] = targetQuat;
 
   return (
     <>
-      <group position={targetPos} quaternion={targetQuat}>
+      <group position={targetPos} quaternion={[x, y, z, w]}>
         <mesh>
           <boxGeometry args={[0.3, 0.3, 0.3]} />
           <meshBasicMaterial color="#ff9b45" wireframe transparent opacity={0.6} />

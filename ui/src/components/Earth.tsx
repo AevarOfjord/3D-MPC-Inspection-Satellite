@@ -38,13 +38,21 @@ export function Earth() {
 interface TargetMarkerProps {
   position?: [number, number, number];
   orientation?: [number, number, number];
+  quaternion?: [number, number, number, number];
 }
 
-export function TargetMarker({ position = [0, 0, 0], orientation = [0, 0, 0] }: TargetMarkerProps) {
+export function TargetMarker({
+  position = [0, 0, 0],
+  orientation = [0, 0, 0],
+  quaternion,
+}: TargetMarkerProps) {
   const targetQuat = useMemo(() => {
+    if (quaternion) {
+      return new Quaternion(quaternion[1], quaternion[2], quaternion[3], quaternion[0]);
+    }
     const euler = new Euler(orientation[0], orientation[1], orientation[2], 'XYZ');
     return new Quaternion().setFromEuler(euler);
-  }, [orientation]);
+  }, [orientation, quaternion]);
 
   return (
     <group position={position} quaternion={targetQuat}>

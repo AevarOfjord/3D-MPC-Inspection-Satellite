@@ -356,6 +356,14 @@ async def get_simulation_telemetry(
     physics_path = run_dir / "physics_data.csv"
     if not physics_path.exists():
         raise HTTPException(status_code=404, detail="physics_data.csv not found")
+    metadata_path = run_dir / "mission_metadata.json"
+    scan_object = None
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text())
+            scan_object = metadata.get("scan_object")
+        except Exception as exc:
+            logger.warning(f"Failed to read mission metadata for {run_id}: {exc}")
 
     from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
@@ -393,6 +401,9 @@ async def get_simulation_telemetry(
             target_roll = to_float(row.get("Target_Roll"))
             target_pitch = to_float(row.get("Target_Pitch"))
             target_yaw = to_float(row.get("Target_Yaw"))
+            target_quat = euler_xyz_to_quat_wxyz(
+                (target_roll, target_pitch, target_yaw)
+            )
 
             err_x = to_float(row.get("Error_X"))
             err_y = to_float(row.get("Error_Y"))
@@ -426,6 +437,8 @@ async def get_simulation_telemetry(
                         to_float(row.get("Target_Z")),
                     ],
                     "target_orientation": [target_roll, target_pitch, target_yaw],
+                    "target_quaternion": list(target_quat),
+                    "scan_object": scan_object,
                     "thrusters": [to_float(row.get(col)) for col in thruster_cols],
                     "rw_torque": [0.0, 0.0, 0.0],
                     "obstacles": [],

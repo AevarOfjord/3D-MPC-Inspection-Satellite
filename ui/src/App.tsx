@@ -1,18 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Viewport } from './components/Viewport';
-import { telemetry } from './services/telemetry';
 import { Overlay } from './components/Overlay';
-import { Editor } from './components/Editor';
 import { TelemetryCharts } from './components/TelemetryCharts';
 import { TelemetryBridge } from './components/TelemetryBridge';
-import { SystemStatus } from './components/SystemStatus';
 import { EventLog } from './components/EventLog';
-import { ErrorBanner } from './components/ErrorBanner';
 import { useTelemetryStore } from './store/telemetryStore';
 import { useCameraStore } from './store/cameraStore';
-import { useUiStore } from './store/uiStore';
 import { ViewControls } from './components/ViewControls';
-import { controlApi } from './api/control';
 import { PlaybackSelector } from './components/PlaybackSelector';
 
 function App() {
@@ -21,28 +15,12 @@ function App() {
   const latest = useTelemetryStore(s => s.latest);
   const eventCount = useTelemetryStore(s => s.events.length);
   const requestFocus = useCameraStore(s => s.requestFocus);
-  const setMissionError = useUiStore(s => s.setMissionError);
 
   const focusOn = (target?: [number, number, number]) => {
     if (!target) return;
     setViewMode('free');
     requestFocus(target);
   };
-
-  const handleReset = async () => {
-    try {
-      setMissionError(null);
-      await controlApi.reset();
-    } catch (error) {
-      console.error(error);
-      setMissionError('Failed to reset simulation');
-    }
-  };
-
-  useEffect(() => {
-    // Connect to backend
-    telemetry.connect();
-  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-900 text-white">
@@ -79,12 +57,6 @@ function App() {
                >
                  Focus Target
                </button>
-               <button
-                 onClick={handleReset}
-                 className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-red-500"
-               >
-                 Reset
-               </button>
              </div>
 
              <PlaybackSelector />
@@ -106,10 +78,8 @@ function App() {
                <EventLog open={eventLogOpen} onClose={() => setEventLogOpen(false)} />
              </div>
 
-             <SystemStatus />
         </div>
       </header>
-      <ErrorBanner />
       
       <main className="flex-1 relative overflow-hidden">
         <div className="absolute top-4 right-24 z-20">
@@ -118,7 +88,6 @@ function App() {
         <Viewport viewMode={viewMode} />
         <Overlay />
         <TelemetryCharts />
-        <Editor />
       </main>
     </div>
   );
