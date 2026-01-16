@@ -63,7 +63,7 @@ class TimingConfig:
 # SIMULATION_DT is the SINGLE SOURCE OF TRUTH for physics timestep
 SIMULATION_DT = 0.001  # 1ms / 1000Hz physics
 CONTROL_DT = 0.050  # 50 ms (MPC update rate)
-MAX_SIMULATION_TIME = 500.0  # seconds
+MAX_SIMULATION_TIME = 0.0  # seconds (0 disables time limit)
 
 # Stabilization timers
 TARGET_HOLD_TIME = 5.0  # seconds
@@ -121,9 +121,9 @@ def validate_timing_params(config: TimingConfig) -> bool:
     if config.control_dt <= 0:
         issues.append(f"Control interval must be positive: {config.control_dt}")
 
-    if config.max_simulation_time <= 0:
+    if config.max_simulation_time < 0:
         issues.append(
-            f"Max simulation time must be positive: {config.max_simulation_time}"
+            f"Max simulation time must be >= 0: {config.max_simulation_time}"
         )
 
     # Report validation results

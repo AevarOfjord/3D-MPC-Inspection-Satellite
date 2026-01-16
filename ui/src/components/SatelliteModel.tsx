@@ -9,7 +9,7 @@ import type { TelemetryData } from '../services/telemetry';
 const THRUSTER_CONFIG = [
     { id: 1, pos: [0.15, 0, 0], rot: [0, 0, -Math.PI/2] }, // +X face, pushes -X -> Plume +X
     { id: 2, pos: [-0.15, 0, 0], rot: [0, 0, Math.PI/2] }, // -X face, pushes +X -> Plume -X
-    { id: 3, pos: [0, 0.15, 0], rot: [0, 0, 0] },          // +Y face, pushes -Y -> Plume +Y (default cone up)
+    { id: 3, pos: [0, 0.15, 0], rot: [0, 0, 0] },          // +Y face, pushes -Y -> Plume +Y (cone axis +Y)
     { id: 4, pos: [0, -0.15, 0], rot: [Math.PI, 0, 0] },   // -Y face, pushes +Y -> Plume -Y
     { id: 5, pos: [0, 0, 0.15], rot: [Math.PI/2, 0, 0] },  // +Z face, pushes -Z -> Plume +Z
     { id: 6, pos: [0, 0, -0.15], rot: [-Math.PI/2, 0, 0] },// -Z face, pushes +Z -> Plume -Z
@@ -82,8 +82,8 @@ export function SatelliteModel() {
         <meshStandardMaterial color="#1a237e" metalness={0.5} roughness={0.1} />
       </mesh> */}
 
-      {/* Sensor/Antenna Top */}
-      <mesh position={[0, 0.2, 0]}>
+      {/* Sensor/Antenna Top (+Z) */}
+      <mesh position={[0, 0, 0.2]} rotation={[Math.PI / 2, 0, 0]}>
          <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
          <meshStandardMaterial color="#aaaaaa" metalness={0.9} roughness={0.1} />
       </mesh>

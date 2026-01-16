@@ -286,8 +286,8 @@ Where:
 
 **World Frame (Inertial)**
 
-- Fixed reference frame (X-Y plane).
-- Positive X points right, positive Y points up.
+- Fixed reference frame (X-Y plane with Z up).
+- Positive X points right; positive Z points up (Y completes the right-handed frame).
 - Used for state estimates, logging, and the MPC formulation.
 
 **Body Frame (Satellite)**

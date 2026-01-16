@@ -126,7 +126,8 @@ class DataLogger:
 
                 for log_entry in self.detailed_log_data:
                     row = [
-                        self._format_value(header, log_entry.get(header, "")) for header in headers
+                        self._format_value(header, log_entry.get(header, ""))
+                        for header in headers
                     ]
                     writer.writerow(row)
 
@@ -187,7 +188,9 @@ class DataLogger:
 
                     for log_entry in self.terminal_log_data:
                         row = [
-                            self._format_terminal_value(header, log_entry.get(header, ""))
+                            self._format_terminal_value(
+                                header, log_entry.get(header, "")
+                            )
                             for header in self._get_terminal_log_headers()
                         ]
                         writer.writerow(row)
@@ -229,6 +232,7 @@ class DataLogger:
             "Error_Pitch",
             "Error_Yaw",
             "Command_Vector",
+            "Solve_Time",
         ]
         thruster_count = self._get_logged_thruster_count()
         for thruster_id in range(1, thruster_count + 1):
@@ -411,7 +415,11 @@ class DataLogger:
                 return f"{num_value:.2f}"
 
             # Telemetry angle (degrees) - 2 decimals (0.01 degree precision)
-            elif header in ["Telemetry_Roll_deg", "Telemetry_Pitch_deg", "Telemetry_Yaw_deg"]:
+            elif header in [
+                "Telemetry_Roll_deg",
+                "Telemetry_Pitch_deg",
+                "Telemetry_Yaw_deg",
+            ]:
                 return f"{num_value:.2f}"
 
             # Position values (meters) - 5 decimals (0.01mm precision)
@@ -590,7 +598,9 @@ class DataLogger:
         print("=" * 60 + "\n")
 
 
-def create_data_logger(mode: str = "simulation", filename: str = "control_data.csv") -> DataLogger:
+def create_data_logger(
+    mode: str = "simulation", filename: str = "control_data.csv"
+) -> DataLogger:
     """
     Factory function to create a data logger.
 

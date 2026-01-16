@@ -157,6 +157,7 @@ class SatelliteMPCLinearizedSimulation:
         self.trajectory_generator = TrajectoryGenerator(avg_velocity=0.5)
         self.planned_path = []  # List of waypoints [x,y,z]
         self.active_trajectory = None  # Time-parameterized trajectory
+        self.last_solve_time = 0.0  # Track last MPC solve time for physics logging
 
         # Hydra Config Adoption
         if cfg is None:
@@ -409,6 +410,7 @@ class SatelliteMPCLinearizedSimulation:
             thruster_actual_output=self.thruster_actual_output,
             thruster_last_command=self.thruster_last_command,
             normalize_angle_func=self.normalize_angle,
+            solve_time=self.last_solve_time,
         )
 
     def save_csv_data(self) -> None:
@@ -675,12 +677,18 @@ class SatelliteMPCLinearizedSimulation:
                 target_trajectory=target_trajectory,
             )
 
+            # Track solve time for high-frequency logging
+            if mpc_info:
+                self.last_solve_time = mpc_info.get("solve_time", 0.0)
+
             # Velocity governor: stop applying thrust that increases speed beyond max.
             max_vel = None
             if hasattr(self, "simulation_config") and hasattr(
                 self.simulation_config, "app_config"
             ):
-                max_vel = getattr(self.simulation_config.app_config.mpc, "max_velocity", None)
+                max_vel = getattr(
+                    self.simulation_config.app_config.mpc, "max_velocity", None
+                )
             if max_vel is not None and max_vel > 0:
                 speed = float(np.linalg.norm(current_state[7:10]))
                 if speed >= max_vel and speed > 1e-6:
@@ -691,7 +699,9 @@ class SatelliteMPCLinearizedSimulation:
                         if i >= len(thruster_action):
                             break
                         force = physics_cfg.thruster_forces[tid] * thruster_action[i]
-                        direction = np.array(physics_cfg.thruster_directions[tid], dtype=np.float64)
+                        direction = np.array(
+                            physics_cfg.thruster_directions[tid], dtype=np.float64
+                        )
                         net_force += force * direction
 
                     # Rotate body-frame force into world frame to compare with world velocity.
@@ -947,9 +957,7 @@ class SatelliteMPCLinearizedSimulation:
         vel_error = 0.0
         ang_vel_error = 0.0
         if current_state.shape[0] >= 13 and safe_target.shape[0] >= 13:
-            vel_error = float(
-                np.linalg.norm(current_state[7:10] - safe_target[7:10])
-            )
+            vel_error = float(np.linalg.norm(current_state[7:10] - safe_target[7:10]))
             ang_vel_error = float(
                 np.linalg.norm(current_state[10:13] - safe_target[10:13])
             )

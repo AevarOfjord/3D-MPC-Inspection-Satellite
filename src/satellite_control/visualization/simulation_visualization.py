@@ -535,13 +535,15 @@ class SimulationVisualizationManager:
 
         # Current step estimation
         current_step = int(self.simulation_time / self.satellite.dt)
-        max_steps = int(self.max_simulation_time / self.satellite.dt)
+        max_steps = None
+        if self.max_simulation_time and self.max_simulation_time > 0:
+            max_steps = int(self.max_simulation_time / self.satellite.dt)
 
         # Information text matching the visualization format
         info_text = [
             "LINEARIZED MPC SIMULATION",
             f"{'=' * 25}",
-            f"Step: {current_step}/{max_steps}",
+            f"Step: {current_step}/{max_steps if max_steps is not None else 'unlimited'}",
             f"Time: {self.simulation_time:.1f}s",
             "",
             "CURRENT STATE:",

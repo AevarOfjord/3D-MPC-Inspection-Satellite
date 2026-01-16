@@ -1,12 +1,15 @@
 import { create } from 'zustand';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 interface CameraState {
   focusTarget: [number, number, number] | null;
   focusNonce: number;
   viewPreset: 'iso' | 'top' | 'front' | 'right' | 'left' | 'back' | null;
   viewNonce: number;
+  controls: OrbitControlsImpl | null;
   requestFocus: (target: [number, number, number]) => void;
   requestViewPreset: (preset: CameraState['viewPreset']) => void;
+  setControls: (controls: OrbitControlsImpl | null) => void;
 }
 
 export const useCameraStore = create<CameraState>((set) => ({
@@ -14,6 +17,7 @@ export const useCameraStore = create<CameraState>((set) => ({
   focusNonce: 0,
   viewPreset: null,
   viewNonce: 0,
+  controls: null,
   requestFocus: (target) =>
     set((state) => ({
       focusTarget: target,
@@ -24,4 +28,5 @@ export const useCameraStore = create<CameraState>((set) => ({
       viewPreset: preset,
       viewNonce: state.viewNonce + 1,
     })),
+  setControls: (controls) => set({ controls }),
 }));

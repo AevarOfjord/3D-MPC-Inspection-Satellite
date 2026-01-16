@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import { Vector3 } from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TargetMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
 import { CameraManager } from './CameraManager';
@@ -11,6 +12,7 @@ import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
 import { TargetGuides } from './TargetGuides';
 import { CanvasRegistrar } from './CanvasRegistrar';
+import { useCameraStore } from '../store/cameraStore';
 
 function Obstacles() {
   const [params, setParams] = useState<{
@@ -44,20 +46,22 @@ function Obstacles() {
         quaternion={params.targetQuat}
       />
       {params.scanObject && params.scanObject.type === 'cylinder' && (
-        <mesh
+        <group
           position={new Vector3(...params.scanObject.position)}
           rotation={params.scanObject.orientation as [number, number, number]}
         >
-          <cylinderGeometry
-            args={[
-              params.scanObject.radius,
-              params.scanObject.radius,
-              params.scanObject.height,
-              32,
-            ]}
-          />
-          <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
-        </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry
+              args={[
+                params.scanObject.radius,
+                params.scanObject.radius,
+                params.scanObject.height,
+                32,
+              ]}
+            />
+            <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
+          </mesh>
+        </group>
       )}
       {params.obstacles.map((obs, i) => (
         <mesh key={i} position={new Vector3(...obs.position)}>
@@ -74,12 +78,20 @@ interface ViewportProps {
 }
 
 export function Viewport({ viewMode }: ViewportProps) {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const setControls = useCameraStore(s => s.setControls);
+
+  useEffect(() => {
+    setControls(controlsRef.current);
+    return () => setControls(null);
+  }, [setControls]);
+
   return (
     <div className="w-full h-full bg-slate-900">
       <Canvas shadows camera={{ position: [5, 5, 5], fov: 45 }}>
         <CanvasRegistrar />
         <CameraManager mode={viewMode} />
-        <OrbitControls makeDefault enabled={viewMode === 'free'} />
+        <OrbitControls ref={controlsRef} makeDefault enabled={viewMode === 'free'} />
         
         {/* Environment */}
         <color attach="background" args={['#050510']} />

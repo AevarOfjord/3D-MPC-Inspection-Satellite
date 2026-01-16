@@ -93,7 +93,9 @@ class SimulationLogger:
         command_vector_binary = (thruster_action > 0.5).astype(int)
         command_hex = "0x" + "".join([str(x) for x in command_vector_binary])
 
-        command_vector_str = "[" + ", ".join([f"{x:.3f}" for x in thruster_action]) + "]"
+        command_vector_str = (
+            "[" + ", ".join([f"{x:.3f}" for x in thruster_action]) + "]"
+        )
 
         # Timing
         total_mpc_loop_time = command_sent_time - mpc_start_time
@@ -131,7 +133,9 @@ class SimulationLogger:
 
         rw_torque_vals = np.zeros(3)
         if rw_torque is not None:
-            rw_torque_vals[: min(3, len(rw_torque))] = np.array(rw_torque, dtype=float)[:3]
+            rw_torque_vals[: min(3, len(rw_torque))] = np.array(rw_torque, dtype=float)[
+                :3
+            ]
 
         log_entry = {
             "Step": step_number,
@@ -202,7 +206,9 @@ class SimulationLogger:
             "RW_Torque_Y": rw_torque_vals[1],
             "RW_Torque_Z": rw_torque_vals[2],
             "Total_MPC_Loop_Time": total_mpc_loop_time,
-            "Timing_Violation": ("YES" if total_mpc_loop_time > control_update_interval else "NO"),
+            "Timing_Violation": (
+                "YES" if total_mpc_loop_time > control_update_interval else "NO"
+            ),
         }
 
         self.data_logger.log_entry(log_entry)
@@ -215,6 +221,7 @@ class SimulationLogger:
         thruster_actual_output: np.ndarray,
         thruster_last_command: np.ndarray,
         normalize_angle_func: Optional[Any] = None,
+        solve_time: float = 0.0,
     ) -> None:
         """
         Log high-frequency physics data.
@@ -250,7 +257,9 @@ class SimulationLogger:
         error_yaw = wrap_angle(targ_yaw - curr_yaw)
 
         # Format Command Vector string
-        cmd_vec_str = "[" + ", ".join([f"{val:.3f}" for val in thruster_actual_output]) + "]"
+        cmd_vec_str = (
+            "[" + ", ".join([f"{val:.3f}" for val in thruster_actual_output]) + "]"
+        )
 
         entry = {
             "Time": f"{simulation_time:.4f}",
@@ -279,12 +288,13 @@ class SimulationLogger:
             "Error_Pitch": f"{error_pitch:.5f}",
             "Error_Yaw": f"{error_yaw:.5f}",
             "Command_Vector": cmd_vec_str,
+            "Solve_Time": f"{solve_time * 1000:.2f}",  # Save in ms for readability
         }
 
         # Log Thruster States
         num_thrusters = len(thruster_actual_output)
         for i in range(num_thrusters):
-            entry[f"Thruster_{i+1}_Cmd"] = f"{thruster_last_command[i]:.3f}"
-            entry[f"Thruster_{i+1}_Val"] = f"{thruster_actual_output[i]:.3f}"
+            entry[f"Thruster_{i + 1}_Cmd"] = f"{thruster_last_command[i]:.3f}"
+            entry[f"Thruster_{i + 1}_Val"] = f"{thruster_actual_output[i]:.3f}"
 
         self.data_logger.log_entry(entry)

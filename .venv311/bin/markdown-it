@@ -1,4 +1,4 @@
-#!/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/.venv311/bin/python
+#!/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/.venv311/bin/python3.11
 import sys
 from markdown_it.cli.parse import main
 if __name__ == '__main__':

@@ -516,21 +516,21 @@ class MissionStateManager:
                         )
                         continue
                     # New Orientation Logic for Cylinder Scan:
-                    # Body Y axis -> World Up (Z+)
-                    # Body Z axis -> Inward Radial (towards cylinder center)
-                    # Body X axis -> -Tangent (against velocity, preserving RH rule)
+                    # Body Z axis -> World Up (Z+)
+                    # Body Y axis -> Inward Radial (towards cylinder center)
+                    # Body X axis -> Tangent (RH frame)
 
-                    y_axis = np.array([0.0, 0.0, 1.0])  # Body Y is UP
+                    z_axis = np.array([0.0, 0.0, 1.0])  # World up
 
-                    # Approximate Z axis (Inward Radial)
-                    z_axis_approx = -radial
+                    # Body Y axis (Inward Radial)
+                    y_axis = -radial / radial_norm
 
-                    # X axis = Y x Z_approx (Tangential)
-                    x_axis = np.cross(y_axis, z_axis_approx)
+                    # X axis = Y x Z (Tangential)
+                    x_axis = np.cross(y_axis, z_axis)
                     x_norm = np.linalg.norm(x_axis)
 
                     if x_norm < 1e-6:
-                        # Fallback if directly above/below center
+                        # Fallback if radial is aligned with up
                         trajectory[k] = self._create_state_from_quat(
                             pos, self._last_traj_quat, np.zeros(3, dtype=float)
                         )
@@ -538,9 +538,9 @@ class MissionStateManager:
 
                     x_axis = x_axis / x_norm
 
-                    # Recompute Z to ensure orthogonality: Z = X x Y
-                    z_axis = np.cross(x_axis, y_axis)
-                    z_axis = z_axis / np.linalg.norm(z_axis)
+                    # Recompute Y to ensure orthogonality: Y = Z x X
+                    y_axis = np.cross(z_axis, x_axis)
+                    y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-6)
 
                     quat = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
                     self._last_traj_quat = quat

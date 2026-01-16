@@ -100,7 +100,12 @@ async def run_simulation_loop():
     """
     Background task to run the simulation loop and broadcast state.
     """
-    global sim_instance, current_mission_config, simulation_paused, simulation_speed, pending_steps
+    global \
+        sim_instance, \
+        current_mission_config, \
+        simulation_paused, \
+        simulation_speed, \
+        pending_steps
     logger.info("Starting simulation loop...")
 
     # Initialize simulation if not exists
@@ -157,6 +162,7 @@ async def run_simulation_loop():
             from src.satellite_control.mission.mesh_scan import (
                 build_mesh_scan_trajectory,
             )
+
             try:
                 mpc_dt = float(sim_config.app_config.mpc.dt)
                 path, trajectory, path_length = build_mesh_scan_trajectory(
@@ -241,7 +247,9 @@ async def run_simulation_loop():
 
             # Step simulation (~60Hz) with speed multiplier
             if simulation_speed >= 1.0:
-                steps_per_frame = max(1, int((frame_dt * simulation_speed) / SIMULATION_DT))
+                steps_per_frame = max(
+                    1, int((frame_dt * simulation_speed) / SIMULATION_DT)
+                )
                 sleep_time = frame_dt
             else:
                 steps_per_frame = 1
@@ -333,7 +341,9 @@ async def list_simulations():
                     metrics = json.loads(metrics_path.read_text())
                 except Exception as exc:
                     logger.error(f"Failed to read metrics for {run_dir.name}: {exc}")
-            sim_metrics = metrics.get("simulation", {}) if isinstance(metrics, dict) else {}
+            sim_metrics = (
+                metrics.get("simulation", {}) if isinstance(metrics, dict) else {}
+            )
             runs.append(
                 {
                     "id": run_dir.name,
@@ -442,11 +452,9 @@ async def get_simulation_telemetry(
                     "thrusters": [to_float(row.get(col)) for col in thruster_cols],
                     "rw_torque": [0.0, 0.0, 0.0],
                     "obstacles": [],
-                    "solve_time": 0.0,
+                    "solve_time": to_float(row.get("Solve_Time", 0.0)) / 1000.0,
                     "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
-                    "ang_error": float(
-                        np.linalg.norm([err_roll, err_pitch, err_yaw])
-                    ),
+                    "ang_error": float(np.linalg.norm([err_roll, err_pitch, err_yaw])),
                 }
             )
 

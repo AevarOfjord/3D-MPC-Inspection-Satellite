@@ -496,7 +496,8 @@ class SimulationLoop:
                 return True
 
         # Only stop simulation when max time is reached
-        if self.simulation.simulation_time >= self.simulation.max_simulation_time:
+        max_time = self.simulation.max_simulation_time
+        if max_time and max_time > 0 and self.simulation.simulation_time >= max_time:
             print(f"\nSIMULATION COMPLETE at {self.simulation.simulation_time:.1f}s")
             self.simulation.is_running = False
             self.simulation.print_performance_summary()

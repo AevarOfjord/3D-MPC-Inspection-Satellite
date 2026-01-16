@@ -393,9 +393,8 @@ class SimulationParams(BaseModel):
     )
     max_duration: float = Field(
         ...,
-        gt=0,
-        le=3600,
-        description="Maximum simulation duration in seconds",
+        ge=0,
+        description="Maximum simulation duration in seconds (0 disables limit)",
     )
     headless: bool = Field(
         False,

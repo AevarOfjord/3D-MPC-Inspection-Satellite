@@ -176,9 +176,9 @@ class ConfigValidator:
         # Timing validation
         if simulation.dt <= 0:
             issues.append(f"Simulation dt must be positive: {simulation.dt} s")
-        if simulation.max_duration <= 0:
+        if simulation.max_duration < 0:
             issues.append(
-                f"Max simulation duration must be positive: {simulation.max_duration} s"
+                f"Max simulation duration must be >= 0: {simulation.max_duration} s"
             )
 
         # Window size validation (if not headless)
@@ -221,7 +221,7 @@ class ConfigValidator:
 
         # Check if prediction horizon is reasonable
         prediction_time = config.mpc.prediction_horizon * config.mpc.dt
-        if prediction_time > config.simulation.max_duration:
+        if config.simulation.max_duration > 0 and prediction_time > config.simulation.max_duration:
             issues.append(
                 f"Prediction horizon ({prediction_time:.1f}s) exceeds "
                 f"max simulation duration ({config.simulation.max_duration:.1f}s)"

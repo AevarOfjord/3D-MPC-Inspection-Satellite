@@ -10,6 +10,9 @@ interface CameraManagerProps {
   mode: CameraMode;
 }
 
+const WORLD_UP = new Vector3(0, 0, 1);
+const TOP_VIEW_SCREEN_UP = new Vector3(0, 1, 0);
+
 export function CameraManager({ mode }: CameraManagerProps) {
   const { camera, controls } = useThree();
   const satPosRef = useRef(new Vector3());
@@ -32,22 +35,22 @@ export function CameraManager({ mode }: CameraManagerProps) {
   useEffect(() => {
     if (mode === 'top') {
        // Move to Top Down
-       camera.position.set(0, 15, 0);
+       camera.position.set(0, 0, 15);
        camera.lookAt(0, 0, 0);
-       camera.up.set(0, 0, -1); // Orient so +Z is up on screen? Or -Z? standard map view.
+       camera.up.copy(TOP_VIEW_SCREEN_UP); // Keep screen-up along +Y for top-down view.
        if (controls) {
            (controls as any).target.set(0, 0, 0);
            (controls as any).update();
        }
-    } else if (mode === 'free') {
-        camera.up.set(0, 1, 0);
+    } else {
+        camera.up.copy(WORLD_UP);
     }
   }, [mode, camera, controls]);
 
   useEffect(() => {
     if (!focusTarget) return;
     const target = new Vector3(...focusTarget);
-    const offset = new Vector3(2.5, 2.0, 2.5);
+    const offset = new Vector3(2.5, 2.5, 2.0);
     camera.position.copy(target.clone().add(offset));
     camera.lookAt(target);
     if (controls) {
@@ -60,18 +63,18 @@ export function CameraManager({ mode }: CameraManagerProps) {
     if (!viewPreset) return;
     const target = focusTarget ? new Vector3(...focusTarget) : new Vector3(0, 0, 0);
     let offset: Vector3;
-    let up = new Vector3(0, 1, 0);
+    let up = WORLD_UP;
 
     switch (viewPreset) {
       case 'top':
-        offset = new Vector3(0, 10, 0);
-        up = new Vector3(0, 0, -1);
+        offset = new Vector3(0, 0, 10);
+        up = TOP_VIEW_SCREEN_UP;
         break;
       case 'front':
-        offset = new Vector3(0, 0, 10);
+        offset = new Vector3(0, 10, 0);
         break;
       case 'back':
-        offset = new Vector3(0, 0, -10);
+        offset = new Vector3(0, -10, 0);
         break;
       case 'left':
         offset = new Vector3(-10, 0, 0);
@@ -97,8 +100,8 @@ export function CameraManager({ mode }: CameraManagerProps) {
   useFrame(() => {
     if (mode === 'chase') {
         // Simple Chase: Position camera behind satellite
-        // Offset in local space: [-2, 1, 0] (Behind and slightly up)
-        const offset = new Vector3(-2, 1, 0);
+        // Offset in local space: [-2, 0, 1] (Behind and slightly up +Z)
+        const offset = new Vector3(-2, 0, 1);
         offset.applyQuaternion(satQuatRef.current);
         const targetPos = satPosRef.current.clone();
         
