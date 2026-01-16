@@ -108,12 +108,12 @@ class DataLogger:
         if not self.data_save_path or not self.detailed_log_data:
             return False
 
-        csv_file_path = self.data_save_path / self.filename  # Use custom filename
-        headers = self._get_simulation_headers()
-        if self.mode == "physics":
-            headers = self._get_physics_headers()
-        else:
-            headers = self._get_simulation_headers()
+        csv_file_path = self.data_save_path / self.filename
+        headers = (
+            self._get_physics_headers()
+            if self.mode == "physics"
+            else self._get_simulation_headers()
+        )
 
         mode = "a" if self._headers_written else "w"
 

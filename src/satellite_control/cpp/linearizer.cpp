@@ -2,7 +2,7 @@
 #include "linearizer.hpp"
 #include <cmath>
 
-namespace satellite_dt {
+namespace satellite_control {
 
 Linearizer::Linearizer(const SatelliteParams& params) : params_(params) {
     precompute_thrusters();
@@ -97,4 +97,4 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     return {A, B};
 }
 
-} // namespace satellite_dt
+} // namespace satellite_control

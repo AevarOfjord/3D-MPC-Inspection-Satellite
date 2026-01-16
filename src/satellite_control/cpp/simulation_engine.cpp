@@ -1,7 +1,7 @@
 #include "simulation_engine.hpp"
 #include <iostream>
 
-namespace satellite_sim {
+namespace satellite_control {
 
 SimulationEngine::SimulationEngine(const SatelliteParams& params, double mean_motion,
                                    double mu, double target_radius, bool use_nonlinear)
@@ -226,4 +226,4 @@ Eigen::Vector3d SimulationEngine::compute_total_torque(const std::vector<double>
     return Eigen::Vector3d::Zero();
 }
 
-} // namespace satellite_sim
+} // namespace satellite_control

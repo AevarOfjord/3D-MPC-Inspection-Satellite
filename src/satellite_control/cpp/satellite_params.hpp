@@ -2,7 +2,7 @@
 #include <Eigen/Dense>
 #include <vector>
 
-namespace satellite_dt {
+namespace satellite_control {
 
 using Vector3d = Eigen::Vector3d;
 using VectorXd = Eigen::VectorXd;
@@ -21,4 +21,4 @@ struct SatelliteParams {
     Vector3d com_offset;
 };
 
-} // namespace satellite_dt
+} // namespace satellite_control

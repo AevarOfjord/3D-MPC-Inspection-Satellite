@@ -6,10 +6,11 @@
 #include "satellite_params.hpp"
 #include "orbital_dynamics.hpp"
 
-namespace satellite_sim {
+namespace satellite_control {
 
-using namespace satellite_dt;
-using namespace satellite_control; // for CWDynamics
+// Using directives not needed since we are in the same namespace now
+// using namespace satellite_dt; 
+// using namespace satellite_control; // for CWDynamics
 
 class __attribute__((visibility("default"))) SimulationEngine {
 public:
@@ -79,4 +80,4 @@ private:
     Eigen::VectorXd compute_state_derivative(const Eigen::VectorXd& x, const Eigen::Vector3d& total_force, const Eigen::Vector3d& total_torque);
 };
 
-} // namespace satellite_sim
+} // namespace satellite_control

@@ -35,23 +35,20 @@ Configuration:
 """
 
 import logging
+
 import time
-import asyncio
-from typing import Any, Dict, Optional, List, Tuple
+
+# time, asyncio removed
+from typing import Any, Dict, Optional, List, Tuple, Union
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-from pathlib import Path
-from typing import Any, Optional, Tuple, Union
-
-import matplotlib.pyplot as plt
-import numpy as np
+# Axes3D removed (unused at top level)
 
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
-from src.satellite_control.config import SimulationConfig
+# V4.0.0: Strict Configuration
+from src.satellite_control.config import SimulationConfig, AppConfig
 from src.satellite_control.config.constants import Constants
 
 from src.satellite_control.core.simulation_loop import SimulationLoop
@@ -105,9 +102,8 @@ class SatelliteMPCLinearizedSimulation:
 
     def __init__(
         self,
-        cfg: Optional[
-            Any
-        ] = None,  # generic Any to avoid omegaconf import if not strictly needed at module level, but meant to be DictConfig
+        cfg: Optional[Union[AppConfig, Any]] = None,
+        # Legacy/Testing overrides (kept for compatibility but preferred is cfg=AppConfig)
         start_pos: Optional[Tuple[float, ...]] = None,
         target_pos: Optional[Tuple[float, ...]] = None,
         start_angle: Optional[Tuple[float, float, float]] = None,
@@ -116,31 +112,34 @@ class SatelliteMPCLinearizedSimulation:
         start_vy: float = 0.0,
         start_vz: float = 0.0,
         start_omega: Union[float, Tuple[float, float, float]] = 0.0,
-        # Legacy parameters - kept for interface compatibility if needed, but warnings should be logged
-        config: Optional[Any] = None,
-        config_overrides: Optional[Any] = None,
-        simulation_config: Optional[Any] = None,
-        use_mujoco_viewer: bool = False,  # Run headless by default
+        simulation_config: Optional[SimulationConfig] = None,
+        use_mujoco_viewer: bool = False,
     ):
         """
         Initialize linearized MPC simulation.
 
         Args:
-            cfg: Hydra Configuration object (preferred)
-            start_pos: Starting position coords (x, y, z) (uses Config default if None)
-            target_pos: Target position coords (x, y, z) (uses Config default if None)
-            start_angle: Starting orientation in radians (roll, pitch, yaw)
-            target_angle: Target orientation in radians (roll, pitch, yaw)
-            start_vx: Initial X velocity in m/s (default: 0.0)
-            start_vy: Initial Y velocity in m/s (default: 0.0)
-            start_vz: Initial Z velocity in m/s (default: 0.0)
-            start_omega: Initial angular velocity in rad/s (scalar yaw or (wx, wy, wz))
-            use_mujoco_viewer: If True, use MuJoCo viewer (default: True)
+            cfg: AppConfig object (preferred) or Hydra DictConfig (legacy).
+            start_pos: Override starting position (x, y, z).
+            target_pos: Override target position (x, y, z).
+            start_angle: Override starting orientation (roll, pitch, yaw).
+            target_angle: Override target orientation (roll, pitch, yaw).
+            start_vx: Initial X velocity.
+            start_vy: Initial Y velocity.
+            start_vz: Initial Z velocity.
+            start_omega: Initial angular velocity.
+            simulation_config: Optional SimulationConfig object (overrides cfg).
+            use_mujoco_viewer: If True, use MuJoCo viewer.
         """
         self.use_mujoco_viewer = use_mujoco_viewer
+        self.cfg = cfg
+
+        # Initialize placeholders
+        self.simulation_config = simulation_config
+        self.structured_config: Optional[SimulationConfig] = None  # Alias
 
         # V5.0 Autonomy Components
-        from src.satellite_control.planning.rrt_star import RRTStarPlanner, Obstacle
+        from src.satellite_control.planning.rrt_star import RRTStarPlanner
         from src.satellite_control.planning.trajectory_generator import (
             TrajectoryGenerator,
         )
@@ -194,16 +193,21 @@ class SatelliteMPCLinearizedSimulation:
         )
 
         # Adapt Hydra config to SimulationConfig if needed
-        if self.cfg is not None and simulation_config is None:
-            simulation_config = SimulationConfig.create_from_hydra_cfg(self.cfg)
+        # V4.1.0: Prefer explicitly passed simulation_config, then AppConfig
+        if self.simulation_config is None:
+            if isinstance(self.cfg, AppConfig):
+                self.simulation_config = SimulationConfig(app_config=self.cfg)
+            elif self.cfg is not None:
+                # Legacy Hydra
+                self.simulation_config = SimulationConfig.create_from_hydra_cfg(
+                    self.cfg
+                )
 
-        # Backward compatibility alias
-        self.simulation_config = simulation_config
-        self.structured_config = simulation_config
+        self.structured_config = self.simulation_config
 
         self.initializer = SimulationInitializer(
             simulation=self,
-            simulation_config=simulation_config,
+            simulation_config=self.simulation_config,
             use_mujoco_viewer=self.use_mujoco_viewer,
         )
         # We might need to monkey-patch or update the initializer to support this.
@@ -304,84 +308,6 @@ class SatelliteMPCLinearizedSimulation:
         return point_to_line_distance(point, line_start, line_end)
 
     # OBSTACLE AVOIDANCE METHODS
-
-    def log_simulation_step(
-        self,
-        mpc_start_time: float,
-        command_sent_time: float,
-        thruster_action: np.ndarray,
-        mpc_info: Optional[dict],
-        rw_torque: Optional[np.ndarray] = None,
-    ):
-        """
-        Log detailed simulation step data for CSV export with timing analysis.
-        Delegates to SimulationLogger.
-        """
-        current_state = self.get_current_state()
-
-        # --- Visual Replay Logging (Legacy InMemory) ---
-        self.state_history.append(current_state.copy())
-
-        # Determine active thrusters
-        # Note: thruster_action is passed in, use that instead of
-        # self.current_thrusters to be safe
-        active_thrusters = [
-            i + 1 for i, val in enumerate(thruster_action) if val > 0.01
-        ]
-        self.command_history.append(active_thrusters)
-        # ---------------------------------------------------------------------
-
-        # Determine mission phase
-        # V4.0.0: Get mission phase from mission_manager if available
-        if (
-            self.mission_manager
-            and self.mission_manager.mission_state
-            and self.mission_manager.mission_state.dxf_shape_mode_active
-        ):
-            mission_phase = (
-                self.mission_manager.mission_state.dxf_shape_phase or "STABILIZING"
-            )
-        else:
-            mission_phase = (
-                "STABILIZING" if self.target_reached_time is not None else "APPROACHING"
-            )
-
-        # Delegate to SimulationLogger
-        if not hasattr(self, "logger_helper"):
-            from src.satellite_control.core.simulation_logger import (
-                SimulationLogger,
-            )
-
-            self.logger_helper = SimulationLogger(self.data_logger)
-
-        previous_thruster_action: Optional[np.ndarray] = (
-            self.previous_command if hasattr(self, "previous_command") else None
-        )
-
-        # Update Context
-        self.context.update_state(
-            self.simulation_time, current_state, self.target_state
-        )
-        self.context.step_number = self.data_logger.current_step
-        self.context.mission_phase = mission_phase
-        self.context.previous_thruster_command = previous_thruster_action
-        if rw_torque is not None:
-            self.context.rw_torque_command = np.array(rw_torque, dtype=np.float64)
-
-        # Ensure mpc_info has required keys, providing defaults if missing
-        mpc_info_safe = mpc_info if mpc_info is not None else {}
-        # mpc_computation_time = mpc_info_safe.get("solve_time", 0.0)
-
-        self.logger_helper.log_step(
-            self.context,
-            mpc_start_time,
-            command_sent_time,
-            thruster_action,
-            mpc_info_safe,
-            rw_torque=self.context.rw_torque_command,
-        )
-
-        self.previous_command = thruster_action.copy()
 
     def log_physics_step(self):
         """Log high-frequency physics data (every 5ms)."""
@@ -568,15 +494,16 @@ class SatelliteMPCLinearizedSimulation:
                 )
 
             current_state = self.get_current_state()
-            mpc_start_time = self.simulation_time
+            mpc_start_sim_time = self.simulation_time
+            mpc_start_wall_time = time.time()
 
             # Generate Trajectory for Smart MPC
-            # Default to N=10, dt=0.05 if no controller params found
             horizon = getattr(self.mpc_controller, "N", 10)
-            # mpc_params removed (unused)
             dt = getattr(self.mpc_controller, "dt", 0.05)
 
             # Autonomy V5.0: Trajectory Tracking
+            target_trajectory = None
+
             if self.active_trajectory is not None and len(self.active_trajectory) > 0:
                 # Find current point on trajectory
                 t = self.simulation_time
@@ -585,19 +512,10 @@ class SatelliteMPCLinearizedSimulation:
                 if t > self.active_trajectory[-1, 0]:
                     # Stay at last point
                     pt = self.active_trajectory[-1]
-                    # Keep using last target_state (position) but zero velocity?
-                    # Or just clear trajectory?
-                    # Let's invalid active_trajectory once done to return to station-keeping
-                    # self.active_trajectory = None
-                    # Actually, better to hold the last position
                     target_pos = pt[1:4]
                     target_vel = np.zeros(3)  # Stop at end
                 else:
                     # Interpolate
-                    # Simple nearest for now or np.interp
-                    # We have [time, x, y, z, vx, vy, vz]
-                    # Columns: 0=t, 1=x, 2=y, 3=z, 4=vx, 5=vy, 6=vz
-
                     target_pos = np.zeros(3)
                     target_vel = np.zeros(3)
                     for i in range(3):
@@ -613,27 +531,18 @@ class SatelliteMPCLinearizedSimulation:
                         )
 
                 # Update target state [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
-                # Maintain current target orientation (indices 3-7)
                 current_target_quat = self.target_state[3:7]
 
                 new_target = np.zeros(13)
                 new_target[0:3] = target_pos
                 new_target[3:7] = current_target_quat
                 new_target[7:10] = target_vel
-                new_target[10:13] = np.zeros(3)  # Zero angular velocity for now
+                new_target[10:13] = np.zeros(3)
 
                 self.target_state = new_target
 
-                # Pass explicit trajectory to MPC if supported?
-                # Currently MPC wrapper doesn't support it, so we rely on MPCRunner
-                # using self.target_state updated above.
-                # But we can try passing a slice if we want to support future upgrades.
-                target_trajectory = None
-
             else:
                 # Legacy / Mission Manager Fallback
-                # Only use trajectory tracking for path-following modes.
-                target_trajectory = None
                 mission_state = (
                     self.mission_manager.mission_state
                     if self.mission_manager and self.mission_manager.mission_state
@@ -669,7 +578,7 @@ class SatelliteMPCLinearizedSimulation:
                 rw_torque_norm,
                 mpc_info,
                 mpc_computation_time,
-                command_sent_time,
+                command_sent_wall_time,
             ) = self.mpc_runner.compute_control_action(
                 true_state=current_state,
                 target_state=self.target_state,
@@ -681,7 +590,7 @@ class SatelliteMPCLinearizedSimulation:
             if mpc_info:
                 self.last_solve_time = mpc_info.get("solve_time", 0.0)
 
-            # Velocity governor: stop applying thrust that increases speed beyond max.
+            # Velocity governor
             max_vel = None
             if hasattr(self, "simulation_config") and hasattr(
                 self.simulation_config, "app_config"
@@ -726,28 +635,23 @@ class SatelliteMPCLinearizedSimulation:
             # Update simulation state
             self.last_control_update = self.simulation_time
             self.next_control_simulation_time += self.control_update_interval
-
-            # Store last control output for telemetry (thrusters + rw_torque)
-            # Thrusters: 12, RW: 3
             self.last_control_output = np.concatenate([thruster_action, rw_torque_cmd])
-
-            # Update history / command queue
             self.previous_thrusters = thruster_action.copy()
             self.control_history.append(thruster_action.copy())
-
             self.set_thruster_pattern(thruster_action)
 
-            # Log Data - Use simulation time for consistency with
-            # mpc_start_time
+            # Log Data
             command_sent_sim_time = self.simulation_time
+            control_loop_duration = command_sent_wall_time - mpc_start_wall_time
 
             self.log_simulation_step(
-                mpc_start_time,
-                command_sent_time,
-                command_sent_sim_time,
-                current_state,
-                thruster_action,
-                mpc_info,
+                mpc_start_sim_time=mpc_start_sim_time,
+                command_sent_sim_time=command_sent_sim_time,
+                current_state=current_state,
+                thruster_action=thruster_action,
+                mpc_info=mpc_info,
+                mpc_computation_time=mpc_computation_time,
+                control_loop_duration=control_loop_duration,
                 rw_torque=rw_torque_cmd,
             )
 
@@ -760,7 +664,6 @@ class SatelliteMPCLinearizedSimulation:
         start_pos = current_state[0:3]
         target_pos = self.target_state[0:3]
 
-        # Get obstacles from mission manager if available
         obstacles = []
         if self.mission_manager and self.mission_manager.mission_state:
             from src.satellite_control.planning.rrt_star import Obstacle
@@ -774,54 +677,42 @@ class SatelliteMPCLinearizedSimulation:
             f"Replanning path from {start_pos} to {target_pos} with {len(obstacles)} obstacles..."
         )
 
-        # Run RRT*
-        # Use simple bounds based on start/target? Or fixed?
-        # Using default bounds initialized in __init__
         waypoints = self.planner.plan(start_pos, target_pos, obstacles)
 
         if waypoints:
             self.planned_path = [list(p) for p in waypoints]
             logger.info(f"Path found: {len(waypoints)} waypoints")
 
-            # Initialize Mission Sequencer if MissionManager is present
-            # This initialization should ideally be in __init__ or when mission_manager is set.
-            # The instruction implies __init__, but the snippet is here.
-            # Assuming the snippet is meant to be a placeholder for a new feature.
-            # The instruction also mentions updating in `step()`, which is not present here.
-            # Given the context, this snippet seems to be a misplacement or a partial instruction.
-            # I will insert the snippet as provided, assuming it's part of the replanning logic
-            # for a new feature, even if it contradicts the "initialize in __init__" instruction.
-            # The line "e trajectory generator start time?" is clearly a typo/cut-off from the original context.
-            # I will remove it and assume the comment was meant to be followed by the sequencer init.
             if self.mission_manager and self.mission_manager.mission_state:
                 from src.satellite_control.mission.sequencer import MissionSequencer
 
                 self.sequencer = MissionSequencer(self.mission_manager.mission_state)
-            # Update trajectory generator start time? Ideally relative content.
-            # For now, just store the waypoints for visualization.
-            # self.active_trajectory = self.trajectory_generator.generate_trajectory(waypoints)
         else:
             logger.warning("RRT* failed to find a path!")
             self.planned_path = []
 
     def log_simulation_step(
         self,
-        mpc_start_time: float,
-        command_sent_time: float,
+        mpc_start_sim_time: float,
         command_sent_sim_time: float,
         current_state: np.ndarray,
         thruster_action: np.ndarray,
         mpc_info: Dict[str, Any],
+        mpc_computation_time: float,
+        control_loop_duration: float,
         rw_torque: Optional[np.ndarray] = None,
     ) -> None:
         """
         Log simulation step data to CSV and logger.
 
         Args:
-            mpc_start_time: Sim time when MPC started
+            mpc_start_sim_time: Sim time when MPC started
             command_sent_sim_time: Sim time when command was sent
+            current_state: Current satellite state
             thruster_action: Component-level thruster commands
             mpc_info: Metadata from MPC solver
+            mpc_computation_time: MPC solver duration (wall s)
+            control_loop_duration: Total control loop duration (wall s)
             rw_torque: Optional Reaction Wheel torque command
         """
         # Store state history for summaries/plots
@@ -829,46 +720,16 @@ class SatelliteMPCLinearizedSimulation:
 
         # Record performance metrics
         solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
-        # Use mpc_computation_time if available in args?
-        # Wait, the body uses 'mpc_computation_time' which is NOT in args?
-        # The original log_simulation_step might have calculated it?
-        # Looking at line 724: control_loop_time = command_sent_time - mpc_start_time
-        # Line 725: timing_violation = mpc_computation_time > ...
-        # 'mpc_computation_time' seems to be missing from args too?
-        # Let's check update_mpc_control call:
-        # self.log_simulation_step(mpc_start_time, command_sent_sim_time, thruster_action, mpc_info, rw_torque=rw_torque_cmd)
-        # It does NOT pass mpc_computation_time.
-        # So mpc_computation_time must be derived or I need to add it to args.
-        # In the original code (viewed in cache/memory), mpc_computation_time might have been passed?
-        # Let's check line 632: mpc_computation_time is returned by mpc_runner.
-        # But the call at 666 does NOT pass it.
-        # So log_simulation_step must assume solve_time IS computation time?
-        # Line 716: solve_time = mpc_info.get("solve_time", mpc_computation_time) -> Undefined `mpc_computation_time`!
-        # So `mpc_computation_time` IS undefined in the current broken body.
-
-        # I will fix this by calculating it: mpc_computation_time = solve_time (approx)
-        # OR better, pass it in args.
-        # I'll update the call site in a separate step or just calculate it here.
-        # mpc_computation_time is roughly command_sent_sim_time - mpc_start_time (control loop time includes it)
-
-        mpc_computation_time = command_sent_sim_time - mpc_start_time
 
         timeout = mpc_info.get("timeout", False) if mpc_info else False
         self.performance_monitor.record_mpc_solve(solve_time, timeout=timeout)
 
-        # Record control loop time (from MPC start to command sent)
-        control_loop_time = command_sent_time - mpc_start_time
-        timing_violation = mpc_computation_time > (self.control_update_interval - 0.02)
+        # Record control loop time
+        # Use 90% of available time as threshold
+        timing_violation = mpc_computation_time > (self.control_update_interval * 0.9)
         self.performance_monitor.record_control_loop(
-            control_loop_time, timing_violation=timing_violation
+            control_loop_duration, timing_violation=timing_violation
         )
-
-        # Timing violation monitoring (silent - simulation runs as fast as possible)
-        # if timing_violation:
-        #     logger.warning(
-        #         f"WARNING: MPC computation time "
-        #         f"({mpc_computation_time:.3f}s) exceeds real-time!"
-        #     )
 
         # Print status with timing information
         pos_error = np.linalg.norm(current_state[:3] - self.target_state[:3])
@@ -1011,11 +872,12 @@ class SatelliteMPCLinearizedSimulation:
         mpc_info_safe = mpc_info if mpc_info is not None else {}
         self.logger_helper.log_step(
             self.context,
-            mpc_start_time,
-            command_sent_time,
+            mpc_start_sim_time,
+            command_sent_sim_time,
             thruster_action,
             mpc_info_safe,
             rw_torque=self.context.rw_torque_command,
+            solve_time=self.last_solve_time,  # Added solve_time for compatibility
         )
 
         self.previous_command = thruster_action.copy()

@@ -21,7 +21,7 @@ Features:
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import numpy as np
 
@@ -333,7 +333,7 @@ class MissionManager:
         print(f"Mission duration: ~{estimated_duration:.1f}s estimated")
 
         # Configure obstacles (V3.0.0: always uses mission_state)
-        obstacles = self.cli.configure_obstacles(mission_state=mission_state)
+        self.cli.configure_obstacles(mission_state=mission_state)
 
         # Update MissionState (v2.0.0)
         mission_state.dxf_shape_mode_active = True
@@ -386,137 +386,6 @@ class MissionManager:
             config["simulation_config"] = simulation_config
 
         return config
-
-    def load_dxf_shape(self, file_path: str) -> List[Tuple[float, float, float]]:
-        """
-        Load shape points from DXF using the same pipeline as DXF_Viewer.
-
-        Args:
-            file_path: Path to DXF file
-
-        Returns:
-            List of (x, y, z) points in meters
-        """
-        import ezdxf
-
-        try:
-            from dxf_viewer import (
-                extract_boundary_polygon,
-                sanitize_boundary,
-                units_code_to_name_and_scale,
-            )
-        except Exception as e:
-            raise ImportError(f"dxf_viewer utilities unavailable: {e}")
-
-        # Read DXF and determine units
-        doc = ezdxf.readfile(file_path)
-        msp = doc.modelspace()
-        insunits = int(doc.header.get("$INSUNITS", 0))
-        units_name, to_m = units_code_to_name_and_scale(insunits)
-
-        # Extract and sanitize boundary in native units, then scale to meters
-        boundary = extract_boundary_polygon(msp)
-        boundary = sanitize_boundary(boundary, to_m)
-        boundary_m = (
-            [(float(x) * to_m, float(y) * to_m, 0.0) for (x, y) in boundary]
-            if boundary
-            else []
-        )
-
-        if not boundary_m:
-            raise ValueError("No usable DXF boundary could be constructed.")
-
-        print(f" DXF Loaded (viewer parity): {len(boundary_m)} points")
-        print(
-            f"   Units: {units_name} (INSUNITS={insunits}), scaled → meters (x{to_m})"
-        )
-        return boundary_m
-
-
-# Helper functions for external use
-def get_path_tangent_orientation(
-    path: List[Tuple[float, ...]], distance: float, start_idx: int = 0
-) -> Tuple[float, float, float]:
-    """
-    Calculate tangent orientation at a given distance along path.
-
-    Args:
-        path: List of (x, y) or (x, y, z) points
-        distance: Distance along path in meters
-        start_idx: Index to start searching from (optimization)
-
-    Returns:
-        Orientation as (roll, pitch, yaw) in radians
-    """
-    if not path:
-        return (0.0, 0.0, 0.0)
-
-    current_dist = 0.0
-    for i in range(len(path) - 1):
-        idx = (start_idx + i) % (len(path) - 1)
-        p1 = np.array(path[idx], dtype=float)
-        p2 = np.array(path[idx + 1], dtype=float)
-        segment_len = np.linalg.norm(p2 - p1)
-
-        if current_dist + segment_len >= distance:
-            # Found segment
-            direction = p2 - p1
-            yaw = float(np.arctan2(direction[1], direction[0]))
-            horiz = np.linalg.norm(direction[:2])
-            pitch = (
-                float(np.arctan2(-direction[2], horiz))
-                if direction.shape[0] > 2
-                else 0.0
-            )
-            return (0.0, pitch, yaw)
-
-        current_dist += float(segment_len)
-
-    # If past end, return angle of last segment
-    p1 = np.array(path[-2], dtype=float)
-    p2 = np.array(path[-1], dtype=float)
-    direction = p2 - p1
-    yaw = float(np.arctan2(direction[1], direction[0]))
-    horiz = np.linalg.norm(direction[:2])
-    pitch = float(np.arctan2(-direction[2], horiz)) if direction.shape[0] > 2 else 0.0
-    return (0.0, pitch, yaw)
-
-
-def get_position_on_path(
-    path: List[Tuple[float, ...]], distance: float, start_idx: int = 0
-) -> Tuple[Tuple[float, ...], int]:
-    """
-    Calculate position at a given distance along path.
-
-    Args:
-        path: List of (x, y) or (x, y, z) points
-        distance: Distance along path in meters
-        start_idx: Index to start searching from
-
-    Returns:
-        Tuple of ((x, y) or (x, y, z), new_index)
-    """
-    if not path:
-        return (0.0, 0.0, 0.0), 0
-
-    current_dist = 0.0
-    # Search forward from start_idx
-    total_segments = len(path) - 1
-
-    for i in range(total_segments):
-        idx = (start_idx + i) % total_segments
-        p1 = np.array(path[idx], dtype=float)
-        p2 = np.array(path[idx + 1], dtype=float)
-        segment_len = np.linalg.norm(p2 - p1)
-
-        if current_dist + segment_len >= distance:
-            t = (distance - current_dist) / max(float(segment_len), 1e-6)
-            pos = p1 + t * (p2 - p1)
-            return tuple(float(x) for x in pos), idx
-
-        current_dist += float(segment_len)
-
-    return path[-1], total_segments - 1
 
 
 if __name__ == "__main__":

@@ -4,8 +4,7 @@
 #include "simulation_engine.hpp"
 
 namespace py = pybind11;
-using namespace satellite_sim;
-using namespace satellite_dt;
+using namespace satellite_control;
 
 PYBIND11_MODULE(_cpp_sim, m) {
     m.doc() = "C++ backend for Satellite Simulation Engine";

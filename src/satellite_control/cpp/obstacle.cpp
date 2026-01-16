@@ -2,7 +2,7 @@
 #include <cmath>
 #include <limits>
 
-namespace satellite_collision {
+namespace satellite_control {
 
 double Obstacle::signed_distance(const Vector3d& point) const {
     switch (type) {
@@ -129,4 +129,4 @@ std::vector<std::pair<Vector3d, double>> ObstacleSet::get_linear_constraints(
     return constraints;
 }
 
-} // namespace satellite_collision
+} // namespace satellite_control

@@ -42,6 +42,10 @@ from src.satellite_control.utils.orientation_utils import (
     quat_angle_error,
     quat_wxyz_from_basis,
 )
+from src.satellite_control.mission.trajectory_utils import (
+    get_path_tangent_orientation,
+    get_position_on_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -409,6 +413,112 @@ class MissionStateManager:
         velocity = row[4:7]
         return position, velocity
 
+    def _predict_dxf_trajectory(
+        self,
+        current_time: float,
+        dt: float,
+        horizon: int,
+        current_state: np.ndarray,
+        trajectory_out: np.ndarray,
+    ) -> None:
+        """Helper to predict trajectory for DXF shape following/tracking."""
+        path = self.mission_state.dxf_shape_path
+        phase = self.mission_state.dxf_shape_phase
+        start_time = self.mission_state.dxf_tracking_start_time
+        speed = self.mission_state.dxf_target_speed
+        path_len = max(self.mission_state.dxf_path_length, 1e-9)
+        closest_point_idx = self.mission_state.dxf_closest_point_index
+
+        traj = self._get_dxf_trajectory_array()
+        if traj is not None and phase == "TRACKING" and start_time is not None:
+            for k in range(horizon + 1):
+                future_time = current_time + k * dt
+                elapsed = max(0.0, future_time - start_time)
+                sample = self._sample_dxf_trajectory(elapsed)
+                if sample is None:
+                    trajectory_out[k] = (
+                        trajectory_out[k - 1] if k > 0 else current_state
+                    )
+                    continue
+                pos, vel = sample
+                orient = self._velocity_to_orientation(vel)
+                trajectory_out[k] = self._create_3d_state(
+                    pos[0],
+                    pos[1],
+                    orient,
+                    vel[0],
+                    vel[1],
+                    0.0,
+                    pos[2],
+                    vel[2],
+                )
+        elif phase == "TRACKING" and start_time is not None:
+            # Use imported utils instead of local imports
+            for k in range(horizon + 1):
+                future_time = current_time + k * dt
+                tracking_time = future_time - start_time
+                distance = speed * tracking_time
+
+                if distance >= path_len:
+                    current_path_position, _ = get_position_on_path(
+                        path,
+                        path_len,
+                        closest_point_idx,
+                    )
+                    target_orientation = get_path_tangent_orientation(
+                        path,
+                        path_len,
+                        closest_point_idx,
+                    )
+                    trajectory_out[k] = self._create_3d_state(
+                        current_path_position[0],
+                        current_path_position[1],
+                        target_orientation,
+                        0.0,
+                        0.0,
+                        0.0,
+                        current_path_position[2]
+                        if len(current_path_position) > 2
+                        else 0.0,
+                    )
+                else:
+                    wrapped_s = distance % path_len
+                    pos, _ = get_position_on_path(
+                        path,
+                        wrapped_s,
+                        closest_point_idx,
+                    )
+                    orient = get_path_tangent_orientation(
+                        path,
+                        wrapped_s,
+                        closest_point_idx,
+                    )
+                    roll, pitch, yaw = orient
+                    vx = speed * np.cos(yaw) * np.cos(pitch)
+                    vy = speed * np.sin(yaw) * np.cos(pitch)
+                    vz = -speed * np.sin(pitch)
+                    trajectory_out[k] = self._create_3d_state(
+                        pos[0],
+                        pos[1],
+                        orient,
+                        vx,
+                        vy,
+                        0.0,
+                        pos[2] if len(pos) > 2 else 0.0,
+                        vz,
+                    )
+        else:
+            curr_pos_3d = current_state[:3]
+            current_quat = current_state[3:7]
+            target = self.update_target_state(
+                curr_pos_3d, current_quat, current_time, current_state
+            )
+            if target is not None:
+                trajectory_out[:] = target
+            else:
+                trajectory_out[:] = current_state
+                trajectory_out[:, 7:] = 0  # Zero velocities
+
     def get_trajectory(
         self,
         current_time: float,
@@ -433,8 +543,6 @@ class MissionStateManager:
         # Initialize trajectory array
         trajectory = np.zeros((horizon + 1, 13))
 
-        current_quat = current_state[3:7]
-
         # Determine active mode (V4.0.0: mission_state required)
         is_dxf = (
             self.mission_state.dxf_shape_mode_active
@@ -445,218 +553,21 @@ class MissionStateManager:
             or self.mission_state.mesh_scan_mode_active
         )
 
-        # 3D Position for internal logic
-        curr_pos_3d = current_state[:3]
-
         if is_traj:
-            traj = self._get_dxf_trajectory_array()
-            if traj is None or traj.size == 0:
-                trajectory[:] = current_state
-                trajectory[:, 7:] = 0
-                return trajectory
-
-            if self.mission_state.trajectory_start_time is None:
-                self.mission_state.trajectory_start_time = current_time
-
-            start_time = float(self.mission_state.trajectory_start_time)
-            total_time = float(self.mission_state.trajectory_total_time or traj[-1, 0])
-            hold_start = float(max(self.mission_state.trajectory_hold_start, 0.0))
-            hold_end = float(max(self.mission_state.trajectory_hold_end, 0.0))
-
-            for k in range(horizon + 1):
-                future_time = current_time + k * dt
-                elapsed = float(future_time - start_time)
-                sample = self._sample_dxf_trajectory(elapsed)
-                if sample is None:
-                    pos = traj[-1, 1:4]
-                    vel = np.zeros(3, dtype=float)
-                else:
-                    pos, vel = sample
-
-                if elapsed >= traj[-1, 0]:
-                    pos = traj[-1, 1:4]
-                    vel = np.zeros(3, dtype=float)
-
-                use_start_hold = (
-                    self.mission_state.trajectory_start_orientation is not None
-                    and elapsed <= hold_start + 1e-6
-                )
-                use_end_hold = (
-                    self.mission_state.trajectory_end_orientation is not None
-                    and elapsed >= total_time - hold_end - 1e-6
-                )
-
-                if use_start_hold or use_end_hold:
-                    orient = (
-                        self.mission_state.trajectory_start_orientation
-                        if use_start_hold
-                        else self.mission_state.trajectory_end_orientation
-                    )
-                    quat = euler_xyz_to_quat_wxyz(orient)
-                    trajectory[k] = self._create_state_from_quat(
-                        pos, quat, np.zeros(3, dtype=float)
-                    )
-                    continue
-
-                if (
-                    self.mission_state.trajectory_type == "scan"
-                    or self.mission_state.mesh_scan_mode_active
-                ):
-                    center = self.mission_state.trajectory_object_center or (
-                        0.0,
-                        0.0,
-                        0.0,
-                    )
-                    radial = np.array(pos) - np.array(center, dtype=float)
-                    radial_norm = np.linalg.norm(radial)
-                    speed = float(np.linalg.norm(vel))
-                    if radial_norm < 1e-6 or speed < 1e-6:
-                        trajectory[k] = self._create_state_from_quat(
-                            pos, self._last_traj_quat, np.zeros(3, dtype=float)
-                        )
-                        continue
-                    # New Orientation Logic for Cylinder Scan:
-                    # Body Z axis -> World Up (Z+)
-                    # Body Y axis -> Inward Radial (towards cylinder center)
-                    # Body X axis -> Tangent (RH frame)
-
-                    z_axis = np.array([0.0, 0.0, 1.0])  # World up
-
-                    # Body Y axis (Inward Radial)
-                    y_axis = -radial / radial_norm
-
-                    # X axis = Y x Z (Tangential)
-                    x_axis = np.cross(y_axis, z_axis)
-                    x_norm = np.linalg.norm(x_axis)
-
-                    if x_norm < 1e-6:
-                        # Fallback if radial is aligned with up
-                        trajectory[k] = self._create_state_from_quat(
-                            pos, self._last_traj_quat, np.zeros(3, dtype=float)
-                        )
-                        continue
-
-                    x_axis = x_axis / x_norm
-
-                    # Recompute Y to ensure orthogonality: Y = Z x X
-                    y_axis = np.cross(z_axis, x_axis)
-                    y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-6)
-
-                    quat = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
-                    self._last_traj_quat = quat
-                    trajectory[k] = self._create_state_from_quat(pos, quat, vel)
-                    continue
-
-                orient = self._velocity_to_orientation(np.array(vel, dtype=float))
-                quat = euler_xyz_to_quat_wxyz(orient)
-                self._last_traj_quat = quat
-                trajectory[k] = self._create_state_from_quat(pos, quat, vel)
-
-            return trajectory
-
-        if is_dxf:
-            # --- SHAPE FOLLOWING PREDICTION ---
-            path = self.mission_state.dxf_shape_path
-            phase = self.mission_state.dxf_shape_phase
-            start_time = self.mission_state.dxf_tracking_start_time
-            speed = self.mission_state.dxf_target_speed
-            path_len = max(self.mission_state.dxf_path_length, 1e-9)
-            closest_point_idx = self.mission_state.dxf_closest_point_index
-
-            traj = self._get_dxf_trajectory_array()
-            if traj is not None and phase == "TRACKING" and start_time is not None:
-                for k in range(horizon + 1):
-                    future_time = current_time + k * dt
-                    elapsed = max(0.0, future_time - start_time)
-                    sample = self._sample_dxf_trajectory(elapsed)
-                    if sample is None:
-                        trajectory[k] = trajectory[k - 1] if k > 0 else current_state
-                        continue
-                    pos, vel = sample
-                    orient = self._velocity_to_orientation(vel)
-                    trajectory[k] = self._create_3d_state(
-                        pos[0],
-                        pos[1],
-                        orient,
-                        vel[0],
-                        vel[1],
-                        0.0,
-                        pos[2],
-                        vel[2],
-                    )
-            elif phase == "TRACKING" and start_time is not None:
-                from src.satellite_control.mission.mission_manager import (
-                    get_path_tangent_orientation,
-                    get_position_on_path,
-                )
-
-                for k in range(horizon + 1):
-                    future_time = current_time + k * dt
-                    tracking_time = future_time - start_time
-                    distance = speed * tracking_time
-
-                    if distance >= path_len:
-                        current_path_position, _ = get_position_on_path(
-                            path,
-                            path_len,
-                            closest_point_idx,
-                        )
-                        target_orientation = get_path_tangent_orientation(
-                            path,
-                            path_len,
-                            closest_point_idx,
-                        )
-                        trajectory[k] = self._create_3d_state(
-                            current_path_position[0],
-                            current_path_position[1],
-                            target_orientation,
-                            0.0,
-                            0.0,
-                            0.0,
-                            current_path_position[2]
-                            if len(current_path_position) > 2
-                            else 0.0,
-                        )
-                    else:
-                        wrapped_s = distance % path_len
-                        pos, _ = get_position_on_path(
-                            path,
-                            wrapped_s,
-                            closest_point_idx,
-                        )
-                        orient = get_path_tangent_orientation(
-                            path,
-                            wrapped_s,
-                            closest_point_idx,
-                        )
-                        roll, pitch, yaw = orient
-                        vx = speed * np.cos(yaw) * np.cos(pitch)
-                        vy = speed * np.sin(yaw) * np.cos(pitch)
-                        vz = -speed * np.sin(pitch)
-                        trajectory[k] = self._create_3d_state(
-                            pos[0],
-                            pos[1],
-                            orient,
-                            vx,
-                            vy,
-                            0.0,
-                            pos[2] if len(pos) > 2 else 0.0,
-                            vz,
-                        )
-            else:
-                target = self.update_target_state(
-                    curr_pos_3d, current_quat, current_time, current_state
-                )
-                if target is not None:
-                    trajectory[:] = target
-                elif external_target_state is not None:
-                    trajectory[:] = external_target_state
-                else:
-                    trajectory[:] = current_state
-                    trajectory[:, 7:] = 0  # Zero velocities
-
+            # Legacy/Trajectory mode logic (could also be extracted but kept inline for now or extracted if desired)
+            # For now, let's keep the is_traj block structure but clean it up if needed.
+            # Actually, best to delegate to a helper too for consistency.
+            self._predict_precomputed_trajectory(
+                current_time, dt, horizon, current_state, trajectory
+            )
+        elif is_dxf:
+            self._predict_dxf_trajectory(
+                current_time, dt, horizon, current_state, trajectory
+            )
         else:
             # --- STANDARD WAYPOINT ---
+            curr_pos_3d = current_state[:3]
+            current_quat = current_state[3:7]
             target = self.update_target_state(
                 curr_pos_3d, current_quat, current_time, current_state
             )
@@ -698,6 +609,107 @@ class MissionStateManager:
                 trajectory[:, 7:] = 0
 
         return trajectory
+
+    def _predict_precomputed_trajectory(
+        self,
+        current_time: float,
+        dt: float,
+        horizon: int,
+        current_state: np.ndarray,
+        trajectory_out: np.ndarray,
+    ) -> None:
+        """Helper to sample from precomputed trajectory (scan/custom)."""
+        traj = self._get_dxf_trajectory_array()
+        if traj is None or traj.size == 0:
+            trajectory_out[:] = current_state
+            trajectory_out[:, 7:] = 0
+            return
+
+        if self.mission_state.trajectory_start_time is None:
+            self.mission_state.trajectory_start_time = current_time
+
+        start_time = float(self.mission_state.trajectory_start_time)
+        total_time = float(self.mission_state.trajectory_total_time or traj[-1, 0])
+        hold_start = float(max(self.mission_state.trajectory_hold_start, 0.0))
+        hold_end = float(max(self.mission_state.trajectory_hold_end, 0.0))
+
+        for k in range(horizon + 1):
+            future_time = current_time + k * dt
+            elapsed = float(future_time - start_time)
+            sample = self._sample_dxf_trajectory(elapsed)
+            if sample is None:
+                pos = traj[-1, 1:4]
+                vel = np.zeros(3, dtype=float)
+            else:
+                pos, vel = sample
+
+            if elapsed >= traj[-1, 0]:
+                pos = traj[-1, 1:4]
+                vel = np.zeros(3, dtype=float)
+
+            use_start_hold = (
+                self.mission_state.trajectory_start_orientation is not None
+                and elapsed <= hold_start + 1e-6
+            )
+            use_end_hold = (
+                self.mission_state.trajectory_end_orientation is not None
+                and elapsed >= total_time - hold_end - 1e-6
+            )
+
+            if use_start_hold or use_end_hold:
+                orient = (
+                    self.mission_state.trajectory_start_orientation
+                    if use_start_hold
+                    else self.mission_state.trajectory_end_orientation
+                )
+                quat = euler_xyz_to_quat_wxyz(orient)
+                trajectory_out[k] = self._create_state_from_quat(
+                    pos, quat, np.zeros(3, dtype=float)
+                )
+                continue
+
+            if (
+                self.mission_state.trajectory_type == "scan"
+                or self.mission_state.mesh_scan_mode_active
+            ):
+                center = self.mission_state.trajectory_object_center or (
+                    0.0,
+                    0.0,
+                    0.0,
+                )
+                radial = np.array(pos) - np.array(center, dtype=float)
+                radial_norm = np.linalg.norm(radial)
+                speed = float(np.linalg.norm(vel))
+                if radial_norm < 1e-6 or speed < 1e-6:
+                    trajectory_out[k] = self._create_state_from_quat(
+                        pos, self._last_traj_quat, np.zeros(3, dtype=float)
+                    )
+                    continue
+                # New Orientation Logic for Cylinder Scan
+                z_axis = np.array([0.0, 0.0, 1.0])  # World up
+                y_axis = -radial / radial_norm  # Inward Radial
+                x_axis = np.cross(y_axis, z_axis)  # Tangential
+                x_norm = np.linalg.norm(x_axis)
+
+                if x_norm < 1e-6:
+                    trajectory_out[k] = self._create_state_from_quat(
+                        pos, self._last_traj_quat, np.zeros(3, dtype=float)
+                    )
+                    continue
+
+                x_axis = x_axis / x_norm
+                y_axis = np.cross(z_axis, x_axis)
+                y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-6)
+
+                quat = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
+                self._last_traj_quat = quat
+                trajectory_out[k] = self._create_state_from_quat(pos, quat, vel)
+                continue
+
+            orient = self._velocity_to_orientation(np.array(vel, dtype=float))
+            quat = euler_xyz_to_quat_wxyz(orient)
+            self._last_traj_quat = quat
+            trajectory_out[k] = self._create_state_from_quat(pos, quat, vel)
 
     def _has_clear_path_to_target(
         self, current_pos: np.ndarray, target_pos: Tuple[float, float, float]

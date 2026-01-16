@@ -7,9 +7,7 @@
 #include "obstacle.hpp"
 
 namespace py = pybind11;
-using namespace satellite_dt;
-using namespace satellite_mpc;
-using namespace satellite_collision;
+using namespace satellite_control;
 
 PYBIND11_MODULE(_cpp_mpc, m) {
     m.doc() = "C++ backend for Satellite MPC controller";

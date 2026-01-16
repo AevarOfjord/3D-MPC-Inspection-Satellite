@@ -33,10 +33,6 @@ import numpy as np
 from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.utils.navigation_utils import (
-    angle_difference,
-    normalize_angle,
-)
 
 
 class SimulationStateValidator:
@@ -242,31 +238,6 @@ class SimulationStateValidator:
             errors.append(angvel_error)
 
         return len(errors) == 0, errors
-
-    def normalize_angle(self, angle: float) -> float:
-        """
-        Normalize angle to [-pi, pi] range.
-
-        Args:
-            angle: Angle in radians
-
-        Returns:
-            Normalized angle in [-pi, pi]
-        """
-        return normalize_angle(angle)
-
-    def angle_difference(self, target_angle: float, current_angle: float) -> float:
-        """
-        Calculate shortest angular difference.
-
-        Args:
-            target_angle: Target angle in radians
-            current_angle: Current angle in radians
-
-        Returns:
-            Shortest angle difference in [-pi, pi]
-        """
-        return angle_difference(target_angle, current_angle)
 
     def check_target_reached(
         self, current_state: np.ndarray, target_state: np.ndarray

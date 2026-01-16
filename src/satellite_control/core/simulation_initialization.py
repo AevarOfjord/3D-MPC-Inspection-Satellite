@@ -139,7 +139,7 @@ class SimulationInitializer:
 
         # Initialize mission manager
         self._initialize_mission_manager()
-        
+
         # Configure Obstacles on Controller (V3.0.0)
         if (
             hasattr(self.simulation.mpc_controller, "set_obstacles")
@@ -376,42 +376,15 @@ class SimulationInitializer:
     def _initialize_mpc_controller(self, app_config: Any) -> None:
         """Initialize MPC controller."""
         logger.info("Initializing MPC Controller (Mode: PWM/OSQP)...")
-        # Check if we are in new Hydra mode
+
+        # V4.1.0: Refactored to use AppConfig directly
+        # If we have an override cfg (legacy/manual), use it
         if hasattr(self.simulation, "cfg") and self.simulation.cfg is not None:
             self.simulation.mpc_controller = MPCController(cfg=self.simulation.cfg)
         else:
-            # V4.0.0: Load Hydra configs and construct cfg for MPCController
-            # Use standardized conversion from SimulationConfig
-            cfg = self.simulation_config.to_hydra_cfg()
-
-            # Attempt to augment with Reaction Wheel data from default YAML if missing
-            # (Since AppConfig doesn't support RWs yet)
-            if not cfg.vehicle.reaction_wheels:
-                from pathlib import Path
-                from omegaconf import OmegaConf
-
-                # Find config directory relative to this file
-                # src/satellite_control/core/simulation_initialization.py -> ../../../config
-                config_dir = Path(__file__).parent.parent.parent.parent / "config"
-                vehicle_yaml = config_dir / "vehicle" / "cube_sat_6u.yaml"
-
-                if vehicle_yaml.exists():
-                    try:
-                        # Load only for reaction wheels
-                        default_vehicle = OmegaConf.load(vehicle_yaml)
-                        if hasattr(default_vehicle, "reaction_wheels"):
-                            cfg.vehicle.reaction_wheels = (
-                                default_vehicle.reaction_wheels
-                            )
-                            # Also ensure inertia is correct dimensionality if missing?
-                            # to_hydra_cfg handles inertia well, so we likely trust it.
-                            logger.info(
-                                "Loaded default Reaction Wheel structure from YAML"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to load default RW config: {e}")
-
-            self.simulation.mpc_controller = MPCController(cfg=cfg)
+            # Preferred: Pass AppConfig directly
+            # This avoids the complex round-trip to Hydra OmegaConf
+            self.simulation.mpc_controller = MPCController(cfg=app_config)
 
     def _initialize_mission_manager(self) -> None:
         """Initialize mission state manager (V4.0.0: simulation_config required)."""

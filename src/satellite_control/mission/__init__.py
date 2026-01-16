@@ -6,7 +6,8 @@ from .mission_types import (
     MissionStatus,
     MissionType,
     Waypoint,
-    MISSION_LIBRARY,
+)
+from .mission_factory import (
     create_flyby_mission,
     create_circumnavigation_mission,
     create_station_keeping_mission,
@@ -21,7 +22,6 @@ __all__ = [
     "MissionType",
     "Waypoint",
     "MissionExecutor",
-    "MISSION_LIBRARY",
     "create_flyby_mission",
     "create_circumnavigation_mission",
     "create_station_keeping_mission",

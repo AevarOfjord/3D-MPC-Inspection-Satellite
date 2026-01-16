@@ -18,7 +18,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,7 +41,7 @@ class SimulationLoop:
     and update_simulation.
     """
 
-    def __init__(self, simulation: Any):
+    def __init__(self, simulation: "SatelliteMPCLinearizedSimulation"):
         """
         Initialize the simulation loop.
 
@@ -84,7 +87,9 @@ class SimulationLoop:
     def _is_trajectory_mode(self) -> bool:
         """Check if generic trajectory tracking is enabled."""
         mission_state = self._get_mission_state()
-        return mission_state.trajectory_mode_active or mission_state.mesh_scan_mode_active
+        return (
+            mission_state.trajectory_mode_active or mission_state.mesh_scan_mode_active
+        )
 
     def _get_current_target_index(self) -> int:
         """Get current target index."""
@@ -151,7 +156,7 @@ class SimulationLoop:
     def run(
         self,
         show_animation: bool = True,
-        structured_config: Any = None,
+        structured_config: Any = None,  # Deprecated
     ) -> Optional[Path]:
         """
         Run the simulation loop.

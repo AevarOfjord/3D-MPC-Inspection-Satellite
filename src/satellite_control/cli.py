@@ -100,30 +100,30 @@ def run(
         if not m_path.exists():
             console.print(f"[red]Mission file not found: {m_path}[/red]")
             raise typer.Exit(code=1)
-        
+
         console.print(f"[green]Loading mission from {m_path}[/green]")
-        
+
         # Load mission to get params
         mission = Mission.load(m_path)
-        
+
         # Override start parameters
         sim_start_pos = mission.start_position.tolist()
-        
+
         # Create simulation config handling (simplified for now)
         # Ideally we convert Mission to SimulationConfig/MissionState
-        # For this demo, we'll try to rely on SimulationConfig.create_default() 
+        # For this demo, we'll try to rely on SimulationConfig.create_default()
         # and populate it with mission data if needed, or rely on MissionManager to load it later.
-        
+
         # However, to properly inject obstacles into the simulation, we need to populate MissionState
         simulation_config = SimulationConfig.create_default()
-        
+
         # Map Mission params to MissionState
         ms = simulation_config.mission_state
-        
+
         # Add obstacles
         ms.obstacles_enabled = len(mission.obstacles) > 0
         ms.obstacles = mission.obstacles
-        
+
         # Map waypoints if any (assuming single phase for simplicity or extracting all)
         waypoints = mission.get_all_waypoints()
         if waypoints:
@@ -132,7 +132,7 @@ def run(
             # Initialize angles to zero (required by MissionStateManager)
             ms.waypoint_angles = [(0.0, 0.0, 0.0)] * len(waypoints)
             # Assuming approach speed etc handled by controller or dynamic logic
-            
+
         mission_simulation_config = simulation_config
 
     elif classic:
@@ -265,18 +265,21 @@ def run(
                     if hasattr(hydra_cfg, "sim"):
                         hydra_cfg.sim.duration = duration
                         console.print(f"  Override: Duration = {duration}s")
+                if engine:
+                    # Apply engine override to Hydra config
+                    if hasattr(hydra_cfg, "physics"):
+                        hydra_cfg.physics.engine = engine
+                        console.print(f"  Override: Engine = {engine}")
+
         except Exception as e:
             console.print(
                 f"[yellow]Failed to load Hydra config: {e}. Falling back to default Pydantic config.[/yellow]"
             )
             simulation_config = SimulationConfig.create_default()
             # Apply overrides manually since create_default doesn't take them
-            if duration:
-                if config_overrides is None:
-                    config_overrides = {}
-                    config_overrides["simulation"] = {"max_duration": duration}
+            if config_overrides:
                 simulation_config = SimulationConfig.create_with_overrides(
-                    config_overrides
+                    config_overrides, base_config=simulation_config
                 )
 
     # Initialize Simulation with explicit parameters (avoid global state mutation)
@@ -286,7 +289,7 @@ def run(
             target_pos=sim_target_pos,
             start_angle=sim_start_angle,
             target_angle=sim_target_angle,
-            config_overrides=config_overrides,  # Keep for backward compatibility
+            # config_overrides removed - applied to config objects above
             simulation_config=simulation_config,  # Pydantic Config (Legacy/Preset)
             cfg=hydra_cfg,  # Hydra Config (New Default)
         )

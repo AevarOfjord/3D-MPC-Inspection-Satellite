@@ -28,6 +28,12 @@ class Node:
 
 
 class RRTStarPlanner:
+    """RRT* (Rapidly-exploring Random Tree Star) path planner.
+
+    Finds collision-free paths in 3D space using random sampling.
+    Uses vectorized numpy operations for efficient neighbor searches.
+    """
+
     def __init__(
         self,
         bounds_min: Tuple[float, float, float] = (-10, -10, -10),
@@ -42,6 +48,8 @@ class RRTStarPlanner:
         self.max_iter = max_iter
         self.search_radius = search_radius
         self.node_list: List[Node] = []
+        # Cached position array for vectorized operations
+        self._positions: Optional[np.ndarray] = None
 
     def plan(
         self, start: np.ndarray, goal: np.ndarray, obstacles: List[Obstacle]
@@ -51,6 +59,7 @@ class RRTStarPlanner:
         Returns a list of waypoints (np.ndarray).
         """
         self.node_list = [Node(*start)]
+        self._positions = start.reshape(1, 3).copy()  # Initialize position cache
         goal_node = Node(*goal)
 
         for i in range(self.max_iter):
@@ -67,6 +76,8 @@ class RRTStarPlanner:
                 new_node = self._choose_parent(new_node, near_inds, obstacles)
                 if new_node:
                     self.node_list.append(new_node)
+                    # Update position cache
+                    self._positions = np.vstack([self._positions, new_node.position()])
                     self._rewire(new_node, near_inds, obstacles)
 
             # Check if close to goal
@@ -127,15 +138,23 @@ class RRTStarPlanner:
         new_node.cost = from_node.cost + dist  # Rough initial cost
         return new_node
 
-    def _get_nearest_node_index(self, node_list: List[Node], rnd_node: Node):
-        dlist = [
-            (node.x - rnd_node.x) ** 2
-            + (node.y - rnd_node.y) ** 2
-            + (node.z - rnd_node.z) ** 2
-            for node in node_list
-        ]
-        minind = dlist.index(min(dlist))
-        return minind
+    def _get_nearest_node_index(self, node_list: List[Node], rnd_node: Node) -> int:
+        """Find index of node nearest to rnd_node using vectorized operations."""
+        if self._positions is None or len(self._positions) == 0:
+            # Fallback to non-vectorized version
+            dlist = [
+                (node.x - rnd_node.x) ** 2
+                + (node.y - rnd_node.y) ** 2
+                + (node.z - rnd_node.z) ** 2
+                for node in node_list
+            ]
+            return int(np.argmin(dlist))
+
+        # Vectorized distance calculation
+        target = rnd_node.position()
+        diff = self._positions - target
+        sq_dists = np.sum(diff * diff, axis=1)
+        return int(np.argmin(sq_dists))
 
     def _check_collision(self, node: Node, obstacle_list: List[Obstacle]) -> bool:
         # Check node itself
@@ -167,20 +186,28 @@ class RRTStarPlanner:
                 return False
         return True
 
-    def _find_near_nodes(self, new_node: Node):
+    def _find_near_nodes(self, new_node: Node) -> List[int]:
+        """Find all nodes within search radius using vectorized operations."""
         nnode = len(self.node_list) + 1
         r = self.search_radius * math.sqrt((math.log(nnode) / nnode))
         r = min(r, self.search_radius * 5.0)  # Cap radius
 
-        # Linear search for now (Octree/KD-tree better for perf)
-        dlist = [
-            (node.x - new_node.x) ** 2
-            + (node.y - new_node.y) ** 2
-            + (node.z - new_node.z) ** 2
-            for node in self.node_list
-        ]
-        near_inds = [i for i, d in enumerate(dlist) if d <= r**2]
-        return near_inds
+        if self._positions is None or len(self._positions) == 0:
+            # Fallback to non-vectorized version
+            dlist = [
+                (node.x - new_node.x) ** 2
+                + (node.y - new_node.y) ** 2
+                + (node.z - new_node.z) ** 2
+                for node in self.node_list
+            ]
+            return [i for i, d in enumerate(dlist) if d <= r**2]
+
+        # Vectorized distance calculation
+        target = new_node.position()
+        diff = self._positions - target
+        sq_dists = np.sum(diff * diff, axis=1)
+        r_sq = r * r
+        return list(np.where(sq_dists <= r_sq)[0])
 
     def _choose_parent(
         self, new_node: Node, near_inds: List[int], obstacle_list: List[Obstacle]

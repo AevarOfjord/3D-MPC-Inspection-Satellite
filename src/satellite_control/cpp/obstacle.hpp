@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-namespace satellite_collision {
+namespace satellite_control {
 
 using Eigen::Vector3d;
 
@@ -90,4 +90,4 @@ private:
     std::vector<Obstacle> obstacles_;
 };
 
-} // namespace satellite_collision
+} // namespace satellite_control

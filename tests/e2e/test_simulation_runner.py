@@ -73,7 +73,9 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
                     noisy_state = sim.get_noisy_state(state)
 
                     optimal_u, mpc_info = sim.mpc_controller.get_control_action(
-                        noisy_state, sim.target_state, None  # trajectory
+                        noisy_state,
+                        sim.target_state,
+                        None,  # trajectory
                     )
                     sim.current_thrusters = optimal_u
                 except Exception as e:
@@ -82,6 +84,8 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
                 sim.log_simulation_step(
                     mpc_start_time=mpc_start,
                     command_sent_time=sim.simulation_time,
+                    command_sent_sim_time=sim.simulation_time,
+                    current_state=state,
                     thruster_action=sim.current_thrusters,
                     mpc_info=mpc_info,
                 )
@@ -113,9 +117,7 @@ def test_config_validation():
     from src.satellite_control.config.models import SatellitePhysicalParams
 
     # Create valid thruster configuration (8 thrusters required)
-    thruster_positions = {
-        i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in range(1, 9)
-    }
+    thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in range(1, 9)}
     thruster_directions = {i: (1.0, 0.0, 0.0) for i in range(1, 9)}
     thruster_forces = {i: 0.3 for i in range(1, 9)}
 

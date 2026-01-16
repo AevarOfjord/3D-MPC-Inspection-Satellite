@@ -7,12 +7,14 @@ Executes missions using the MPC controller and MuJoCo simulation.
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 import mujoco
 import numpy as np
 
 from .mission_types import Mission, MissionStatus, Waypoint
+from src.satellite_control.config.orbital_config import OrbitalConfig
+from src.satellite_control.physics.orbital_dynamics import CWDynamics
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,10 @@ class MissionExecutor:
         self.data: Optional[mujoco.MjData] = None
         self.controller = None
         self.current_mission: Optional[Mission] = None
+
+        # Physics
+        self.orbital_config = OrbitalConfig()
+        self.cw_dynamics = CWDynamics(self.orbital_config)
 
         # Callbacks
         self.on_waypoint_reached: Optional[Callable[[int, Waypoint], None]] = None
@@ -241,13 +247,9 @@ class MissionExecutor:
                 net_torque_world = R @ net_torque_body
 
                 # Add CW orbital forces
-                from src.satellite_control.config.orbital_config import OrbitalConfig
-                from src.satellite_control.physics.orbital_dynamics import (
-                    compute_cw_force,
-                )
-
-                orbital_config = OrbitalConfig()
-                cw_force = compute_cw_force(pos, vel, 10.0, orbital_config)
+                # V2.0.0: consolidated physics
+                cw_accel = self.cw_dynamics.compute_acceleration(pos, vel)
+                cw_force = cw_accel * 10.0  # Hardcoded mass (TODO: use config)
 
                 self.data.xfrc_applied[sat_body_id, :] = 0.0
                 self.data.xfrc_applied[sat_body_id, 0:3] = net_force + cw_force

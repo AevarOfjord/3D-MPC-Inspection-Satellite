@@ -32,6 +32,7 @@ class SimulationLogger:
         thruster_action: np.ndarray,
         mpc_info: Optional[Dict[str, Any]],
         rw_torque: Optional[np.ndarray] = None,
+        solve_time: float = 0.0,
     ) -> None:
         """
         Log detailed simulation step data using SimulationContext.

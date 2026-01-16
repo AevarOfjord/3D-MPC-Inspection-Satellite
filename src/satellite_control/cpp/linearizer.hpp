@@ -4,7 +4,7 @@
 #include <tuple>
 #include "satellite_params.hpp"
 
-namespace satellite_dt {
+namespace satellite_control {
 
 // Vector3d, VectorXd, MatrixXd already defined in satellite_params.hpp
 // but they are inside the namespace, so they are available here.
@@ -28,4 +28,4 @@ private:
     Eigen::Matrix3d compute_rotation_matrix(const Eigen::Vector4d& q);
 };
 
-} // namespace satellite_dt
+} // namespace satellite_control

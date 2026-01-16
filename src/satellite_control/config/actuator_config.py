@@ -29,12 +29,12 @@ class ActuatorMode(Enum):
 @dataclass
 class ThrusterSetConfig:
     """
-    Configuration for eight thrusters (IDs 1-8) around the body.
+    Configuration for six thrusters (IDs 1-6) around the body.
 
     Used in reaction wheel mode for translation + yaw torque.
     """
 
-    # Thruster positions (IDs 1-8 from PhysicsConfig)
+    # Thruster positions (IDs 1-6 from PhysicsConfig)
     positions: Dict[int, Tuple[float, float, float]] = field(
         default_factory=lambda: {k: tuple(v) for k, v in THRUSTER_POSITIONS.items()}
     )
@@ -54,7 +54,8 @@ class ThrusterSetConfig:
     def get_force_vectors(self) -> Dict[int, np.ndarray]:
         """Get force vectors (direction * magnitude) for each thruster."""
         return {
-            name: self.force * np.array(direction) for name, direction in self.directions.items()
+            name: self.force * np.array(direction)
+            for name, direction in self.directions.items()
         }
 
 
@@ -67,9 +68,9 @@ class ActuatorConfig:
         mode: ActuatorMode (reaction_wheels or legacy_thrusters)
         reaction_wheels: Reaction wheel config (if mode is reaction_wheels)
         thrusters: Thruster set config (if mode is reaction_wheels)
-        legacy_thruster_positions: 8-thruster positions (if mode is legacy)
-        legacy_thruster_directions: 8-thruster directions (if mode is legacy)
-        legacy_thruster_forces: 8-thruster forces (if mode is legacy)
+        legacy_thruster_positions: 6-thruster positions (if mode is legacy)
+        legacy_thruster_directions: 6-thruster directions (if mode is legacy)
+        legacy_thruster_forces: 6-thruster forces (if mode is legacy)
     """
 
     mode: ActuatorMode = ActuatorMode.REACTION_WHEELS
@@ -78,7 +79,7 @@ class ActuatorConfig:
     reaction_wheels: Optional[ReactionWheelArrayConfig] = None
     thrusters: Optional[ThrusterSetConfig] = None
 
-    # Legacy mode config (8 thrusters)
+    # Legacy mode config (6 thrusters)
     legacy_thruster_positions: Optional[Dict[int, Tuple[float, float, float]]] = None
     legacy_thruster_directions: Optional[Dict[int, Tuple[float, float, float]]] = None
     legacy_thruster_forces: Optional[Dict[int, float]] = None
@@ -95,19 +96,21 @@ class ActuatorConfig:
                 self._init_legacy_thrusters()
 
     def _init_legacy_thrusters(self):
-        """Initialize legacy 8-thruster configuration."""
+        """Initialize legacy 6-thruster configuration."""
         thrusters = ThrusterSetConfig()
         self.legacy_thruster_positions = thrusters.positions.copy()
         self.legacy_thruster_directions = thrusters.directions.copy()
-        self.legacy_thruster_forces = {i: thrusters.force for i in thrusters.positions.keys()}
+        self.legacy_thruster_forces = {
+            i: thrusters.force for i in thrusters.positions.keys()
+        }
 
     @property
     def control_dimension(self) -> int:
         """Get control vector dimension based on mode."""
         if self.mode == ActuatorMode.REACTION_WHEELS:
-            return 11  # 3 RW torques + 8 thruster forces
+            return 9  # 3 RW torques + 6 thruster forces
         else:
-            return 8  # 8 thruster duty cycles
+            return 6  # 6 thruster duty cycles
 
     @property
     def state_dimension(self) -> int:
@@ -134,12 +137,10 @@ class ActuatorConfig:
                 "u_3",
                 "u_4",
                 "u_5",
-                "u_6",
-                "u_7",
-                "u_8",  # Thruster forces
+                "u_6",  # Thruster forces
             ]
         else:
-            return [f"u_{i}" for i in range(1, 9)]
+            return [f"u_{i}" for i in range(1, 7)]
 
     def get_state_labels(self) -> list:
         """Get human-readable labels for state vector elements."""

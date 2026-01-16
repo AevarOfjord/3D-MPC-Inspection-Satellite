@@ -3,20 +3,23 @@
 
 namespace satellite_control {
 
+// ============================================================================
+// Clohessy-Wiltshire (CW) Dynamics
+// ============================================================================
+
 CWDynamics::CWDynamics(double mean_motion) : n_(mean_motion), n_sq_(mean_motion * mean_motion) {}
 
 Eigen::Vector3d CWDynamics::compute_acceleration(const Eigen::Vector3d& position, const Eigen::Vector3d& velocity) const {
     double x = position.x();
-    // double y = position.y(); // y position doesn't affect acceleration directly in linearized CW
     double z = position.z();
     double vx = velocity.x();
     double vy = velocity.y();
-    // double vz = velocity.z();
-
-    // CW equations
-    // ax = 3n^2x + 2nvy
-    // ay = -2nvx
-    // az = -n^2z
+    
+    // CW equations of motion (Hill's equations):
+    // ax = 3n^2x + 2nvy  (Radial)
+    // ay = -2nvx         (Along-track)
+    // az = -n^2z         (Cross-track / Normal)
+    
     double ax = 3.0 * n_sq_ * x + 2.0 * n_ * vy;
     double ay = -2.0 * n_ * vx;
     double az = -n_sq_ * z;
@@ -38,16 +41,16 @@ std::pair<Eigen::Matrix<double, 6, 6>, Eigen::Matrix<double, 6, 3>> CWDynamics::
      */
     Eigen::Matrix<double, 6, 6> A_cont = Eigen::Matrix<double, 6, 6>::Zero();
     
-    // Identity blocks for position derivatives
+    // Identity blocks for position derivatives (dr/dt = v)
     A_cont(0, 3) = 1.0;
     A_cont(1, 4) = 1.0;
     A_cont(2, 5) = 1.0;
 
-    // Dynamics blocks
-    A_cont(3, 0) = 3.0 * n_sq_;
-    A_cont(3, 4) = 2.0 * n_;
-    A_cont(4, 3) = -2.0 * n_;
-    A_cont(5, 2) = -n_sq_;
+    // Dynamics blocks (dv/dt = f(r,v))
+    A_cont(3, 0) = 3.0 * n_sq_;   // dvx/dx
+    A_cont(3, 4) = 2.0 * n_;      // dvx/dvy
+    A_cont(4, 3) = -2.0 * n_;     // dvy/dvx
+    A_cont(5, 2) = -n_sq_;        // dvz/dz
 
     // B matrix (6x3) - input is acceleration [ax, ay, az]
     Eigen::Matrix<double, 6, 3> B_cont = Eigen::Matrix<double, 6, 3>::Zero();
@@ -67,16 +70,17 @@ std::pair<Eigen::Matrix<double, 16, 16>, Eigen::Matrix<double, 16, 9>> CWDynamic
      * Full 16-state dynamics, adding just the CW terms to an empty matrix.
      * The MPC controller will add this to the standard rigid body dynamics.
      * 
-     * State indices:
+     * State indices in 16-state vector:
      * 0-2: pos (x,y,z)
      * 7-9: vel (vx,vy,vz)
      */
     Eigen::Matrix<double, 16, 16> A_cw = Eigen::Matrix<double, 16, 16>::Zero();
 
-    // Position -> Velocity coupling (Gravity Gradient)
+    // Position -> Velocity coupling (Gravity Gradient & Coriolis)
+    
     // vx_dot += 3n^2x + 2nvy
     A_cw(7, 0) = 3.0 * n_sq_ * dt;  // dvx/dx
-    A_cw(7, 8) = 2.0 * n_ * dt;     // dvx/dvy (Coriolis, note: vy is index 8)
+    A_cw(7, 8) = 2.0 * n_ * dt;     // dvx/dvy (Coriolis, note: vy corresponds to state index 8)
 
     // vy_dot += -2nvx
     A_cw(8, 7) = -2.0 * n_ * dt;    // dvy/dvx
@@ -129,7 +133,6 @@ Eigen::Vector3d TwoBodyDynamics::compute_relative_acceleration(
     
     // Relative acceleration (differential gravity)
     // Note: rel_velocity is unused here but kept for interface consistency
-    // and potential future additions (drag, etc.)
     (void)rel_velocity;
     
     return a_inspector - a_target;

@@ -33,6 +33,8 @@ from typing import Dict, Tuple
 
 import numpy as np
 
+from .constants import Constants
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,22 +104,22 @@ class PhysicsConfig:
 # ============================================================================
 
 # Mass properties
-TOTAL_MASS = 10.0  # kg
+TOTAL_MASS = Constants.TOTAL_MASS
 # Mass properties
 
-SATELLITE_SIZE = 0.30  # m (cube side length)
+SATELLITE_SIZE = Constants.SATELLITE_SIZE
 
 # Moment of Inertia for a solid cube: I = (1/6) * m * s^2
 MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 
 # Thruster configuration (6 Thrusters - one centered on each face)
 THRUSTER_POSITIONS = {
-    1: (0.15, 0.0, 0.0),  # +X Face
-    2: (-0.15, 0.0, 0.0),  # -X Face
-    3: (0.0, 0.15, 0.0),  # +Y Face
-    4: (0.0, -0.15, 0.0),  # -Y Face
-    5: (0.0, 0.0, 0.15),  # +Z Face
-    6: (0.0, 0.0, -0.15),  # -Z Face
+    1: (SATELLITE_SIZE / 2, 0.0, 0.0),  # +X Face
+    2: (-SATELLITE_SIZE / 2, 0.0, 0.0),  # -X Face
+    3: (0.0, SATELLITE_SIZE / 2, 0.0),  # +Y Face
+    4: (0.0, -SATELLITE_SIZE / 2, 0.0),  # -Y Face
+    5: (0.0, 0.0, SATELLITE_SIZE / 2),  # +Z Face
+    6: (0.0, 0.0, -SATELLITE_SIZE / 2),  # -Z Face
 }
 
 THRUSTER_DIRECTIONS = {
@@ -138,7 +140,7 @@ THRUSTER_FORCES = {
     6: 0.446846,
 }
 
-GRAVITY_M_S2 = 9.81  # m/s²
+GRAVITY_M_S2 = Constants.GRAVITY_M_S2
 
 
 def calculate_com_offset() -> np.ndarray:

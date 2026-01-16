@@ -6,10 +6,12 @@ The entire control loop runs in C++ for maximum performance.
 """
 
 import logging
-import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
+
+# Configuration
+from src.satellite_control.config.models import AppConfig
 
 # C++ Backend (required)
 from satellite_control.cpp._cpp_mpc import (
@@ -19,11 +21,6 @@ from satellite_control.cpp._cpp_mpc import (
     Obstacle,
     ObstacleSet,
     ObstacleType,
-)
-
-from src.satellite_control.utils.orientation_utils import (
-    euler_xyz_to_quat_wxyz,
-    quat_wxyz_to_euler_xyz,
 )
 
 from .base import Controller
@@ -39,16 +36,136 @@ class MPCController(Controller):
     Control: [τ_rw_x, τ_rw_y, τ_rw_z, u1, ..., uN] (RW torques + thrusters).
     """
 
-    def __init__(self, cfg: Any):
-        """Initialize MPC controller with C++ backend."""
-        # Unwrap config
-        if hasattr(cfg, "control") and hasattr(cfg, "vehicle"):
-            self.mpc_cfg = cfg.control.mpc
-            self.vehicle_cfg = cfg.vehicle
+    def __init__(self, cfg: Union[AppConfig, Any]):
+        """
+        Initialize MPC controller with C++ backend.
+
+        Args:
+            cfg: Configuration object. Can be AppConfig (preferred) or OmegaConf/Dict (legacy).
+        """
+        # Determine config type and extract parameters
+        if isinstance(cfg, AppConfig):
+            self._extract_params_from_app_config(cfg)
+        elif hasattr(cfg, "control") and hasattr(cfg, "vehicle"):
+            self._extract_params_from_hydra(cfg)
         else:
-            raise ValueError(
-                "MPCController requires a Hydra config with .control.mpc and .vehicle"
-            )
+            # Try to see if it's a wrapped AppConfig or compatible object
+            try:
+                # Last ditch effort: assume it behaves like AppConfig
+                if hasattr(cfg, "physics") and hasattr(cfg, "mpc"):
+                    self._extract_params_from_app_config(cfg)  # type: ignore
+                else:
+                    raise ValueError("Invalid config structure")
+            except Exception as e:
+                raise ValueError(
+                    f"MPCController requires AppConfig or valid Hydra config. Got {type(cfg)}. Error: {e}"
+                )
+
+        # Build C++ SatelliteParams
+        sat_params = SatelliteParams()
+        sat_params.dt = self._dt
+        sat_params.mass = self.total_mass
+        sat_params.inertia = self.moment_of_inertia
+        sat_params.num_thrusters = self.num_thrusters
+        sat_params.num_rw = self.num_rw_axes
+        sat_params.thruster_positions = [np.array(p) for p in self.thruster_positions]
+        sat_params.thruster_directions = [np.array(d) for d in self.thruster_directions]
+        sat_params.thruster_forces = self.thruster_forces
+        sat_params.rw_torque_limits = self.rw_torque_limits
+        sat_params.com_offset = self.com_offset
+
+        # Build C++ MPCParams
+        mpc_params = CppMPCParams()
+        mpc_params.prediction_horizon = self.N
+        mpc_params.dt = self._dt
+        mpc_params.solver_time_limit = self.solver_time_limit
+        mpc_params.Q_pos = self.Q_pos
+        mpc_params.Q_vel = self.Q_vel
+        mpc_params.Q_ang = self.Q_ang
+        mpc_params.Q_angvel = self.Q_angvel
+        mpc_params.R_thrust = self.R_thrust
+        mpc_params.R_rw_torque = self.R_rw_torque
+        mpc_params.enable_z_tilt = self.enable_z_tilt
+        mpc_params.z_tilt_gain = self.z_tilt_gain
+        mpc_params.z_tilt_max_rad = self.z_tilt_max_rad
+
+        # Create C++ controller
+        self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
+
+        # Performance tracking
+        self.solve_times: list[float] = []
+
+        # Dimensions for external use
+        self.nx = 13
+        self.nu = self.num_rw_axes + self.num_thrusters
+
+        logger.info("MPC Controller initialized (C++ backend)")
+
+    def _extract_params_from_app_config(self, cfg: AppConfig) -> None:
+        """Extract parameters from AppConfig."""
+        physics = cfg.physics
+        mpc = cfg.mpc
+
+        # Physics
+        self.total_mass = physics.total_mass
+
+        # Inertia: AppConfig has float (simulating uniform cube) or we might need to expand it
+        # For now, treat scalar as diagonal
+        I_val = physics.moment_of_inertia
+        self.moment_of_inertia = np.array([I_val, I_val, I_val], dtype=float)
+
+        self.com_offset = np.array(physics.com_offset)
+
+        # Thrusters
+        # physics.thruster_positions is Dict[int, Tuple]
+        # We need to sort by ID to ensure consistent ordering
+        sorted_ids = sorted(physics.thruster_positions.keys())
+        self.num_thrusters = len(sorted_ids)
+        self.thruster_positions = [physics.thruster_positions[i] for i in sorted_ids]
+        self.thruster_directions = [physics.thruster_directions[i] for i in sorted_ids]
+        self.thruster_forces = [physics.thruster_forces[i] for i in sorted_ids]
+
+        # Reaction Wheels (Currently NOT in AppConfig explicitly, logic handled in valid_config construction)
+        # TODO: Add ReactionWheelParams to AppConfig
+        # For now, default to empty or look for non-standard attribute if injected
+        if hasattr(cfg, "reaction_wheels") and cfg.reaction_wheels:
+            # Legacy injection support if needed, or if we extend AppConfig later
+            self.reaction_wheels = cfg.reaction_wheels
+            self.num_rw_axes = len(self.reaction_wheels)
+            # Assume object has max_torque
+            self.rw_torque_limits = [
+                float(rw.max_torque) for rw in self.reaction_wheels
+            ]
+        else:
+            self.reaction_wheels = []
+            self.num_rw_axes = 0
+            self.rw_torque_limits = []
+
+        self.max_rw_torque = (
+            max(self.rw_torque_limits) if self.rw_torque_limits else 0.0
+        )
+
+        # MPC
+        self.N = mpc.prediction_horizon
+        self._dt = mpc.dt
+        self.solver_time_limit = mpc.solver_time_limit
+
+        self.Q_pos = mpc.q_position
+        self.Q_vel = mpc.q_velocity
+        self.Q_ang = mpc.q_angle
+        self.Q_angvel = mpc.q_angular_velocity
+        self.R_thrust = mpc.r_thrust
+        self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
+
+        # Z-tilt (legacy support, might not be in MPCParams yet or defaults)
+        self.enable_z_tilt = True  # Default
+        self.z_tilt_gain = 0.35
+        self.z_tilt_max_rad = np.deg2rad(20.0)
+
+    def _extract_params_from_hydra(self, cfg: Any) -> None:
+        """Extract parameters from legacy Hydra/Omegaconf object."""
+        self.mpc_cfg = cfg.control.mpc
+        self.vehicle_cfg = cfg.vehicle
 
         # Extract parameters
         self.total_mass = self.vehicle_cfg.mass
@@ -97,46 +214,6 @@ class MPCController(Controller):
         self.z_tilt_max_rad = (
             float(getattr(settings, "z_tilt_max_deg", 20.0)) * np.pi / 180.0
         )
-
-        # Build C++ SatelliteParams
-        sat_params = SatelliteParams()
-        sat_params.dt = self._dt
-        sat_params.mass = self.total_mass
-        sat_params.inertia = self.moment_of_inertia
-        sat_params.num_thrusters = self.num_thrusters
-        sat_params.num_rw = self.num_rw_axes
-        sat_params.thruster_positions = [np.array(p) for p in self.thruster_positions]
-        sat_params.thruster_directions = [np.array(d) for d in self.thruster_directions]
-        sat_params.thruster_forces = self.thruster_forces
-        sat_params.rw_torque_limits = self.rw_torque_limits
-        sat_params.com_offset = self.com_offset
-
-        # Build C++ MPCParams
-        mpc_params = CppMPCParams()
-        mpc_params.prediction_horizon = self.N
-        mpc_params.dt = self._dt
-        mpc_params.solver_time_limit = self.solver_time_limit
-        mpc_params.Q_pos = self.Q_pos
-        mpc_params.Q_vel = self.Q_vel
-        mpc_params.Q_ang = self.Q_ang
-        mpc_params.Q_angvel = self.Q_angvel
-        mpc_params.R_thrust = self.R_thrust
-        mpc_params.R_rw_torque = self.R_rw_torque
-        mpc_params.enable_z_tilt = self.enable_z_tilt
-        mpc_params.z_tilt_gain = self.z_tilt_gain
-        mpc_params.z_tilt_max_rad = self.z_tilt_max_rad
-
-        # Create C++ controller
-        self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
-
-        # Performance tracking
-        self.solve_times: list[float] = []
-
-        # Dimensions for external use
-        self.nx = 13
-        self.nu = self.num_rw_axes + self.num_thrusters
-
-        logger.info("MPC Controller initialized (C++ backend)")
 
     @property
     def dt(self) -> float:
@@ -226,7 +303,7 @@ class MPCController(Controller):
             mission_obstacles: List of mission_types.Obstacle objects
         """
         cpp_obstacle_set = ObstacleSet()
-        
+
         for obs in mission_obstacles:
             cpp_obs = Obstacle()
             # Map parameters
@@ -234,21 +311,21 @@ class MPCController(Controller):
             cpp_obs.radius = float(obs.radius)
             cpp_obs.size = np.array(obs.size)
             cpp_obs.name = str(obs.name)
-            
+
             # Map type (string value from enum to C++ enum)
             type_val = obs.type.value
-            
+
             if type_val == "sphere":
                 cpp_obs.type = ObstacleType.SPHERE
             elif type_val == "cylinder":
                 cpp_obs.type = ObstacleType.CYLINDER
                 # Default Z-axis for cylinder if not specified
-                cpp_obs.axis = np.array([0., 0., 1.])
+                cpp_obs.axis = np.array([0.0, 0.0, 1.0])
             elif type_val == "box":
                 cpp_obs.type = ObstacleType.BOX
-                
+
             cpp_obstacle_set.add(cpp_obs)
-            
+
         self._cpp_controller.set_obstacles(cpp_obstacle_set)
 
     def clear_obstacles(self) -> None:

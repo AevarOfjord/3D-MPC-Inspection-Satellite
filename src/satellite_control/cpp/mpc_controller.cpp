@@ -5,9 +5,9 @@
 #include <cmath>
 #include <iostream>
 
-namespace satellite_mpc {
+namespace satellite_control {
 
-MPCControllerCpp::MPCControllerCpp(const satellite_dt::SatelliteParams& sat_params, const MPCParams& mpc_params)
+MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCParams& mpc_params)
     : sat_params_(sat_params), mpc_params_(mpc_params) {
     
     N_ = mpc_params_.prediction_horizon;
@@ -15,7 +15,7 @@ MPCControllerCpp::MPCControllerCpp(const satellite_dt::SatelliteParams& sat_para
     nu_ = sat_params_.num_rw + sat_params_.num_thrusters;
     
     // Create linearizer
-    linearizer_ = std::make_unique<satellite_dt::Linearizer>(sat_params_);
+    linearizer_ = std::make_unique<Linearizer>(sat_params_);
     
     // Precompute weight vectors
     Q_diag_.resize(nx_);
@@ -57,130 +57,45 @@ MPCControllerCpp::~MPCControllerCpp() {
     }
 }
 
+// ----------------------------------------------------------------------------
+// Initialization & Helpers
+// ----------------------------------------------------------------------------
+
 void MPCControllerCpp::init_solver() {
     int n_vars = (N_ + 1) * nx_ + N_ * nu_;
-    int n_dyn = N_ * nx_;
-    int n_init = nx_;
-    int n_bounds_x = (N_ + 1) * nx_;
-    int n_bounds_u = N_ * nu_;
     
-    // Obstacle constraints: 1 per step (Simple Hard Constraint)
-    n_obs_constraints_ = N_;
-    int n_constraints = n_dyn + n_init + n_bounds_x + n_bounds_u + n_obs_constraints_;
-    
-    // Resize index map for obstacle updates
-    obs_A_indices_.resize(N_);
-    
-    // Build P matrix (diagonal cost)
+    // 1. Build P matrix (Cost)
     std::vector<Eigen::Triplet<double>> P_triplets;
-    VectorXd P_diag(n_vars);
+    build_P_matrix(P_triplets, n_vars);
     
-    // State costs
-    for (int k = 0; k < N_; ++k) {
-        P_diag.segment(k * nx_, nx_) = Q_diag_;
-    }
-    // Terminal cost (10x)
-    P_diag.segment(N_ * nx_, nx_) = Q_diag_ * 10.0;
-    // Control costs
-    for (int k = 0; k < N_; ++k) {
-        P_diag.segment((N_ + 1) * nx_ + k * nu_, nu_) = R_diag_;
-    }
-    
-    for (int i = 0; i < n_vars; ++i) {
-        P_triplets.emplace_back(i, i, P_diag(i));
-    }
     P_.resize(n_vars, n_vars);
     P_.setFromTriplets(P_triplets.begin(), P_triplets.end());
     P_.makeCompressed();
     
-    // Build A matrix (dynamics, init, bounds)
+    // 2. Build A matrix (Constraints)
     std::vector<Eigen::Triplet<double>> A_triplets;
+    build_A_matrix(A_triplets);
     
-    // Get template A, B matrices
-    VectorXd dummy_state = VectorXd::Zero(nx_);
-    dummy_state(3) = 1.0;  // Valid quaternion
-    auto [A_dyn, B_dyn] = linearizer_->linearize(dummy_state);
-    
-    int row_idx = 0;
-    
-    // Dynamics: -A*x_k + x_{k+1} - B*u_k = 0
-    for (int k = 0; k < N_; ++k) {
-        int x_k_idx = k * nx_;
-        int x_kp1_idx = (k + 1) * nx_;
-        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
-        
-        // -A (dynamics matrix)
-        for (int r = 0; r < nx_; ++r) {
-            for (int c = 0; c < nx_; ++c) {
-                // Always include G-block (rows 3-6, cols 10-12) for quaternion dynamics
-                // These entries change with orientation and all may be non-zero
-                bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
-                if (is_g_block || std::abs(A_dyn(r, c)) > 1e-12) {
-                    A_triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
-                }
-            }
-        }
-        // +I
-        for (int r = 0; r < nx_; ++r) {
-            A_triplets.emplace_back(row_idx + r, x_kp1_idx + r, 1.0);
-        }
-        // -B (always include all entries as they depend on orientation)
-        for (int r = 0; r < nx_; ++r) {
-            for (int c = 0; c < nu_; ++c) {
-                // Always include velocity and angular velocity rows (7-12)
-                // as these change with body orientation
-                bool is_velocity_row = (r >= 7);
-                if (is_velocity_row || std::abs(B_dyn(r, c)) > 1e-12) {
-                    A_triplets.emplace_back(row_idx + r, u_k_idx + c, -B_dyn(r, c));
-                }
-            }
-        }
-        row_idx += nx_;
-    }
-    
-    // Initial state constraint: x_0 = x_current
-    for (int r = 0; r < nx_; ++r) {
-        A_triplets.emplace_back(row_idx + r, r, 1.0);
-    }
-    row_idx += nx_;
-    
-    // State bounds (identity)
-    for (int k = 0; k < N_ + 1; ++k) {
-        for (int r = 0; r < nx_; ++r) {
-            A_triplets.emplace_back(row_idx + r, k * nx_ + r, 1.0);
-        }
-        row_idx += nx_;
-    }
-    
-    // Control bounds (identity)
-    for (int k = 0; k < N_; ++k) {
-        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
-        for (int r = 0; r < nu_; ++r) {
-            A_triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
-        }
-        row_idx += nu_;
-    }
-
-    // Obstacle constraints
-    // Row layout: [dyn, init, bounds_x, bounds_u, obs]
-    // Each row k corresponds to step k: obs_k^T * p_k >= dist_k
-    for (int k = 0; k < N_; ++k) {
-        int x_k_idx = k * nx_; // Position variables at step k
-        // We will enable/disable these rows dynamically
-        // Initialize x, y, z coefficients (will be updated)
-        for (int i = 0; i < 3; ++i) {
-            // Initialize with epsilon to ensure Eigen keeps the entry (prevent pruning)
-             A_triplets.emplace_back(row_idx, x_k_idx + i, 1e-10);
-        }
-        row_idx++;
-    }
+    // Count constraints based on structure:
+    // Dynamics (N*nx) + Initial (nx) + State Bounds ((N+1)*nx) + Control Bounds (N*nu) + Obstacles (N)
+    int n_dyn = N_ * nx_;
+    int n_init = nx_;
+    int n_bounds_x = (N_ + 1) * nx_;
+    int n_bounds_u = N_ * nu_;
+    n_obs_constraints_ = N_;
+    int n_constraints = n_dyn + n_init + n_bounds_x + n_bounds_u + n_obs_constraints_;
     
     A_.resize(n_constraints, n_vars);
     A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
     A_.makeCompressed();
 
-    // Build obs_A_indices_
+    // 3. Build index maps for fast updates
+    
+    // A. Obstacle update indices
+    // Row layout: [dyn, init, bounds_x, bounds_u, obs]
     int obs_row_start = n_dyn + n_init + n_bounds_x + n_bounds_u;
+    obs_A_indices_.resize(N_);
+    
     for (int k = 0; k < N_; ++k) {
         int row = obs_row_start + k;
         obs_A_indices_[k].resize(3);
@@ -189,7 +104,7 @@ void MPCControllerCpp::init_solver() {
         for (int i = 0; i < 3; ++i) {
             int col = x_k_idx + i;
             bool found = false;
-            // Search in column 'col' for row 'row'
+            // Search in column 'col' for row 'row' in CSC matrix
             for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
                 if (A_.innerIndexPtr()[idx] == row) {
                     obs_A_indices_[k][i] = idx;
@@ -198,12 +113,12 @@ void MPCControllerCpp::init_solver() {
                 }
             }
             if (!found) {
-                std::cerr << "Error: Could not find obstacle constraint entry at k=" << k << ", i=" << i << std::endl;
+                std::cerr << "[MPC] Error: Could not find obstacle constraint entry at k=" << k << ", i=" << i << std::endl;
             }
         }
     }
     
-    // Build B index map for fast updates
+    // B. Actuator dynamics index map (B matrix updates)
     B_idx_map_.resize(nx_ * nu_);
     int u_start_idx = (N_ + 1) * nx_;
     for (int k = 0; k < N_; ++k) {
@@ -221,15 +136,15 @@ void MPCControllerCpp::init_solver() {
         }
     }
     
-    // Build A_idx_map for the quaternion-dependent G-block (rows 3-6, cols 10-12)
-    // These are the dQuat/dOmega entries in the dynamics matrix
-    A_idx_map_.resize(4 * 3);  // 4 quat components x 3 omega components
+    // C. Quaternion dynamics index map (A matrix updates for G-block)
+    // A_dyn rows 3-6, cols 10-12
+    A_idx_map_.resize(4 * 3);
     for (int k = 0; k < N_; ++k) {
         int row_base = k * nx_;
-        int col_base = k * nx_;  // x_k columns
+        int col_base = k * nx_;
         
-        for (int qr = 0; qr < 4; ++qr) {  // Quaternion rows (3-6 relative to state)
-            for (int oc = 0; oc < 3; ++oc) {  // Omega cols (10-12 relative to state)
+        for (int qr = 0; qr < 4; ++qr) {      // Relative rows 3-6
+            for (int oc = 0; oc < 3; ++oc) {  // Relative cols 10-12
                 int row = row_base + 3 + qr;
                 int col = col_base + 10 + oc;
                 
@@ -241,25 +156,135 @@ void MPCControllerCpp::init_solver() {
             }
         }
     }
+
+    // 4. Setup Bounds and OSQP workspace
+    setup_osqp_workspace(n_vars, n_constraints);
+}
+
+void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& triplets, int n_vars) {
+    VectorXd P_diag(n_vars);
     
-    // Initialize bounds
+    // Stage costs (0 to N-1)
+    for (int k = 0; k < N_; ++k) {
+        P_diag.segment(k * nx_, nx_) = Q_diag_;
+    }
+    // Terminal cost (N) - scaled by 10
+    P_diag.segment(N_ * nx_, nx_) = Q_diag_ * 10.0;
+    
+    // Control costs (0 to N-1)
+    for (int k = 0; k < N_; ++k) {
+        P_diag.segment((N_ + 1) * nx_ + k * nu_, nu_) = R_diag_;
+    }
+    
+    for (int i = 0; i < n_vars; ++i) {
+        triplets.emplace_back(i, i, P_diag(i));
+    }
+}
+
+void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& triplets) {
+    // Get template A, B matrices around a valid quaternion
+    VectorXd dummy_state = VectorXd::Zero(nx_);
+    dummy_state(3) = 1.0; 
+    auto [A_dyn, B_dyn] = linearizer_->linearize(dummy_state);
+    
+    int row_idx = 0;
+    
+    // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
+    for (int k = 0; k < N_; ++k) {
+        int x_k_idx = k * nx_;
+        int x_kp1_idx = (k + 1) * nx_;
+        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
+        
+        // -A block
+        for (int r = 0; r < nx_; ++r) {
+            for (int c = 0; c < nx_; ++c) {
+                // Force inclusion of G-block (rows 3-6, cols 10-12) for quaternion dynamics updates
+                bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
+                if (is_g_block || std::abs(A_dyn(r, c)) > 1e-12) {
+                    triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
+                }
+            }
+        }
+        // +I block (x_{k+1})
+        for (int r = 0; r < nx_; ++r) {
+            triplets.emplace_back(row_idx + r, x_kp1_idx + r, 1.0);
+        }
+        // -B block
+        for (int r = 0; r < nx_; ++r) {
+            for (int c = 0; c < nu_; ++c) {
+                // Force inclusion of velocity rows (7-12) for updates
+                bool is_velocity_row = (r >= 7);
+                if (is_velocity_row || std::abs(B_dyn(r, c)) > 1e-12) {
+                    triplets.emplace_back(row_idx + r, u_k_idx + c, -B_dyn(r, c));
+                }
+            }
+        }
+        row_idx += nx_;
+    }
+    
+    // 2. Initial state constraint: I*x_0 = x_current
+    for (int r = 0; r < nx_; ++r) {
+        triplets.emplace_back(row_idx + r, r, 1.0);
+    }
+    row_idx += nx_;
+    
+    // 3. State bounds: I*x_k
+    for (int k = 0; k < N_ + 1; ++k) {
+        for (int r = 0; r < nx_; ++r) {
+            triplets.emplace_back(row_idx + r, k * nx_ + r, 1.0);
+        }
+        row_idx += nx_;
+    }
+    
+    // 4. Control bounds: I*u_k
+    for (int k = 0; k < N_; ++k) {
+        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
+        for (int r = 0; r < nu_; ++r) {
+            triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
+        }
+        row_idx += nu_;
+    }
+
+    // 5. Obstacle constraints: obs_k^T * p_k >= dist_k
+    // We reserve these rows now and update coefficients dynamically.
+    // Initial coeff is epsilon to prevent pruning.
+    for (int k = 0; k < N_; ++k) {
+        int x_k_idx = k * nx_; 
+        for (int i = 0; i < 3; ++i) {
+             triplets.emplace_back(row_idx, x_k_idx + i, 1e-10);
+        }
+        row_idx++;
+    }
+}
+
+void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
+    // Initialize bound vectors
     q_ = VectorXd::Zero(n_vars);
     l_ = VectorXd::Zero(n_constraints);
     u_ = VectorXd::Zero(n_constraints);
     
-    // Set state bounds to inf
+    int n_dyn = N_ * nx_;
+    int n_init = nx_;
+    int n_bounds_x = (N_ + 1) * nx_;
+    int n_bounds_u = N_ * nu_;
+    
+    // 1. Dynamics equality (l=0, u=0) - default is 0
+    
+    // 2. Initial state (will be updated at valid step)
+    
+    // 3. State bounds (initialized to infinity)
     int state_idx_start = n_dyn + n_init;
     l_.segment(state_idx_start, n_bounds_x).setConstant(-1e20);
     u_.segment(state_idx_start, n_bounds_x).setConstant(1e20);
     
-    // Set control bounds
+    // 4. Control bounds
     int ctrl_idx_start = n_dyn + n_init + n_bounds_x;
     for (int k = 0; k < N_; ++k) {
         l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_;
         u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_;
     }
 
-    // Set obstacle bounds to -inf initially (inactive)
+    // 5. Obstacle bounds (initialized to inactive)
     int obs_idx_start = n_dyn + n_init + n_bounds_x + n_bounds_u;
     l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
     u_.segment(obs_idx_start, n_obs_constraints_).setConstant(1e20);
@@ -273,7 +298,7 @@ void MPCControllerCpp::init_solver() {
     A_indices_.assign(A_.innerIndexPtr(), A_.innerIndexPtr() + A_.nonZeros());
     A_indptr_.assign(A_.outerIndexPtr(), A_.outerIndexPtr() + A_.cols() + 1);
     
-    // Setup OSQP
+    // Setup OSQP Structures
     data_ = (OSQPData*)c_malloc(sizeof(OSQPData));
     data_->n = n_vars;
     data_->m = n_constraints;
@@ -294,21 +319,25 @@ void MPCControllerCpp::init_solver() {
     osqp_setup(&work_, data_, settings_);
 }
 
+// ----------------------------------------------------------------------------
+// Runtime Updates
+// ----------------------------------------------------------------------------
+
 void MPCControllerCpp::update_dynamics(const VectorXd& x_current) {
     auto [A_dyn, B_dyn] = linearizer_->linearize(x_current);
     
     // Update A-block entries (G matrix: dQuat/dOmega)
-    // A_dyn rows 3-6, cols 10-12 contain the quaternion-dependent G matrix
+    // A_dyn rows 3-6, cols 10-12
     for (int qr = 0; qr < 4; ++qr) {
         for (int oc = 0; oc < 3; ++oc) {
-            double val = -A_dyn(3 + qr, 10 + oc);  // Note: stored as -A in the constraint matrix
+            double val = -A_dyn(3 + qr, 10 + oc); // Stored as -A
             for (int idx : A_idx_map_[qr * 3 + oc]) {
                 A_data_[idx] = val;
             }
         }
     }
     
-    // Update B matrix entries in A_data_
+    // Update B matrix entries
     for (int r = 0; r < nx_; ++r) {
         for (int c = 0; c < nu_; ++c) {
             double val = -B_dyn(r, c);
@@ -324,7 +353,7 @@ void MPCControllerCpp::update_dynamics(const VectorXd& x_current) {
 void MPCControllerCpp::update_cost(const VectorXd& x_target) {
     VectorXd Q_term = Q_diag_ * 10.0;
     
-    // Update q vector: q = -Q * x_ref
+    // Update linear cost vector q = -Q * x_ref
     for (int k = 0; k < N_; ++k) {
         q_.segment(k * nx_, nx_) = -Q_diag_.cwiseProduct(x_target);
     }
@@ -354,6 +383,7 @@ void MPCControllerCpp::update_cost_trajectory(const MatrixXd& x_target_traj) {
 }
 
 void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
+    // Update initial state constraint bounds (equality constraint)
     int init_start = N_ * nx_;
     l_.segment(init_start, nx_) = x_current;
     u_.segment(init_start, nx_) = x_current;
@@ -371,10 +401,13 @@ VectorXd MPCControllerCpp::apply_z_tilt(const VectorXd& x_current, const VectorX
         return x_target;
     }
     
-    // Simplified Z-tilt: just return target for now
-    // Full implementation would modify the quaternion
+    // Simplified Z-tilt: pass-through for now, placeholder for full tilt logic
     return x_target;
 }
+
+// ----------------------------------------------------------------------------
+// Main Control Interface
+// ----------------------------------------------------------------------------
 
 ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, const VectorXd& x_target) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -382,47 +415,38 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     ControlResult result;
     result.timeout = false;
     
-    // Apply Z-tilt to target
     VectorXd x_targ = apply_z_tilt(x_current, x_target);
     
-    // Update dynamics if quaternion changed (Successive Linearization)
-    // V2.2.0: Lower threshold for near-continuous re-linearization (was 0.05)
+    // Successive Linearization: Update dynamics if quaternion changed significantly
     Eigen::Vector4d quat = x_current.segment<4>(3);
     if ((quat - prev_quat_).norm() > 0.001) {
         update_dynamics(x_current);
         prev_quat_ = quat;
     }
     
-    // Update cost
     update_cost(x_targ);
-    
-    // Update obstacle constraints (V3.0.0)
     update_obstacle_constraints(x_current, x_target);
-
-    // Update constraints
     update_constraints(x_current);
     
-    // Solve
     osqp_solve(work_);
     
     auto end = std::chrono::high_resolution_clock::now();
     result.solve_time = std::chrono::duration<double>(end - start).count();
     
-    // Check status
     if (work_->info->status_val != OSQP_SOLVED && 
         work_->info->status_val != OSQP_SOLVED_INACCURATE) {
-        result.status = -1;
+        result.status = -1; // Error
         result.u = VectorXd::Zero(nu_);
         return result;
     }
     
-    // Extract control
+    // Extract control from solution
     int u_idx = (N_ + 1) * nx_;
     result.u = Eigen::Map<VectorXd>(work_->solution->x + u_idx, nu_);
     
-    // Clip to bounds
+    // Clip to bounds (safety)
     result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
-    result.status = 1;
+    result.status = 1; // Success
     
     return result;
 }
@@ -434,7 +458,6 @@ ControlResult MPCControllerCpp::get_control_action_trajectory(
     ControlResult result;
     result.timeout = false;
 
-    // Update dynamics if quaternion changed (Successive Linearization)
     Eigen::Vector4d quat = x_current.segment<4>(3);
     if ((quat - prev_quat_).norm() > 0.001) {
         update_dynamics(x_current);
@@ -458,22 +481,20 @@ ControlResult MPCControllerCpp::get_control_action_trajectory(
         result.status = work_->info->status_val;
         result.u = VectorXd::Map(work_->solution->x + (N_ + 1) * nx_, nu_);
     }
-
-    // Clip to bounds
+    
     result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
 
     auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    result.solve_time = elapsed.count();
+    result.solve_time = std::chrono::duration<double>(end - start).count();
 
     return result;
 }
 
-// ============================================================================
-// Collision Avoidance (V3.0.0)
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Collision Avoidance
+// ----------------------------------------------------------------------------
 
-void MPCControllerCpp::set_obstacles(const satellite_collision::ObstacleSet& obstacles) {
+void MPCControllerCpp::set_obstacles(const ObstacleSet& obstacles) {
     obstacles_ = obstacles;
 }
 
@@ -482,27 +503,7 @@ void MPCControllerCpp::clear_obstacles() {
 }
 
 void MPCControllerCpp::apply_obstacle_constraints(const VectorXd& x_current) {
-    if (!mpc_params_.enable_collision_avoidance || obstacles_.size() == 0) {
-        return;
-    }
-    
-    // Get current position
-    Eigen::Vector3d pos = x_current.segment<3>(0);
-    
-    // Get linearized constraints from all obstacles
-    auto constraints = obstacles_.get_linear_constraints(pos, mpc_params_.obstacle_margin);
-    
-    // For now, we apply soft constraints by modifying the cost
-    // Full implementation would add hard constraints to the QP
-    // This simplified version uses the constraints for monitoring only
-    
-    double min_dist = obstacles_.min_distance(pos);
-    if (min_dist < mpc_params_.obstacle_margin) {
-        // Too close to obstacle - could log warning here
-    }
-    
-    // TODO: Add hard constraints to l_, u_ bounds or additional rows to A_
-    // This requires restructuring the QP dimensions which is a larger change
+    // Deprecated / Placeholder
 }
 
 void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target) {
@@ -510,7 +511,7 @@ void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current, co
         // Disable all constraints
         int obs_idx_start = A_.rows() - n_obs_constraints_;
         l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
-         osqp_update_bounds(work_, l_.data(), u_.data());
+        osqp_update_bounds(work_, l_.data(), u_.data());
         return;
     }
 
@@ -519,36 +520,31 @@ void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current, co
     VectorXd p_targ = x_target.segment<3>(0);
 
     for (int k = 0; k < N_; ++k) {
-        // Linear interpolation guess for position at step k
-        double alpha = double(k + 1) / double(N_); // Look ahead
+        // Linear interpolation guess
+        double alpha = double(k + 1) / double(N_);
         Eigen::Vector3d p_guess = (p_curr + alpha * (p_targ - p_curr)); 
 
-        // Get constraints (closest obstacle)
+        // Get constraints
         auto constraints = obstacles_.get_linear_constraints(p_guess, mpc_params_.obstacle_margin);
         
         if (constraints.empty()) {
-            // No constraint active
             l_(obs_idx_start + k) = -1e20;
-             // Zero out A coeffs? Not strictly necessary if bound is -inf, but cleaner
-             for(int i=0; i<3; ++i) A_data_[obs_A_indices_[k][i]] = 0.0;
+            // Optionally zero out A coeffs for cleanliness (helper map needed)
+            for(int i=0; i<3; ++i) A_data_[obs_A_indices_[k][i]] = 0.0;
         } else {
-            // Use first (primary) constraint: n^T * p >= d
-            
+            // Apply first constraint: n^T * p >= d
             Eigen::Vector3d normal = constraints[0].first;
             double bound_val = constraints[0].second;
             
-            // Update A matrix coefficients
             for(int i=0; i<3; ++i) {
                 A_data_[obs_A_indices_[k][i]] = normal(i);
             }
-            // Update Lower Bound
             l_(obs_idx_start + k) = bound_val;
         }
     }
     
-    // Update Solver
     osqp_update_A(work_, A_data_.data(), OSQP_NULL, A_.nonZeros());
     osqp_update_bounds(work_, l_.data(), u_.data());
 }
 
-} // namespace satellite_mpc
+} // namespace satellite_control
