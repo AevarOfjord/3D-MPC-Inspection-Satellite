@@ -39,11 +39,8 @@ def run(
     classic: bool = typer.Option(
         False, "--classic", help="Use classic text-based menu instead of interactive"
     ),
-    engine: Optional[str] = typer.Option(
-        None, "--engine", "-e", help="Physics engine: 'mujoco' (default) or 'cpp'"
-    ),
     mission_file: Optional[str] = typer.Option(
-        None, "--mission", "-m", help="Path to mission file (JSON) to execute"
+        None, "--mission", "-m", help="Path to mission file (JSON/YAML) to execute"
     ),
 ):
     """
@@ -60,12 +57,17 @@ def run(
         )
     )
 
-    # Prepare simulation parameters (avoid mutating global config)
+    # Prepare simulation parameters
     sim_start_pos: Optional[Tuple[float, float, float]] = None
     sim_target_pos: Optional[Tuple[float, float, float]] = None
     sim_start_angle: Optional[Tuple[float, float, float]] = None
     sim_target_angle: Optional[Tuple[float, float, float]] = None
     config_overrides: Optional[Dict[str, Dict[str, Any]]] = None
+
+    # Import SimulationConfig for Pydantic configuration
+    from src.satellite_control.config.simulation_config import SimulationConfig
+
+    simulation_config = None
 
     if auto:
         console.print(
@@ -75,15 +77,12 @@ def run(
         sim_target_pos = (0.0, 0.0, 0.0)
         sim_start_angle = (0.0, 0.0, 0.0)
         sim_target_angle = (0.0, 0.0, 0.0)
+        # Use default Pydantic config for auto mode
+        simulation_config = SimulationConfig.create_default()
 
-    mission_simulation_config = None
-
-    if auto:
-        pass
     elif mission_file:
         from pathlib import Path
         from src.satellite_control.mission.mission_types import Mission
-        from src.satellite_control.config.simulation_config import SimulationConfig
 
         m_path = Path(mission_file)
         if not m_path.exists():
@@ -107,8 +106,6 @@ def run(
             ms.waypoint_targets = [tuple(wp.position.tolist()) for wp in waypoints]
             ms.waypoint_angles = [(0.0, 0.0, 0.0)] * len(waypoints)
 
-        mission_simulation_config = simulation_config
-
     elif classic:
         mission_manager = MissionManager()
         mode = mission_manager.show_mission_menu()
@@ -117,13 +114,15 @@ def run(
             console.print("[red]Mission configuration cancelled.[/red]")
             raise typer.Exit()
         if isinstance(mission_result, dict) and "simulation_config" in mission_result:
-            mission_simulation_config = mission_result["simulation_config"]
+            simulation_config = mission_result["simulation_config"]
         if isinstance(mission_result, dict):
             if "start_pos" in mission_result:
                 sim_start_pos = mission_result.get("start_pos")
             if "start_angle" in mission_result:
                 sim_start_angle = mission_result.get("start_angle")
+
     else:
+        # Interactive mode (default)
         try:
             from src.satellite_control.mission.interactive_cli import (
                 InteractiveMissionCLI,
@@ -138,7 +137,7 @@ def run(
                     console.print("[red]Mission cancelled.[/red]")
                     raise typer.Exit()
                 if "simulation_config" in mission_config:
-                    mission_simulation_config = mission_config["simulation_config"]
+                    simulation_config = mission_config["simulation_config"]
                 if "start_pos" in mission_config:
                     sim_start_pos = mission_config.get("start_pos")
                 if "start_angle" in mission_config:
@@ -149,7 +148,7 @@ def run(
                     console.print("[red]Mission cancelled.[/red]")
                     raise typer.Exit()
                 if "simulation_config" in mission_config:
-                    mission_simulation_config = mission_config["simulation_config"]
+                    simulation_config = mission_config["simulation_config"]
                 if "start_pos" in mission_config:
                     sim_start_pos = mission_config.get("start_pos")
                 if "start_angle" in mission_config:
@@ -166,7 +165,7 @@ def run(
                 isinstance(mission_result, dict)
                 and "simulation_config" in mission_result
             ):
-                mission_simulation_config = mission_result["simulation_config"]
+                simulation_config = mission_result["simulation_config"]
 
     # Validate configuration at startup
     try:
@@ -177,7 +176,7 @@ def run(
         console.print(f"[bold red]Configuration validation failed:[/bold red] {e}")
         raise typer.Exit(code=1)
 
-    # Apply Overrides
+    # Apply CLI overrides
     console.print("\n[bold]Initializing Simulation...[/bold]")
     if duration:
         if config_overrides is None:
@@ -187,58 +186,19 @@ def run(
         config_overrides["simulation"]["max_duration"] = duration
         console.print(f"  Override: Duration = {duration}s")
 
-    if engine:
-        if config_overrides is None:
-            config_overrides = {}
-        if "physics" not in config_overrides:
-            config_overrides["physics"] = {}
-        config_overrides["physics"]["engine"] = engine
-        console.print(f"  Override: Engine = {engine}")
+    # Create default config if not set by mission
+    if simulation_config is None:
+        simulation_config = SimulationConfig.create_default()
 
-    from src.satellite_control.config.simulation_config import SimulationConfig
+    # Apply overrides to config
+    if config_overrides:
+        simulation_config = SimulationConfig.create_with_overrides(
+            config_overrides, base_config=simulation_config
+        )
 
-    simulation_config = None
-    hydra_cfg = None
+    console.print("[green]Loaded Pydantic configuration[/green]")
 
-    is_legacy_mode = mission_simulation_config is not None
-
-    if is_legacy_mode:
-        if mission_simulation_config:
-            simulation_config = mission_simulation_config
-            if config_overrides:
-                simulation_config = SimulationConfig.create_with_overrides(
-                    config_overrides, base_config=simulation_config
-                )
-    else:
-        from hydra import compose, initialize
-        from hydra.core.global_hydra import GlobalHydra
-
-        GlobalHydra.instance().clear()
-        try:
-            with initialize(version_base=None, config_path="../../config"):
-                hydra_cfg = compose(config_name="main")
-                console.print("[green]Loaded configuration via Hydra[/green]")
-
-                if duration:
-                    if hasattr(hydra_cfg, "sim"):
-                        hydra_cfg.sim.duration = duration
-                        console.print(f"  Override: Duration = {duration}s")
-                if engine:
-                    if hasattr(hydra_cfg, "physics"):
-                        hydra_cfg.physics.engine = engine
-                        console.print(f"  Override: Engine = {engine}")
-
-        except Exception as e:
-            console.print(
-                f"[yellow]Failed to load Hydra config: {e}. Falling back to default Pydantic config.[/yellow]"
-            )
-            simulation_config = SimulationConfig.create_default()
-            if config_overrides:
-                simulation_config = SimulationConfig.create_with_overrides(
-                    config_overrides, base_config=simulation_config
-                )
-
-    # Initialize Simulation
+    # Initialize Simulation (Pydantic config only - no Hydra)
     try:
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=sim_start_pos,
@@ -246,7 +206,6 @@ def run(
             start_angle=sim_start_angle,
             target_angle=sim_target_angle,
             simulation_config=simulation_config,
-            cfg=hydra_cfg,
         )
 
         if duration and sim.max_simulation_time != duration:

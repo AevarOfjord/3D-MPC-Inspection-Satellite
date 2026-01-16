@@ -1,401 +1,591 @@
-# Satellite Thruster Control System - Architecture Documentation
+# Satellite Control System Architecture
 
-This document provides a complete file listing and description of the system architecture. For project overview and features, see [README](../README.md).
+> **Version**: 5.0.0 | **Last Updated**: January 2026
 
-> **Note:** This project focuses on high-fidelity simulation using MuJoCo with OSQP-based Model Predictive Control.
+A hybrid Python/C++ Model Predictive Control (MPC) simulation system for 3D satellite maneuvers with PWM thrusters and reaction wheels.
+
+---
+
+## Quick Reference
+
+```
+make sim        # Run simulation (generates plots, CSV, JSON, MP4)
+make backend    # Start FastAPI server (port 8000)
+make frontend   # Start web interface (Vite dev server)
+```
 
 ---
 
 ## Directory Structure
 
 ```
-Satellite_3D_MuJoCo/
-│
-├── run_simulation.py                 # Main Entry Point (delegates to CLI)
-│
-├── src/
-│   └── satellite_control/            # Main Package
-│       │
-│       ├── cli.py                    # Command-Line Interface (Typer)
-│       │
-│       ├── core/                     # Core Simulation & Physics
-│       │   ├── simulation.py         # Main Simulation Engine (Orchestrator)
-│       │   ├── simulation_initialization.py # Simulation Setup & Initialization
-│       │   ├── simulation_loop.py    # Main Simulation Loop Execution
-│       │   ├── simulation_runner.py  # Simulation Execution Wrapper
-│       │   ├── simulation_context.py # Simulation Context Object
-│       │   ├── simulation_logger.py  # Real-Time Terminal Dashboard
-│       │   ├── simulation_io.py      # File I/O Operations
-│       │   ├── simulation_constants.py # Core Constants
-│       │   ├── performance_monitor.py # Performance Monitoring & Metrics
-│       │   ├── error_handling.py     # Error Handling Utilities
-│       │   ├── mujoco_satellite.py   # MuJoCo Physics Wrapper
-│       │   ├── model.py              # Satellite Physics Model
-│       │   ├── thruster_manager.py   # Thruster Valve & PWM Logic
-│       │   ├── mpc_runner.py         # MPC Execution Loop
-│       │   ├── interfaces.py         # Protocol Definitions
-│       │   └── exceptions.py         # Custom Exceptions
-│       │
-│       ├── control/                  # Control Algorithms
-│       │   └── mpc_controller.py     # MPC Optimizer (OSQP)
-│       │
-│       ├── mission/                  # Mission Logic & UI
-│       │   ├── mission_manager.py    # Mission Orchestration
-│       │   ├── mission_state_manager.py # State Machine & Phase Logic
-│       │   ├── mission_report_generator.py # Post-Mission Analysis
-│       │   ├── mission_logic.py      # Mission Type Definitions
-│       │   ├── mission_handler_base.py # Base Handler Class
-│       │   ├── interactive_cli.py    # Modern Interactive Menu (Questionary)
-│       │   └── mission_cli.py        # Classic Text-Based Menu
-│       │
-│       ├── visualization/            # Rendering & Output
-│       │   ├── unified_visualizer.py # Post-Process Visualization Orchestrator
-│       │   ├── plot_generator.py     # Performance Plot Generation
-│       │   ├── video_renderer.py     # MP4 Animation Generation
-│       │   ├── simulation_visualization.py # Live MuJoCo Viewer Logic
-│       │   ├── satellite_2d_diagram.py # 2D Satellite Diagram Helpers
-│       │   └── shape_utils.py        # Shape Transformation Utilities
-│       │
-│       ├── utils/                    # Utilities
-│       │   ├── data_logger.py        # Buffered CSV Logger
-│       │   ├── logging_config.py     # Logging Setup
-│       │   ├── navigation_utils.py   # Geometric Helpers
-│       │   ├── orientation_utils.py # Quaternion & Euler Conversions
-│       │   ├── simulation_state_validator.py # State Validation
-│       │   ├── profiler.py           # Performance Profiling
-│       │   ├── spline_path.py        # Spline Path Generation
-│       │   ├── state_converter.py    # State Conversion Utilities
-│       │   ├── caching.py            # LRU Cache Utilities
-│       │   └── viewer_overlay.py     # MuJoCo Viewer Overlays
-│       │
-│       ├── config/                   # Configuration
-│       │   ├── satellite_config.py   # Main Config Interface (Legacy)
-│       │   ├── simulation_config.py  # Immutable Config Container (Preferred)
-│       │   ├── mpc_params.py         # MPC Tuning Parameters
-│       │   ├── physics.py            # Physical Constants
-│       │   ├── timing.py             # Timing Parameters
-│       │   ├── mission_state.py      # Runtime Mission State
-│       │   ├── models.py             # Pydantic Config Models
-│       │   ├── constants.py          # System-Wide Constants
-│       │   ├── obstacles.py          # Obstacle Definitions
-│       │   ├── thruster_config.py    # Thruster Configuration
-│       │   ├── presets.py            # Configuration Presets
-│       │   └── validator.py          # Configuration Validation
-│       │
-│       └── testing/                  # Test Utilities
-│           └── ... (test helpers)
-│
-├── docs/                             # Documentation
-│   ├── ARCHITECTURE.md               # This file
-│   ├── MATHEMATICS.md                # Mathematical Formulation
-│   ├── DEVELOPMENT_GUIDE.md          # Developer Guide
-│   ├── TESTING.md                    # Testing Documentation
-│   └── ... (other docs)
-│
-├── Data/                             # Output Directory
-│   └── Simulation/                   # Logs, Videos, Reports
-│       └── [timestamp]/              # Per-run output
-│           ├── simulation_data.csv
-│           ├── Simulation_animation.mp4
-│           └── mission_summary.txt
-│
-├── models/                           # MuJoCo Model Files
-│   └── satellite_model.xml
-│
-├── DXF/                              # Custom Shape Files
-│
-└── tests/                            # Test Suite
-    ├── e2e/                          # End-to-End Tests
-    ├── unit/                         # Unit Tests
-    └── integration/                  # Integration Tests
+Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
+├── src/satellite_control/    # Main Python package
+│   ├── cli.py               # Entry point (single 'run' command)
+│   ├── core/                # Simulation engine (14 files)
+│   ├── control/             # MPC controller (3 files)
+│   ├── cpp/                 # C++ backend (18 files)
+│   ├── config/              # Configuration system (17 files)
+│   ├── mission/             # Mission management (16 files)
+│   ├── physics/             # Orbital dynamics (2 files)
+│   ├── planning/            # Path planning (2 files)
+│   ├── visualization/       # Plotting & video (9 files)
+│   ├── dashboard/           # FastAPI backend (2 files)
+│   ├── utils/               # Utilities (11 files)
+│   ├── fleet/               # Multi-satellite (2 files)
+│   └── testing/             # Monte Carlo (2 files)
+├── ui/                      # React + Three.js web interface
+├── config/                  # Hydra YAML configs
+├── models/                  # MuJoCo XML models
+├── tests/                   # pytest test suite (31 files)
+├── docs/                    # Documentation
+├── run_simulation.py        # Simulation entry point
+├── run_dashboard.py         # Dashboard entry point
+└── Makefile                 # Build targets
 ```
 
 ---
 
-## Key Architectural Improvements
+## Core Modules
 
-1. **Modular Package Structure**: All source code is encapsulated within `src/satellite_control`, separated into semantic subpackages (`core`, `control`, `mission`, `visualization`, `utils`, `config`).
+### Entry Points
 
-2. **Performance-Optimized MPC**: The MPC controller uses a **persistent OSQP solver** with matrix warm-starting, achieving solve times of **~1-2ms** per timestep.
+| File | Purpose |
+|------|---------|
+| `run_simulation.py` | CLI entry → delegates to `cli.py` |
+| `run_dashboard.py` | Starts FastAPI server for web 3D visualization |
+| `Makefile` | Build targets: `sim`, `backend`, `frontend`, `install` |
 
-3. **Memory-Efficient Logging**: Buffered CSV writing prevents RAM exhaustion during long simulations, with configurable flush intervals.
+### src/satellite_control/cli.py (270 lines)
 
-4. **Decoupled Visualization**: Post-process visualization reads from CSV files, ensuring the physics loop is never blocked by rendering overhead.
+Single command CLI using Typer:
 
-5. **Rich Terminal UI**: Live dashboard using `rich` library with real-time telemetry, thruster status, and mission phase information.
-
-6. **Interactive CLI**: Modern menu system using `questionary` for arrow-key navigation and visual mission configuration.
-
----
-
-## Component Descriptions
-
-### Entry Point
-
-| File                | Purpose                                                                              |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `run_simulation.py` | Lightweight entry point that delegates to the CLI module for backward compatibility. |
-| `cli.py`            | Main CLI interface using Typer. Provides `run`, `verify`, and `config` commands.     |
-
-### Core (`src/satellite_control/core`)
-
-The simulation engine and physics integration.
-
-| File                      | Purpose                                                                                                |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `simulation.py`           | **The orchestrator.** Main simulation class that coordinates initialization, loop execution, and cleanup. |
-| `simulation_initialization.py` | Handles all simulation setup: physics initialization, target state, timing, thruster manager, MPC controller, mission manager, etc. |
-| `simulation_loop.py`      | Encapsulates main simulation loop execution: step updates, termination conditions, waypoint advancement, data saving. |
-| `simulation_runner.py`    | High-level simulation execution wrapper with error handling and resource cleanup.                      |
-| `simulation_context.py`   | Encapsulates simulation dependencies and runtime state in a single context object.                     |
-| `simulation_logger.py`    | Real-time terminal dashboard displaying telemetry, thruster activity, and mission status using `rich`. |
-| `simulation_io.py`        | Handles file I/O operations for saving simulation data and reports.                                    |
-| `simulation_constants.py` | Core simulation constants and configuration values.                                                    |
-| `performance_monitor.py`  | Performance monitoring with timing statistics, threshold checking, and metrics export.                 |
-| `error_handling.py`       | Error handling utilities and context managers.                                                          |
-| `mujoco_satellite.py`     | Low-level wrapper around MuJoCo physics engine. Handles force application and state retrieval.         |
-| `model.py`                | Defines satellite physical properties (mass, inertia, thruster geometry) for controller and simulator. |
-| `thruster_manager.py`     | Manages realistic thruster behavior including valve delays, thrust ramp-up, and PWM duty cycle logic.  |
-| `mpc_runner.py`           | MPC execution loop that coordinates controller calls and command application.                          |
-| `interfaces.py`           | Protocol definitions for clean component interfaces (runtime type checking).                           |
-| `exceptions.py`           | Custom exception hierarchy for simulation error handling.                                              |
-
-### Control (`src/satellite_control/control`)
-
-| File                | Purpose                                                                                                                |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `mpc_controller.py` | **The Brain.** Linearized Model Predictive Controller using OSQP. Solves a quadratic program at every timestep (~2ms). |
-
-### Mission (`src/satellite_control/mission`)
-
-High-level mission orchestration and user interface.
-
-| File                          | Purpose                                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------ |
-| `mission_manager.py`          | Coordinates mission setup, execution, and completion across different mission types.       |
-| `mission_state_manager.py`    | State machine managing mission phases (e.g., "approaching waypoint", "stabilizing").       |
-| `mission_report_generator.py` | Post-mission analysis generating detailed performance reports with accuracy and stability. |
-| `mission_logic.py`            | Defines mission type logic (Waypoint Navigation, Shape Following, etc.).                   |
-| `mission_handler_base.py`     | Base class for mission-specific handlers.                                                  |
-| `interactive_cli.py`          | Modern interactive menu using `questionary` for styled, arrow-key navigation.              |
-| `mission_cli.py`              | Classic text-based menu interface (fallback).                                              |
-
-### Visualization (`src/satellite_control/visualization`)
-
-| File                          | Purpose                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `unified_visualizer.py`       | Post-process visualization orchestrator. Coordinates plot generation, video rendering, and report creation. |
-| `plot_generator.py`           | Generates performance plots: trajectory, position/angle tracking, control effort, thruster usage, etc. |
-| `video_renderer.py`           | Generates MP4 animations from simulation data with 3D visualization and info panels.                  |
-| `simulation_visualization.py` | Live visualization coordinator during simulation runtime. Manages MuJoCo viewer updates.               |
-| `satellite_2d_diagram.py`     | Utility functions for drawing 2D satellite diagrams and trajectory plots.                              |
-| `shape_utils.py`              | Shape transformation utilities: demo shapes, DXF loading, path offsetting, rotation/translation.      |
-
-### Configuration (`src/satellite_control/config`)
-
-Centralized configuration using dataclasses and Pydantic models.
-
-| File                  | Purpose                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `satellite_config.py` | **Main config interface (legacy).** Central hub for accessing all subsystem configurations. Deprecated in favor of `SimulationConfig`. |
-| `simulation_config.py` | **Immutable config container (preferred).** Dependency injection pattern with `AppConfig` and `MissionState`. Eliminates global mutable state. |
-| `mpc_params.py`       | MPC tuning parameters (prediction horizon, control weights, constraints).          |
-| `physics.py`          | Physical constants (mass, inertia, thruster force, damping coefficients).          |
-| `timing.py`           | Timing parameters (timestep, control update rate, max simulation time).            |
-| `mission_state.py`    | Runtime mission state (current waypoint, trajectory, mission phase).               |
-| `models.py`           | Pydantic models for typed configuration with validation (`AppConfig`, `MPCParams`, `SatellitePhysicalParams`, etc.). |
-| `constants.py`        | System-wide constants (coordinate systems, conversion factors).                    |
-| `obstacles.py`        | Obstacle definitions and presets (positions, radii, safety margins).               |
-| `thruster_config.py`  | Thruster physical configuration (positions, orientations, valve characteristics).  |
-| `presets.py`          | Configuration presets system with interactive selection and validation.          |
-| `validator.py`        | Configuration validation utilities with comprehensive parameter checking.           |
-
-### Utilities (`src/satellite_control/utils`)
-
-| File                            | Purpose                                                                             |
-| ------------------------------- | ----------------------------------------------------------------------------------- |
-| `data_logger.py`                | High-performance buffered CSV logger with configurable flush intervals.             |
-| `logging_config.py`             | Python logging configuration for file and console output (structured JSON support). |
-| `navigation_utils.py`           | Geometric utility functions (distance, angle wrapping, coordinate transformations). |
-| `orientation_utils.py`         | Quaternion and Euler angle conversion utilities for 3D orientation handling.        |
-| `simulation_state_validator.py` | Validates simulation state for numerical stability and physical plausibility.       |
-| `profiler.py`                   | Performance profiling utilities with histogram generation and timing statistics.    |
-| `spline_path.py`                | Cubic spline path generation for smooth trajectory following.                       |
-| `state_converter.py`            | State vector conversion utilities between different representations (sim↔MPC formats). |
-| `caching.py`                     | LRU cache utilities with config-based caching for expensive computations.           |
-| `viewer_overlay.py`             | Text overlay rendering for MuJoCo viewer (telemetry display).                       |
+```python
+@app.command()
+def run(
+    auto: bool,          # Auto mode with defaults
+    duration: float,     # Max simulation time
+    no_anim: bool,       # Headless mode
+    classic: bool,       # Text-based menu
+    engine: str,         # 'mujoco' or 'cpp'
+    mission_file: str,   # Mission JSON path
+): ...
+```
 
 ---
 
-## Data Flow Architecture
+## src/satellite_control/core/ (14 files)
+
+The simulation engine with modular components:
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `simulation.py` | 1115 | `SatelliteMPCLinearizedSimulation` - main orchestrator |
+| `simulation_loop.py` | 675 | `SimulationLoop` - animation/batch execution |
+| `simulation_initialization.py` | 520 | `SimulationInitializer` - setup logic |
+| `mujoco_satellite.py` | 900 | `MuJoCoSatellite` - physics backend |
+| `cpp_satellite.py` | 210 | `CppSatellite` - C++ physics backend |
+| `thruster_manager.py` | 340 | Valve delays, PWM modulation |
+| `performance_monitor.py` | 290 | Timing statistics, metrics |
+| `simulation_logger.py` | 280 | CSV/JSON data logging |
+| `simulation_io.py` | 220 | File I/O operations |
+| `mpc_runner.py` | 170 | MPC computation wrapper |
+| `simulation_runner.py` | 90 | High-level run interface |
+| `simulation_context.py` | 35 | Context manager |
+| `backend.py` | 50 | Backend selection |
+| `__init__.py` | - | Module exports |
+
+### Key Class: SatelliteMPCLinearizedSimulation
+
+```python
+class SatelliteMPCLinearizedSimulation:
+    """Main simulation orchestrator."""
+    
+    # Core Components
+    satellite: MuJoCoSatellite      # Physics backend
+    mpc_controller: MPCController    # Control algorithm
+    mission_manager: MissionManager  # Mission logic
+    thruster_manager: ThrusterManager # Actuator physics
+    
+    # State
+    state: np.ndarray[13]  # [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
+    target_state: np.ndarray[13]
+    
+    # Methods
+    def run_simulation(show_animation: bool) -> None
+    def get_current_state() -> np.ndarray
+    def update_mpc_control() -> None
+```
+
+---
+
+## src/satellite_control/control/ (3 files)
+
+### mpc_controller.py (334 lines)
+
+Python wrapper for C++ MPC backend:
+
+```python
+class MPCController(Controller):
+    """C++ backend wrapper for OSQP-based MPC."""
+    
+    _cpp_controller: MPCControllerCpp  # C++ instance
+    
+    def get_control_action(
+        x_current: np.ndarray,   # 13-state vector
+        x_target: np.ndarray,    # 13-state target
+        previous_thrusters: np.ndarray,
+        x_target_trajectory: np.ndarray,  # Optional horizon
+    ) -> Tuple[np.ndarray, Dict]:
+        """Returns (control_vector, info_dict)."""
+        
+    def set_obstacles(obstacles: List[Obstacle]) -> None
+    def clear_obstacles() -> None
+```
+
+### base.py (100 lines)
+
+Abstract controller interface.
+
+---
+
+## src/satellite_control/cpp/ (18 files)
+
+High-performance C++ backend with pybind11 bindings:
+
+### Headers
+
+| File | Description |
+|------|-------------|
+| `mpc_controller.hpp` | MPC class declaration |
+| `linearizer.hpp` | State-space linearization |
+| `obstacle.hpp` | Collision constraint types |
+| `orbital_dynamics.hpp` | CW equations interface |
+| `satellite_params.hpp` | Vehicle parameter struct |
+| `simulation_engine.hpp` | C++ physics engine |
+
+### Implementations
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `mpc_controller.cpp` | 551 | OSQP solver integration, sparse matrices |
+| `linearizer.cpp` | 85 | Jacobian computation |
+| `obstacle.cpp` | 110 | Linear constraint generation |
+| `orbital_dynamics.cpp` | 145 | Hill-Clohessy-Wiltshire equations |
+| `simulation_engine.cpp` | 240 | State propagation |
+
+### Bindings
+
+| File | Description |
+|------|-------------|
+| `bindings.cpp` | Main MPC module (`_cpp_mpc.so`) |
+| `bindings_physics.cpp` | Physics module (`_cpp_physics.so`) |
+| `bindings_sim.cpp` | Simulation module (`_cpp_sim.so`) |
+
+### MPC Solver Architecture
+
+```cpp
+class MPCControllerCpp {
+    // OSQP solver
+    OSQPWorkspace* work_;
+    SparseMatrix P_, A_;  // QP matrices
+    
+    // Index maps for fast updates
+    std::vector<std::vector<int>> A_idx_map_;  // Quaternion dynamics
+    std::vector<std::vector<int>> B_idx_map_;  // Actuator mapping
+    std::vector<std::vector<int>> obs_A_indices_;  // Obstacles
+    
+    // Key methods
+    void update_dynamics(const VectorXd& x_current);
+    void update_cost(const VectorXd& x_target);
+    void update_obstacle_constraints(...);
+    ControlResult get_control_action(...);
+};
+```
+
+---
+
+## src/satellite_control/config/ (17 files)
+
+Pydantic-based configuration with comprehensive validation:
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `models.py` | 503 | `AppConfig`, `MPCParams`, `SatellitePhysicalParams` |
+| `simulation_config.py` | 350 | `SimulationConfig` - top-level config |
+| `mission_state.py` | 550 | `MissionState` - runtime mission data |
+| `validator.py` | 280 | Cross-field validation |
+| `io.py` | 380 | YAML/JSON serialization |
+| `presets.py` | 240 | FAST, BALANCED, STABLE, PRECISION presets |
+| `physics.py` | 240 | Physics parameter defaults |
+| `constants.py` | 170 | System-wide constants |
+| `adapter.py` | 210 | Hydra ↔ Pydantic conversion |
+| `orbital_config.py` | 110 | Orbital parameters |
+| `actuator_config.py` | 150 | Thruster/RW configuration |
+| `reaction_wheel_config.py` | 150 | Reaction wheel parameters |
+| `thruster_config.py` | 75 | Thruster parameters |
+| `timing.py` | 135 | Timing constants |
+| `obstacles.py` | 180 | Obstacle definitions |
+| `defaults.py` | 85 | Default value factories |
+| `__init__.py` | - | Module exports |
+
+### Configuration Hierarchy
+
+```
+AppConfig
+├── physics: SatellitePhysicalParams
+│   ├── total_mass, moment_of_inertia, satellite_size
+│   ├── thruster_positions/directions/forces (Dict[int, Tuple])
+│   └── damping, noise, delays
+├── mpc: MPCParams
+│   ├── prediction_horizon, control_horizon, dt
+│   ├── Q weights (position, velocity, angle, angular_velocity)
+│   ├── R weights (thrust, rw_torque)
+│   └── collision_avoidance settings
+└── simulation: SimulationParams
+    ├── dt, max_duration, headless
+    └── timing parameters
+```
+
+---
+
+## src/satellite_control/mission/ (16 files)
+
+Mission configuration and execution:
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `mission_state_manager.py` | 1750 | Core mission logic, phase management |
+| `interactive_cli.py` | 1230 | Rich-based interactive menus |
+| `mission_report_generator.py` | 900 | PDF/HTML report generation |
+| `mission_cli.py` | 760 | Text-based CLI menus |
+| `mission_manager.py` | 420 | High-level mission orchestration |
+| `plugin.py` | 430 | Mission plugin system |
+| `mission_executor.py` | 295 | Execution engine |
+| `sequencer.py` | 240 | Multi-stage mission sequencing |
+| `trajectory_utils.py` | 195 | Spline trajectory generation |
+| `mesh_scan.py` | 210 | 3D object scanning missions |
+| `mission_types.py` | 165 | Mission, Waypoint, Phase dataclasses |
+| `mission_factory.py` | 155 | Mission creation helpers |
+| `path_following.py` | 110 | DXF/shape following |
+| `mission_handler_base.py` | 75 | Abstract handler |
+| `mission_logic.py` | 220 | Waypoint advancement logic |
+| `__init__.py` | - | Module exports |
+
+### Mission Plugin System
+
+```
+src/satellite_control/mission/plugins/
+├── __init__.py
+├── point_to_point.py     # Simple navigation
+├── waypoint_sequence.py  # Multi-waypoint
+└── shape_following.py    # DXF path tracking
+```
+
+---
+
+## src/satellite_control/physics/ (2 files)
+
+### orbital_dynamics.py (213 lines)
+
+Hill-Clohessy-Wiltshire (CW) relative motion dynamics:
+
+```python
+@dataclass
+class CWDynamics:
+    """Computes gravity gradient accelerations for LEO."""
+    
+    orbital_config: OrbitalConfig
+    _cpp_backend: Optional[CppCWDynamics]  # C++ acceleration
+    
+    def compute_acceleration(position, velocity) -> np.ndarray:
+        """CW equations: ẍ = 3n²x + 2nẏ, ÿ = -2nẋ, z̈ = -n²z"""
+        
+    def get_state_matrices(dt) -> Tuple[np.ndarray, np.ndarray]:
+        """Discrete-time A, B matrices."""
+```
+
+---
+
+## src/satellite_control/planning/ (2 files)
+
+### rrt_star.py (274 lines)
+
+RRT* path planner for obstacle avoidance:
+
+```python
+class RRTStarPlanner:
+    """Rapidly-exploring Random Tree Star."""
+    
+    def plan(
+        start: np.ndarray,      # [x, y, z]
+        goal: np.ndarray,       # [x, y, z]
+        obstacles: List[Obstacle]
+    ) -> List[np.ndarray]:
+        """Returns collision-free waypoint list."""
+```
+
+### trajectory_generator.py (45 lines)
+
+Converts waypoints to time-parameterized trajectories.
+
+---
+
+## src/satellite_control/visualization/ (9 files)
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `unified_visualizer.py` | 3050 | Post-processor, generates all plots & videos |
+| `plot_generator.py` | 2500 | 16+ plot types (position, velocity, thrusters) |
+| `dashboard.py` | 1340 | Deprecated matplotlib dashboard |
+| `video_renderer.py` | 810 | FFmpeg-based MP4 generation |
+| `simulation_visualization.py` | 920 | 3D trajectory animation |
+| `mujoco_replay_visualizer.py` | 400 | MuJoCo replay from CSV |
+| `satellite_2d_diagram.py` | 310 | Thruster layout diagram |
+| `shape_utils.py` | 160 | DXF parsing utilities |
+| `__init__.py` | - | Module exports |
+
+### Post-Processing Pipeline
+
+```
+simulation.py
+    └── SimulationLoop.run()
+        └── _save_data()
+            └── UnifiedVisualizationGenerator.generate_all()
+                ├── plot_generator.py → 16 PNG plots
+                └── video_renderer.py → animation.mp4
+```
+
+---
+
+## src/satellite_control/dashboard/ (2 files)
+
+### app.py (630 lines)
+
+FastAPI backend for web 3D visualization:
+
+```python
+app = FastAPI()
+
+@app.get("/api/simulations")
+def list_simulations() -> List[SimulationInfo]
+
+@app.get("/api/simulation/{sim_id}/data")
+def get_simulation_data(sim_id: str) -> SimulationData
+
+@app.websocket("/ws/live")
+async def websocket_live(websocket: WebSocket)
+```
+
+---
+
+## src/satellite_control/utils/ (11 files)
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `simulation_state_validator.py` | 600 | State validation, noise injection |
+| `data_logger.py` | 490 | High-frequency CSV logging |
+| `profiler.py` | 295 | Performance profiling decorators |
+| `spline_path.py` | 190 | Cubic spline interpolation |
+| `logging_config.py` | 180 | Logging setup |
+| `navigation_utils.py` | 165 | Angle normalization, distance |
+| `caching.py` | 160 | LRU caching decorators |
+| `viewer_overlay.py` | 150 | MuJoCo overlay text |
+| `state_converter.py` | 100 | State vector conversion |
+| `orientation_utils.py` | 60 | Quaternion ↔ Euler conversion |
+| `__init__.py` | - | Module exports |
+
+---
+
+## src/satellite_control/fleet/ (2 files)
+
+### fleet_manager.py (220 lines)
+
+Multi-satellite coordination (experimental):
+
+```python
+class FleetManager:
+    """Manages multiple satellite instances."""
+    satellites: Dict[str, SatelliteHandle]
+    
+    def add_satellite(name: str, config: AppConfig) -> None
+    def step_all(dt: float) -> None
+```
+
+---
+
+## src/satellite_control/testing/ (2 files)
+
+### monte_carlo.py (470 lines)
+
+Statistical validation framework:
+
+```python
+class MonteCarloRunner:
+    """Run N simulations with parameter variations."""
+    
+    def run(
+        n_trials: int,
+        parameter_ranges: Dict[str, Tuple[float, float]],
+    ) -> MonteCarloResults
+```
+
+---
+
+## Configuration Files
+
+### config/ (Hydra YAML)
+
+```
+config/
+├── main.yaml              # Root config
+├── control/
+│   └── mpc/
+│       └── default.yaml   # MPC parameters
+├── vehicle/
+│   ├── cube_sat_6u.yaml   # 6U CubeSat config
+│   └── test_3_thruster.yaml
+└── missions/
+    ├── maze.yaml
+    ├── flyby_demo.json
+    └── obstacle_demo.json
+```
+
+### models/ (MuJoCo XML)
+
+```
+models/
+├── satellite.xml          # Base model
+├── satellite_3d.xml       # 3D with Z thrusters
+├── satellite_rw.xml       # With reaction wheels
+├── satellite_planar.xml   # 2D constrained
+├── satellite_fleet.xml    # Multi-satellite
+└── meshes/               # STL files
+    ├── thruster_*.stl
+    └── body.stl
+```
+
+---
+
+## Test Suite
+
+### tests/ (31 test files)
+
+| Category | Files |
+|----------|-------|
+| **Unit Tests** | `test_config.py`, `test_caching.py`, `test_navigation_utils.py`, `test_orientation_utils.py`, `test_shape_utils.py`, `test_state_converter.py` |
+| **Component Tests** | `test_mpc_controller.py`, `test_thruster_manager.py`, `test_simulation_loop.py`, `test_simulation_logger.py`, `test_simulation_io.py`, `test_simulation_initialization.py`, `test_simulation_context.py`, `test_simulation_state_validator.py`, `test_data_logger.py`, `test_performance_monitor.py`, `test_video_renderer.py`, `test_plot_generator.py`, `test_spline_path.py` |
+| **Mission Tests** | `test_mission_state_manager.py`, `test_mission_state_refactor.py`, `test_presets.py` |
+| **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
+| **Property-Based** | `test_property_based.py` |
+| **Benchmarks** | `test_benchmark.py` |
+| **Subdirectories** | `benchmarks/`, `e2e/`, `integration/`, `physics/`, `planning/`, `verification/` |
+
+---
+
+## Web Interface (ui/)
+
+React + TypeScript + Three.js application:
+
+```
+ui/
+├── src/
+│   ├── App.tsx           # Main component
+│   ├── components/
+│   │   ├── Viewer3D.tsx  # Three.js scene
+│   │   ├── Controls.tsx  # UI controls
+│   │   └── Timeline.tsx  # Playback
+│   └── api/
+│       └── client.ts     # FastAPI client
+├── package.json
+├── vite.config.ts
+└── tsconfig.json
+```
+
+---
+
+## Data Flow
 
 ```mermaid
-graph TD
-    User[User/CLI] -->|Configure| Mission[Mission Manager]
-    Mission -->|Initialize| Sim[Simulation Loop]
-
-    subgraph "Core Simulation Loop (50+ Hz)"
-        Sim -->|Get State| Physics[MuJoCo Physics]
-        Physics -->|State x,v,θ,ω| MPC[MPC Controller]
-        MPC -->|Linearize & Solve QP| MPC
-        MPC -->|Thruster Commands| ThrusterMgr[Thruster Manager]
-        ThrusterMgr -->|Valve Delays & Ramp-up| ThrusterMgr
-        ThrusterMgr -->|Actual Forces| Physics
-        Physics -->|Apply Forces| Physics
+graph LR
+    subgraph Entry
+        CLI[cli.py] --> SIM[simulation.py]
     end
-
-    Sim -->|Update Phase| MissionState[Mission State Manager]
-    MissionState -->|New Target| Sim
-
-    Physics -->|Log State| Logger[Buffered Data Logger]
-    Logger -->|Periodic Flush| Disk[(CSV Files)]
-
-    subgraph "Post-Process Visualization"
-        Disk -->|Read CSV| Viz[Unified Visualizer]
-        Viz -->|Render Frames| Video[MP4 Animation]
-        Viz -->|Plot Data| Charts[Performance Plots]
-        Viz -->|Analyze| Report[Mission Report]
+    
+    subgraph Control
+        SIM --> MPC[MPCController]
+        MPC --> CPP[C++ OSQP]
     end
-
-    subgraph "Live Display (Optional)"
-        Physics -.->|Real-time View| Viewer[MuJoCo Viewer]
-        Sim -.->|Terminal UI| Dashboard[Rich Dashboard]
+    
+    subgraph Physics
+        SIM --> MJ[MuJoCo]
+        MJ --> STATE[State Vector]
+    end
+    
+    subgraph Output
+        SIM --> LOG[DataLogger]
+        LOG --> CSV[physics_data.csv]
+        LOG --> JSON[metrics.json]
+        LOG --> VIZ[UnifiedVisualizer]
+        VIZ --> PNG[Plots]
+        VIZ --> MP4[Animation]
+    end
+    
+    subgraph Web
+        DASH[FastAPI] --> UI[React/Three.js]
+        CSV --> DASH
     end
 ```
 
 ---
 
-## Key Workflows
+## State Vector
 
-### Running a Simulation
+13-element state used throughout the system:
 
-1. **Launch**: User runs `python run_simulation.py` (or `python -m src.satellite_control.cli run`)
-2. **Configuration**:
-   - Interactive menu (questionary) or classic text menu
-   - User selects mission type and parameters
-   - Configuration applied to `SatelliteConfig`
-3. **Initialization**:
-   - `Simulation` object created
-   - MuJoCo physics engine initialized with satellite model
-   - `MPCController` sets up persistent OSQP solver environment
-   - `ThrusterManager` initializes valve delay queues
-4. **Simulation Loop** (via `SimulationLoop`, runs at physics timestep, typically 50-200 Hz):
-   - **Step 1**: Retrieve current state from MuJoCo (`position`, `velocity`, `angle`, `angular_velocity`)
-   - **Step 2**: `MissionStateManager` updates current target based on mission phase
-   - **Step 3**: `MPCController` linearizes dynamics around current state and solves optimal control problem (~1-2ms)
-   - **Step 4**: Thruster commands sent to `ThrusterManager`
-   - **Step 5**: `ThrusterManager` processes valve delays and thrust ramp-up
-   - **Step 6**: Actual thruster forces applied to physics engine
-   - **Step 7**: State and controls buffered in `DataLogger`
-   - **Step 8**: Live dashboard updated with current telemetry
-   - **Step 9**: Check termination conditions (target reached, time limit, etc.)
-5. **Completion**:
-   - `DataLogger` flushes remaining data to `simulation_data.csv`
-   - `SimulationIO` saves mission summary and finalizes data export
-   - `PerformanceMonitor` exports metrics and checks thresholds
-   - `MissionReportGenerator` analyzes trajectory and creates `mission_summary.txt`
-   - `UnifiedVisualizer` orchestrates post-process visualization:
-     - `PlotGenerator` creates performance plots
-     - `VideoRenderer` generates `Simulation_animation.mp4` and `Simulation_3D_Render.mp4`
-   - Resources cleaned up (MuJoCo model, file handles, etc.)
+| Index | Element | Units |
+|-------|---------|-------|
+| 0-2 | Position (x, y, z) | meters |
+| 3-6 | Quaternion (w, x, y, z) | - |
+| 7-9 | Velocity (vx, vy, vz) | m/s |
+| 10-12 | Angular velocity (ωx, ωy, ωz) | rad/s |
 
-### Testing & Verification
+---
 
-The project includes comprehensive test coverage:
+## Build System
 
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test component interactions
-- **End-to-End Tests**: Full simulation runs with validation
-- **Property-Based Tests**: Hypothesis-driven testing for edge cases
+### CMakeLists.txt
 
-Run tests via:
+```cmake
+find_package(Eigen3 REQUIRED)
+find_package(osqp REQUIRED)
+find_package(pybind11 REQUIRED)
+
+pybind11_add_module(_cpp_mpc 
+    cpp/bindings.cpp
+    cpp/mpc_controller.cpp
+    cpp/linearizer.cpp
+    cpp/obstacle.cpp
+)
+```
+
+### Installation
 
 ```bash
-python run_simulation.py verify              # Quick E2E tests
-python run_simulation.py verify --full       # Full test suite
-pytest tests/                                # Direct pytest invocation
+make venv      # Create .venv311
+make install   # Install dependencies + build C++
+make sim       # Run simulation
 ```
 
 ---
 
 ## Performance Characteristics
 
-| Component            | Performance Metric                  |
-| -------------------- | ----------------------------------- |
-| MPC Solve Time       | ~1-2ms per timestep (OSQP)          |
-| Physics Timestep     | 0.01-0.02s (configurable)           |
-| Control Update Rate  | 50-100 Hz                           |
-| CSV Write Latency    | Buffered, ~1s flush interval        |
-| Memory Usage         | <100MB for 10-minute simulation     |
-| Animation Generation | ~30 seconds for 5-minute simulation |
-
----
-
-## Design Principles
-
-1. **Separation of Concerns**: Physics, control, visualization, and mission logic are cleanly separated
-2. **Performance First**: Critical loops optimized, with profiling infrastructure built-in
-3. **Type Safety**: Comprehensive type hints with mypy validation
-4. **Testability**: Protocol-based interfaces enable easy mocking and testing
-5. **Configurability**: All parameters accessible via `SatelliteConfig` hierarchy
-6. **Professional UX**: Rich terminal UI and interactive menus for excellent developer experience
-
----
-
-## Extension Points
-
-To extend the system:
-
-- **New Mission Types**: Implement in `mission_logic.py` and add to `mission_manager.py`
-- **Alternative Controllers**: Implement control protocol in `interfaces.py`
-- **Custom Visualizations**: 
-  - Add new plot types in `PlotGenerator`
-  - Extend `VideoRenderer` for custom animation styles
-  - Add shape utilities in `shape_utils.py`
-- **Different Physics**: Implement physics protocol for alternative backends
-- **Advanced Profiling**: Add instrumentation points in `profiler.py`
-- **New Configuration Sources**: Extend `SimulationConfig` or add new preset types in `presets.py`
-
-## Recent Architectural Improvements
-
-### Large File Refactoring (Completed ✅)
-
-**`simulation.py` Refactoring:**
-- **Before**: 1360+ lines, single monolithic class
-- **After**: 769 lines (43% reduction), orchestrator pattern
-- **New Modules**:
-  - `simulation_initialization.py`: All initialization logic (~400 lines)
-  - `simulation_loop.py`: Main loop execution (~300 lines)
-  - `simulation_context.py`: State container (dataclass)
-  - `simulation_logger.py`: Logging utilities
-  - `simulation_io.py`: File I/O operations
-
-**`unified_visualizer.py` Refactoring:**
-- **Before**: 3203 lines, single monolithic class
-- **After**: Reduced size, modular components
-- **New Modules**:
-  - `plot_generator.py`: Performance plot generation
-  - `video_renderer.py`: MP4 animation generation
-  - `shape_utils.py`: Shape transformation utilities
-
-### Configuration System Refactoring (Completed ✅)
-
-- **New**: `SimulationConfig` - Immutable configuration container
-- **New**: `AppConfig` - Pydantic-based typed configuration
-- **Migration**: Gradual migration from mutable `SatelliteConfig` to dependency injection pattern
-- **Benefits**: Thread-safe, testable, no global state pollution
-
-### Test Coverage Improvements (In Progress)
-
-- **New Test Files**: 13+ new test modules covering refactored components
-- **Test Types**: Unit tests, integration tests, property-based tests (Hypothesis)
-- **Coverage**: Targeting 80%+ overall coverage
-
----
-
-## References
-
-- [MuJoCo Documentation](https://mujoco.readthedocs.io/)
-- [OSQP Documentation](https://osqp.org/)
-- [Mathematical Formulation](MATHEMATICS.md)
-- [Development Guide](DEVELOPMENT_GUIDE.md)
+| Metric | Value |
+|--------|-------|
+| MPC solve time (mean) | ~1 ms |
+| MPC solve time (P95) | ~2 ms |
+| Physics timestep | 0.001 s (1000 Hz) |
+| Control timestep | 0.05 s (20 Hz) |
+| Typical sim duration | 25-60 s |
+| Real-time factor | ~170x faster |

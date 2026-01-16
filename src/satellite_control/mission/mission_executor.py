@@ -95,46 +95,26 @@ class MissionExecutor:
         logger.info(f"Loaded model: {self.model_path}")
 
     def load_controller(self):
-        """Load the hybrid MPC controller using Hydra configs."""
-        from pathlib import Path
-        from omegaconf import OmegaConf
+        """Load the hybrid MPC controller using SimulationConfig."""
         from src.satellite_control.control.mpc_controller import MPCController
+        from src.satellite_control.config.simulation_config import SimulationConfig
 
-        # Resolve config paths relative to this file
-        # src/satellite_control/mission -> src/satellite_control -> src -> PROJECT_ROOT
-        root_dir = Path(__file__).resolve().parent.parent.parent.parent
-        config_dir = root_dir / "config"
+        # Create default config and controller
+        config = SimulationConfig.create_default()
 
-        mpc_path = config_dir / "control" / "mpc" / "default.yaml"
-        vehicle_path = config_dir / "vehicle" / "cube_sat_6u.yaml"
+        # Override for mission execution context
+        config_overrides = {
+            "mpc": {
+                "prediction_horizon": 30,
+                "control_horizon": 30,
+                "dt": self.control_dt,
+            }
+        }
+        config = SimulationConfig.create_with_overrides(
+            config_overrides, base_config=config
+        )
 
-        # Guard against missing files
-        if not mpc_path.exists():
-            # Try 3 levels up if 4 was too many (structure varies)
-            root_dir = Path(__file__).resolve().parent.parent.parent
-            config_dir = root_dir / "config"
-            mpc_path = config_dir / "control" / "mpc" / "default.yaml"
-            vehicle_path = config_dir / "vehicle" / "cube_sat_6u.yaml"
-
-        if not mpc_path.exists():
-            raise FileNotFoundError(f"Config default.yaml not found at {mpc_path}")
-
-        mpc_conf = OmegaConf.load(mpc_path)
-        vehicle_conf = OmegaConf.load(vehicle_path)
-
-        # Overrides for specific mission execution context
-        mpc_conf.prediction_horizon = 30
-        mpc_conf.control_horizon = 30
-
-        # Ensure 'settings' exists
-        if "settings" not in mpc_conf:
-            mpc_conf.settings = {}
-        mpc_conf.settings.dt = self.control_dt
-
-        # Assemble full config mimicking Hydra structure
-        cfg = OmegaConf.create({"control": {"mpc": mpc_conf}, "vehicle": vehicle_conf})
-
-        self.controller = MPCController(cfg=cfg)
+        self.controller = MPCController(cfg=config.app_config)
         logger.info("Controller loaded")
 
     def execute(

@@ -682,31 +682,28 @@ class SimulationVisualizationManager:
         # Reset trajectory
         self.satellite.trajectory = [self.satellite.position.copy()]
 
-    def save_mujoco_video(
-        self, output_dir: Path, width: int = 1920, height: int = 1072
+    def save_trajectory_animation(
+        self, output_dir: Path, fps: int = 30, width: int = 1920, height: int = 1080
     ) -> None:
         """
-        Render a MuJoCo 3D animation from recorded data (CSV) to MP4.
+        Generate a matplotlib-based trajectory animation with X-Y and X-Z panels.
 
         Args:
             output_dir: Directory to save the video file
-            width: Render width in pixels
-            height: Render height in pixels
+            fps: Frames per second for the animation
+            width: Video width in pixels
+            height: Video height in pixels
         """
-        try:
-            import imageio
-            import mujoco
-            import pandas as pd
-        except ImportError:
-            logger.warning("WARNING: MuJoCo/imageio/pandas not available; skip 3D.")
-            return
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation
+        import pandas as pd
 
         csv_path = output_dir / "control_data.csv"
         if not csv_path.exists():
-            logger.warning(f"WARNING: CSV log not found at {csv_path}; skip 3D.")
+            logger.warning(f"WARNING: CSV log not found at {csv_path}; skip animation.")
             return
 
-        print(f"Loading simulation data for 3D render from: {csv_path}")
+        print(f"Loading simulation data for animation from: {csv_path}")
         try:
             df = pd.read_csv(csv_path)
         except Exception as e:
@@ -714,147 +711,174 @@ class SimulationVisualizationManager:
             return
 
         if len(df) == 0:
-            logger.warning("WARNING: Empty simulation data; skipping 3D render.")
+            logger.warning("WARNING: Empty simulation data; skipping animation.")
             return
 
         video_path = output_dir / "Simulation_3D_Render.mp4"
+
+        # Extract trajectory data
+        x = df["Current_X"].values
+        y = df["Current_Y"].values
+        z = df.get("Current_Z", pd.Series([0] * len(df))).values
+
+        # Get target position from last row or defaults
+        target_x = df.get("Target_X", pd.Series([0] * len(df))).values[-1]
+        target_y = df.get("Target_Y", pd.Series([0] * len(df))).values[-1]
+        target_z = df.get("Target_Z", pd.Series([0] * len(df))).values[-1]
+
+        # Calculate bounds with padding
+        all_x = np.concatenate([x, [target_x]])
+        all_y = np.concatenate([y, [target_y]])
+        all_z = np.concatenate([z, [target_z]])
+
+        x_range = max(all_x) - min(all_x)
+        y_range = max(all_y) - min(all_y)
+        z_range = max(all_z) - min(all_z)
+        padding = max(0.2, max(x_range, y_range, z_range) * 0.15)
+
+        x_min, x_max = min(all_x) - padding, max(all_x) + padding
+        y_min, y_max = min(all_y) - padding, max(all_y) + padding
+        z_min, z_max = min(all_z) - padding, max(all_z) + padding
+
+        # Create figure with two subplots side by side
+        fig, (ax_xy, ax_xz) = plt.subplots(
+            1, 2, figsize=(width / 100, height / 100), dpi=100
+        )
+        fig.patch.set_facecolor("#1a1a2e")
+
+        # Style both axes
+        for ax, xlabel, ylabel, title in [
+            (ax_xy, "X (m)", "Y (m)", "X-Y Plane (Top View)"),
+            (ax_xz, "X (m)", "Z (m)", "X-Z Plane (Side View)"),
+        ]:
+            ax.set_facecolor("#16213e")
+            ax.set_xlabel(xlabel, fontsize=12, color="white")
+            ax.set_ylabel(ylabel, fontsize=12, color="white")
+            ax.set_title(title, fontsize=14, fontweight="bold", color="white")
+            ax.grid(True, alpha=0.3, color="gray")
+            ax.tick_params(colors="white")
+            for spine in ax.spines.values():
+                spine.set_color("gray")
+
+        # Set axis limits
+        ax_xy.set_xlim(x_min, x_max)
+        ax_xy.set_ylim(y_min, y_max)
+        ax_xz.set_xlim(x_min, x_max)
+        ax_xz.set_ylim(z_min, z_max)
+        ax_xy.set_aspect("equal", adjustable="box")
+        ax_xz.set_aspect("equal", adjustable="box")
+
+        # Plot targets
+        ax_xy.plot(target_x, target_y, "g*", markersize=15, label="Target", zorder=5)
+        ax_xz.plot(target_x, target_z, "g*", markersize=15, label="Target", zorder=5)
+
+        # Initialize trajectory lines
+        (line_xy,) = ax_xy.plot(
+            [], [], "cyan", linewidth=1.5, alpha=0.8, label="Trajectory"
+        )
+        (line_xz,) = ax_xz.plot(
+            [], [], "cyan", linewidth=1.5, alpha=0.8, label="Trajectory"
+        )
+
+        # Initialize satellite markers (simple cube representation)
+        satellite_size = 0.05  # 5cm satellite representation
+        satellite_xy = plt.Rectangle(
+            (0, 0),
+            satellite_size,
+            satellite_size,
+            fc="#00d4ff",
+            ec="white",
+            linewidth=2,
+            zorder=10,
+        )
+        satellite_xz = plt.Rectangle(
+            (0, 0),
+            satellite_size,
+            satellite_size,
+            fc="#00d4ff",
+            ec="white",
+            linewidth=2,
+            zorder=10,
+        )
+        ax_xy.add_patch(satellite_xy)
+        ax_xz.add_patch(satellite_xz)
+
+        # Time text
+        time_text = fig.text(
+            0.5,
+            0.02,
+            "",
+            ha="center",
+            fontsize=14,
+            color="white",
+            fontweight="bold",
+            transform=fig.transFigure,
+        )
+
+        # Legends
+        ax_xy.legend(loc="upper right", facecolor="#1a1a2e", labelcolor="white")
+        ax_xz.legend(loc="upper right", facecolor="#1a1a2e", labelcolor="white")
+
+        fig.tight_layout(rect=[0, 0.05, 1, 1])
+
+        # Subsample for reasonable animation length
+        total_frames = len(df)
+        target_duration = min(30, total_frames / fps)  # Max 30 second video
+        step = max(1, int(total_frames / (target_duration * fps)))
+        frame_indices = list(range(0, total_frames, step))
+
+        def init():
+            line_xy.set_data([], [])
+            line_xz.set_data([], [])
+            satellite_xy.set_xy((x[0] - satellite_size / 2, y[0] - satellite_size / 2))
+            satellite_xz.set_xy((x[0] - satellite_size / 2, z[0] - satellite_size / 2))
+            time_text.set_text("")
+            return line_xy, line_xz, satellite_xy, satellite_xz, time_text
+
+        def update(frame_idx):
+            i = frame_indices[frame_idx]
+            # Update trajectory (show trail)
+            line_xy.set_data(x[: i + 1], y[: i + 1])
+            line_xz.set_data(x[: i + 1], z[: i + 1])
+            # Update satellite position
+            satellite_xy.set_xy((x[i] - satellite_size / 2, y[i] - satellite_size / 2))
+            satellite_xz.set_xy((x[i] - satellite_size / 2, z[i] - satellite_size / 2))
+            # Update time
+            sim_time = df["Time"].iloc[i] if "Time" in df.columns else i * 0.05
+            time_text.set_text(f"Time: {sim_time:.2f}s")
+            return line_xy, line_xz, satellite_xy, satellite_xz, time_text
+
         try:
-            if hasattr(self.satellite, "model") and self.satellite.model is not None:
-                model = self.satellite.model
+            # Check for ffmpeg writer
+            if "ffmpeg" not in writers.list():
+                logger.warning("WARNING: ffmpeg not available; using pillow.")
+                writer_name = "pillow"
+                video_path = output_dir / "Simulation_3D_Render.gif"
             else:
-                # Fallback: Load model from XML file typical for V3/V4
-                model_path = Path("models/satellite.xml")
-                if not model_path.exists():
-                    # Try searching in standard locations
-                    possible_paths = [
-                        Path("models/satellite.xml"),
-                        Path("../models/satellite.xml"),
-                        Path("../../models/satellite.xml"),
-                    ]
-                    for p in possible_paths:
-                        if p.exists():
-                            model_path = p
-                            break
+                writer_name = "ffmpeg"
 
-                if model_path.exists():
-                    print(f"Loading MuJoCo model from file for 3D render: {model_path}")
-                    model = mujoco.MjModel.from_xml_path(str(model_path))
-                else:
-                    raise AttributeError("Model attribute missing and file not found")
-
-            renderer = mujoco.Renderer(model, width=width, height=height)
-            data = mujoco.MjData(model)
-        except (AttributeError, ValueError) as e:
-            logger.warning(f"WARNING: Satellite model not available for 3D render: {e}")
-            return
-
-        # Estimate FPS from data
-        fps = 30  # Default
-        if "Actual_Time_Interval" in df.columns:
-            avg_dt = df["Actual_Time_Interval"].mean()
-            if avg_dt > 0:
-                fps = int(round(1.0 / avg_dt))
-
-        # Clamp FPS
-        fps = max(1, min(fps, 60))
-
-        try:
-            from src.satellite_control.utils.orientation_utils import (
-                euler_xyz_to_quat_wxyz,
+            anim = FuncAnimation(
+                fig,
+                update,
+                frames=len(frame_indices),
+                init_func=init,
+                blit=True,
+                interval=1000 / fps,
             )
 
-            is_3d = "Current_Z" in df.columns or "Current_Roll" in df.columns
+            print(f"Rendering {len(frame_indices)} frames...")
+            anim.save(
+                str(video_path),
+                writer=writer_name,
+                fps=fps,
+                progress_callback=lambda i, n: print(f"\r  Frame {i + 1}/{n}", end=""),
+            )
+            print(f"\n Trajectory animation saved to: {video_path}")
 
-            with imageio.get_writer(video_path, fps=fps) as writer:
-                for _, row in df.iterrows():
-                    if is_3d:
-                        x = float(row.get("Current_X", 0.0))
-                        y = float(row.get("Current_Y", 0.0))
-                        z = float(row.get("Current_Z", 0.0))
-                        roll = float(row.get("Current_Roll", 0.0))
-                        pitch = float(row.get("Current_Pitch", 0.0))
-                        yaw = float(row.get("Current_Yaw", 0.0))
-
-                        quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
-                        data.qpos[0:3] = [x, y, z]
-                        data.qpos[3:7] = quat
-
-                        vx = float(row.get("Current_VX", 0.0))
-                        vy = float(row.get("Current_VY", 0.0))
-                        vz = float(row.get("Current_VZ", 0.0))
-                        wx = float(row.get("Current_WX", 0.0))
-                        wy = float(row.get("Current_WY", 0.0))
-                        wz = float(row.get("Current_WZ", 0.0))
-                        data.qvel[0:3] = [vx, vy, vz]
-                        data.qvel[3:6] = [wx, wy, wz]
-                    else:
-                        data.qpos[0] = row["Current_X"]
-                        data.qpos[1] = row["Current_Y"]
-                        data.qpos[2] = row.get("Current_Yaw", 0.0)  # theta
-                        data.qvel[0] = row.get("Current_VX", 0.0)
-                        data.qvel[1] = row.get("Current_VY", 0.0)
-                        data.qvel[2] = row.get(
-                            "Current_Angular_Vel", row.get("Current_WZ", 0.0)
-                        )
-
-                    # Update physics to propogate kinematics
-                    mujoco.mj_forward(model, data)
-
-                    # Manual Visual Update for Glow Check
-                    # Parse Command_Vector string "[0, 0, 1, ...]"
-                    cmd_str = str(row["Command_Vector"]).strip("[]")
-                    if cmd_str:
-                        # Handle both comma and space separated values
-                        cmd_vals = [float(x) for x in cmd_str.replace(",", " ").split()]
-                        thruster_count = len(cmd_vals)
-                        if hasattr(self.satellite, "thrusters"):
-                            thruster_count = max(
-                                thruster_count, len(self.satellite.thrusters)
-                            )
-                        # Active indices (1-based)
-                        active_thrusters_indices = [
-                            i + 1 for i, val in enumerate(cmd_vals) if val > 0.5
-                        ]
-
-                        try:
-                            for thruster_idx in range(1, thruster_count + 1):
-                                site_name = f"thruster{thruster_idx}"
-                                site_id = mujoco.mj_name2id(
-                                    self.satellite.model,
-                                    mujoco.mjtObj.mjOBJ_SITE,
-                                    site_name,
-                                )
-
-                                if site_id != -1:
-                                    is_active = thruster_idx in active_thrusters_indices
-                                    if is_active:
-                                        self.satellite.model.site_rgba[site_id] = [
-                                            1.0,
-                                            0.2,
-                                            0.2,
-                                            1.0,
-                                        ]  # Red Glow
-                                    else:
-                                        # Dim
-                                        original_colors = {
-                                            i: [0.0, 0.45, 1.0, 0.35]
-                                            for i in range(1, thruster_count + 1)
-                                        }
-                                        self.satellite.model.site_rgba[site_id] = (
-                                            original_colors.get(
-                                                thruster_idx, [0.5, 0.5, 0.5, 0.3]
-                                            )
-                                        )
-                        except Exception:
-                            pass
-
-                    renderer.update_scene(data, camera="overhead_cam")
-                    frame = renderer.render()
-                    writer.append_data(frame)  # type: ignore[attr-defined]
-
-            print(f" MuJoCo 3D animation saved to: {video_path}")
         except Exception as e:
-            logger.warning(f"WARNING: Could not write MuJoCo MP4. Error: {e}")
+            logger.warning(f"WARNING: Could not write animation. Error: {e}")
+        finally:
+            plt.close(fig)
 
     def auto_generate_visualizations(self):
         """
@@ -910,7 +934,7 @@ class SimulationVisualizationManager:
             finally:
                 sys.stdout = old_stdout
 
-            # Generate performance plots FIRST (faster feedback for user)
+            # Generate performance plots
             try:
                 print("\nCreating Plots...")
                 plots_path = self.data_save_path / "Plots"
@@ -927,7 +951,7 @@ class SimulationVisualizationManager:
             except Exception as plots_err:
                 print(f"  Performance plots generation failed: {plots_err}")
 
-            # Generate animation SECOND (takes longer)
+            # Generate matplotlib-based animation (no MuJoCo)
             try:
                 print("\nCreating animation...")
                 animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
@@ -936,9 +960,7 @@ class SimulationVisualizationManager:
                 old_stdout = sys.stdout
                 sys.stdout = ProgressSuppressor(sys.stdout)
                 try:
-                    # Use MuJoCo native renderer (much faster)
-                    self.save_mujoco_video(self.data_save_path)
-                    animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
+                    generator.generate_animation()
                 finally:
                     sys.stdout = old_stdout
 
@@ -946,7 +968,7 @@ class SimulationVisualizationManager:
                     print(" Animation saved successfully!")
                     print(f" File location: {animation_path}")
                 else:
-                    print(" Animation generation failed (no file created).")
+                    print(" Animation generation skipped (matplotlib-based).")
             except Exception as anim_err:
                 print(f"  Animation generation failed: {anim_err}")
 

@@ -55,8 +55,7 @@ shapely>=1.8.0
 pytest>=6.2.0
 hypothesis>=6.0.0
 
-# 3D Simulation
-mujoco==3.1.3
+# (MuJoCo removed - using C++ physics engine only)
 
 # Video rendering
 imageio[ffmpeg]>=2.31.0
@@ -73,9 +72,8 @@ typer>=0.7.0
 fastapi>=0.95.0
 uvicorn>=0.22.0
 
-# Configuration Management (Hydra)
-hydra-core>=1.3.0
-omegaconf>=2.3.0
+# YAML (now used instead of Hydra/OmegaConf)
+pyyaml>=6.0
 
 # C++ Build System
 pybind11>=2.10.0

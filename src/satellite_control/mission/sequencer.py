@@ -13,9 +13,10 @@ Supported Stage Types:
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
+import yaml
+from pathlib import Path
 
 from src.satellite_control.config.mission_state import MissionState
 
@@ -48,13 +49,23 @@ class MissionSequencer:
         self.stage_start_time: Optional[float] = None
         self.last_update_time: float = 0.0
 
-    def load_mission(self, mission_config: DictConfig) -> None:
+    def load_mission(self, mission_config: Union[Dict[str, Any], str, Path]) -> None:
         """
-        Load a mission sequence from a configuration object.
+        Load a mission sequence from a configuration dict or YAML file path.
 
         Args:
-            mission_config: OmegaConf DictConfig containing 'stages' list.
+            mission_config: Dict containing 'stages' list, or path to YAML file.
         """
+        # Handle file path input
+        if isinstance(mission_config, (str, Path)):
+            path = Path(mission_config)
+            if path.exists():
+                with open(path, "r") as f:
+                    mission_config = yaml.safe_load(f)
+            else:
+                logger.error(f"Mission file not found: {path}")
+                return
+
         logger.info(f"Loading mission: {mission_config.get('name', 'Unnamed')}")
         self.stages = []
 
@@ -62,10 +73,10 @@ class MissionSequencer:
             logger.warning("No stages found in mission config!")
             return
 
-        for stage_conf in mission_config.stages:
+        for stage_conf in mission_config["stages"]:
             stage_type = stage_conf.get("type", "unknown")
-            # Convert config to dict, excluding 'type'
-            params = OmegaConf.to_container(stage_conf, resolve=True)
+            # Copy config and remove 'type' key
+            params = dict(stage_conf)
             if "type" in params:
                 del params["type"]
 

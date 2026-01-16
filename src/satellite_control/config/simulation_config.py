@@ -257,15 +257,13 @@ class SimulationConfig:
             mission_state=create_mission_state(),  # Default mission state
         )
 
-    def to_hydra_cfg(self) -> Any:
+    def to_dict(self) -> dict:
         """
-        Convert to Hydra DictConfig format.
+        Convert to plain dictionary format.
 
         Returns:
-            OmegaConf DictConfig mirroring the structure expected by MPCController
+            Dict mirroring the structure expected by MPCController
         """
-        from omegaconf import OmegaConf
-
         # 1. Vehicle Config
         physics = self.app_config.physics
 
@@ -293,7 +291,7 @@ class SimulationConfig:
             "inertia": inertia_list,
             "center_of_mass": list(physics.com_offset),
             "thrusters": thrusters_list,
-            "reaction_wheels": [],  # V4.0.0: AppConfig doesn't track RWs yet, using defaults
+            "reaction_wheels": [],
             "size": physics.satellite_size,
         }
 
@@ -311,7 +309,6 @@ class SimulationConfig:
                 "angular_velocity": mpc.q_angular_velocity,
                 "thrust": mpc.r_thrust,
                 "rw_torque": mpc.r_rw_torque,
-                "switch": 0.0,  # Legacy
             },
             "constraints": {
                 "max_velocity": mpc.max_velocity,
@@ -330,7 +327,6 @@ class SimulationConfig:
                 "enable_z_tilt": mpc.enable_z_tilt,
                 "z_tilt_gain": mpc.z_tilt_gain,
                 "z_tilt_max_deg": mpc.z_tilt_max_deg,
-                "verbose_mpc": getattr(mpc, "verbose_mpc", False),
             },
         }
 
@@ -343,11 +339,9 @@ class SimulationConfig:
         }
 
         # Assemble full config
-        full_config = {
+        return {
             "vehicle": vehicle_dict,
             "control": {"mpc": mpc_dict},
             "sim": sim_dict,
-            "env": "simulation",  # Default env tag
+            "env": "simulation",
         }
-
-        return OmegaConf.create(full_config)
