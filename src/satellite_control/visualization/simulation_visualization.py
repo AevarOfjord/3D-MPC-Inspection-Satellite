@@ -233,19 +233,6 @@ class SimulationVisualizationManager:
         else:
             target_x, target_y, target_angle = 0.0, 0.0, 0.0
 
-        # Target tolerance circle
-        target_circle = patches.Circle(
-            (target_x, target_y),
-            self.position_tolerance,  # type: ignore[arg-type]
-            fill=False,
-            color="green",
-            linestyle="--",
-            alpha=0.5,
-            zorder=20,
-        )
-        target_circle.set_zorder(20)
-        self.satellite.ax_main.add_patch(target_circle)
-
         # Target orientation arrow
         target_arrow_length = 0.2
         target_arrow_end = np.array(
@@ -356,7 +343,7 @@ class SimulationVisualizationManager:
                     obs_x,
                     obs_y,
                     f"O{i}",
-                    fontsize=10,
+                    fontsize=8,
                     color="white",
                     ha="center",
                     va="center",
@@ -459,6 +446,18 @@ class SimulationVisualizationManager:
         )
         self.satellite.ax_main.add_patch(satellite_patch)
 
+        # Draw center marker (Navy Square 5x5cm)
+        # Use a polygon to handle rotation correctly
+        half_s = 0.025
+        corners = np.array(
+            [[-half_s, -half_s], [half_s, -half_s], [half_s, half_s], [-half_s, half_s]]
+        )
+        rotated_corners = (rotation_matrix @ corners.T).T + self.satellite.position[:2]
+        center_marker = patches.Polygon(
+            rotated_corners, closed=True, facecolor="#000080", zorder=6
+        )
+        self.satellite.ax_main.add_patch(center_marker)
+
         # Draw thrusters with color coding
         for thruster_id, local_pos in self.satellite.thrusters.items():
             global_pos = (
@@ -484,117 +483,991 @@ class SimulationVisualizationManager:
             )
 
     def update_mpc_info_panel(self):
-        """Update the information panel to match Visualize_Simulation_Linearized copy.py format."""
+        """Update the information panel to match the dashboard visualization format."""
+        # Clear the axes
         self.satellite.ax_info.clear()
+
+        # Set background color to match the dark theme
+        self.satellite.ax_info.set_facecolor("#FFFFFF")
+
+        # Remove axis spines
+        for spine in self.satellite.ax_info.spines.values():
+            spine.set_visible(False)
+
         self.satellite.ax_info.set_xlim(0, 1)
         self.satellite.ax_info.set_ylim(0, 1)
-        self.satellite.ax_info.axis("off")
-        self.satellite.ax_info.set_title("Simulation Info", fontsize=12, weight="bold")
+        self.satellite.ax_info.set_xticks([])
+        self.satellite.ax_info.set_yticks([])
 
-        # Get current state and calculate values
-        current_state = self.get_current_state()
-        net_force, net_torque = self.satellite.calculate_forces_and_torques()
+        # Colors for the UI
+        COLOR_BG = "#FFFFFF"
 
-        # Extract 2D/3D components
-        curr_x, curr_y = current_state[0], current_state[1]
-        q_c = current_state[3:7]
-        curr_yaw = np.arctan2(
-            2 * (q_c[0] * q_c[3] + q_c[1] * q_c[2]), 1 - 2 * (q_c[2] ** 2 + q_c[3] ** 2)
+        COLOR_LABEL = "#404040"
+        COLOR_VALUE = "#000000"  # Black for values
+        COLOR_VALUE_CYAN = (
+            "#000080"  # Navy Blue for active values (high contrast on white)
         )
+        COLOR_GREEN = "#008000"  # Darker green for visibility
+        COLOR_BAR_BG = "#E0E0E0"
+        COLOR_BAR_FILL = "#000080"
 
-        # Calculate errors
+        # Add background rectangle covering the whole panel
+        # (Although set_facecolor should work, this ensures full coverage)
+        rect = patches.Rectangle((0, 0), 1, 1, color=COLOR_BG, zorder=-1)
+        self.satellite.ax_info.add_patch(rect)
+
+        # Get current state
+        current_state = self.get_current_state()
+        # [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+        pos = current_state[0:3]
+        quat = current_state[3:7]
+        vel = current_state[7:10]
+        ang_vel = current_state[10:13]
+
+        # Calculate Yaw (and Roll/Pitch for completeness)
+        # q = [w, x, y, z]
+        w, x, y, z = quat
+        # Yaw (z-axis rotation)
+        yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+        roll = np.arctan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+        pitch = np.arcsin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
+
+        # Calculate Errors
         if self.target_state is not None:
-            targ_x, targ_y = self.target_state[0], self.target_state[1]
-            q_t = self.target_state[3:7]
-            targ_yaw = np.arctan2(
-                2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
-                1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
+            target_pos = self.target_state[0:3]
+            pos_err = pos - target_pos
+            pos_err_norm = np.linalg.norm(pos_err)
+
+            # Approx angular error (last_ang_error is computed in simulation loop)
+        else:
+            pos_err = np.zeros(3)
+            pos_err_norm = 0.0
+
+        # Speed and Range
+        speed = np.linalg.norm(vel)
+
+        # --- SECTION 1: TELEMETRY ---
+        y_cursor = 0.96
+
+        # Header
+        self.satellite.ax_info.text(
+            0.05,
+            y_cursor,
+            "((o)) TELEMETRY",
+            color=COLOR_VALUE,
+            fontsize=8,
+            fontweight="bold",
+        )
+        y_cursor -= 0.02
+        self.satellite.ax_info.plot(
+            [0.05, 0.95], [y_cursor, y_cursor], color="#404040", linewidth=1
+        )
+        y_cursor -= 0.06
+
+        # Column Headers
+        col_x_start = 0.25
+        col_spacing = 0.22
+        self.satellite.ax_info.text(
+            col_x_start, y_cursor, "X", color=COLOR_LABEL, fontsize=7, ha="center"
+        )
+        self.satellite.ax_info.text(
+            col_x_start + col_spacing,
+            y_cursor,
+            "Y",
+            color=COLOR_LABEL,
+            fontsize=7,
+            ha="center",
+        )
+        self.satellite.ax_info.text(
+            col_x_start + 2 * col_spacing,
+            y_cursor,
+            "Z",
+            color=COLOR_LABEL,
+            fontsize=7,
+            ha="center",
+        )
+        y_cursor -= 0.05
+
+        # Data Rows Helper
+        def add_row(label, val_x, val_y, val_z, units, y_pos):
+            self.satellite.ax_info.text(
+                0.05, y_pos, label, color=COLOR_LABEL, fontsize=7, fontweight="bold"
             )
 
-            pos_error = float(np.linalg.norm(current_state[:2] - self.target_state[:2]))
-            angle_error = abs(np.degrees(self.angle_difference(targ_yaw, curr_yaw)))
-            target_x_str = f"X: {targ_x:.3f} m"
-            target_y_str = f"Y: {targ_y:.3f} m"
-            target_yaw_str = f"Yaw: {np.degrees(targ_yaw):.1f}°"
-        else:
-            pos_error = 0.0
-            angle_error = 0.0
-            target_x_str = "X: N/A"
-            target_y_str = "Y: N/A"
-            target_yaw_str = "Yaw: N/A"
-
-        # Get active thrusters
-        active_thrusters = (
-            list(sorted(self.satellite.active_thrusters))
-            if self.satellite.active_thrusters
-            else []
-        )
-
-        mpc_time = self.mpc_solve_times[-1] if self.mpc_solve_times else 0.0
-        mpc_status = "Active" if self.is_running else "Stopped"
-
-        # Current step estimation
-        current_step = int(self.simulation_time / self.satellite.dt)
-        max_steps = None
-        if self.max_simulation_time and self.max_simulation_time > 0:
-            max_steps = int(self.max_simulation_time / self.satellite.dt)
-
-        # Information text matching the visualization format
-        info_text = [
-            "LINEARIZED MPC SIMULATION",
-            f"{'=' * 25}",
-            f"Step: {current_step}/{max_steps if max_steps is not None else 'unlimited'}",
-            f"Time: {self.simulation_time:.1f}s",
-            "",
-            "CURRENT STATE:",
-            f"X: {curr_x:.3f} m",
-            f"Y: {curr_y:.3f} m",
-            f"Yaw: {np.degrees(curr_yaw):.1f}°",
-            "",
-            "TARGET STATE:",
-            target_x_str,
-            target_y_str,
-            target_yaw_str,
-            "",
-            "CONTROL ERRORS:",
-            f"Position: {pos_error:.3f} m",
-            f"Angle: {angle_error:.1f}°",
-            "",
-            "MPC CONTROLLER:",
-            f"Status: {mpc_status}",
-            f"Solve Time: {mpc_time:.3f}s",
-            "",
-            "THRUSTER CONTROL:",
-            f"Active: {active_thrusters}",
-            f"Count: {len(active_thrusters)}/8",
-        ]
-
-        # Display text with the same formatting as visualization
-        y_pos = 0.95
-        for line in info_text:
-            if line.startswith("="):
-                weight = "normal"
-                size = 9
-            elif line.isupper() and line.endswith(":"):
-                weight = "bold"
-                size = 10
-            elif line.startswith(("LINEARIZED MPC", "Step:", "Time:")):
-                weight = "bold"
-                size = 11
-            else:
-                weight = "normal"
-                size = 9
+            # X
+            self.satellite.ax_info.text(
+                col_x_start,
+                y_pos,
+                f"{val_x:+.2f}",
+                color=COLOR_VALUE,
+                fontsize=7,
+                ha="center",
+                fontfamily="monospace",
+                fontweight="bold",
+            )
+            # Y
+            self.satellite.ax_info.text(
+                col_x_start + col_spacing,
+                y_pos,
+                f"{val_y:+.2f}",
+                color=COLOR_VALUE,
+                fontsize=7,
+                ha="center",
+                fontfamily="monospace",
+                fontweight="bold",
+            )
+            # Z
+            self.satellite.ax_info.text(
+                col_x_start + 2 * col_spacing,
+                y_pos,
+                f"{val_z:+.2f}",
+                color=COLOR_VALUE,
+                fontsize=7,
+                ha="center",
+                fontfamily="monospace",
+                fontweight="bold",
+            )
 
             self.satellite.ax_info.text(
-                0.05,
-                y_pos,
-                line,
-                fontsize=size,
-                weight=weight,
-                verticalalignment="top",
+                0.95, y_pos, units, color=COLOR_LABEL, fontsize=7, ha="right"
+            )
+
+        add_row("POS", pos[0], pos[1], pos[2], "m", y_cursor)
+        y_cursor -= 0.04
+        add_row("VEL", vel[0], vel[1], vel[2], "m/s", y_cursor)
+        y_cursor -= 0.04
+        add_row("ERR", pos_err[0], pos_err[1], pos_err[2], "m", y_cursor)
+        y_cursor -= 0.04
+
+        # Rotation (degrees)
+        add_row(
+            "ROT", np.degrees(roll), np.degrees(pitch), np.degrees(yaw), "°", y_cursor
+        )
+        y_cursor -= 0.04
+        # Spin (deg/s)
+        add_row(
+            "SPIN",
+            np.degrees(ang_vel[0]),
+            np.degrees(ang_vel[1]),
+            np.degrees(ang_vel[2]),
+            "°/s",
+            y_cursor,
+        )
+
+        # Sub-labels for ROT/SPIN
+        y_sub = y_cursor - 0.025
+        self.satellite.ax_info.text(
+            col_x_start, y_sub, "ROLL", color="#404040", fontsize=7, ha="center"
+        )
+        self.satellite.ax_info.text(
+            col_x_start + col_spacing,
+            y_sub,
+            "PITCH",
+            color="#404040",
+            fontsize=7,
+            ha="center",
+        )
+        self.satellite.ax_info.text(
+            col_x_start + 2 * col_spacing,
+            y_sub,
+            "YAW",
+            color="#404040",
+            fontsize=7,
+            ha="center",
+        )
+
+        y_cursor -= 0.08
+
+        # --- SECTION 2: CONTROLLER ---
+
+        y_cursor -= 0.05
+        self.satellite.ax_info.text(
+            0.06,
+            y_cursor,
+            "CONTROLLER",
+            color=COLOR_VALUE,
+            fontsize=8,
+            fontweight="bold",
+        )
+        y_cursor -= 0.02
+        self.satellite.ax_info.plot(
+            [0.06, 0.94], [y_cursor, y_cursor], color="#404040", linewidth=1
+        )
+        y_cursor -= 0.05
+
+        solve_time = getattr(self.controller, "last_solve_time", 0.0) * 1000.0  # ms
+        pos_error_val = getattr(self.controller, "last_pos_error", 0.0)
+        ang_error_deg = np.degrees(getattr(self.controller, "last_ang_error", 0.0))
+
+        self.satellite.ax_info.text(
+            0.06, y_cursor, "SOLVE", color=COLOR_LABEL, fontsize=7
+        )
+        col = COLOR_GREEN if solve_time < 50 else COLOR_VALUE  # Green if healthy
+        self.satellite.ax_info.text(
+            0.90,
+            y_cursor,
+            f"{solve_time:.1f} ms",
+            color=col,
+            fontsize=7,
+            fontweight="bold",
+            ha="right",
+            fontfamily="monospace",
+        )
+        y_cursor -= 0.05
+
+        self.satellite.ax_info.text(
+            0.06, y_cursor, "POS ERR", color=COLOR_LABEL, fontsize=7
+        )
+        col = COLOR_GREEN if pos_error_val < 0.05 else COLOR_VALUE
+        self.satellite.ax_info.text(
+            0.90,
+            y_cursor,
+            f"{pos_error_val:.3f} m",
+            color=col,
+            fontsize=7,
+            fontweight="bold",
+            ha="right",
+            fontfamily="monospace",
+        )
+        y_cursor -= 0.05
+
+        self.satellite.ax_info.text(
+            0.06, y_cursor, "ANG ERR", color=COLOR_LABEL, fontsize=7
+        )
+        col = COLOR_GREEN if ang_error_deg < 5.0 else COLOR_VALUE
+        self.satellite.ax_info.text(
+            0.90,
+            y_cursor,
+            f"{ang_error_deg:.1f}°",
+            color=col,
+            fontsize=7,
+            fontweight="bold",
+            ha="right",
+            fontfamily="monospace",
+        )
+
+        y_cursor -= 0.08
+
+        # --- SECTION 3: ACTUATORS ---
+
+        y_cursor -= 0.05
+        self.satellite.ax_info.text(
+            0.06,
+            y_cursor,
+            "ACTUATORS",
+            color=COLOR_LABEL,
+            fontsize=8,
+            fontweight="bold",
+        )
+        y_cursor -= 0.02
+        self.satellite.ax_info.plot(
+            [0.06, 0.94], [y_cursor, y_cursor], color="#404040", linewidth=1
+        )
+        y_cursor -= 0.03
+
+        # Thrusters (Left side)
+        self.satellite.ax_info.text(
+            0.25,
+            y_cursor,
+            "THRUSTERS",
+            color=COLOR_LABEL,
+            fontsize=7,
+            ha="center",
+            fontweight="bold",
+        )
+
+        # Reaction Wheels (Right side)
+        self.satellite.ax_info.text(
+            0.75,
+            y_cursor,
+            "RW",
+            color=COLOR_LABEL,
+            fontsize=7,
+            ha="center",
+            fontweight="bold",
+        )
+
+        y_cursor -= 0.02
+
+        # Draw Thruster Bars (6 Thrusters)
+        thruster_output = getattr(
+            self.controller, "thruster_actual_output", np.zeros(6)
+        )
+
+        # Bar chart settings
+        bar_width = 0.05
+        bar_height_max = 0.10
+        start_x = 0.06
+        spacing = 0.065
+
+        labels = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
+
+        for i in range(6):
+            if i < len(thruster_output):
+                val = thruster_output[i]
+            else:
+                val = 0.0
+
+            x_pos = start_x + i * spacing
+            y_base = y_cursor - bar_height_max
+
+            # Background bar
+            rect_bg = patches.Rectangle(
+                (x_pos, y_base), bar_width, bar_height_max, facecolor=COLOR_BAR_BG
+            )
+            self.satellite.ax_info.add_patch(rect_bg)
+
+            # Active bar
+            if val > 0.01:
+                h = val * bar_height_max
+                rect_fill = patches.Rectangle(
+                    (x_pos, y_base), bar_width, h, facecolor=COLOR_BAR_FILL
+                )
+                self.satellite.ax_info.add_patch(rect_fill)
+
+            # Label
+            self.satellite.ax_info.text(
+                x_pos + bar_width / 2,
+                y_base - 0.03,
+                labels[i],
+                color=COLOR_LABEL,
+                fontsize=7,
+                ha="center",
+            )
+
+        # Draw RW Bars (3 Wheels)
+        last_ctrl = getattr(self.controller, "last_control_output", None)
+        rw_vals = [0.0, 0.0, 0.0]
+        if last_ctrl is not None and len(last_ctrl) >= 9:  # 6 thr + 3 rw
+            rw_vals = last_ctrl[6:9]
+
+        # Normalize for display (assuming max torque ~0.1Nm usually, clamping for visual)
+        MAX_DISPLAY_TORQUE = 0.1
+
+        rw_start_x = 0.65
+        rw_spacing = 0.08
+        rw_labels = ["X", "Y", "Z"]
+
+        for i in range(3):
+            val = rw_vals[i]
+            x_pos = rw_start_x + i * rw_spacing
+            y_base = y_cursor - bar_height_max
+
+            # Background
+            rect_bg = patches.Rectangle(
+                (x_pos, y_base), bar_width, bar_height_max, facecolor=COLOR_BAR_BG
+            )
+            self.satellite.ax_info.add_patch(rect_bg)
+
+            # Active
+            abs_val = min(1.0, abs(val) / MAX_DISPLAY_TORQUE)
+            if abs_val > 0.01:
+                h = abs_val * bar_height_max
+                col = COLOR_BAR_FILL
+                # if val < 0: col = "#C04040" # Red for negative? optional
+                rect_fill = patches.Rectangle(
+                    (x_pos, y_base), bar_width, h, facecolor=col
+                )
+                self.satellite.ax_info.add_patch(rect_fill)
+
+            # Label
+            self.satellite.ax_info.text(
+                x_pos + bar_width / 2,
+                y_base - 0.03,
+                rw_labels[i],
+                color=COLOR_LABEL,
+                fontsize=7,
+                ha="center",
+            )
+
+            # Value Text
+            self.satellite.ax_info.text(
+                x_pos + bar_width / 2,
+                y_base - 0.06,
+                f"{val:.1f}",
+                color=COLOR_LABEL,
+                fontsize=7,
+                ha="center",
                 fontfamily="monospace",
             )
-            y_pos -= 0.035
+
+    def save_trajectory_animation(
+        self, output_dir: Path, width: int = 1200, height: int = 600
+    ) -> None:
+        """
+        Generate a matplotlib-based trajectory animation with X-Y and X-Z panels.
+        Matches the dark-theme dashboard visualization style.
+
+        Args:
+            output_dir: Directory to save the video file
+            width: Video width in pixels
+            height: Video height in pixels
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        from matplotlib.animation import FuncAnimation
+        import pandas as pd
+
+        csv_path = output_dir / "control_data.csv"
+        if not csv_path.exists():
+            logger.warning(f"WARNING: CSV log not found at {csv_path}; skip animation.")
+            return
+
+        print(f"Loading simulation data for animation from: {csv_path}")
+        try:
+            df = pd.read_csv(csv_path)
+        except Exception as e:
+            logger.warning(f"WARNING: Could not read CSV data: {e}")
+            return
+
+        if len(df) == 0:
+            logger.warning("WARNING: Empty simulation data; skipping animation.")
+            return
+
+        video_path = output_dir / "Simulation_3D_Render.mp4"
+
+        # Use 0 as default if column missing
+        def get_col(name, default=0.0):
+            return df.get(name, pd.Series([default] * len(df))).values
+
+        # Extract trajectory data
+        x = get_col("Current_X")
+        y = get_col("Current_Y")
+        z = get_col("Current_Z")
+
+        vx = get_col("Current_VX")
+        vy = get_col("Current_VY")
+        vz = get_col("Current_VZ")
+
+        # Euler angles (assuming Radians in CSV based on inspection)
+        roll = get_col("Current_Roll")
+        pitch = get_col("Current_Pitch")
+        yaw = get_col("Current_Yaw")
+
+        wx = get_col("Current_WX")
+        wy = get_col("Current_WY")
+        wz = get_col("Current_WZ")
+
+        # Control info
+        solve_times = get_col("MPC_Solve_Time")  # s
+
+        # Reaction Wheels
+        rw_x = get_col("RW_Torque_X")
+        rw_y = get_col("RW_Torque_Y")
+        rw_z = get_col("RW_Torque_Z")
+
+        # Angular Errors for display
+        err_roll = get_col("Error_Roll")
+        err_pitch = get_col("Error_Pitch")
+        err_yaw = get_col("Error_Yaw")
+
+        # Time
+        if "Control_Time" in df.columns:
+            time_col = df["Control_Time"].values
+        elif "Time" in df.columns:
+            time_col = df["Time"].values
+        else:
+            time_col = np.arange(len(df)) * 0.05
+
+        command_vectors = df.get("Command_Vector", pd.Series(["[]"] * len(df))).values
+
+        # Get target position (final)
+        target_x = get_col("Target_X")[-1]
+        target_y = get_col("Target_Y")[-1]
+        target_z = get_col("Target_Z")[-1]
+
+        # Calculate axis range - use same range for both axes (square)
+        all_vals = np.concatenate([x, y, z, [target_x], [target_y], [target_z]])
+        data_range = max(all_vals) - min(all_vals)
+        padding = max(0.3, data_range * 0.2)
+
+        center_x = (max(x) + min(x)) / 2
+        center_y = (max(y) + min(y)) / 2
+        center_z = (max(z) + min(z)) / 2
+        half_range = (
+            max(
+                max(x) - min(x),
+                max(y) - min(y),
+                max(z) - min(z),
+                abs(target_x - center_x) * 2,
+                abs(target_y - center_y) * 2,
+                abs(target_z - center_z) * 2,
+            )
+            / 2
+            + padding
+        )
+
+        # Create figure
+        fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
+        gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.6])  # Wider info panel
+        ax_xy = fig.add_subplot(gs[0, 0])
+        ax_xz = fig.add_subplot(gs[0, 1])
+        ax_info = fig.add_subplot(gs[0, 2])
+
+        # Set light theme for figure
+        fig.patch.set_facecolor("#FFFFFF")
+
+        # Style layout axes (matching PlotStyle)
+        COLOR_TRAJECTORY = "#1f77b4"  # Blue
+        COLOR_TARGET = "#d62728"  # Red
+        COLOR_SUCCESS = "#2ca02c"  # Green
+        COLOR_TRAJECTORY = "#1f77b4"  # Blue
+        COLOR_TARGET = "#d62728"  # Red
+        COLOR_SUCCESS = "#2ca02c"  # Green
+        COLOR_AXIS = "#404040"  # Dark Grey axes
+        GRID_ALPHA = 0.2
+        LINEWIDTH = 1.5
+
+        def setup_axis(ax, xlabel, ylabel, title):
+            ax.set_facecolor("#FFFFFF")
+            ax.set_xlabel(xlabel, fontsize=10, color=COLOR_AXIS)
+            ax.set_ylabel(ylabel, fontsize=10, color=COLOR_AXIS)
+            ax.set_title(title, fontsize=12, fontweight="bold", color="#000000")
+            ax.grid(True, alpha=GRID_ALPHA, color=COLOR_AXIS)
+            ax.spines["bottom"].set_color(COLOR_AXIS)
+            ax.spines["top"].set_color(COLOR_AXIS)
+            ax.spines["right"].set_color(COLOR_AXIS)
+            ax.spines["left"].set_color(COLOR_AXIS)
+            ax.tick_params(colors=COLOR_AXIS)
+            ax.set_xlim(center_x - half_range, center_x + half_range)
+            ax.set_aspect("equal", adjustable="box")
+
+        setup_axis(ax_xy, "X Position (m)", "Y Position (m)", "Trajectory (X-Y)")
+        ax_xy.set_ylim(center_y - half_range, center_y + half_range)
+
+        setup_axis(ax_xz, "X Position (m)", "Z Position (m)", "Trajectory (X-Z)")
+        ax_xz.set_ylim(center_z - half_range, center_z + half_range)
+
+        # Configure Info Panel
+        ax_info.set_facecolor("#FFFFFF")
+        ax_info.axis("off")
+        # Add background rect
+        rect = patches.Rectangle((0, 0), 1, 1, color="#FFFFFF", zorder=-1)
+        ax_info.add_patch(rect)
+
+        # Initial Plotting
+        ax_xy.plot(target_x, target_y, "o", color=COLOR_TARGET, markersize=10, zorder=5)
+        ax_xz.plot(target_x, target_z, "o", color=COLOR_TARGET, markersize=10, zorder=5)
+
+        ax_xy.plot(x[0], y[0], "o", color=COLOR_SUCCESS, markersize=8, zorder=5)
+        ax_xz.plot(x[0], z[0], "o", color=COLOR_SUCCESS, markersize=8, zorder=5)
+
+        (line_xy,) = ax_xy.plot(
+            [], [], color=COLOR_TRAJECTORY, linewidth=LINEWIDTH, alpha=0.9
+        )
+        (line_xz,) = ax_xz.plot(
+            [], [], color=COLOR_TRAJECTORY, linewidth=LINEWIDTH, alpha=0.9
+        )
+
+        satellite_size = 0.30
+        satellite_xy = plt.Rectangle(
+            (0, 0),
+            satellite_size,
+            satellite_size,
+            fc=COLOR_TRAJECTORY,
+            ec="white",
+            linewidth=1,
+            zorder=10,
+            alpha=0.8,
+        )
+        satellite_xz = plt.Rectangle(
+            (0, 0),
+            satellite_size,
+            satellite_size,
+            fc=COLOR_TRAJECTORY,
+            ec="white",
+            linewidth=1,
+            zorder=10,
+            alpha=0.8,
+        )
+        ax_xy.add_patch(satellite_xy)
+        ax_xz.add_patch(satellite_xz)
+
+        # Center marker (5x5cm Navy Square)
+        center_size = 0.05
+        center_xy = plt.Rectangle(
+            (x[0] - center_size / 2, y[0] - center_size / 2),
+            center_size,
+            center_size,
+            fc="#000080",
+            zorder=11,
+        )
+        center_xz = plt.Rectangle(
+            (x[0] - center_size / 2, z[0] - center_size / 2),
+            center_size,
+            center_size,
+            fc="#000080",
+            zorder=11,
+        )
+        ax_xy.add_patch(center_xy)
+        ax_xz.add_patch(center_xz)
+
+        fig.tight_layout(rect=[0, 0.05, 1, 0.95])
+
+        # Subsample
+        step = 2
+        frame_indices = list(range(0, len(df), step))
+
+        total_sim_time = (
+            time_col[-1] - time_col[0] if len(time_col) > 1 else len(df) * 0.05
+        )
+        fps = len(frame_indices) / total_sim_time
+        fps = max(1, fps)
+
+        # Helper to parse command vector string to floats
+        def parse_command_vector(cmd_str):
+            try:
+                if not cmd_str or cmd_str == "[]":
+                    return np.zeros(6)
+                cmd_str = str(cmd_str).strip("[]")
+                if not cmd_str:
+                    return np.zeros(6)
+                # Parse
+                parts = [float(x.strip()) for x in cmd_str.split(",")]
+                # Ensure length 6
+                res = np.zeros(6)
+                length = min(len(parts), 6)
+                res[:length] = parts[:length]
+                return res
+            except Exception:
+                return np.zeros(6)
+
+        def init():
+            line_xy.set_data([], [])
+            line_xz.set_data([], [])
+            satellite_xy.set_xy((x[0] - satellite_size / 2, y[0] - satellite_size / 2))
+            satellite_xz.set_xy((x[0] - satellite_size / 2, z[0] - satellite_size / 2))
+            center_xy.set_xy((x[0] - center_size / 2, y[0] - center_size / 2))
+            center_xz.set_xy((x[0] - center_size / 2, z[0] - center_size / 2))
+            ax_info.clear()  # Clear info panel
+            ax_info.axis("off")
+            return line_xy, line_xz, satellite_xy, satellite_xz, center_xy, center_xz
+
+        def update(frame_idx):
+            i = frame_indices[frame_idx]
+
+            # Trajectory update
+            line_xy.set_data(x[: i + 1], y[: i + 1])
+            line_xz.set_data(x[: i + 1], z[: i + 1])
+            satellite_xy.set_xy((x[i] - satellite_size / 2, y[i] - satellite_size / 2))
+            satellite_xz.set_xy((x[i] - satellite_size / 2, z[i] - satellite_size / 2))
+            # Update center markers
+            center_xy.set_xy((x[i] - center_size / 2, y[i] - center_size / 2))
+            center_xz.set_xy((x[i] - center_size / 2, z[i] - center_size / 2))
+
+            # --- INFO PANEL UPDATE ---
+            ax_info.clear()
+            ax_info.set_xlim(0, 1)
+            ax_info.set_ylim(0, 1)
+            ax_info.axis("off")
+
+            # Colors
+            # Colors
+            C_VAL = "#000000"
+            C_LBL = "#404040"
+            C_CYAN = "#000080"
+            C_GRN = "#008000"
+            C_BAR_BG = "#E0E0E0"
+            C_BAR_FILL = "#000080"
+
+            y_cur = 0.98
+
+            # TELEMETRY
+            ax_info.text(
+                0.05,
+                y_cur,
+                "TELEMETRY",
+                color=C_VAL,
+                fontsize=8,
+                fontweight="bold",
+            )
+            y_cur -= 0.02
+            ax_info.plot([0.05, 0.95], [y_cur, y_cur], color="#404040", lw=1)
+            y_cur -= 0.05
+
+            # Headers
+            col_x = 0.25
+            col_sp = 0.22
+            ax_info.text(col_x, y_cur, "X", color=C_LBL, ha="center", fontsize=7)
+            ax_info.text(
+                col_x + col_sp, y_cur, "Y", color=C_LBL, ha="center", fontsize=7
+            )
+            ax_info.text(
+                col_x + 2 * col_sp, y_cur, "Z", color=C_LBL, ha="center", fontsize=7
+            )
+            y_cur -= 0.04
+
+            def row(lbl, vx, vy, vz, unit, y):
+                ax_info.text(0.05, y, lbl, color=C_LBL, fontweight="bold", fontsize=7)
+                ax_info.text(
+                    col_x,
+                    y,
+                    f"{vx:+.2f}",
+                    color=C_VAL,
+                    ha="center",
+                    fontfamily="monospace",
+                    fontsize=7,
+                    fontweight="bold",
+                )
+                ax_info.text(
+                    col_x + col_sp,
+                    y,
+                    f"{vy:+.2f}",
+                    color=C_VAL,
+                    ha="center",
+                    fontfamily="monospace",
+                    fontsize=7,
+                    fontweight="bold",
+                )
+                ax_info.text(
+                    col_x + 2 * col_sp,
+                    y,
+                    f"{vz:+.2f}",
+                    color=C_VAL,
+                    ha="center",
+                    fontfamily="monospace",
+                    fontsize=7,
+                    fontweight="bold",
+                )
+                ax_info.text(0.95, y, unit, color=C_LBL, ha="right", fontsize=7)
+
+            c_pos = np.array([x[i], y[i], z[i]])
+            c_target = np.array([target_x, target_y, target_z])
+            c_err = c_pos - c_target
+
+            row("POS", x[i], y[i], z[i], "m", y_cur)
+            y_cur -= 0.04
+            row("VEL", vx[i], vy[i], vz[i], "m/s", y_cur)
+            y_cur -= 0.04
+            row("ERR", c_err[0], c_err[1], c_err[2], "m", y_cur)
+            y_cur -= 0.04
+            row(
+                "ROT",
+                np.degrees(roll[i]),
+                np.degrees(pitch[i]),
+                np.degrees(yaw[i]),
+                "°",
+                y_cur,
+            )
+            y_cur -= 0.04
+            row(
+                "SPIN",
+                np.degrees(wx[i]),
+                np.degrees(wy[i]),
+                np.degrees(wz[i]),
+                "°/s",
+                y_cur,
+            )
+
+            y_cur -= 0.04
+            ax_info.text(col_x, y_cur, "ROLL", color="#404040", fontsize=7, ha="center")
+            ax_info.text(
+                col_x + col_sp, y_cur, "PITCH", color="#404040", fontsize=7, ha="center"
+            )
+            ax_info.text(
+                col_x + 2 * col_sp,
+                y_cur,
+                "YAW",
+                color="#404040",
+                fontsize=7,
+                ha="center",
+            )
+
+            y_cur -= 0.03
+
+            # Calc rng for use in POS ERR
+            rng = np.linalg.norm(c_err)
+
+            y_cur -= 0.04
+
+            # CONTROLLER
+
+            y_cur -= 0.03
+            ax_info.text(
+                0.06, y_cur, "CONTROLLER", color=C_VAL, fontsize=8, fontweight="bold"
+            )
+            y_cur -= 0.02
+            ax_info.plot([0.06, 0.94], [y_cur, y_cur], color="#404040", lw=1)
+            y_cur -= 0.05
+
+            st = solve_times[i] * 1000.0 if i < len(solve_times) else 0.0
+            ax_info.text(0.06, y_cur, "SOLVE", color=C_LBL, fontsize=7)
+            c = C_GRN if st < 50 else C_VAL
+            ax_info.text(
+                0.90,
+                y_cur,
+                f"{st:.1f} ms",
+                color=c,
+                ha="right",
+                fontweight="bold",
+                fontfamily="monospace",
+                fontsize=7,
+            )
+            y_cur -= 0.04
+
+            ax_info.text(0.06, y_cur, "POS ERR", color=C_LBL, fontsize=7)
+            ax_info.text(
+                0.90,
+                y_cur,
+                f"{rng:.3f} m",
+                color=C_GRN if rng < 0.05 else C_VAL,
+                ha="right",
+                fontweight="bold",
+                fontfamily="monospace",
+                fontsize=7,
+            )
+            y_cur -= 0.04
+
+            # ANG ERR
+            ang_err_rad = np.sqrt(
+                err_roll[i] ** 2 + err_pitch[i] ** 2 + err_yaw[i] ** 2
+            )
+            ang_err_deg = np.degrees(ang_err_rad)
+
+            ax_info.text(0.06, y_cur, "ANG ERR", color=C_LBL, fontsize=7)
+            ax_info.text(
+                0.90,
+                y_cur,
+                f"{ang_err_deg:.1f}°",
+                color=C_GRN if ang_err_deg < 2.0 else C_VAL,
+                ha="right",
+                fontweight="bold",
+                fontfamily="monospace",
+                fontsize=7,
+            )
+
+            y_cur -= 0.08
+
+            # ACTUATORS
+
+            y_cur -= 0.03
+
+            ax_info.text(
+                0.06, y_cur, "ACTUATORS", color=C_LBL, fontsize=8, fontweight="bold"
+            )
+            y_cur -= 0.02
+            ax_info.plot([0.06, 0.94], [y_cur, y_cur], color="#404040", lw=1)
+            y_cur -= 0.03
+
+            ax_info.text(
+                0.25,
+                y_cur,
+                "THRUSTERS",
+                color=C_LBL,
+                ha="center",
+                fontweight="bold",
+                fontsize=7,
+            )
+            ax_info.text(
+                0.75,
+                y_cur,
+                "RW",
+                color=C_LBL,
+                ha="center",
+                fontweight="bold",
+                fontsize=7,
+            )
+            y_cur -= 0.03
+
+            # Thruster Bars
+            t_vals = parse_command_vector(command_vectors[i])
+            bw = 0.05
+            bhm = 0.08
+            sx = 0.06
+            sp = 0.065
+            lbls = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
+            for j in range(6):
+                val = t_vals[j]
+                xp = sx + j * sp
+                yb = y_cur - bhm
+
+                # Bg
+                ax_info.add_patch(patches.Rectangle((xp, yb), bw, bhm, fc=C_BAR_BG))
+                if val > 0.01:
+                    ax_info.add_patch(
+                        patches.Rectangle((xp, yb), bw, val * bhm, fc=C_BAR_FILL)
+                    )
+
+                ax_info.text(
+                    xp + bw / 2,
+                    yb - 0.03,
+                    lbls[j],
+                    color=C_LBL,
+                    ha="center",
+                    fontsize=7,
+                )
+
+            # RW
+            rw_v = [rw_x[i], rw_y[i], rw_z[i]]
+            max_t = 0.1
+            sx = 0.65
+            sp = 0.08
+            lbls = ["X", "Y", "Z"]
+            for j in range(3):
+                val = rw_v[j]
+                xp = sx + j * sp
+                yb = y_cur - bhm
+
+                ax_info.add_patch(patches.Rectangle((xp, yb), bw, bhm, fc=C_BAR_BG))
+                aval = min(1.0, abs(val) / max_t)
+                if aval > 0.01:
+                    ax_info.add_patch(
+                        patches.Rectangle((xp, yb), bw, aval * bhm, fc=C_BAR_FILL)
+                    )
+
+                ax_info.text(
+                    xp + bw / 2,
+                    yb - 0.03,
+                    lbls[j],
+                    color=C_LBL,
+                    ha="center",
+                    fontsize=7,
+                )
+                ax_info.text(
+                    xp + bw / 2,
+                    yb - 0.06,
+                    f"{val:.1f}",
+                    color=C_LBL,
+                    ha="center",
+                    fontsize=7,
+                    fontfamily="monospace",
+                )
+
+            return line_xy, line_xz, satellite_xy, satellite_xz
+
+        try:
+            # Check for ffmpeg writer
+            if "ffmpeg" not in writers.list():
+                logger.warning("WARNING: ffmpeg not available; using pillow.")
+                writer_name = "pillow"
+                video_path = output_dir / "Simulation_3D_Render.gif"
+            else:
+                writer_name = "ffmpeg"
+
+            anim = FuncAnimation(
+                fig,
+                update,
+                frames=len(frame_indices),
+                init_func=init,
+                blit=False,
+                interval=1000 / fps,
+            )
+
+            print(
+                f"Rendering {len(frame_indices)} frames at {fps:.1f} FPS (real-time)..."
+            )
+            anim.save(
+                str(video_path),
+                writer=writer_name,
+                fps=fps,
+                progress_callback=lambda i, n: print(f"\r  Frame {i + 1}/{n}", end=""),
+            )
+            print(f"\n Trajectory animation saved to: {video_path}")
+
+        except Exception as e:
+            logger.warning(f"WARNING: Could not write animation. Error: {e}")
+        finally:
+            plt.close(fig)
 
     def print_performance_summary(self):
         """Print comprehensive simulation performance summary for Linearized MPC."""
@@ -682,204 +1555,6 @@ class SimulationVisualizationManager:
         # Reset trajectory
         self.satellite.trajectory = [self.satellite.position.copy()]
 
-    def save_trajectory_animation(
-        self, output_dir: Path, fps: int = 30, width: int = 1920, height: int = 1080
-    ) -> None:
-        """
-        Generate a matplotlib-based trajectory animation with X-Y and X-Z panels.
-
-        Args:
-            output_dir: Directory to save the video file
-            fps: Frames per second for the animation
-            width: Video width in pixels
-            height: Video height in pixels
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.animation import FuncAnimation
-        import pandas as pd
-
-        csv_path = output_dir / "control_data.csv"
-        if not csv_path.exists():
-            logger.warning(f"WARNING: CSV log not found at {csv_path}; skip animation.")
-            return
-
-        print(f"Loading simulation data for animation from: {csv_path}")
-        try:
-            df = pd.read_csv(csv_path)
-        except Exception as e:
-            logger.warning(f"WARNING: Could not read CSV data: {e}")
-            return
-
-        if len(df) == 0:
-            logger.warning("WARNING: Empty simulation data; skipping animation.")
-            return
-
-        video_path = output_dir / "Simulation_3D_Render.mp4"
-
-        # Extract trajectory data
-        x = df["Current_X"].values
-        y = df["Current_Y"].values
-        z = df.get("Current_Z", pd.Series([0] * len(df))).values
-
-        # Get target position from last row or defaults
-        target_x = df.get("Target_X", pd.Series([0] * len(df))).values[-1]
-        target_y = df.get("Target_Y", pd.Series([0] * len(df))).values[-1]
-        target_z = df.get("Target_Z", pd.Series([0] * len(df))).values[-1]
-
-        # Calculate bounds with padding
-        all_x = np.concatenate([x, [target_x]])
-        all_y = np.concatenate([y, [target_y]])
-        all_z = np.concatenate([z, [target_z]])
-
-        x_range = max(all_x) - min(all_x)
-        y_range = max(all_y) - min(all_y)
-        z_range = max(all_z) - min(all_z)
-        padding = max(0.2, max(x_range, y_range, z_range) * 0.15)
-
-        x_min, x_max = min(all_x) - padding, max(all_x) + padding
-        y_min, y_max = min(all_y) - padding, max(all_y) + padding
-        z_min, z_max = min(all_z) - padding, max(all_z) + padding
-
-        # Create figure with two subplots side by side
-        fig, (ax_xy, ax_xz) = plt.subplots(
-            1, 2, figsize=(width / 100, height / 100), dpi=100
-        )
-        fig.patch.set_facecolor("#1a1a2e")
-
-        # Style both axes
-        for ax, xlabel, ylabel, title in [
-            (ax_xy, "X (m)", "Y (m)", "X-Y Plane (Top View)"),
-            (ax_xz, "X (m)", "Z (m)", "X-Z Plane (Side View)"),
-        ]:
-            ax.set_facecolor("#16213e")
-            ax.set_xlabel(xlabel, fontsize=12, color="white")
-            ax.set_ylabel(ylabel, fontsize=12, color="white")
-            ax.set_title(title, fontsize=14, fontweight="bold", color="white")
-            ax.grid(True, alpha=0.3, color="gray")
-            ax.tick_params(colors="white")
-            for spine in ax.spines.values():
-                spine.set_color("gray")
-
-        # Set axis limits
-        ax_xy.set_xlim(x_min, x_max)
-        ax_xy.set_ylim(y_min, y_max)
-        ax_xz.set_xlim(x_min, x_max)
-        ax_xz.set_ylim(z_min, z_max)
-        ax_xy.set_aspect("equal", adjustable="box")
-        ax_xz.set_aspect("equal", adjustable="box")
-
-        # Plot targets
-        ax_xy.plot(target_x, target_y, "g*", markersize=15, label="Target", zorder=5)
-        ax_xz.plot(target_x, target_z, "g*", markersize=15, label="Target", zorder=5)
-
-        # Initialize trajectory lines
-        (line_xy,) = ax_xy.plot(
-            [], [], "cyan", linewidth=1.5, alpha=0.8, label="Trajectory"
-        )
-        (line_xz,) = ax_xz.plot(
-            [], [], "cyan", linewidth=1.5, alpha=0.8, label="Trajectory"
-        )
-
-        # Initialize satellite markers (simple cube representation)
-        satellite_size = 0.05  # 5cm satellite representation
-        satellite_xy = plt.Rectangle(
-            (0, 0),
-            satellite_size,
-            satellite_size,
-            fc="#00d4ff",
-            ec="white",
-            linewidth=2,
-            zorder=10,
-        )
-        satellite_xz = plt.Rectangle(
-            (0, 0),
-            satellite_size,
-            satellite_size,
-            fc="#00d4ff",
-            ec="white",
-            linewidth=2,
-            zorder=10,
-        )
-        ax_xy.add_patch(satellite_xy)
-        ax_xz.add_patch(satellite_xz)
-
-        # Time text
-        time_text = fig.text(
-            0.5,
-            0.02,
-            "",
-            ha="center",
-            fontsize=14,
-            color="white",
-            fontweight="bold",
-            transform=fig.transFigure,
-        )
-
-        # Legends
-        ax_xy.legend(loc="upper right", facecolor="#1a1a2e", labelcolor="white")
-        ax_xz.legend(loc="upper right", facecolor="#1a1a2e", labelcolor="white")
-
-        fig.tight_layout(rect=[0, 0.05, 1, 1])
-
-        # Subsample for reasonable animation length
-        total_frames = len(df)
-        target_duration = min(30, total_frames / fps)  # Max 30 second video
-        step = max(1, int(total_frames / (target_duration * fps)))
-        frame_indices = list(range(0, total_frames, step))
-
-        def init():
-            line_xy.set_data([], [])
-            line_xz.set_data([], [])
-            satellite_xy.set_xy((x[0] - satellite_size / 2, y[0] - satellite_size / 2))
-            satellite_xz.set_xy((x[0] - satellite_size / 2, z[0] - satellite_size / 2))
-            time_text.set_text("")
-            return line_xy, line_xz, satellite_xy, satellite_xz, time_text
-
-        def update(frame_idx):
-            i = frame_indices[frame_idx]
-            # Update trajectory (show trail)
-            line_xy.set_data(x[: i + 1], y[: i + 1])
-            line_xz.set_data(x[: i + 1], z[: i + 1])
-            # Update satellite position
-            satellite_xy.set_xy((x[i] - satellite_size / 2, y[i] - satellite_size / 2))
-            satellite_xz.set_xy((x[i] - satellite_size / 2, z[i] - satellite_size / 2))
-            # Update time
-            sim_time = df["Time"].iloc[i] if "Time" in df.columns else i * 0.05
-            time_text.set_text(f"Time: {sim_time:.2f}s")
-            return line_xy, line_xz, satellite_xy, satellite_xz, time_text
-
-        try:
-            # Check for ffmpeg writer
-            if "ffmpeg" not in writers.list():
-                logger.warning("WARNING: ffmpeg not available; using pillow.")
-                writer_name = "pillow"
-                video_path = output_dir / "Simulation_3D_Render.gif"
-            else:
-                writer_name = "ffmpeg"
-
-            anim = FuncAnimation(
-                fig,
-                update,
-                frames=len(frame_indices),
-                init_func=init,
-                blit=True,
-                interval=1000 / fps,
-            )
-
-            print(f"Rendering {len(frame_indices)} frames...")
-            anim.save(
-                str(video_path),
-                writer=writer_name,
-                fps=fps,
-                progress_callback=lambda i, n: print(f"\r  Frame {i + 1}/{n}", end=""),
-            )
-            print(f"\n Trajectory animation saved to: {video_path}")
-
-        except Exception as e:
-            logger.warning(f"WARNING: Could not write animation. Error: {e}")
-        finally:
-            plt.close(fig)
-
     def auto_generate_visualizations(self):
         """
         Automatically generate all visualizations after simulation completion.
@@ -951,24 +1626,26 @@ class SimulationVisualizationManager:
             except Exception as plots_err:
                 print(f"  Performance plots generation failed: {plots_err}")
 
-            # Generate matplotlib-based animation (no MuJoCo)
+            # Generate matplotlib-based animation with X-Y and X-Z panels
             try:
                 print("\nCreating animation...")
                 animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
                 print(f"Saving animation to: {animation_path}")
 
-                old_stdout = sys.stdout
-                sys.stdout = ProgressSuppressor(sys.stdout)
-                try:
-                    generator.generate_animation()
-                finally:
-                    sys.stdout = old_stdout
+                # Use new dual-panel trajectory animation
+                self.save_trajectory_animation(self.data_save_path)
 
                 if animation_path.exists():
                     print(" Animation saved successfully!")
                     print(f" File location: {animation_path}")
                 else:
-                    print(" Animation generation skipped (matplotlib-based).")
+                    # Check for GIF fallback
+                    gif_path = self.data_save_path / "Simulation_3D_Render.gif"
+                    if gif_path.exists():
+                        print(" Animation saved successfully (GIF format)!")
+                        print(f" File location: {gif_path}")
+                    else:
+                        print(" Animation generation failed.")
             except Exception as anim_err:
                 print(f"  Animation generation failed: {anim_err}")
 

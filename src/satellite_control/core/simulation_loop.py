@@ -13,9 +13,6 @@ This module handles:
 """
 
 import logging
-import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, List, Optional, TYPE_CHECKING
@@ -100,58 +97,6 @@ class SimulationLoop:
         """Get waypoint targets list."""
         mission_state = self._get_mission_state()
         return mission_state.waypoint_targets or mission_state.multi_point_targets
-
-    def _prompt_interactive_viewer(self) -> None:
-        """
-        Prompt user to open the interactive MuJoCo viewer after simulation.
-        """
-        if not self.simulation.data_save_path:
-            return
-
-        try:
-            # Simple prompt
-            print("\n" + "=" * 60)
-            print("INTERACTIVE REPLAY AVAILABLE")
-            print("=" * 60)
-            answer = (
-                input("\nWould you like to open the interactive MuJoCo viewer? (y/N): ")
-                .strip()
-                .lower()
-            )
-
-            if answer == "y":
-                # Assuming scripts are in project root relative to CWD
-                # Ideally we find root relative to this file
-                project_root = Path(__file__).resolve().parent.parent.parent.parent
-                script_path = project_root / "scripts" / "mujoco_viewer.py"
-
-                if not script_path.exists():
-                    # Fallback if structure is different
-                    script_path = Path("scripts/mujoco_viewer.py").absolute()
-
-                data_path = self.simulation.data_save_path.absolute()
-
-                print(f"Launching viewer for: {data_path.name}")
-
-                # Construct command
-                cmd = [sys.executable, str(script_path), str(data_path)]
-
-                # Environment setup for macOS
-                env = os.environ.copy()
-                if sys.platform == "darwin":
-                    env["MUJOCO_GL"] = "glfw"
-                    # Try to use mjpython if available in same dir as python executable
-                    python_dir = Path(sys.executable).parent
-                    mjpython = python_dir / "mjpython"
-                    if mjpython.exists():
-                        cmd[0] = str(mjpython)
-
-                # Run as subprocess
-                subprocess.Popen(cmd, env=env)
-                print("Viewer launched in background.")
-
-        except Exception as e:
-            logger.warning(f"Failed to launch interactive viewer: {e}")
 
     def run(
         self,
@@ -238,10 +183,6 @@ class SimulationLoop:
                     try:
                         print("\n Auto-generating visualizations...")
                         self.simulation.auto_generate_visualizations()
-                        if hasattr(self.simulation.visualizer, "save_mujoco_video"):
-                            self.simulation.visualizer.save_mujoco_video(
-                                self.simulation.data_save_path
-                            )
                         print(" All visualizations complete!")
                     except Exception as e:
                         logger.warning(
@@ -277,14 +218,7 @@ class SimulationLoop:
 
             print("\n Auto-generating performance plots...")
             self.simulation.auto_generate_visualizations()
-            if hasattr(self.simulation.visualizer, "save_mujoco_video"):
-                self.simulation.visualizer.save_mujoco_video(
-                    self.simulation.data_save_path
-                )
             print(" All visualizations complete!")
-
-            # Prompt for interactive viewer
-            self._prompt_interactive_viewer()
 
         return self.simulation.data_save_path
 
@@ -355,15 +289,7 @@ class SimulationLoop:
             # Auto-generate all visualizations
             print("\n Auto-generating visualizations...")
             self.simulation.auto_generate_visualizations()
-            # Also generate MuJoCo 3D render if possible
-            if hasattr(self.simulation.visualizer, "save_mujoco_video"):
-                self.simulation.visualizer.save_mujoco_video(
-                    self.simulation.data_save_path
-                )
             print(" All visualizations complete!")
-
-            # Prompt for interactive viewer
-            self._prompt_interactive_viewer()
 
         return self.simulation.data_save_path
 
