@@ -52,7 +52,7 @@ export function Overlay() {
   const fmt = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2);
   
   return (
-    <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between">
+    <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between items-start">
       {/* Top Left: Mission Status */}
       <div className="flex flex-col gap-2 pointer-events-auto items-start">
         <div className="bg-black/60 backdrop-blur-md rounded-lg p-3 border border-white/10 text-white min-w-[200px]">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, GizmoHelper, GizmoViewcube } from '@react-three/drei';
 import { Vector3 } from 'three';
@@ -81,9 +81,14 @@ interface ViewportProps {
   viewMode: 'free' | 'chase' | 'top';
 }
 
-export function Viewport({ viewMode }: ViewportProps) {
+export const Viewport = memo(function Viewport({ viewMode }: ViewportProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
+
+  const handleControlsRef = useCallback((node: OrbitControlsImpl | null) => {
+    controlsRef.current = node;
+    if (node) setControls(node);
+  }, [setControls]);
 
   return (
     <div className="w-full h-full bg-slate-900">
@@ -91,10 +96,7 @@ export function Viewport({ viewMode }: ViewportProps) {
         <CanvasRegistrar />
         <CameraManager mode={viewMode} />
         <OrbitControls 
-          ref={(node) => {
-            controlsRef.current = node;
-            if (node) setControls(node);
-          }} 
+          ref={handleControlsRef} 
           makeDefault 
         />
         
@@ -121,10 +123,10 @@ export function Viewport({ viewMode }: ViewportProps) {
         <PlannedPath />
         
         <GizmoHelper alignment="top-right" margin={[80, 80]}>
-          <GizmoViewcube />
+          <GizmoViewcube faces={['Front', 'Back', 'Right', 'Left', 'Top', 'Bottom']} />
         </GizmoHelper>
         
       </Canvas>
     </div>
   );
-}
+});

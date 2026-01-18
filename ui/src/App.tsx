@@ -7,20 +7,14 @@ import { EventLog } from './components/EventLog';
 import { useTelemetryStore } from './store/telemetryStore';
 import { useCameraStore } from './store/cameraStore';
 import { PlaybackSelector } from './components/PlaybackSelector';
+import { FocusButton } from './components/FocusButton';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
   const [eventLogOpen, setEventLogOpen] = useState(false);
-  const latest = useTelemetryStore(s => s.latest);
+  // latest removed to prevent re-renders
   const eventCount = useTelemetryStore(s => s.events.length);
-  const requestFocus = useCameraStore(s => s.requestFocus);
-
-  const focusOn = (target?: [number, number, number]) => {
-    if (!target) return;
-    setViewMode('free');
-    requestFocus(target);
-  };
-
+  
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-900 text-white">
       <TelemetryBridge />
@@ -31,12 +25,7 @@ function App() {
         <div className="flex gap-4">
              {/* Simplified View Controls */}
              <div className="flex bg-gray-900 rounded p-1 gap-1 items-center">
-                 <button
-                   onClick={() => focusOn(latest?.target_position)}
-                   className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
-                 >
-                   Focus Target
-                 </button>
+                 <FocusButton />
                  <button
                     onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
                     className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${

@@ -85,11 +85,11 @@ export function SatelliteModel() {
         <meshStandardMaterial color="#1a237e" metalness={0.5} roughness={0.1} />
       </mesh> */}
 
-      {/* Sensor/Antenna Top (+Z) */}
-      <mesh position={[0, 0, 0.2]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Sensor/Antenna Top (+Z) - REMOVED */}
+      {/* <mesh position={[0, 0, 0.2]} rotation={[Math.PI / 2, 0, 0]}>
          <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
          <meshStandardMaterial color="#aaaaaa" metalness={0.9} roughness={0.1} />
-      </mesh>
+      </mesh> */}
 
       {/* Thruster Plumes */}
       {THRUSTER_CONFIG.map((cfg, i) => (
