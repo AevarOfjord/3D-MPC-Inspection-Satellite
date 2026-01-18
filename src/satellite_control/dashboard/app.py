@@ -357,7 +357,7 @@ class SimulationManager:
         logger.info("Starting internal simulation loop...")
 
         # Initial Init
-        if self.sim_instance is None:
+        if self.sim_instance is None and self.current_mission_config is not None:
             self._initialize_simulation()
 
         frame_dt = 0.016

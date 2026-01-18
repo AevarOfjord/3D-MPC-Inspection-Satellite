@@ -76,30 +76,24 @@ _worker_gen_cache: Optional[Any] = None
 # Import cycler and Circle from correct modules
 
 # Use Seaborn for prettier plot styling (falls back to matplotlib if not installed)
-try:
-    import seaborn as sns
 
-    # Professional/Academic style: White background, ticks, serif font
-    sns.set_theme(style="ticks", font="serif", font_scale=1.1)
-    sns.set_context("paper", rc={"lines.linewidth": 1.5})
-    _SEABORN_AVAILABLE = True
-except ImportError:
-    _SEABORN_AVAILABLE = False
-    # Fallback to matplotlib color scheme
-    plt.rcParams["axes.prop_cycle"] = cycler(
-        color=[
-            "#000000",  # Black
-            "#CC0000",  # Dark Red
-            "#1f77b4",  # Blue
-            "#2ca02c",  # Green
-            "#9467bd",  # Purple
-            "#8c564b",  # Brown
-            "#e377c2",  # Pink
-            "#7f7f7f",  # Gray
-        ]
-    )
+_SEABORN_AVAILABLE = False
 
-# Consistent plot styling (applied on top of seaborn if available)
+# Fallback to matplotlib color scheme
+plt.rcParams["axes.prop_cycle"] = cycler(
+    color=[
+        "#000000",  # Black
+        "#CC0000",  # Dark Red
+        "#1f77b4",  # Blue
+        "#2ca02c",  # Green
+        "#9467bd",  # Purple
+        "#8c564b",  # Brown
+        "#e377c2",  # Pink
+        "#7f7f7f",  # Gray
+    ]
+)
+
+# Consistent plot styling
 plt.rcParams.update(
     {
         "axes.titlesize": 16,

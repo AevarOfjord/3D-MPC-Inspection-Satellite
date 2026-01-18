@@ -18,6 +18,7 @@ from src.satellite_control.mission.trajectory_utils import (
     compute_speed_profile,
 )
 
+
 def load_obj_vertices(obj_path: str) -> np.ndarray:
     """Load vertex positions from an OBJ file."""
     vertices: List[List[float]] = []
@@ -40,7 +41,9 @@ def load_obj_vertices(obj_path: str) -> np.ndarray:
     return np.array(vertices, dtype=float)
 
 
-def compute_mesh_bounds(vertices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+def compute_mesh_bounds(
+    vertices: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Return (min_bounds, max_bounds, center, max_xy_radius)."""
     min_bounds = vertices.min(axis=0)
     max_bounds = vertices.max(axis=0)
@@ -146,7 +149,9 @@ def compute_scan_sampling(
 
     arc_coverage = 2.0 * max(radius + standoff, 1e-3) * np.tan(0.5 * fov_rad)
     circumference = 2.0 * np.pi * max(radius + standoff, 1e-3)
-    points_per_ring = max(12, int(np.ceil(circumference / max(arc_coverage * overlap, 1e-3))))
+    points_per_ring = max(
+        12, int(np.ceil(circumference / max(arc_coverage * overlap, 1e-3)))
+    )
     return ring_step, points_per_ring
 
 
@@ -226,12 +231,23 @@ def build_cylinder_scan_trajectory(
         overlap=overlap,
     )
 
+    # Override calculated step with fixed 0.5m step as requested
+    ring_step = 0.5
+
     total_height = float(max(height, 1e-3))
     z_min = -0.5 * total_height
     z_max = 0.5 * total_height
-    z_levels = list(np.arange(z_min, z_max + ring_step * 0.5, ring_step))
-    if len(z_levels) == 1 and total_height > 0:
-        z_levels = [z_min, z_max]
+
+    # Generate levels from bottom to top (inclusive of start, and capturing end if close)
+    # Using a small epsilon to ensure z_max is included if it's a multiple
+    epsilon = 1e-5
+    z_levels = list(np.arange(z_min, z_max + epsilon, ring_step))
+
+    # Ensure strictly within bounds if needed, but for scan usually we want to cover the extent.
+    # If the last level is significantly past z_max, we might clip, but arange behaves well.
+    # Verify we have at least one level
+    if not z_levels:
+        z_levels = [z_min]
 
     scan_radius = float(radius + max(standoff, 0.0))
     raw_path = generate_cylindrical_scan_path(

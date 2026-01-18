@@ -471,9 +471,13 @@ class InteractiveMissionCLI:
         start_pos = self.get_position_interactive(
             "Starting Position", default=(0.0, 0.0, 0.0)
         )
-        start_angle = self.get_angle_interactive("Starting Orientation", (0.0, 0.0, 0.0))
+        start_angle = self.get_angle_interactive(
+            "Starting Orientation", (0.0, 0.0, 0.0)
+        )
 
-        waypoints: List[Tuple[Tuple[float, float, float], Tuple[float, float, float]]] = []
+        waypoints: List[
+            Tuple[Tuple[float, float, float], Tuple[float, float, float]]
+        ] = []
         console.print("\n[bold]Define waypoints (at least 1 endpoint required)[/bold]")
 
         while True:
@@ -552,7 +556,9 @@ class InteractiveMissionCLI:
         from pathlib import Path
 
         from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.mission.mesh_scan import build_cylinder_scan_trajectory
+        from src.satellite_control.mission.mesh_scan import (
+            build_cylinder_scan_trajectory,
+        )
 
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
@@ -563,17 +569,16 @@ class InteractiveMissionCLI:
         start_pos = self.get_position_interactive(
             "Starting Position", default=(0.0, 0.0, 0.0)
         )
-        start_angle = self.get_angle_interactive("Starting Orientation", (0.0, 0.0, 0.0))
+        start_angle = self.get_angle_interactive(
+            "Starting Orientation", (0.0, 0.0, 0.0)
+        )
 
         mesh_dir = Path("models/meshes")
         obj_files = sorted(mesh_dir.glob("*.obj")) if mesh_dir.exists() else []
-        choices = [questionary.Choice("Built-in Cylinder (0.5m dia x 3m)", value="cylinder")]
-        choices.extend(
-            [
-                questionary.Choice(f.name, value=str(f))
-                for f in obj_files
-            ]
-        )
+        choices = [
+            questionary.Choice("Built-in Cylinder (0.5m dia x 3m)", value="cylinder")
+        ]
+        choices.extend([questionary.Choice(f.name, value=str(f)) for f in obj_files])
 
         selection = questionary.select(
             "Select object to scan:",
@@ -585,9 +590,7 @@ class InteractiveMissionCLI:
         obj_pose = self.get_position_interactive(
             "Object position", default=(0.0, 0.0, 0.0)
         )
-        obj_angle = self.get_angle_interactive(
-            "Object orientation", (0.0, 0.0, 0.0)
-        )
+        obj_angle = self.get_angle_interactive("Object orientation", (0.0, 0.0, 0.0))
         standoff = float(
             questionary.text(
                 "Scan standoff distance (m) [0.5]:",
@@ -613,6 +616,31 @@ class InteractiveMissionCLI:
         obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
 
         dt = float(simulation_config.app_config.mpc.dt)
+        # Calculate approach time for hold_start
+        # Cylinder settings (matches build_cylinder_scan_trajectory logic)
+        scan_r = 0.25 + max(standoff, 0.0)
+        scan_h = 3.0
+        z_start = -0.5 * scan_h  # Bottom of cylinder
+
+        # Local start point (0 angle)
+        local_start = np.array([scan_r, 0.0, z_start])
+
+        # Rotate by object orientation
+        from scipy.spatial.transform import Rotation
+
+        rot = Rotation.from_euler("xyz", obj_angle, degrees=False)
+        rotated_start = rot.apply(local_start)
+
+        # Translate by object pose
+        final_start = rotated_start + np.array(obj_pose)
+
+        # Calculate distance and time
+        start_pos_arr = np.array(start_pos)
+        dist = np.linalg.norm(final_start - start_pos_arr)
+        approach_time = dist / max(speed, 0.01)
+
+        hold_start_val = approach_time + 5.0  # Add 5s buffer for settling
+
         if selection == "cylinder":
             path, trajectory, total_time = build_cylinder_scan_trajectory(
                 center=obj_pose,
@@ -627,7 +655,7 @@ class InteractiveMissionCLI:
                 lateral_accel=0.05,
                 dt=dt,
                 ring_shape="circle",
-                hold_start=0.0,
+                hold_start=hold_start_val,
                 hold_end=5.0,
             )
         else:
@@ -645,7 +673,7 @@ class InteractiveMissionCLI:
                 lateral_accel=0.05,
                 dt=dt,
                 ring_shape="circle",
-                hold_start=0.0,
+                hold_start=hold_start_val,
                 hold_end=5.0,
             )
             mission_state.mesh_scan_obj_path = selection
@@ -654,7 +682,7 @@ class InteractiveMissionCLI:
         mission_state.trajectory_type = "scan"
         mission_state.trajectory_start_time = None
         mission_state.trajectory_total_time = total_time
-        mission_state.trajectory_hold_start = 0.0
+        mission_state.trajectory_hold_start = hold_start_val
         mission_state.trajectory_hold_end = 5.0
         mission_state.trajectory_start_orientation = start_angle
         mission_state.trajectory_end_orientation = None
