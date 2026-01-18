@@ -133,6 +133,7 @@ export function PlaybackSelector() {
     setSelectedId(value);
     stopPlayback();
     resetTelemetry();
+    useTelemetryStore.getState().setPlaybackFinalState(null);
 
     if (!value) {
       telemetry.setManualMode(false);
@@ -151,6 +152,14 @@ export function PlaybackSelector() {
 
       const response = await simulationsApi.loadTelemetry(value, stride);
       dataRef.current = response.telemetry;
+      
+      // Set final state for visualization
+      if (response.telemetry.length > 0) {
+        useTelemetryStore.getState().setPlaybackFinalState(response.telemetry[response.telemetry.length - 1]);
+      } else {
+        useTelemetryStore.getState().setPlaybackFinalState(null);
+      }
+
       indexRef.current = 0;
       setUiIndex(0);
       setDuration(response.telemetry.at(-1)?.time ?? 0);

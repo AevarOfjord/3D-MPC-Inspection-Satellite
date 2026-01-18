@@ -28,8 +28,10 @@ interface TelemetryState {
   maxHistory: number;
   maxEvents: number;
   lastSampleTime: number | null;
+  playbackFinalState: TelemetryData | null;
 
   setConnected: (connected: boolean) => void;
+  setPlaybackFinalState: (data: TelemetryData | null) => void;
   pushSample: (data: TelemetryData) => void;
   addEvent: (level: EventLevel, message: string, simTime?: number) => void;
   clearEvents: () => void;
@@ -45,8 +47,11 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   maxHistory: 1200,
   maxEvents: 100,
   lastSampleTime: null,
+  playbackFinalState: null, // Initial state
 
   setConnected: (connected) => set({ connected }),
+
+  setPlaybackFinalState: (data) => set({ playbackFinalState: data }),
 
   pushSample: (data) => {
     const { maxHistory, history, lastSampleTime } = get();
@@ -111,5 +116,6 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
       events: [],
       lastSampleTime: null,
       lastReceivedAt: null,
+      playbackFinalState: null,
     }),
 }));

@@ -39,12 +39,14 @@ interface TargetMarkerProps {
   position?: [number, number, number];
   orientation?: [number, number, number];
   quaternion?: [number, number, number, number];
+  color?: string;
 }
 
 export function TargetMarker({
   position = [0, 0, 0],
   orientation = [0, 0, 0],
   quaternion,
+  color = "#ff4444",
 }: TargetMarkerProps) {
   const targetQuat = useMemo(() => {
     if (quaternion) {
@@ -58,7 +60,7 @@ export function TargetMarker({
     <group position={position} quaternion={targetQuat}>
       <mesh>
         <sphereGeometry args={[0.05, 16, 16]} />
-        <meshStandardMaterial color="#ff4444" emissive="#ff0000" emissiveIntensity={0.5} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
       </mesh>
       {/* Interaction/Orientation Arrow Hint */}
       <axesHelper args={[0.5]} />

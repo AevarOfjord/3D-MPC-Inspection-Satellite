@@ -13,6 +13,20 @@ import { PlannedPath } from './PlannedPath';
 import { TargetGuides } from './TargetGuides';
 import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
+import { useTelemetryStore } from '../store/telemetryStore';
+
+function FinalStateMarker() {
+  const finalState = useTelemetryStore(s => s.playbackFinalState);
+  if (!finalState) return null;
+  return (
+    <TargetMarker 
+      position={finalState.position} 
+      orientation={finalState.target_orientation} 
+      quaternion={finalState.quaternion}
+      color="#4ade80" 
+    />
+  );
+}
 
 function Obstacles() {
   const [params, setParams] = useState<{
@@ -121,6 +135,7 @@ export const Viewport = memo(function Viewport({ viewMode }: ViewportProps) {
         <TargetGuides />
         <Trajectory />
         <PlannedPath />
+        <FinalStateMarker />
         
         <GizmoHelper alignment="top-right" margin={[80, 80]}>
           <GizmoViewcube faces={['Front', 'Back', 'Right', 'Left', 'Top', 'Bottom']} />
