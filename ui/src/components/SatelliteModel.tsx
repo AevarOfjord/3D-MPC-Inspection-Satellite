@@ -30,6 +30,9 @@ export function SatelliteModel() {
   useFrame(() => {
     if (groupRef.current && dataRef.current) {
       const { position, quaternion, thrusters } = dataRef.current;
+      if (!position || !quaternion) return;
+      if (!Number.isFinite(position[0]) || !Number.isFinite(position[1]) || !Number.isFinite(position[2])) return;
+      if (quaternion.some(v => !Number.isFinite(v))) return;
       
       // Update Position
       groupRef.current.position.set(position[0], position[1], position[2]);

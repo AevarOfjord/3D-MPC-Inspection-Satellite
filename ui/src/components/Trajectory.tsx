@@ -12,7 +12,9 @@ export function Trajectory() {
   useEffect(() => {
     // Subscribe to telemetry
     const unsubscribe = telemetry.subscribe((data) => {
+      if (!data || !data.position) return;
       const [x, y, z] = data.position;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
       
       // Use raw coordinates to match SatelliteModel (Units: Meters)
       const vizPos = new Vector3(x, y, z);

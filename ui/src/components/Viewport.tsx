@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Stars } from '@react-three/drei';
+import { OrbitControls, Stars, GizmoHelper, GizmoViewcube } from '@react-three/drei';
 import { Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TargetMarker } from './Earth';
@@ -25,8 +25,12 @@ function Obstacles() {
 
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
+       if (!d || !d.target_position) return;
+       // Check NaNs
+       if (d.target_position.some(v => !Number.isFinite(v))) return;
+       
        setParams({ 
-         obstacles: d.obstacles, 
+         obstacles: d.obstacles || [], 
          targetPos: d.target_position,
          targetOri: d.target_orientation || [0,0,0],
          targetQuat: d.target_quaternion,
@@ -81,17 +85,18 @@ export function Viewport({ viewMode }: ViewportProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
 
-  useEffect(() => {
-    setControls(controlsRef.current);
-    return () => setControls(null);
-  }, [setControls]);
-
   return (
     <div className="w-full h-full bg-slate-900">
       <Canvas shadows camera={{ position: [5, 5, 5], fov: 45 }}>
         <CanvasRegistrar />
         <CameraManager mode={viewMode} />
-        <OrbitControls ref={controlsRef} makeDefault enabled={viewMode === 'free'} />
+        <OrbitControls 
+          ref={(node) => {
+            controlsRef.current = node;
+            if (node) setControls(node);
+          }} 
+          makeDefault 
+        />
         
         {/* Environment */}
         <color attach="background" args={['#050510']} />
@@ -107,8 +112,6 @@ export function Viewport({ viewMode }: ViewportProps) {
         />
         <hemisphereLight args={['#ffffff', '#000000', 0.5]} />
         
-        <hemisphereLight args={['#ffffff', '#000000', 0.5]} />
-        
         {/* Grid Removed */}
         
         <Obstacles />
@@ -116,6 +119,10 @@ export function Viewport({ viewMode }: ViewportProps) {
         <TargetGuides />
         <Trajectory />
         <PlannedPath />
+        
+        <GizmoHelper alignment="top-right" margin={[80, 80]}>
+          <GizmoViewcube />
+        </GizmoHelper>
         
       </Canvas>
     </div>

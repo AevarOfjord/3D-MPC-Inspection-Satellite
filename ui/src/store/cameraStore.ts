@@ -10,6 +10,8 @@ interface CameraState {
   requestFocus: (target: [number, number, number]) => void;
   requestViewPreset: (preset: CameraState['viewPreset']) => void;
   setControls: (controls: OrbitControlsImpl | null) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
 }
 
 export const useCameraStore = create<CameraState>((set) => ({
@@ -29,4 +31,22 @@ export const useCameraStore = create<CameraState>((set) => ({
       viewNonce: state.viewNonce + 1,
     })),
   setControls: (controls) => set({ controls }),
+  zoomIn: () => {
+    set((state) => {
+      if (state.controls) {
+        state.controls.dollyOut(1.2);
+        state.controls.update();
+      }
+      return {};
+    });
+  },
+  zoomOut: () => {
+    set((state) => {
+      if (state.controls) {
+        state.controls.dollyIn(1.2);
+        state.controls.update();
+      }
+      return {};
+    });
+  },
 }));

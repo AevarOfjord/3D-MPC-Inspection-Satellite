@@ -13,6 +13,13 @@ interface CameraManagerProps {
 const WORLD_UP = new Vector3(0, 0, 1);
 const TOP_VIEW_SCREEN_UP = new Vector3(0, 1, 0);
 
+const isValidVector = (v: [number, number, number] | Vector3) => {
+  if (v instanceof Vector3) {
+    return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+  }
+  return Number.isFinite(v[0]) && Number.isFinite(v[1]) && Number.isFinite(v[2]);
+};
+
 export function CameraManager({ mode }: CameraManagerProps) {
   const { camera, controls } = useThree();
   const satPosRef = useRef(new Vector3());
@@ -24,6 +31,11 @@ export function CameraManager({ mode }: CameraManagerProps) {
   
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
+       if (!d || !d.position || !d.quaternion) return;
+       // Valid Check
+       if (!isValidVector(d.position)) return;
+       if (d.quaternion.some(v => !Number.isFinite(v))) return;
+       
        satPosRef.current.set(d.position[0], d.position[1], d.position[2]);
        const [w, x, y, z] = d.quaternion;
        satQuatRef.current.set(x, y, z, w);
@@ -99,19 +111,18 @@ export function CameraManager({ mode }: CameraManagerProps) {
 
   useFrame(() => {
     if (mode === 'chase') {
-        // Simple Chase: Position camera behind satellite
-        // Offset in local space: [-2, 0, 1] (Behind and slightly up +Z)
-        const offset = new Vector3(-2, 0, 1);
-        offset.applyQuaternion(satQuatRef.current);
+        // Orbit Follow: Move camera with satellite but allow orbiting
         const targetPos = satPosRef.current.clone();
         
-        const camPos = targetPos.clone().add(offset);
-        
-        // Smooth lerp could go here, but strict follow for now
-        camera.position.lerp(camPos, 0.1);
-        camera.lookAt(targetPos);
-        
         if (controls) {
+            const currentTarget = (controls as any).target as Vector3;
+            // Calculate movement delta of the target (satellite)
+            const delta = targetPos.clone().sub(currentTarget);
+            
+            // Move camera by same delta to preserve relative offset
+            camera.position.add(delta);
+            
+            // Update OrbitControls target
             (controls as any).target.copy(targetPos);
             (controls as any).update();
         }

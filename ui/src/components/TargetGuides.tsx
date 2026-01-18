@@ -9,6 +9,12 @@ export function TargetGuides() {
 
   useEffect(() => {
     const unsub = telemetry.subscribe((data) => {
+      if (!data) return;
+      // Strict Validation
+      if (!data.target_position || !data.position) return;
+      if (data.target_position.some(v => !Number.isFinite(v))) return;
+      if (data.position.some(v => !Number.isFinite(v))) return;
+      
       setTargetPos(data.target_position);
       setTargetQuat(data.target_quaternion ?? [1, 0, 0, 0]);
       setCurrentPos(data.position);

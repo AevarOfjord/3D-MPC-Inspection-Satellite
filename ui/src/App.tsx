@@ -6,7 +6,6 @@ import { TelemetryBridge } from './components/TelemetryBridge';
 import { EventLog } from './components/EventLog';
 import { useTelemetryStore } from './store/telemetryStore';
 import { useCameraStore } from './store/cameraStore';
-import { ViewControls } from './components/ViewControls';
 import { PlaybackSelector } from './components/PlaybackSelector';
 
 function App() {
@@ -30,33 +29,39 @@ function App() {
           <span>🛰️</span> Mission Control
         </h1>
         <div className="flex gap-4">
-             {/* View Mode Controls */}
-             <div className="flex bg-gray-900 rounded p-1 gap-1">
-                {(['free', 'chase', 'top'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => setViewMode(mode)}
-                    className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${
-                      viewMode === mode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+             {/* Simplified View Controls */}
+             <div className="flex bg-gray-900 rounded p-1 gap-1 items-center">
+                 <button
+                   onClick={() => focusOn(latest?.target_position)}
+                   className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
+                 >
+                   Focus Target
+                 </button>
+                 <button
+                    onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
+                    className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${
+                      viewMode === 'chase' 
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-200' 
+                        : 'border-gray-700 text-gray-300 hover:border-blue-500'
                     }`}
                   >
-                    {mode}
+                    Chase Sat
                   </button>
-                ))}
-             </div>
-             <div className="flex items-center gap-2">
-               <button
-                 onClick={() => focusOn(latest?.position)}
-                 className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
-               >
-                 Focus Sat
-               </button>
-               <button
-                 onClick={() => focusOn(latest?.target_position)}
-                 className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
-               >
-                 Focus Target
-               </button>
+                  <div className="w-px h-4 bg-gray-700 mx-1" />
+                  <button
+                    onClick={() => useCameraStore.getState().zoomOut()}
+                    className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
+                    title="Zoom Out"
+                  >
+                    -
+                  </button>
+                  <button
+                    onClick={() => useCameraStore.getState().zoomIn()}
+                    className="px-2 py-1 text-[10px] uppercase rounded border border-gray-700 text-gray-300 hover:border-blue-500"
+                    title="Zoom In"
+                  >
+                    +
+                  </button>
              </div>
 
              <PlaybackSelector />
@@ -82,9 +87,7 @@ function App() {
       </header>
       
       <main className="flex-1 relative overflow-hidden">
-        <div className="absolute top-4 right-24 z-20">
-          <ViewControls onRequestFree={() => setViewMode('free')} />
-        </div>
+
         <Viewport viewMode={viewMode} />
         <Overlay />
         <TelemetryCharts />

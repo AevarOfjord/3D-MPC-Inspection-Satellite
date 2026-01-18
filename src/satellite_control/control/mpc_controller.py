@@ -14,7 +14,7 @@ import numpy as np
 from src.satellite_control.config.models import AppConfig
 
 # C++ Backend (required)
-from satellite_control.cpp._cpp_mpc import (
+from src.satellite_control.cpp._cpp_mpc import (
     SatelliteParams,
     MPCParams as CppMPCParams,
     MPCControllerCpp,

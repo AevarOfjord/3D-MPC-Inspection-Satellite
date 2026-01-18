@@ -36,4 +36,8 @@ export const simulationsApi = {
     }
     return response.json();
   },
+  downloadVideo: async (runId: string) => {
+    // Trigger download by opening in new window/tab
+    window.open(`${API_BASE_URL}/simulations/${encodeURIComponent(runId)}/video`, '_blank');
+  },
 };

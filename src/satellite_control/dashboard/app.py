@@ -4,6 +4,7 @@ import json
 import logging
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Literal, Dict, Any
 from pathlib import Path
@@ -500,6 +501,17 @@ async def get_simulation_telemetry(
         if not rdir.exists() or not rdir.is_dir():
             raise HTTPException(status_code=404, detail="Run not found")
         return rdir
+
+    @app.get("/simulations/{run_id}/video")
+    async def get_simulation_video(run_id: str):
+        run_dir = _get_run_dir(run_id)
+        video_path = run_dir / "Simulation_3D_Render.mp4"
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video animation not found")
+
+        return FileResponse(
+            path=video_path, filename=f"simulation_{run_id}.mp4", media_type="video/mp4"
+        )
 
     run_dir = _get_run_dir(run_id)
     physics_path = run_dir / "physics_data.csv"

@@ -7,9 +7,16 @@ Executes missions using the MPC controller and MuJoCo simulation.
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, TYPE_CHECKING
 
-import mujoco
+if TYPE_CHECKING:
+    import mujoco
+
+try:
+    import mujoco
+except ImportError:
+    mujoco = None
+
 import numpy as np
 
 from .mission_types import Mission, MissionStatus, Waypoint
@@ -63,8 +70,8 @@ class MissionExecutor:
         self.sim_dt = sim_dt
 
         # State
-        self.model: Optional[mujoco.MjModel] = None
-        self.data: Optional[mujoco.MjData] = None
+        self.model: Optional["mujoco.MjModel"] = None
+        self.data: Optional["mujoco.MjData"] = None
         self.controller = None
         self.current_mission: Optional[Mission] = None
 
@@ -78,6 +85,11 @@ class MissionExecutor:
 
     def load_model(self, model_path: str = None):
         """Load MuJoCo model."""
+        if mujoco is None:
+            raise ImportError(
+                "MuJoCo is not installed. Please install it to use this feature."
+            )
+
         if model_path:
             self.model_path = model_path
 

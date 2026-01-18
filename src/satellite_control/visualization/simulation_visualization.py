@@ -905,7 +905,8 @@ class SimulationVisualizationManager:
         """
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
-        from matplotlib.animation import FuncAnimation
+        from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
+        from mpl_toolkits.mplot3d import Axes3D
         import pandas as pd
 
         csv_path = output_dir / "control_data.csv"
@@ -999,10 +1000,9 @@ class SimulationVisualizationManager:
 
         # Create figure
         fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
-        gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.6])  # Wider info panel
-        ax_xy = fig.add_subplot(gs[0, 0])
-        ax_xz = fig.add_subplot(gs[0, 1])
-        ax_info = fig.add_subplot(gs[0, 2])
+        gs = fig.add_gridspec(1, 2, width_ratios=[2, 1])  # 3D View + Info Panel
+        ax_3d = fig.add_subplot(gs[0, 0], projection="3d")
+        ax_info = fig.add_subplot(gs[0, 1])
 
         # Set light theme for figure
         fig.patch.set_facecolor("#FFFFFF")
@@ -1011,32 +1011,30 @@ class SimulationVisualizationManager:
         COLOR_TRAJECTORY = "#1f77b4"  # Blue
         COLOR_TARGET = "#d62728"  # Red
         COLOR_SUCCESS = "#2ca02c"  # Green
-        COLOR_TRAJECTORY = "#1f77b4"  # Blue
-        COLOR_TARGET = "#d62728"  # Red
-        COLOR_SUCCESS = "#2ca02c"  # Green
         COLOR_AXIS = "#404040"  # Dark Grey axes
         GRID_ALPHA = 0.2
         LINEWIDTH = 1.5
 
-        def setup_axis(ax, xlabel, ylabel, title):
-            ax.set_facecolor("#FFFFFF")
-            ax.set_xlabel(xlabel, fontsize=10, color=COLOR_AXIS)
-            ax.set_ylabel(ylabel, fontsize=10, color=COLOR_AXIS)
-            ax.set_title(title, fontsize=12, fontweight="bold", color="#000000")
-            ax.grid(True, alpha=GRID_ALPHA, color=COLOR_AXIS)
-            ax.spines["bottom"].set_color(COLOR_AXIS)
-            ax.spines["top"].set_color(COLOR_AXIS)
-            ax.spines["right"].set_color(COLOR_AXIS)
-            ax.spines["left"].set_color(COLOR_AXIS)
-            ax.tick_params(colors=COLOR_AXIS)
-            ax.set_xlim(center_x - half_range, center_x + half_range)
-            ax.set_aspect("equal", adjustable="box")
+        # Configure 3D Axis
+        ax_3d.set_facecolor("#FFFFFF")
+        ax_3d.set_xlabel("X (m)", fontsize=9, color=COLOR_AXIS)
+        ax_3d.set_ylabel("Y (m)", fontsize=9, color=COLOR_AXIS)
+        ax_3d.set_zlabel("Z (m)", fontsize=9, color=COLOR_AXIS)
+        ax_3d.set_title(
+            "Trajectory (Isometric)", fontsize=12, fontweight="bold", color="#000000"
+        )
+        ax_3d.grid(True, alpha=GRID_ALPHA, color=COLOR_AXIS)
+        ax_3d.tick_params(axis="x", colors=COLOR_AXIS)
+        ax_3d.tick_params(axis="y", colors=COLOR_AXIS)
+        ax_3d.tick_params(axis="z", colors=COLOR_AXIS)
 
-        setup_axis(ax_xy, "X Position (m)", "Y Position (m)", "Trajectory (X-Y)")
-        ax_xy.set_ylim(center_y - half_range, center_y + half_range)
+        # Isometric View
+        ax_3d.view_init(elev=35, azim=45)
 
-        setup_axis(ax_xz, "X Position (m)", "Z Position (m)", "Trajectory (X-Z)")
-        ax_xz.set_ylim(center_z - half_range, center_z + half_range)
+        # Set limits
+        ax_3d.set_xlim(center_x - half_range, center_x + half_range)
+        ax_3d.set_ylim(center_y - half_range, center_y + half_range)
+        ax_3d.set_zlim(center_z - half_range, center_z + half_range)
 
         # Configure Info Panel
         ax_info.set_facecolor("#FFFFFF")
@@ -1046,61 +1044,40 @@ class SimulationVisualizationManager:
         ax_info.add_patch(rect)
 
         # Initial Plotting
-        ax_xy.plot(target_x, target_y, "o", color=COLOR_TARGET, markersize=10, zorder=5)
-        ax_xz.plot(target_x, target_z, "o", color=COLOR_TARGET, markersize=10, zorder=5)
-
-        ax_xy.plot(x[0], y[0], "o", color=COLOR_SUCCESS, markersize=8, zorder=5)
-        ax_xz.plot(x[0], z[0], "o", color=COLOR_SUCCESS, markersize=8, zorder=5)
-
-        (line_xy,) = ax_xy.plot(
-            [], [], color=COLOR_TRAJECTORY, linewidth=LINEWIDTH, alpha=0.9
+        ax_3d.plot(
+            [target_x],
+            [target_y],
+            [target_z],
+            "o",
+            color=COLOR_TARGET,
+            markersize=10,
+            zorder=5,
         )
-        (line_xz,) = ax_xz.plot(
-            [], [], color=COLOR_TRAJECTORY, linewidth=LINEWIDTH, alpha=0.9
+        ax_3d.plot(
+            [x[0]], [y[0]], [z[0]], "o", color=COLOR_SUCCESS, markersize=8, zorder=5
         )
 
-        satellite_size = 0.30
-        satellite_xy = plt.Rectangle(
-            (0, 0),
-            satellite_size,
-            satellite_size,
-            fc=COLOR_TRAJECTORY,
-            ec="white",
-            linewidth=1,
-            zorder=10,
+        (line_3d,) = ax_3d.plot(
+            [], [], [], color=COLOR_TRAJECTORY, linewidth=LINEWIDTH, alpha=0.9
+        )
+
+        # Satellite Marker (using a point for now in 3D, or could be a small quiver/box)
+        (satellite_3d,) = ax_3d.plot(
+            [],
+            [],
+            [],
+            "s",
+            color=COLOR_TRAJECTORY,
+            markersize=15,
+            markeredgecolor="white",
             alpha=0.8,
-        )
-        satellite_xz = plt.Rectangle(
-            (0, 0),
-            satellite_size,
-            satellite_size,
-            fc=COLOR_TRAJECTORY,
-            ec="white",
-            linewidth=1,
             zorder=10,
-            alpha=0.8,
         )
-        ax_xy.add_patch(satellite_xy)
-        ax_xz.add_patch(satellite_xz)
 
-        # Center marker (5x5cm Navy Square)
-        center_size = 0.05
-        center_xy = plt.Rectangle(
-            (x[0] - center_size / 2, y[0] - center_size / 2),
-            center_size,
-            center_size,
-            fc="#000080",
-            zorder=11,
+        # Center marker
+        (center_3d,) = ax_3d.plot(
+            [], [], [], "s", color="#000080", markersize=4, zorder=11
         )
-        center_xz = plt.Rectangle(
-            (x[0] - center_size / 2, z[0] - center_size / 2),
-            center_size,
-            center_size,
-            fc="#000080",
-            zorder=11,
-        )
-        ax_xy.add_patch(center_xy)
-        ax_xz.add_patch(center_xz)
 
         fig.tight_layout(rect=[0, 0.05, 1, 0.95])
 
@@ -1133,27 +1110,29 @@ class SimulationVisualizationManager:
                 return np.zeros(6)
 
         def init():
-            line_xy.set_data([], [])
-            line_xz.set_data([], [])
-            satellite_xy.set_xy((x[0] - satellite_size / 2, y[0] - satellite_size / 2))
-            satellite_xz.set_xy((x[0] - satellite_size / 2, z[0] - satellite_size / 2))
-            center_xy.set_xy((x[0] - center_size / 2, y[0] - center_size / 2))
-            center_xz.set_xy((x[0] - center_size / 2, z[0] - center_size / 2))
+            line_3d.set_data([], [])
+            line_3d.set_3d_properties([])
+            satellite_3d.set_data([], [])
+            satellite_3d.set_3d_properties([])
+            center_3d.set_data([], [])
+            center_3d.set_3d_properties([])
+
             ax_info.clear()  # Clear info panel
             ax_info.axis("off")
-            return line_xy, line_xz, satellite_xy, satellite_xz, center_xy, center_xz
+            return line_3d, satellite_3d, center_3d
 
         def update(frame_idx):
             i = frame_indices[frame_idx]
 
             # Trajectory update
-            line_xy.set_data(x[: i + 1], y[: i + 1])
-            line_xz.set_data(x[: i + 1], z[: i + 1])
-            satellite_xy.set_xy((x[i] - satellite_size / 2, y[i] - satellite_size / 2))
-            satellite_xz.set_xy((x[i] - satellite_size / 2, z[i] - satellite_size / 2))
-            # Update center markers
-            center_xy.set_xy((x[i] - center_size / 2, y[i] - center_size / 2))
-            center_xz.set_xy((x[i] - center_size / 2, z[i] - center_size / 2))
+            line_3d.set_data(x[: i + 1], y[: i + 1])
+            line_3d.set_3d_properties(z[: i + 1])
+
+            satellite_3d.set_data([x[i]], [y[i]])
+            satellite_3d.set_3d_properties([z[i]])
+
+            center_3d.set_data([x[i]], [y[i]])
+            center_3d.set_3d_properties([z[i]])
 
             # --- INFO PANEL UPDATE ---
             ax_info.clear()
@@ -1433,7 +1412,7 @@ class SimulationVisualizationManager:
                     fontfamily="monospace",
                 )
 
-            return line_xy, line_xz, satellite_xy, satellite_xz
+            return line_3d, satellite_3d, center_3d
 
         try:
             # Check for ffmpeg writer

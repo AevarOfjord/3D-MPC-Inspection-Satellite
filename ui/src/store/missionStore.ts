@@ -64,7 +64,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   }),
 
   addObstacle: () => set((state) => {
-    const nextObstacles = [...state.config.obstacles, { position: [5.0, 0.0, 0.0], radius: 1.0 }];
+    const nextObstacles = [...state.config.obstacles, { position: [5.0, 0.0, 0.0] as [number, number, number], radius: 1.0 }];
     return {
       config: {
         ...state.config,

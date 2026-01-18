@@ -228,6 +228,18 @@ export function PlaybackSelector() {
         </button>
         <button
           type="button"
+          onClick={() => simulationsApi.downloadVideo(selectedId)}
+          disabled={!selectedId}
+          className={`px-2 py-1 text-[10px] uppercase rounded border ${
+            selectedId
+              ? 'border-gray-500 text-gray-200 hover:border-blue-500'
+              : 'border-gray-800 text-gray-600'
+          }`}
+        >
+          Save
+        </button>
+        <button
+          type="button"
           onClick={handleReplay}
           disabled={!dataRef.current.length}
           className={`px-2 py-1 text-[10px] uppercase rounded border ${
