@@ -99,7 +99,7 @@ class PlotGenerator:
         self.generate_solver_health_plot(plot_dir)
         self.generate_waypoint_progress_plot(plot_dir)
         self.generate_timing_intervals_plot(plot_dir)
-        self.generate_interactive_report(plot_dir)
+        # self.generate_interactive_report(plot_dir) # Disabled per user request
         
         print(f"Performance plots saved to: {plot_dir}")
     
@@ -663,140 +663,25 @@ class PlotGenerator:
                 aspectmode="data",
             ),
             legend=dict(itemsizing="constant"),
-            margin=dict(l=0, r=0, t=40, b=0),
+            margin=dict(l=0, r=0, t=60, b=0), # Increase top margin for text
         )
 
-        output_path = plot_dir / "01_trajectory_3d_interactive.html"
+        # Add instructions annotation
+        fig.add_annotation(
+            text="Double-click this file to open in browser. Scroll to zoom, drag to rotate.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.98,
+            showarrow=False,
+            font=dict(size=14, color="gray"),
+            bgcolor="white",
+            opacity=0.8
+        )
+
+        # Save to parent directory (outside 'Plots')
+        output_path = plot_dir.parent / "01_trajectory_3d_interactive.html"
         fig.write_html(output_path, include_plotlyjs="cdn")
+        print(f"Interactive 3D plot saved to: {output_path}")
 
-    def generate_interactive_report(self, plot_dir: Path) -> None:
-        """Generate comprehensive interactive mission report (HTML)."""
-        try:
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
-        except ImportError:
-            import sys
-            print(
-                "Plotly not installed; skipping interactive mission report.",
-                file=sys.stderr,
-            )
-            return
-
-        # Time vector
-        t = self._col("Time")
-        if len(t) == 0:
-            return
-
-        # Data extraction helpers
-        def get_col_safe(name, default_val=0.0):
-            val = self._col(name)
-            if len(val) == 0:
-                pass 
-            return val
-
-        # Position
-        x = get_col_safe("Current_X")
-        y = get_col_safe("Current_Y")
-        z = get_col_safe("Current_Z")
-        tgt_x = get_col_safe("Target_X")
-        tgt_y = get_col_safe("Target_Y")
-        tgt_z = get_col_safe("Target_Z")
-
-        # Velocity
-        vx = get_col_safe("Current_VX")
-        vy = get_col_safe("Current_VY")
-        vz = get_col_safe("Current_VZ")
-        
-        # Attitude (Degrees)
-        roll = np.degrees(get_col_safe("Current_Roll"))
-        pitch = np.degrees(get_col_safe("Current_Pitch"))
-        yaw = np.degrees(get_col_safe("Current_Yaw"))
-        tgt_roll = np.degrees(get_col_safe("Target_Roll"))
-        tgt_pitch = np.degrees(get_col_safe("Target_Pitch"))
-        tgt_yaw = np.degrees(get_col_safe("Target_Yaw"))
-
-        # Create subplots
-        fig = make_subplots(
-            rows=3, cols=2,
-            subplot_titles=(
-                "Position Tracking", "Velocity Tracking",
-                "Attitude Tracking (Deg)", "Control Forces",
-                "Thruster Activation", "Angular Rates (Deg/s)"
-            ),
-            vertical_spacing=0.1,
-            horizontal_spacing=0.08
-        )
-
-        # 1. Position
-        if len(x) > 0:
-            fig.add_trace(go.Scatter(x=t, y=x, name="X", line=dict(color='red'), legendgroup="pos"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=t, y=y, name="Y", line=dict(color='green'), legendgroup="pos"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=t, y=z, name="Z", line=dict(color='blue'), legendgroup="pos"), row=1, col=1)
-        if len(tgt_x) > 0:
-             fig.add_trace(go.Scatter(x=t, y=tgt_x, name="Ref X", line=dict(color='red', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
-             fig.add_trace(go.Scatter(x=t, y=tgt_y, name="Ref Y", line=dict(color='green', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
-             fig.add_trace(go.Scatter(x=t, y=tgt_z, name="Ref Z", line=dict(color='blue', dash='dot'), showlegend=False, legendgroup="pos"), row=1, col=1)
-
-        # 2. Velocity
-        if len(vx) > 0:
-            fig.add_trace(go.Scatter(x=t, y=vx, name="Vx", line=dict(color='red'), legendgroup="vel"), row=1, col=2)
-            fig.add_trace(go.Scatter(x=t, y=vy, name="Vy", line=dict(color='green'), legendgroup="vel"), row=1, col=2)
-            fig.add_trace(go.Scatter(x=t, y=vz, name="Vz", line=dict(color='blue'), legendgroup="vel"), row=1, col=2)
-
-        # 3. Attitude
-        if len(roll) > 0:
-            fig.add_trace(go.Scatter(x=t, y=roll, name="Roll", line=dict(color='red'), legendgroup="att"), row=2, col=1)
-            fig.add_trace(go.Scatter(x=t, y=pitch, name="Pitch", line=dict(color='green'), legendgroup="att"), row=2, col=1)
-            fig.add_trace(go.Scatter(x=t, y=yaw, name="Yaw", line=dict(color='blue'), legendgroup="att"), row=2, col=1)
-        if len(tgt_roll) > 0:
-             fig.add_trace(go.Scatter(x=t, y=tgt_roll, name="Ref Roll", line=dict(color='red', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
-             fig.add_trace(go.Scatter(x=t, y=tgt_pitch, name="Ref Pitch", line=dict(color='green', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
-             fig.add_trace(go.Scatter(x=t, y=tgt_yaw, name="Ref Yaw", line=dict(color='blue', dash='dot'), showlegend=False, legendgroup="att"), row=2, col=1)
-
-        # 4. Control Forces
-        fx = get_col_safe("Force_X")
-        fy = get_col_safe("Force_Y")
-        fz = get_col_safe("Force_Z")
-        if len(fx) > 0:
-            fig.add_trace(go.Scatter(x=t, y=fx, name="Fx", line=dict(color='red'), legendgroup="force"), row=2, col=2)
-            fig.add_trace(go.Scatter(x=t, y=fy, name="Fy", line=dict(color='green'), legendgroup="force"), row=2, col=2)
-            fig.add_trace(go.Scatter(x=t, y=fz, name="Fz", line=dict(color='blue'), legendgroup="force"), row=2, col=2)
-
-        # 5. Thruster Activation
-        # Detect thruster count if possible
-        found_thruster_cols = []
-        for i in range(1, 13):
-            col_name = f"Thruster_{i}_Val" # Try Val first
-            if len(self._col(col_name)) > 0:
-                found_thruster_cols.append(col_name)
-            else:
-                 col_name = f"Thruster_{i}" # Try basic name
-                 if len(self._col(col_name)) > 0:
-                     found_thruster_cols.append(col_name)
-        
-        if found_thruster_cols:
-             for tc in found_thruster_cols:
-                 fig.add_trace(go.Scatter(x=t, y=self._col(tc), name=tc, stackgroup='one', legendgroup="thruster"), row=3, col=1)
-
-        # 6. Angular Rates
-        wx = get_col_safe("Current_WX") # Alternative names might exist
-        if len(wx) == 0: wx = get_col_safe("Current_AngVel_X")
-        wy = get_col_safe("Current_WY")
-        if len(wy) == 0: wy = get_col_safe("Current_AngVel_Y")
-        wz = get_col_safe("Current_WZ")
-        if len(wz) == 0: wz = get_col_safe("Current_AngVel_Z")
-        
-        if len(wx) > 0:
-            fig.add_trace(go.Scatter(x=t, y=np.degrees(wx), name="Wx", line=dict(color='red'), legendgroup="rate"), row=3, col=2)
-            fig.add_trace(go.Scatter(x=t, y=np.degrees(wy), name="Wy", line=dict(color='green'), legendgroup="rate"), row=3, col=2)
-            fig.add_trace(go.Scatter(x=t, y=np.degrees(wz), name="Wz", line=dict(color='blue'), legendgroup="rate"), row=3, col=2)
-
-        fig.update_layout(
-            height=1200,
-            title_text=f"Mission Interactive Report - {self.system_title}",
-            template="plotly_white",
-            showlegend=True
-        )
         
         output_path = plot_dir / "00_mission_dashboard.html"
         fig.write_html(output_path, include_plotlyjs="cdn")

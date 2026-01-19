@@ -463,8 +463,14 @@ async def shutdown_event():
 async def list_simulations():
     runs = []
     if DATA_DIR.exists():
+        # Only scan the 50 most recent directories to avoid slowdown
+        count = 0
         for run_dir in sorted(DATA_DIR.iterdir(), reverse=True):
             if not run_dir.is_dir():
+                continue
+            # Skip runs without physics data (speedup)
+            physics_path = run_dir / "physics_data.csv"
+            if not physics_path.exists():
                 continue
             metrics_path = run_dir / "performance_metrics.json"
             metrics = {}
@@ -480,12 +486,15 @@ async def list_simulations():
                 {
                     "id": run_dir.name,
                     "modified": run_dir.stat().st_mtime,
-                    "has_physics": (run_dir / "physics_data.csv").exists(),
+                    "has_physics": True,
                     "has_metrics": metrics_path.exists(),
                     "steps": sim_metrics.get("total_steps"),
                     "duration": sim_metrics.get("total_time_s"),
                 }
             )
+            count += 1
+            if count >= 50:
+                break
     return {"runs": runs}
 
 

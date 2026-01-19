@@ -84,6 +84,10 @@ class InteractiveMissionCLI:
                 title="◇  Mission 2: Scan Object (cylinder)",
                 value="scan_object",
             ),
+            questionary.Choice(
+                title="◆  Mission 3: Circle Starlink Satellite",
+                value="starlink_orbit",
+            ),
             questionary.Separator(),
             questionary.Choice(
                 title="×  Exit",
@@ -712,6 +716,171 @@ class InteractiveMissionCLI:
 
         return {
             "mission_type": "scan_object",
+            "start_pos": start_pos,
+            "start_angle": start_angle,
+            "simulation_config": simulation_config,
+        }
+
+    def run_starlink_orbit_mission(self) -> Dict[str, Any]:
+        """Mission 3: Circle Starlink Satellite with camera facing target."""
+        from pathlib import Path
+
+        from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.mission.starlink_orbit import (
+            build_starlink_orbit_trajectory,
+            get_starlink_bounds,
+        )
+
+        simulation_config = SimulationConfig.create_default()
+        mission_state = simulation_config.mission_state
+
+        console.print()
+        console.print(Panel("Mission 3: Circle Starlink Satellite", style="magenta"))
+
+        # Find the starlink.obj file
+        obj_path = Path("OBJ_files/starlink.obj")
+        if not obj_path.exists():
+            console.print(f"[red]Error: Starlink OBJ not found at {obj_path}[/red]")
+            return {}
+
+        # Get Starlink bounds info
+        try:
+            radius_xy, z_height, z_center = get_starlink_bounds(str(obj_path))
+            console.print(
+                f"[cyan]Starlink dimensions: radius={radius_xy:.2f}m, height={z_height:.2f}m[/cyan]"
+            )
+        except Exception as e:
+            console.print(f"[red]Error loading Starlink: {e}[/red]")
+            return {}
+
+        start_pos = self.get_position_interactive(
+            "Starting Position", default=(2.0, 0.0, 0.0)
+        )
+        start_angle = self.get_angle_interactive(
+            "Starting Orientation", (0.0, 0.0, 0.0)
+        )
+
+        starlink_pos = self.get_position_interactive(
+            "Starlink Position", default=(0.0, 0.0, 0.0)
+        )
+        # Default to no rotation - orbit will be around Z axis
+        starlink_angle = self.get_angle_interactive(
+            "Starlink Orientation", (0.0, 0.0, 0.0)
+        )
+
+        standoff = float(
+            questionary.text(
+                "Standoff distance from Starlink surface (m) [0.5]:",
+                default="0.5",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.5
+        )
+
+        z_step = float(
+            questionary.text(
+                "Z height increment between orbits (m) [0.5]:",
+                default="0.5",
+                validate=lambda x: self._validate_positive_float(x),
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.5
+        )
+
+        speed = float(
+            questionary.text(
+                "Orbit travel speed (m/s) [0.1]:",
+                default="0.1",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 0.1
+        )
+
+        obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
+
+        dt = float(simulation_config.app_config.mpc.dt)
+
+        # Calculate approach time for hold_start
+        orbit_start_radius = radius_xy + max(standoff, 0.0)
+        local_start = np.array(
+            [orbit_start_radius, 0.0, 0.0]
+        )  # Approximate first waypoint
+        from scipy.spatial.transform import Rotation
+
+        rot = Rotation.from_euler("xyz", starlink_angle, degrees=False)
+        rotated_start = rot.apply(local_start)
+        final_start = rotated_start + np.array(starlink_pos)
+
+        start_pos_arr = np.array(start_pos)
+        dist = np.linalg.norm(final_start - start_pos_arr)
+        approach_time = dist / max(speed, 0.01)
+        hold_start_val = approach_time + 5.0  # Add 5s buffer for settling
+
+        try:
+            path, trajectory, path_length, orientations = (
+                build_starlink_orbit_trajectory(
+                    obj_path=str(obj_path),
+                    center=starlink_pos,
+                    rotation_xyz=starlink_angle,
+                    standoff=standoff,
+                    z_step=z_step,
+                    points_per_ring=36,
+                    v_max=speed,
+                    v_min=0.05,
+                    lateral_accel=0.05,
+                    dt=dt,
+                    hold_start=hold_start_val,
+                    hold_end=5.0,
+                    camera_face="-Y",
+                )
+            )
+        except Exception as e:
+            console.print(f"[red]Error generating orbit trajectory: {e}[/red]")
+            return {}
+
+        total_time = float(trajectory[-1, 0]) if len(trajectory) > 0 else 0.0
+
+        console.print(
+            f"[green]Generated orbit: {len(path)} waypoints, {path_length:.1f}m total, {total_time:.1f}s duration[/green]"
+        )
+
+        mission_state.trajectory_mode_active = True
+        mission_state.trajectory_type = "starlink_orbit"
+        mission_state.trajectory_start_time = None
+        mission_state.trajectory_total_time = total_time
+        mission_state.trajectory_hold_start = hold_start_val
+        mission_state.trajectory_hold_end = 5.0
+        mission_state.trajectory_start_orientation = start_angle
+        mission_state.trajectory_end_orientation = None
+        mission_state.trajectory_object_center = starlink_pos
+        mission_state.mesh_scan_mode_active = True
+        mission_state.mesh_scan_obj_path = str(obj_path)
+        mission_state.dxf_target_speed = speed
+        mission_state.mesh_scan_object_pose = (
+            starlink_pos[0],
+            starlink_pos[1],
+            starlink_pos[2],
+            starlink_angle[0],
+            starlink_angle[1],
+            starlink_angle[2],
+        )
+        mission_state.mesh_scan_standoff = standoff
+        mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
+        mission_state.dxf_trajectory_dt = dt
+        mission_state.dxf_shape_path = path
+        mission_state.dxf_shape_mode_active = False
+        mission_state.enable_waypoint_mode = False
+        mission_state.enable_multi_point_mode = False
+        mission_state.obstacles = obstacles
+        mission_state.obstacles_enabled = obstacles_enabled
+
+        return {
+            "mission_type": "starlink_orbit",
             "start_pos": start_pos,
             "start_angle": start_angle,
             "simulation_config": simulation_config,

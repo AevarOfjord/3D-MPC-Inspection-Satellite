@@ -10,6 +10,7 @@ namespace satellite_control {
 MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCParams& mpc_params)
     : sat_params_(sat_params), mpc_params_(mpc_params) {
     
+    nx_ = 16; // 13 base + 3 wheel speeds
     N_ = mpc_params_.prediction_horizon;
     dt_ = mpc_params_.dt;
     nu_ = sat_params_.num_rw + sat_params_.num_thrusters;
@@ -19,10 +20,12 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     
     // Precompute weight vectors
     Q_diag_.resize(nx_);
+    Q_diag_.resize(nx_);
     Q_diag_ << VectorXd::Constant(3, mpc_params_.Q_pos),
                VectorXd::Constant(4, mpc_params_.Q_ang),
                VectorXd::Constant(3, mpc_params_.Q_vel),
-               VectorXd::Constant(3, mpc_params_.Q_angvel);
+               VectorXd::Constant(3, mpc_params_.Q_angvel),
+               VectorXd::Constant(3, 0.0); // Wheel speeds Q=0
     
     R_diag_.resize(nu_);
     R_diag_ << VectorXd::Constant(sat_params_.num_rw, mpc_params_.R_rw_torque),
@@ -276,6 +279,27 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     int state_idx_start = n_dyn + n_init;
     l_.segment(state_idx_start, n_bounds_x).setConstant(-1e20);
     u_.segment(state_idx_start, n_bounds_x).setConstant(1e20);
+
+    // 3a. Velocity bounds (indices 7, 8, 9)
+    if (mpc_params_.max_velocity > 0) {
+        for (int k = 0; k < N_ + 1; ++k) {
+            int vel_idx = state_idx_start + k * nx_ + 7;
+            l_.segment(vel_idx, 3).setConstant(-mpc_params_.max_velocity);
+            u_.segment(vel_idx, 3).setConstant(mpc_params_.max_velocity);
+        }
+    }
+
+    // 3b. Wheel speed limits (indices 13-15)
+    // Assume +/- 500 rad/s (~4700 RPM) limit if not specified, or use a param?
+    // Using loose bounds for now or derived from somewhere?
+    // Let's set loose bounds for now, can be parameterized later.
+    // Index offset in state vector is 13.
+    for (int k = 0; k < N_ + 1; ++k) {
+        int ws_idx = state_idx_start + k * nx_ + 13;
+        // Apply limit to 3 wheels
+        l_.segment(ws_idx, 3).setConstant(-600.0); // Rad/s
+        u_.segment(ws_idx, 3).setConstant(600.0);
+    }
     
     // 4. Control bounds
     int ctrl_idx_start = n_dyn + n_init + n_bounds_x;
@@ -447,6 +471,60 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current, co
     // Clip to bounds (safety)
     result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
     result.status = 1; // Success
+
+    // --- Velocity Governor Safety Check (Post-Solve) ---
+    // If strict velocity limit is enabled and we are overspeeding,
+    // prevent any thrust that increases velocity in the direction of motion.
+    if (mpc_params_.max_velocity > 0) {
+        Eigen::Vector3d v = x_current.segment<3>(7);
+        double speed = v.norm();
+        
+        if (speed > mpc_params_.max_velocity) {
+            // Check if control action adds to velocity
+            // We need to map thruster forces to world frame to check this precisely,
+            // or just conservatively cut thrust if overspeed.
+            // Matching the python implementation:
+            // "Rotate body-frame force into world frame to compare with world velocity"
+            
+            // Reconstruct net force in body frame
+            Eigen::Vector3d net_force_body = Eigen::Vector3d::Zero();
+            // Thruster part of u is at the end? nu = num_rw + num_thrusters
+            int num_thr = sat_params_.num_thrusters;
+            int num_rw = sat_params_.num_rw;
+            
+            if (result.u.size() >= num_rw + num_thr) {
+                VectorXd thrust_cmds = result.u.tail(num_thr);
+                
+                for (int i = 0; i < num_thr; ++i) {
+                     if (thrust_cmds(i) > 1e-4) {
+                         // Direction in params
+                         if (i < (int)sat_params_.thruster_directions.size()) {
+                            // Assuming max_thrust is stored per thruster or we use 
+                            // a simplified check. The Python code used physics config.
+                            // Here we have sat_params_.thruster_forces
+                            double f_mag = sat_params_.thruster_forces[i];
+                            Eigen::Vector3d f_dir = sat_params_.thruster_directions[i];
+                            net_force_body += f_dir * (f_mag * thrust_cmds(i));
+                         }
+                     }
+                }
+                
+                // Rotate to world frame
+                Eigen::Vector4d q = x_current.segment<4>(3);
+                // Rotate vector by quaternion: v' = q * v * q_conj
+                // Helper:
+                Eigen::Vector3d t = 2.0 * q.tail<3>().cross(net_force_body);
+                Eigen::Vector3d net_force_world = net_force_body + q(0) * t + q.tail<3>().cross(t);
+                
+                // Check dot product
+                if (net_force_world.dot(v) > 0) {
+                     // Force contributes to velocity -> Kill thrusters
+                     result.u.tail(num_thr).setZero();
+                     // std::cout << "[CPP GOVERNOR] Overspeed protection activated. Thrust cut." << std::endl;
+                }
+            }
+        }
+    }
     
     return result;
 }
@@ -483,6 +561,36 @@ ControlResult MPCControllerCpp::get_control_action_trajectory(
     }
     
     result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
+
+    // --- Velocity Governor Safety Check (Post-Solve) ---
+    if (mpc_params_.max_velocity > 0) {
+        Eigen::Vector3d v = x_current.segment<3>(7);
+        double speed = v.norm();
+        
+        if (speed > mpc_params_.max_velocity) {
+            Eigen::Vector3d net_force_body = Eigen::Vector3d::Zero();
+            int num_thr = sat_params_.num_thrusters;
+            int num_rw = sat_params_.num_rw;
+            
+            if (result.u.size() >= num_rw + num_thr) {
+                VectorXd thrust_cmds = result.u.tail(num_thr);
+                for (int i = 0; i < num_thr; ++i) {
+                     if (thrust_cmds(i) > 1e-4 && i < (int)sat_params_.thruster_directions.size()) {
+                        double f_mag = sat_params_.thruster_forces[i];
+                        Eigen::Vector3d f_dir = sat_params_.thruster_directions[i];
+                        net_force_body += f_dir * (f_mag * thrust_cmds(i));
+                     }
+                }
+                Eigen::Vector4d q = x_current.segment<4>(3);
+                Eigen::Vector3d t = 2.0 * q.tail<3>().cross(net_force_body);
+                Eigen::Vector3d net_force_world = net_force_body + q(0) * t + q.tail<3>().cross(t);
+                
+                if (net_force_world.dot(v) > 0) {
+                     result.u.tail(num_thr).setZero();
+                }
+            }
+        }
+    }
 
     auto end = std::chrono::high_resolution_clock::now();
     result.solve_time = std::chrono::duration<double>(end - start).count();

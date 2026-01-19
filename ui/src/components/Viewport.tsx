@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, GizmoHelper, GizmoViewcube } from '@react-three/drei';
 import { Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TargetMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
+import { StarlinkModel } from './StarlinkModel';
 import { CameraManager } from './CameraManager';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
@@ -80,6 +81,14 @@ function Obstacles() {
             <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
           </mesh>
         </group>
+      )}
+      {params.scanObject && params.scanObject.type === 'starlink' && (
+        <Suspense fallback={null}>
+          <StarlinkModel
+            position={params.scanObject.position}
+            orientation={params.scanObject.orientation}
+          />
+        </Suspense>
       )}
       {params.obstacles.map((obs, i) => (
         <mesh key={i} position={new Vector3(...obs.position)}>

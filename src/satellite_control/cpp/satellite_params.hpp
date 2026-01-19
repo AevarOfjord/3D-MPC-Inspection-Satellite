@@ -18,6 +18,7 @@ struct SatelliteParams {
     std::vector<Vector3d> thruster_directions;
     std::vector<double> thruster_forces;
     std::vector<double> rw_torque_limits;
+    std::vector<double> rw_inertia;
     Vector3d com_offset;
 };
 

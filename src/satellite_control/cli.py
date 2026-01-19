@@ -153,6 +153,17 @@ def run(
                     sim_start_pos = mission_config.get("start_pos")
                 if "start_angle" in mission_config:
                     sim_start_angle = mission_config.get("start_angle")
+            elif mode == "starlink_orbit":
+                mission_config = interactive_cli.run_starlink_orbit_mission()
+                if not mission_config:
+                    console.print("[red]Mission cancelled.[/red]")
+                    raise typer.Exit()
+                if "simulation_config" in mission_config:
+                    simulation_config = mission_config["simulation_config"]
+                if "start_pos" in mission_config:
+                    sim_start_pos = mission_config.get("start_pos")
+                if "start_angle" in mission_config:
+                    sim_start_angle = mission_config.get("start_angle")
         except ImportError:
             console.print("[yellow]Falling back to classic menu...[/yellow]")
             mission_manager = MissionManager()

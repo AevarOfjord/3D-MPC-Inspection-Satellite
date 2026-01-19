@@ -36,10 +36,10 @@ Eigen::Matrix3d Linearizer::compute_rotation_matrix(const Eigen::Vector4d& q) {
 }
 
 std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
-    // x = [px, py, pz, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz] (13)
+    // x = [px, py, pz, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz] (16)
     // u = [rw_x, rw_y, rw_z, th_1 ... th_N]
     
-    int nx = 13;
+    int nx = 16;
     int nu = params_.num_rw + params_.num_thrusters;
     
     MatrixXd A = MatrixXd::Identity(nx, nx);
@@ -71,13 +71,17 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     // Reaction wheels (first num_rw inputs)
     for(int i=0; i < params_.num_rw; ++i) {
         if(params_.rw_torque_limits[i] == 0.0) continue;
-        // B[10+i, i]
-        B(10 + i, i) = -(1.0 / params_.inertia[i]) * dt; 
-        // Note: Python didn't multiply by max_torque here in B assignment line 289?
-        // Wait, Python code: self.rw_torque_limits[i] / self.moment_of_inertia[i] * self.dt
-        // In python, the control input is normalized [-1, 1], so we multiply by max_torque in B.
-        // Let's match Python.
-        B(10 + i, i) *= params_.rw_torque_limits[i]; 
+        
+        // 1. Angular velocity dynamics: Idot_w = -tau_rw
+        // B[10+i, i] = -1/I_sat * tau_max * dt
+        // Note: This is simplified diagonal inertia assumption for body axes aligned with principal axes
+        B(10 + i, i) = -(1.0 / params_.inertia[i]) * dt * params_.rw_torque_limits[i]; 
+
+        // 2. Wheel speed dynamics: dot_wr = tau_rw / I_rw
+        // B[13+i, i] = 1/I_rw * tau_max * dt
+        if (i < params_.rw_inertia.size()) {
+             B(13 + i, i) = (1.0 / params_.rw_inertia[i]) * dt * params_.rw_torque_limits[i];
+        }
     }
 
     int th_offset = params_.num_rw;

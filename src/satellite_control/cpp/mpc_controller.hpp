@@ -115,7 +115,7 @@ public:
 
 private:
     // Dimensions
-    int nx_ = 13;  // State dimension
+    int nx_ = 16;  // State dimension (13 base + 3 wheel speeds)
     int nu_;       // Control dimension (RW + thrusters)
     int N_;        // Prediction horizon
     double dt_;

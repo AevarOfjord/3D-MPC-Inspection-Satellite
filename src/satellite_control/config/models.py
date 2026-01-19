@@ -8,7 +8,26 @@ and descriptive error messages.
 from typing import Any, Dict, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import List
 
+
+class ReactionWheelParams(BaseModel):
+    """Configuration for a single reaction wheel."""
+    
+    axis: Tuple[float, float, float] = Field(
+        ...,
+        description="Rotation axis vector (x, y, z)",
+    )
+    max_torque: float = Field(
+        ...,
+        gt=0,
+        description="Maximum torque in N*m",
+    )
+    inertia: float = Field(
+        ...,
+        gt=0,
+        description="Rotational inertia in kg*m^2",
+    )
 
 class SatellitePhysicalParams(BaseModel):
     """
@@ -57,6 +76,12 @@ class SatellitePhysicalParams(BaseModel):
     thruster_forces: Dict[int, float] = Field(
         ...,
         description="Map of thruster ID (1-6 or 1-8) to max force in Newtons",
+    )
+
+    # Reaction Wheels
+    reaction_wheels: List["ReactionWheelParams"] = Field(
+        default_factory=list,
+        description="List of reaction wheel configurations",
     )
 
     # Physics Engine

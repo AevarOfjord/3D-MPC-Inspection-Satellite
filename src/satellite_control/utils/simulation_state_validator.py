@@ -117,7 +117,8 @@ class SimulationStateValidator:
         """
         Validate that state vector has correct format.
 
-        Expected format: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+        Expected format: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, (wrx, wry, wrz)]
+        Can be 13 (legacy) or 16 (with reaction wheels) elements.
 
         Args:
             state: State vector to validate
@@ -131,8 +132,8 @@ class SimulationStateValidator:
         if not isinstance(state, np.ndarray):
             raise ValueError(f"State must be numpy array, got {type(state)}")
 
-        if state.shape != (13,):
-            raise ValueError(f"State must have shape (13,), got {state.shape}")
+        if state.shape != (13,) and state.shape != (16,):
+            raise ValueError(f"State must have shape (13,) or (16,), got {state.shape}")
 
         if not np.all(np.isfinite(state)):
             raise ValueError(f"State contains non-finite values: {state}")

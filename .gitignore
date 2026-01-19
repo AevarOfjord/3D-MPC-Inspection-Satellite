@@ -14,6 +14,7 @@ env/
 venv/
 .env
 .venv
+.venv311/
 build/
 develop-eggs/
 dist/
@@ -44,3 +45,7 @@ htmlcov/
 Thumbs.db
 Data/simulation.log
 simulation.log
+
+# Node
+node_modules/
+ui/node_modules/

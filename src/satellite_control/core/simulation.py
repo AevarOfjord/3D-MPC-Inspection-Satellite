@@ -197,11 +197,6 @@ class SatelliteMPCLinearizedSimulation:
         if self.simulation_config is None:
             if isinstance(self.cfg, AppConfig):
                 self.simulation_config = SimulationConfig(app_config=self.cfg)
-            elif self.cfg is not None:
-                # Legacy Hydra
-                self.simulation_config = SimulationConfig.create_from_hydra_cfg(
-                    self.cfg
-                )
 
         self.structured_config = self.simulation_config
 
@@ -251,8 +246,10 @@ class SatelliteMPCLinearizedSimulation:
         vel = s.velocity
         # [wx, wy, wz]
         ang_vel = s.angular_velocity
+        # [wrx, wry, wrz]
+        wheel_speeds = getattr(s, "wheel_speeds", np.zeros(3))
 
-        return np.concatenate([pos, quat, vel, ang_vel])
+        return np.concatenate([pos, quat, vel, ang_vel, wheel_speeds])
 
     # Backward-compatible properties delegating to ThrusterManager
     @property
@@ -505,41 +502,43 @@ class SatelliteMPCLinearizedSimulation:
             target_trajectory = None
 
             if self.active_trajectory is not None and len(self.active_trajectory) > 0:
-                # Find current point on trajectory
-                t = self.simulation_time
-
-                # Check if finished
-                if t > self.active_trajectory[-1, 0]:
-                    # Stay at last point
-                    pt = self.active_trajectory[-1]
-                    target_pos = pt[1:4]
-                    target_vel = np.zeros(3)  # Stop at end
-                else:
-                    # Interpolate
-                    target_pos = np.zeros(3)
-                    target_vel = np.zeros(3)
-                    for i in range(3):
-                        target_pos[i] = np.interp(
-                            t,
-                            self.active_trajectory[:, 0],
-                            self.active_trajectory[:, 1 + i],
-                        )
-                        target_vel[i] = np.interp(
-                            t,
-                            self.active_trajectory[:, 0],
-                            self.active_trajectory[:, 4 + i],
-                        )
-
-                # Update target state [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
+                # Sample trajectory horizon
+                t_start = self.simulation_time
+                # trajectory format: [time, x, y, z, vx, vy, vz, ...] 
+                # We need 16-D state: [pos(3), quat(4), vel(3), ang_vel(3), wheel_speeds(3)]
+                
+                dt = getattr(self.mpc_controller, "dt", 0.05)
+                horizon = getattr(self.mpc_controller, "N", 10)
+                traj_matrix = np.zeros((horizon, 16))
+                
+                # Get current target quaternion from existing target state or current state
                 current_target_quat = self.target_state[3:7]
-
-                new_target = np.zeros(13)
-                new_target[0:3] = target_pos
-                new_target[3:7] = current_target_quat
-                new_target[7:10] = target_vel
-                new_target[10:13] = np.zeros(3)
-
-                self.target_state = new_target
+                
+                valid_traj = True
+                for k in range(horizon):
+                    t_k = t_start + k * dt
+                    
+                    if t_k > self.active_trajectory[-1, 0]:
+                        # Clamp to end
+                        pt = self.active_trajectory[-1]
+                        pos = pt[1:4]
+                        vel = np.zeros(3)
+                    else:
+                        # Interpolate
+                        pos = np.zeros(3)
+                        vel = np.zeros(3)
+                        for i in range(3):
+                            pos[i] = np.interp(t_k, self.active_trajectory[:, 0], self.active_trajectory[:, 1+i])
+                            vel[i] = np.interp(t_k, self.active_trajectory[:, 0], self.active_trajectory[:, 4+i])
+                    
+                    traj_matrix[k, 0:3] = pos
+                    traj_matrix[k, 3:7] = current_target_quat
+                    traj_matrix[k, 7:10] = vel
+                
+                target_trajectory = traj_matrix
+                
+                # Update immediate target state for logging/metrics
+                self.target_state = traj_matrix[0, :13]
 
             else:
                 # Legacy / Mission Manager Fallback
@@ -590,40 +589,8 @@ class SatelliteMPCLinearizedSimulation:
             if mpc_info:
                 self.last_solve_time = mpc_info.get("solve_time", 0.0)
 
-            # Velocity governor
-            max_vel = None
-            if hasattr(self, "simulation_config") and hasattr(
-                self.simulation_config, "app_config"
-            ):
-                max_vel = getattr(
-                    self.simulation_config.app_config.mpc, "max_velocity", None
-                )
-            if max_vel is not None and max_vel > 0:
-                speed = float(np.linalg.norm(current_state[7:10]))
-                if speed >= max_vel and speed > 1e-6:
-                    physics_cfg = self.simulation_config.app_config.physics
-                    thruster_ids = sorted(physics_cfg.thruster_directions.keys())
-                    net_force = np.zeros(3, dtype=np.float64)
-                    for i, tid in enumerate(thruster_ids):
-                        if i >= len(thruster_action):
-                            break
-                        force = physics_cfg.thruster_forces[tid] * thruster_action[i]
-                        direction = np.array(
-                            physics_cfg.thruster_directions[tid], dtype=np.float64
-                        )
-                        net_force += force * direction
-
-                    # Rotate body-frame force into world frame to compare with world velocity.
-                    q = np.array(current_state[3:7], dtype=np.float64)
-                    q_norm = np.linalg.norm(q)
-                    if q_norm > 0:
-                        q = q / q_norm
-                    q_vec = q[1:4]
-                    t = 2.0 * np.cross(q_vec, net_force)
-                    net_force_world = net_force + q[0] * t + np.cross(q_vec, t)
-
-                    if float(np.dot(net_force_world, current_state[7:10])) > 0.0:
-                        thruster_action = np.zeros_like(thruster_action)
+            # Velocity governor moved to C++ MPC Controller (V5.1.0)
+            # Logic removed to prevent fighting with the solver constraints.
 
             rw_torque_cmd = np.zeros(3, dtype=np.float64)
             max_rw_torque = getattr(self.mpc_controller, "max_rw_torque", 0.0)

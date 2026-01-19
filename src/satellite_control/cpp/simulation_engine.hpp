@@ -30,7 +30,7 @@ public:
     /**
      * @brief reset state to initial conditions
      * 
-     * @param state Initial state [pos(3), quat(4), vel(3), ang_vel(3)] length 13
+     * @param state Initial state [pos(3), quat(4), vel(3), ang_vel(3), rw_speeds(3)] length 16 (or 13, padded with 0)
      */
     void reset(const Eigen::VectorXd& state);
 
@@ -46,7 +46,7 @@ public:
     /**
      * @brief Get the current state
      * 
-     * @return Eigen::VectorXd State vector (13 elements)
+     * @return Eigen::VectorXd State vector (16 elements)
      */
     Eigen::VectorXd get_state() const;
 
@@ -63,21 +63,18 @@ private:
     TwoBodyDynamics two_body_dynamics_;
     bool use_nonlinear_;
 
-    // State vector: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
+    // State vector: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz] (16)
     // Note: Quaternions are stored [w, x, y, z] to match customized layout
     Eigen::VectorXd state_;
     
-    // Reaction wheel speeds (separate from main state for convenience, or part of it?)
-    // Simulation usually tracks this separately or as part of state.
-    // Let's keep separate for now matching 13-state external API, but update internally.
-    Eigen::Vector3d rw_speeds_;
-
+    // rw_speeds_ integrated into state_ (indices 13-15)
+    
     // Helpers
     Eigen::Vector3d compute_total_force(const std::vector<double>& thruster_cmds, const Eigen::Vector4d& quat) const;
     Eigen::Vector3d compute_total_torque(const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) const;
     
     // Dynamics
-    Eigen::VectorXd compute_state_derivative(const Eigen::VectorXd& x, const Eigen::Vector3d& total_force, const Eigen::Vector3d& total_torque);
+    Eigen::VectorXd compute_state_derivative(const Eigen::VectorXd& x, const Eigen::Vector3d& total_force, const Eigen::Vector3d& total_torque, const Eigen::Vector3d& total_rw_torque);
 };
 
 } // namespace satellite_control

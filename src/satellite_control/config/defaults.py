@@ -10,6 +10,7 @@ from src.satellite_control.config.models import (
     AppConfig,
     MPCParams,
     SatellitePhysicalParams,
+    ReactionWheelParams,
     SimulationParams,
 )
 
@@ -36,6 +37,17 @@ def create_default_app_config() -> AppConfig:
             k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()
         },
         thruster_forces=physics.THRUSTER_FORCES,
+        reaction_wheels=[
+            ReactionWheelParams(
+                axis=(1.0, 0.0, 0.0), max_torque=0.1, inertia=1e-4
+            ),  # X-axis
+            ReactionWheelParams(
+                axis=(0.0, 1.0, 0.0), max_torque=0.1, inertia=1e-4
+            ),  # Y-axis
+            ReactionWheelParams(
+                axis=(0.0, 0.0, 1.0), max_torque=0.1, inertia=1e-4
+            ),  # Z-axis
+        ],
         use_realistic_physics=False,
         damping_linear=0.0,
         damping_angular=0.0,

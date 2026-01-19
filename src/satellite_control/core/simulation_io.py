@@ -126,9 +126,10 @@ class SimulationIO:
         if mission_state is None:
             return
 
+        trajectory_type = getattr(mission_state, "trajectory_type", "")
         is_scan = bool(
             getattr(mission_state, "mesh_scan_mode_active", False)
-            or getattr(mission_state, "trajectory_type", "") == "scan"
+            or trajectory_type in ("scan", "starlink_orbit")
         )
         if not is_scan:
             return
@@ -142,15 +143,30 @@ class SimulationIO:
             pos = [float(val) for val in (center or (0.0, 0.0, 0.0))]
             ori = [0.0, 0.0, 0.0]
 
-        metadata = {
-            "mission_type": "scan_object",
-            "scan_object": {
+        # Determine scan object type based on trajectory type
+        if trajectory_type == "starlink_orbit":
+            obj_path = getattr(mission_state, "mesh_scan_obj_path", "")
+            scan_object = {
+                "type": "starlink",
+                "position": pos,
+                "orientation": ori,
+                "radius": 1.5,  # Approximate Starlink max radius
+                "height": 0.3,  # Approximate Starlink height
+                "obj_path": obj_path,
+            }
+        else:
+            # Default cylinder for scan missions
+            scan_object = {
                 "type": "cylinder",
                 "position": pos,
                 "orientation": ori,
                 "radius": 0.25,
                 "height": 3.0,
-            },
+            }
+
+        metadata = {
+            "mission_type": trajectory_type if trajectory_type else "scan_object",
+            "scan_object": scan_object,
         }
 
         metadata_path = self.sim.data_save_path / "mission_metadata.json"
@@ -197,7 +213,9 @@ class SimulationIO:
                     # simulation.py usually expects [w, x, y, z] or [q0, q1, q2, q3]
                     # Let's check logic: mpc_controller says [qw, qx, qy, qz]
                     # Scipy is [x, y, z, w]
-                    quat_wxyz = np.column_stack([quat[:, 3], quat[:, 0], quat[:, 1], quat[:, 2]])
+                    quat_wxyz = np.column_stack(
+                        [quat[:, 3], quat[:, 0], quat[:, 1], quat[:, 2]]
+                    )
 
                     # Construct 13-element state: [pos(3), quat(4), vel(3), ang_vel(3)]
                     # Shape (N, 13)

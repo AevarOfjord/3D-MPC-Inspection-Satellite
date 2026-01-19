@@ -133,13 +133,14 @@ class CppSatelliteSimulator:
         params.rw_torque_limits = []
 
         # Check if cfg has vehicle attribute (DictConfig) or we are using AppConfig
-        if hasattr(cfg, "vehicle") and hasattr(cfg.vehicle, "reaction_wheels"):
-            pass  # TODO: Implement RW parsing from Hydra structure
+        if hasattr(cfg, "reaction_wheels") and cfg.reaction_wheels:
+            rws = cfg.reaction_wheels
+            params.num_rw = len(rws)
+            params.rw_torque_limits = [float(rw.max_torque) for rw in rws]
+            params.rw_inertia = [float(rw.inertia) if hasattr(rw, "inertia") else 0.001 for rw in rws]
         elif hasattr(cfg, "mpc") and hasattr(cfg.mpc, "r_rw_torque"):
-            # Fallback: Assume basic RW support if MPC has RW weights
-            # But we need physical params (inertia, capability).
-            # For now, if AppConfig doesn't support RW params, assume 0 RWs or Defaults.
-            pass
+             # Basic fallback if needed, but safe to leave 0
+             pass
 
         params.com_offset = np.array(cfg.physics.com_offset)
         return params
@@ -200,6 +201,11 @@ class CppSatelliteSimulator:
         s = self.engine.get_state()
         s[10:13] = w
         self.engine.reset(s)
+
+    @property
+    def wheel_speeds(self) -> np.ndarray:
+        """Get reaction wheel speeds [rad/s]."""
+        return self.engine.get_rw_speeds()
 
     def apply_force(self, force: List[float]):
         """

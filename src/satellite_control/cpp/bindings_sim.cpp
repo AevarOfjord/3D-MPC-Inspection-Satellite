@@ -22,6 +22,7 @@ PYBIND11_MODULE(_cpp_sim, m) {
         .def_readwrite("thruster_directions", &SatelliteParams::thruster_directions)
         .def_readwrite("thruster_forces", &SatelliteParams::thruster_forces)
         .def_readwrite("rw_torque_limits", &SatelliteParams::rw_torque_limits)
+        .def_readwrite("rw_inertia", &SatelliteParams::rw_inertia)
         .def_readwrite("com_offset", &SatelliteParams::com_offset);
 
     py::class_<SimulationEngine>(m, "SimulationEngine")

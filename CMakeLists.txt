@@ -5,7 +5,10 @@ project(satellite_control_cpp LANGUAGES CXX)
 
 include(FetchContent)
 
-# Eigen3 for linear algebra
+# Eigen3 for linear algebra (disable tests/docs for faster builds)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
   Eigen3
   URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz

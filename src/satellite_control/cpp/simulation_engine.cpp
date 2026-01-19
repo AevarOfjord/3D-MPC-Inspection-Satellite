@@ -9,18 +9,21 @@ SimulationEngine::SimulationEngine(const SatelliteParams& params, double mean_mo
       cw_dynamics_(mean_motion),
       two_body_dynamics_(mu, target_radius),
       use_nonlinear_(use_nonlinear) {
-    state_ = Eigen::VectorXd::Zero(13);
+    state_ = Eigen::VectorXd::Zero(16);
     // Initialize quaternion to [1, 0, 0, 0]
     state_(3) = 1.0;
-    rw_speeds_ = Eigen::Vector3d::Zero();
 }
 
 void SimulationEngine::reset(const Eigen::VectorXd& state) {
-    if (state.size() != 13) {
-        throw std::invalid_argument("State must have 13 elements");
+    if (state.size() == 13) {
+        // Pad with 3 zeros for wheel speeds
+        state_ = Eigen::VectorXd::Zero(16);
+        state_.segment(0, 13) = state;
+    } else if (state.size() == 16) {
+        state_ = state;
+    } else {
+        throw std::invalid_argument("State must have 13 or 16 elements");
     }
-    state_ = state;
-    rw_speeds_.setZero();
 }
 
 Eigen::VectorXd SimulationEngine::get_state() const {
@@ -28,7 +31,7 @@ Eigen::VectorXd SimulationEngine::get_state() const {
 }
 
 Eigen::Vector3d SimulationEngine::get_rw_speeds() const {
-    return rw_speeds_;
+    return state_.segment<3>(13);
 }
 
 void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) {
@@ -68,7 +71,7 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     
     // So compute_state_derivative needs to take BODY forces and rotate them.
 
-    auto k1 = compute_state_derivative(state_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()); // See below re: caching
+    // (Moved to RK4 block below)
     
     // Re-architecture: compute_state_derivative calculates forces internally from stored cmds?
     // Or we pass body frame forces and it rotates them?
@@ -97,20 +100,26 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     }
     
     // --- RK4 Implementation ---
-    Eigen::VectorXd k1_state = compute_state_derivative(state_, body_force_cmds, body_torque_cmds);
+    // Prepare RW Torque Vector (size 3) for derivative
+    Eigen::Vector3d rw_torque_vec = Eigen::Vector3d::Zero();
+    for (size_t i = 0; i < std::min((size_t)3, rw_torques.size()); ++i) {
+        rw_torque_vec(i) = rw_torques[i];
+    }
+    
+    Eigen::VectorXd k1_state = compute_state_derivative(state_, body_force_cmds, body_torque_cmds, rw_torque_vec);
     
     Eigen::VectorXd s2 = state_ + 0.5 * dt * k1_state;
     // Normalize quaternion in s2
     s2.segment<4>(3).normalize();
-    Eigen::VectorXd k2_state = compute_state_derivative(s2, body_force_cmds, body_torque_cmds);
+    Eigen::VectorXd k2_state = compute_state_derivative(s2, body_force_cmds, body_torque_cmds, rw_torque_vec);
     
     Eigen::VectorXd s3 = state_ + 0.5 * dt * k2_state;
     s3.segment<4>(3).normalize();
-    Eigen::VectorXd k3_state = compute_state_derivative(s3, body_force_cmds, body_torque_cmds);
+    Eigen::VectorXd k3_state = compute_state_derivative(s3, body_force_cmds, body_torque_cmds, rw_torque_vec);
     
     Eigen::VectorXd s4 = state_ + dt * k3_state;
     s4.segment<4>(3).normalize();
-    Eigen::VectorXd k4_state = compute_state_derivative(s4, body_force_cmds, body_torque_cmds);
+    Eigen::VectorXd k4_state = compute_state_derivative(s4, body_force_cmds, body_torque_cmds, rw_torque_vec);
     
     state_ = state_ + (dt / 6.0) * (k1_state + 2.0*k2_state + 2.0*k3_state + k4_state);
     
@@ -122,28 +131,15 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
         two_body_dynamics_.propagate_target(dt);
     }
     
-    // Update RW speeds (simple Euler integration: omega_dot = T / I_wheel)
-    // T_rw = I_w * alpha => alpha = T_rw / I_w
-    // assuming RW aligned with body axes for now (or simplified)
-    // We don't have RW inertia in params currently... 
-    // Using simple placeholder or assuming standard inertia if not provided.
-    // params_.inertia is Body inertia.
-    // Skipping RW speed update for now if inertia not available, 
-    // but C++ loop should track them if we want to model saturation.
-    // TODO: Add rw_inertia to SatelliteParams in future.
+    // Reaction Wheel Speed Accel: update internal state via derivative now
 }
 
-Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd& s, const Eigen::Vector3d& body_force, const Eigen::Vector3d& body_torque) {
+Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd& s, const Eigen::Vector3d& body_force, const Eigen::Vector3d& body_torque, const Eigen::Vector3d& rw_torque) {
     /*
-     State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
-     Indices:
-     0-2: Pos
-     3-6: Quat (w,x,y,z)
-     7-9: Vel
-     10-12: AngVel
+     State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz]
      */
     
-    Eigen::VectorXd dxdt = Eigen::VectorXd::Zero(13);
+    Eigen::VectorXd dxdt = Eigen::VectorXd::Zero(16);
     
     // 1. Position Derivative: v
     dxdt.segment<3>(0) = s.segment<3>(7);
@@ -212,6 +208,18 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     Eigen::Vector3d gyroscopic = w.cross(Iw);
     
     dxdt.segment<3>(10) = I_inv * (body_torque - gyroscopic);
+    
+    // 5. Wheel Speed Derivative: T_rw / I_rw
+    // RW speeds are at indices 13-15
+    for(int i=0; i<3; ++i) {
+        double inertia = 0.001; // Default fallback
+        if (i < params_.rw_inertia.size() && params_.rw_inertia[i] > 1e-6) {
+            inertia = params_.rw_inertia[i];
+        }
+        
+        // omega_dot = T_rw / I_rw
+        dxdt(13 + i) = rw_torque(i) / inertia;
+    }
     
     return dxdt;
 }

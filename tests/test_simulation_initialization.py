@@ -54,17 +54,19 @@ class TestSimulationInitializerInitialization:
 class TestSimulationInitializerInitialize:
     """Test the initialize method."""
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_satellite_physics(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -73,8 +75,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that satellite physics is initialized correctly."""
         # Setup mocks
@@ -88,6 +90,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -99,21 +102,23 @@ class TestSimulationInitializerInitialize:
         )
 
         # Verify satellite was created
-        mock_satellite.assert_called_once_with(use_mujoco_viewer=False)
+        mock_satellite.assert_called_once_with(app_config=simulation_config.app_config)
         assert mock_simulation.satellite == mock_sat_instance
         assert mock_simulation.satellite.external_simulation_mode is True
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_target_state(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -122,8 +127,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that target state is initialized correctly."""
         # Setup mocks
@@ -136,6 +141,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -157,17 +163,19 @@ class TestSimulationInitializerInitialize:
         # Check quaternion (should be non-zero for non-zero angle)
         assert np.any(mock_simulation.target_state[3:7] != 0)
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_simulation_timing(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -176,8 +184,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that simulation timing is initialized correctly."""
         # Setup mocks
@@ -190,6 +198,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -208,17 +217,19 @@ class TestSimulationInitializerInitialize:
         assert hasattr(mock_simulation, "last_control_update")
         assert hasattr(mock_simulation, "next_control_simulation_time")
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_thruster_manager(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -227,8 +238,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that thruster manager is initialized."""
         # Setup mocks
@@ -241,6 +252,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -255,17 +267,19 @@ class TestSimulationInitializerInitialize:
         assert hasattr(mock_simulation, "thruster_manager")
         assert hasattr(mock_simulation, "num_thrusters")
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_mpc_controller(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -274,8 +288,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that MPC controller is initialized."""
         # Setup mocks
@@ -288,6 +302,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -302,17 +317,19 @@ class TestSimulationInitializerInitialize:
         mock_mpc.assert_called_once()
         assert hasattr(mock_simulation, "mpc_controller")
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_default_positions(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -321,8 +338,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that default positions are used when None provided."""
         # Setup mocks
@@ -335,6 +352,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -350,17 +368,19 @@ class TestSimulationInitializerInitialize:
         mock_satellite.assert_called_once()
         assert hasattr(mock_simulation, "satellite")
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_with_velocities(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -369,8 +389,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test initialization with initial velocities."""
         # Setup mocks
@@ -383,6 +403,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
@@ -401,17 +422,19 @@ class TestSimulationInitializerInitialize:
         assert mock_sat_instance.velocity is not None
         assert mock_sat_instance.angular_velocity is not None
 
-    @patch("src.satellite_control.core.simulation_initialization.SatelliteThrusterTester")
+
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
     @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
     @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_initialization.SimulationContext")
-    @patch("src.satellite_control.core.simulation_initialization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
+    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_all_components(
         self,
+        mock_satellite,
         mock_visualizer,
         mock_context,
         mock_io,
@@ -420,8 +443,8 @@ class TestSimulationInitializerInitialize:
         mock_validator,
         mock_mission_mgr,
         mock_mpc,
-        mock_satellite,
         mock_simulation,
+        simulation_config,
     ):
         """Test that all components are initialized."""
         # Setup mocks
@@ -434,6 +457,7 @@ class TestSimulationInitializerInitialize:
 
         initializer = SimulationInitializer(
             simulation=mock_simulation,
+            simulation_config=simulation_config,
             use_mujoco_viewer=False,
         )
 
