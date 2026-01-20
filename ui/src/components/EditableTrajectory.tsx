@@ -20,7 +20,7 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
     return (
         <group>
             {/* The Path Line */}
-            <Line points={vectors} color="#06b6d4" lineWidth={2} transparent opacity={0.6} />
+            <Line points={vectors} color="#06b6d4" lineWidth={2} transparent={false} opacity={1} frustumCulled={false} renderOrder={10} />
 
             {/* Interactive Waypoints (Invisible until hovered or selected) */}
             {vectors.map((vec, i) => (

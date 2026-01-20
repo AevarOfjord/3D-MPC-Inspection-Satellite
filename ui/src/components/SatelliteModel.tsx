@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Text, Line } from '@react-three/drei';
 import { Group, Mesh } from 'three';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
@@ -106,7 +107,26 @@ export function SatelliteModel() {
           </mesh>
       ))}
       
-      <axesHelper args={[0.5]} />
+      {/* Labeled Body Axes */}
+      <group>
+        {/* X Axis - Red */}
+        <Line points={[[0, 0, 0], [0.6, 0, 0]]} color="red" lineWidth={2} />
+        <Text position={[0.7, 0, 0]} fontSize={0.05} color="red">Front (+X)</Text>
+        <Line points={[[0, 0, 0], [-0.6, 0, 0]]} color="darkred" lineWidth={1} dashed />
+        <Text position={[-0.7, 0, 0]} fontSize={0.05} color="darkred">Back (-X)</Text>
+
+        {/* Y Axis - Green */}
+        <Line points={[[0, 0, 0], [0, 0.6, 0]]} color="lime" lineWidth={2} />
+        <Text position={[0, 0.7, 0]} fontSize={0.05} color="lime">Right (+Y)</Text>
+        <Line points={[[0, 0, 0], [0, -0.6, 0]]} color="green" lineWidth={1} dashed />
+        <Text position={[0, -0.7, 0]} fontSize={0.05} color="green">Left (-Y)</Text>
+
+        {/* Z Axis - Blue */}
+        <Line points={[[0, 0, 0], [0, 0, 0.6]]} color="cyan" lineWidth={2} />
+        <Text position={[0, 0, 0.7]} fontSize={0.05} color="cyan">Up (+Z)</Text>
+        <Line points={[[0, 0, 0], [0, 0, -0.6]]} color="blue" lineWidth={1} dashed />
+        <Text position={[0, 0, -0.7]} fontSize={0.05} color="blue">Down (-Z)</Text>
+      </group>
     </group>
   );
 }

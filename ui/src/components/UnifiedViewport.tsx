@@ -1,6 +1,6 @@
 import { useRef, useCallback, Suspense, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { TrackballControls, Stars, GizmoHelper, GizmoViewcube, TransformControls, Grid } from '@react-three/drei';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewport, TransformControls, Grid } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useLoader } from '@react-three/fiber';
@@ -195,7 +195,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
 
         {mode === 'plan' && builderState && builderActions && (
             <Suspense fallback={null}>
-                <Grid infiniteGrid sectionColor="#444" cellColor="#222" fadeDistance={30} />
+                {/* Grid Removed by User Request */}
                 
                 {/* Editable Content */}
                 <group>
@@ -275,7 +275,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
             </Suspense>
         )}
         <GizmoHelper alignment="top-right" margin={[80, 80]} key={`gizmo-${mode}`}>
-           <GizmoViewcube />
+           <GizmoViewport axisColors={['red', '#39ff14', '#00f0ff']} labelColor="white" />
         </GizmoHelper>
       </Canvas>
       

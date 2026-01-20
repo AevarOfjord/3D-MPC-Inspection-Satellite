@@ -19,26 +19,213 @@ from src.satellite_control.mission.trajectory_utils import (
 )
 
 
-def load_obj_vertices(obj_path: str) -> np.ndarray:
-    """Load vertex positions from an OBJ file."""
+def load_obj_data(obj_path: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Load vertex positions and face indices from an OBJ file."""
     vertices: List[List[float]] = []
+    faces: List[List[int]] = []
+
     with open(obj_path, "r") as handle:
         for raw_line in handle:
-            if not raw_line.startswith("v "):
-                continue
-            parts = raw_line.strip().split()
-            if len(parts) < 4:
-                continue
-            try:
-                x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
-            except ValueError:
-                continue
-            vertices.append([x, y, z])
+            line = raw_line.strip()
+            if line.startswith("v "):
+                parts = line.split()
+                try:
+                    vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                except (ValueError, IndexError):
+                    continue
+            elif line.startswith("f "):
+                parts = line.split()
+                # Handle f v1 v2 v3 or f v1/vt1 v2/vt2 ...
+                face_idxs = []
+                try:
+                    for p in parts[1:]:
+                        # OBJ is 1-indexed
+                        idx = int(p.split("/")[0]) - 1
+                        face_idxs.append(idx)
+                    # Triangulate simple polygons (fan) if needed, or just take first 3 for tri
+                    if len(face_idxs) >= 3:
+                        # Simple fan triangulation for quads/polys
+                        for i in range(len(face_idxs) - 2):
+                            faces.append(
+                                [face_idxs[0], face_idxs[i + 1], face_idxs[i + 2]]
+                            )
+                except (ValueError, IndexError):
+                    continue
 
     if not vertices:
         raise ValueError(f"No vertices found in OBJ: {obj_path}")
 
-    return np.array(vertices, dtype=float)
+    return np.array(vertices, dtype=float), np.array(faces, dtype=int)
+
+
+def load_obj_vertices(obj_path: str) -> np.ndarray:
+    """Backwards compatibility wrapper."""
+    v, _ = load_obj_data(obj_path)
+    return v
+
+
+def slice_mesh_at_z(
+    vertices: np.ndarray, faces: np.ndarray, z_level: float
+) -> np.ndarray:
+    """
+    Compute the intersection points of the mesh triangles with a Z-plane.
+    Returns an array of 2D points (x, y) on the slice.
+    """
+    if len(faces) == 0:
+        return np.empty((0, 2))
+
+    # vertices: (V, 3)
+    # faces: (F, 3) indices
+
+    # Get Z coordinates of all associated vertices
+    # We want edges that cross z_level.
+    # An edge (v1, v2) crosses if (z1 - z)*(z2 - z) <= 0
+    # But usually < 0 to avoid duplicates if vertex is ON plane.
+
+    # Vectorized approach:
+    # 1. Get coords for all face vertices: (F, 3, 3)
+    tris = vertices[faces]
+
+    # 2. Check edges (0-1, 1-2, 2-0)
+    # Define edges by indices [0,1], [1,2], [2,0]
+    edges_idx = [[0, 1], [1, 2], [2, 0]]
+    points = []
+
+    for ea, eb in edges_idx:
+        # vA and vB for all faces: Shape (F, 3)
+        vA = tris[:, ea, :]
+        vB = tris[:, eb, :]
+
+        zA = vA[:, 2]
+        zB = vB[:, 2]
+
+        # Check crossing
+        # (zA <= z < zB) or (zB <= z < zA)
+        # Using strict limits to handle coplanar robustness
+        cross_mask = ((zA <= z_level) & (zB > z_level)) | (
+            (zB <= z_level) & (zA > z_level)
+        )
+
+        if np.any(cross_mask):
+            # Interpolate
+            # t = (z - zA) / (zB - zA)
+            # P = A + t * (B - A)
+
+            A_cross = vA[cross_mask]
+            B_cross = vB[cross_mask]
+
+            t = (z_level - A_cross[:, 2]) / (B_cross[:, 2] - A_cross[:, 2])
+            # Expand t dimensions for broadcast: (N,) -> (N, 1)
+            t = t[:, np.newaxis]
+
+            P_cross = A_cross + t * (B_cross - A_cross)
+            points.append(P_cross[:, :2])  # Keep XY
+
+    if not points:
+        return np.empty((0, 2))
+
+    return np.vstack(points)
+
+
+from scipy.spatial import ConvexHull
+
+
+def offset_polygon(points: np.ndarray, distance: float) -> np.ndarray:
+    """
+    Offset a convex polygon (ordered CCW) outward by distance.
+    Uses simple bisector offset (miter).
+    """
+    if len(points) < 3:
+        return points
+
+    # Calculate edge vectors
+    # Roll -1 to get P_next - P_curr
+    p_next = np.roll(points, -1, axis=0)
+    p_prev = np.roll(points, 1, axis=0)
+
+    v_in = points - p_prev
+    v_out = p_next - points
+
+    # Normalize
+    len_in = np.linalg.norm(v_in, axis=1, keepdims=True) + 1e-9
+    len_out = np.linalg.norm(v_out, axis=1, keepdims=True) + 1e-9
+
+    n_in = v_in / len_in
+    n_out = v_out / len_out
+
+    # Tangent and Normal
+    # Edge normal is (-y, x) for CCW
+    # BUT we are offsetting *vertices*.
+    # Vertex normal (bisector) vector direction
+    # Average of adjacent edge normals?
+    # Or just average of normalized edge vectors?
+    # Bisector vector B = normalize(n_out - n_in)? No.
+
+    # Let's use standard edge normals.
+    # Edge i connects P_i to P_{i+1}. Normal N_i.
+    # Point P_i is intersection of Line(P_{i-1}, N_{i-1}) and Line(P_i, N_i).
+
+    # Edge normals (pointing right/out for CCW? No, usually left/in?)
+    # If points are CCW, (x,y) -> (-y, x) is INWARD. (y, -x) is OUTWARD.
+    # Check: P=(1,0), Q=(0,1). v=(-1, 1). Rot (-1, -1) is IN. (1, 1) is OUT.
+    # Correct: (v_y, -v_x) is OUTWARD for CCW.
+
+    norms_in = np.stack([n_in[:, 1], -n_in[:, 0]], axis=1)  # Normal of incoming edge
+    norms_out = np.stack([n_out[:, 1], -n_out[:, 0]], axis=1)  # Normal of outgoing edge
+
+    # Miter offset
+    # Tangent vector at vertex T = normalize(n_in + n_out) ? No.
+    # The vertex moves along the bisector.
+    # Alpha = angle between edges.
+
+    # Robust vector addition:
+    # bisector = normalize(norms_in + norms_out)
+    # This vector points outward.
+    # Scale factor = distance / dot(bisector, norms_in)
+
+    bisector = norms_in + norms_out
+    b_len = np.linalg.norm(bisector, axis=1, keepdims=True) + 1e-9
+    bisector /= b_len
+
+    dot = np.sum(bisector * norms_in, axis=1, keepdims=True)
+    # Limit sharp corners
+    scale = distance / np.maximum(dot, 0.1)
+
+    return points + bisector * scale
+
+
+def resample_polygon(
+    points: np.ndarray, num_points: int
+) -> List[Tuple[float, float, float]]:
+    """Resample a loop of points to fixed count equidistant points."""
+    # Close loop efficiently
+    pts = np.vstack([points, points[0]])
+
+    # Access cumulative distance
+    dists = np.linalg.norm(pts[1:] - pts[:-1], axis=1)
+    cum_dist = np.concatenate(([0], np.cumsum(dists)))
+    total_len = cum_dist[-1]
+
+    if total_len < 1e-6:
+        # Degenerate
+        center = np.mean(points, axis=0)
+        return [tuple(center)] * num_points
+
+    # Interpolate
+    # We want num_points from 0 to total_len (wrapping)
+    # Generate N points. i=0 is start.
+    target_dists = np.linspace(0, total_len, num_points, endpoint=False)
+
+    # Numpy interp?
+    # interp works on 1D. We map dist -> x, dist -> y, dist -> z
+    new_x = np.interp(target_dists, cum_dist, pts[:, 0])
+    new_y = np.interp(target_dists, cum_dist, pts[:, 1])
+    # Z should be constant but let's interpolate to be safe
+    if points.shape[1] > 2:
+        new_z = np.interp(target_dists, cum_dist, pts[:, 2])
+        return list(zip(new_x, new_y, new_z))
+    else:
+        return list(zip(new_x, new_y))
 
 
 def compute_mesh_bounds(
@@ -432,100 +619,315 @@ def build_mesh_scan_trajectory(
     z_margin: float = 0.0,
     scan_axis: str = "Z",
 ) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
-    """Generate scan path and time-parameterized trajectory."""
-    vertices = load_obj_vertices(obj_path)
+    """Generate adaptive scan path using mesh slicing."""
+    vertices, faces = load_obj_data(obj_path)
 
-    # Axis Permutation Logic
-    # We map the requested scan "up" axis to Z for the algorithm, then map back.
-    # Default Z: (x,y,z) -> (x,y,z)
-    # X: (y,z,x) -> x is up.
-    # Y: (z,x,y) -> y is up.
-
+    # 1. Axis Permutation (Map Scan Axis to Z)
     axis = scan_axis.upper().strip()
     if axis == "X":
-        # Permute: X->Z, Y->X, Z->Y ? No, we want X to be the stacking axis.
-        # Let's say local frame is (u, v, w). w is stacking.
-        # If we want X to be stacking, we map X->w.
-        # vertices_local = vertices[:, [1, 2, 0]]  # (y, z, x)
-        # So w=x. u=y, v=z.
+        # Map X->Z. (y,z,x)
         perm_order = [1, 2, 0]
         inv_perm_order = [2, 0, 1]
     elif axis == "Y":
-        # Y is stacking. Map Y->w.
-        # vertices_local = vertices[:, [2, 0, 1]] # (z, x, y)
-        # w=y.
+        # Map Y->Z. (z,x,y)
         perm_order = [2, 0, 1]
         inv_perm_order = [1, 2, 0]
     else:
-        # Z is stacking.
+        # Z->Z
         perm_order = [0, 1, 2]
         inv_perm_order = [0, 1, 2]
 
-    vertices_local = vertices[:, perm_order]
+    # vertices_perm: (N, 3) where Z is the scan axis
+    vertices_perm = vertices[:, perm_order]
 
-    # Use PCA to find oriented bounds in local frame
-    # Note: compute_oriented_bounds uses Z-up assumption for Z-bounds.
-    # Since we permuted, the 'w' (local Z) is the scan axis. Good.
-    center, model_rx, model_ry, angle, rot_matrix, z_min, z_max = (
-        compute_oriented_bounds(vertices_local)
-    )
+    # 2. PCA Alignment on XY plane of permuted vertices
+    # We want to align the major axes of the object to X/Y for efficient bounding box fallback
+    # AND to handle the slicing cleanly.
+    xy_points = vertices_perm[:, :2]
+    center_xy = np.mean(xy_points, axis=0)
+    centered_xy = xy_points - center_xy
+
+    # Compute Eigenvectors
+    cov = np.cov(centered_xy, rowvar=False)
+    try:
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+    except np.linalg.LinAlgError:
+        eigenvectors = np.eye(2)
+
+    # Sort largest first
+    order = eigenvalues.argsort()[::-1]
+    eigenvectors = eigenvectors[
+        :, order
+    ]  # rotation matrix R st. Projected = Centered @ R
+
+    # Project: local_aligned_xy = (xy - center) @ R
+    vertices_aligned = np.zeros_like(vertices_perm)
+    vertices_aligned[:, :2] = np.dot(centered_xy, eigenvectors)
+    vertices_aligned[:, 2] = vertices_perm[:, 2]  # Z is unchanged
+
+    # 3. Define Z-Levels
+    z_min = vertices_aligned[:, 2].min()
+    z_max = vertices_aligned[:, 2].max()
 
     levels = max(int(levels), 1)
-    z_min_adj = float(z_min + z_margin)
-    z_max_adj = float(z_max - z_margin)
+    z_min_adj = float(z_min)
+    z_max_adj = float(z_max)
 
-    if levels == 1:
-        z_levels = [0.5 * (z_min_adj + z_max_adj)]
+    # Smart Level Placement (Center-Aligned)
+    # Instead of scanning exactly at the edges (z_min, z_max) which are often problematic/degenerate,
+    # we scan at the center of each "layer".
+    # This effectively optimizes the placement to be in the "meat" of the section.
+    height_aligned = z_max - z_min
+    if height_aligned < 1e-6:
+        z_levels = [z_min]
     else:
-        z_levels = list(np.linspace(z_min_adj, z_max_adj, levels))
+        # If levels is derived from spacing in previous logic, 'levels' is count.
+        # Redistribute evenly.
+        step = height_aligned / float(levels)
+        # Generate levels at start + half_step, start + 1.5*step, etc.
+        z_levels = [z_min + step * (0.5 + i) for i in range(levels)]
 
-    # The compute_oriented_bounds returns half-extents, so model_rx/ry are already half-extents.
-    # We need to re-extract min/max bounds from the PCA-aligned vertices to get the true half-extents
-    # for the rounded rectangle, as model_rx/ry from compute_oriented_bounds might be based on a simplified
-    # bounding box calculation.
-    # For now, let's assume model_rx and model_ry are the half-extents along the PCA axes.
+    # Bounding Box Fallback Params
+    min_p = vertices_aligned.min(axis=0)
+    max_p = vertices_aligned.max(axis=0)
+    half_extents = (max_p - min_p) / 2.0
+    model_rx = float(half_extents[0])
+    model_ry = float(half_extents[1])
 
-    # Use Rounded Rectangle (Stadium) for best fit
-    # Defines an offset path at distance 'standoff' from the OBB
+    path_aligned = []
 
-    # If the user wants a circle/ellipse explicitly, we might want to expose that choice later.
-    # For now, "Smart" means tightest safe fit.
+    for i, z in enumerate(z_levels):
+        # Slice
+        slice_points = slice_mesh_at_z(vertices_aligned, faces, z)
 
-    aligned_path = generate_cylindrical_scan_path(
-        center=(0.0, 0.0, 0.0),  # Generate in local PCA frame
-        radius=model_rx
-        + standoff,  # Fallback if someone used other args, or for circle/ellipse
-        z_levels=z_levels,
-        points_per_ring=points_per_circle,
-        ring_shape="rounded_rect",
-        inner_rx=model_rx,
-        inner_ry=model_ry,
-        corner_radius=max(standoff, 0.1),  # Ensure at least some curve
-    )
+        hull_ring = []
+        is_fallback = False
 
-    # Transform back to world
-    aligned_arr = np.array(aligned_path, dtype=float)  # Nx3
+        if len(slice_points) >= 3:
+            try:
+                # PCA on Slice to find best-fit Ellipse
+                mean = np.mean(slice_points, axis=0)
+                centered = slice_points - mean
+                cov = np.cov(centered, rowvar=False)
 
-    # 1. Rotate XY (in local frame) back to un-oriented local frame
-    # aligned_arr[:, :2] is [u', v']
-    uv_rotated = np.dot(aligned_arr[:, :2], rot_matrix.T)
+                # Eigen decomp
+                vals, vecs = np.linalg.eigh(cov)
+                # Sort: vals[0] is smallest? eigh returns ascending.
+                # So vecs[:, 1] is major axis.
 
-    # 2. Add Center (in local frame)
-    uv_shifted = uv_rotated + center[:2]
+                # Project onto axes to find extents (Bounding Box in PCA frame)
+                projected = np.dot(centered, vecs)  # (N, 2)
+                min_p_slice = projected.min(axis=0)
+                max_p_slice = projected.max(axis=0)
 
-    # 3. Reconstruct Local Points (u, v, w)
-    # w is aligned_arr[:, 2] (the stacking levels)
-    local_points = np.column_stack((uv_shifted, aligned_arr[:, 2]))
+                # Slicing is thin. We need to check the "Volume" around this Z level
+                # to avoid missing features that start just above/below (like the main body).
+                # Look at vertices within a Z-window.
+                z_window = max(
+                    standoff * 0.5, 0.1
+                )  # Minimum 10cm window or half standoff
 
-    # 4. Inverse Permute to Global (x, y, z)
-    path_arr = local_points[:, inv_perm_order]
+                # Filter vertices in aligned frame
+                mask = (vertices_aligned[:, 2] >= z - z_window) & (
+                    vertices_aligned[:, 2] <= z + z_window
+                )
+                if np.any(mask):
+                    local_verts = vertices_aligned[mask]
+                    # Project these onto the SAME PCA axes as the slice (using center/vecs from slice)
+                    # Note: Using slice center might be slightly off if local_verts shift, but it's safe.
+                    # Better: Just compute extents of local_verts relative to slice center.
 
-    path = [tuple(p) for p in path_arr]
+                    lv_centered = (
+                        local_verts[:, :2] - center_xy
+                    )  # center_xy is GLOBAL aligned XY center
+                    # Wait, 'center_xy' variable from line 647 is the mean of ALL vertices.
+                    # 'mean' (line 700) is mean of SLICE.
+                    # We should probably use the SLICE mean to center the local window to align them.
 
-    curvature = compute_curvature(path_arr)
+                    lv_centered_slice = (
+                        local_verts[:, :2] - mean
+                    )  # Center relative to slice
+                    lv_proj = np.dot(lv_centered_slice, vecs)
+
+                    min_p_vol = lv_proj.min(axis=0)
+                    max_p_vol = lv_proj.max(axis=0)
+
+                    # Update (expand) the bounding box to include the range volume
+                    min_p_slice = np.minimum(min_p_slice, min_p_vol)
+                    max_p_slice = np.maximum(max_p_slice, max_p_vol)
+
+                extents = (max_p_slice - min_p_slice) / 2.0
+                rx_local = extents[1]  # Major axis extent (corresponding to vecs[:,1])
+                ry_local = extents[0]  # Minor axis extent
+
+                # Ellipse Angle (vecs[:,1] is major axis)
+                angle = np.arctan2(vecs[1, 1], vecs[0, 1])
+
+                # Generate Canonical Ellipse
+                # We want rings to be aligned, but adaptive orientation is okay for smooth transitions?
+                # Using simple Angle parameterization
+                # Note: rx corresponds to X axis in generate func, ry to Y.
+                # Our Major Axis is aligned with 'angle'.
+
+                # Checks
+                rx_final = rx_local + standoff
+                ry_final = ry_local + standoff
+
+                # Corner Safety: Check if box corner (rx, ry) protrudes
+                # Ellipse check: (rx/A)^2 + (ry/B)^2. If > 1, scale up.
+                corner_val = (rx_local / rx_final) ** 2 + (ry_local / ry_final) ** 2
+                if corner_val > 1.0:
+                    scale = np.sqrt(corner_val)
+                    rx_final *= scale
+                    ry_final *= scale
+
+                base_ring = _generate_ellipse_ring(
+                    center=(0, 0, 0),
+                    radius_x=rx_final,
+                    radius_y=ry_final,
+                    z=z,
+                    points_per_ring=points_per_circle,
+                )
+
+                # Rotate and Translate
+                # Rotation Matrix for 'angle'
+                c, s = np.cos(angle), np.sin(angle)
+                R = np.array([[c, -s], [s, c]])
+
+                pts = np.array(base_ring)
+                # pts[:, :2] is XY. Rot = XY @ R.T ?? No.
+                # Canonical: Major axis along X.
+                # We mapped 'rx_local' to X radius. 'angle' is angle of major axis.
+                # So Rotate (x,y) by angle.
+                rot_xy = np.dot(pts[:, :2], R.T)  # R.T because vectors are row? No.
+                # v_rot = R @ v.  (N,2) -> (N,2). v_rot = v @ R.T
+
+                final_xy = rot_xy + mean
+
+                hull_ring = []
+                for k in range(len(final_xy)):
+                    hull_ring.append(
+                        (float(final_xy[k, 0]), float(final_xy[k, 1]), float(z))
+                    )
+
+            except Exception as e:
+                print(f"[Warn] Ellipse fit failed at Z={z:.2f}: {e}")
+                is_fallback = True
+        else:
+            is_fallback = True
+
+        if is_fallback:
+            # Fallback to Global OBB Ellipse - With Diagonal Safety
+            A_glob = model_rx + standoff
+            B_glob = model_ry + standoff
+
+            # Strict Diagonal Check for Fallback
+            if model_rx > 1e-6 and model_ry > 1e-6:
+                c_ang = np.arctan2(model_ry, model_rx)
+                # Standoff Point at the corner
+                ps_x = model_rx + standoff * np.cos(c_ang)
+                ps_y = model_ry + standoff * np.sin(c_ang)
+
+                # Check if inside standard ellipse
+                cv = (ps_x / A_glob) ** 2 + (ps_y / B_glob) ** 2
+                if cv > 1.0:
+                    sf = np.sqrt(cv)
+                    A_glob *= sf
+                    B_glob *= sf
+
+            hull_ring = _generate_ellipse_ring(
+                center=(0, 0, 0),
+                radius_x=A_glob,
+                radius_y=B_glob,
+                z=z,
+                points_per_ring=points_per_circle,
+            )
+
+        # Safe Transition Logic
+        # Ensure we move vertically at the MAXIMUM radius of the two levels
+        # to avoid clipping corners of an expanding object.
+        if i > 0 and len(path_aligned) > 0 and len(hull_ring) > 0:
+            prev_pt = path_aligned[-1]  # (x, y, z_prev)
+            curr_pt = hull_ring[0]  # (x, y, z_curr)
+
+            # Calculate radii from center (0,0 in aligned frame)
+            r_prev = np.sqrt(prev_pt[0] ** 2 + prev_pt[1] ** 2)
+            r_curr = np.sqrt(curr_pt[0] ** 2 + curr_pt[1] ** 2)
+
+            r_safe = max(r_prev, r_curr)
+
+            # Create Transition Waypoints
+            waypoints = []
+
+            # W1: At prev Z, but expanded to safe radius
+            if abs(r_safe - r_prev) > 1e-3:
+                scale1 = r_safe / (r_prev + 1e-9)
+                w1 = (prev_pt[0] * scale1, prev_pt[1] * scale1, prev_pt[2])
+                waypoints.append(w1)
+
+            # W2: At curr Z, but expanded to safe radius
+            if abs(r_safe - r_curr) > 1e-3:
+                scale2 = r_safe / (r_curr + 1e-9)
+                w2 = (curr_pt[0] * scale2, curr_pt[1] * scale2, curr_pt[2])
+                waypoints.append(w2)
+
+            path_aligned.extend(waypoints)
+
+        path_aligned.extend(hull_ring)
+
+    # Add Safe Approach and Departure
+    # Calculate global max radius to ensure we enter/exit from a truly safe distance
+    # even if the first/last slices are narrow segments of a T-shape.
+    global_safe_r = max(model_rx, model_ry) + standoff * 2.0
+
+    if len(path_aligned) > 0:
+        # Safe Approach
+        start_pt = path_aligned[0]
+        r_start = np.sqrt(start_pt[0] ** 2 + start_pt[1] ** 2)
+        if r_start > 1e-6:
+            # Scale out to at least global safe radius, or just buffer the current start
+            # logic: If start is narrow, go out to global max. If start is wide, go out more.
+            target_r = max(r_start + standoff, global_safe_r)
+            scale_in = target_r / r_start
+
+            entry_pt = (start_pt[0] * scale_in, start_pt[1] * scale_in, start_pt[2])
+            path_aligned.insert(0, entry_pt)
+
+        # Safe Departure
+        end_pt = path_aligned[-1]
+        r_end = np.sqrt(end_pt[0] ** 2 + end_pt[1] ** 2)
+        if r_end > 1e-6:
+            target_r_out = max(r_end + standoff, global_safe_r)
+            scale_out = target_r_out / r_end
+
+            exit_pt = (end_pt[0] * scale_out, end_pt[1] * scale_out, end_pt[2])
+            path_aligned.append(exit_pt)
+
+    # 4. Transform Back to World
+    aligned_arr = np.array(path_aligned, dtype=float)
+
+    # Reverse Step 2: Un-rotate XY
+    # Centered = Projected @ R.T
+    unrotated_xy = np.dot(aligned_arr[:, :2], eigenvectors.T)
+    # Add Center
+    permuted_xy = unrotated_xy + center_xy
+
+    # Reconstruct Permuted (x', y', z')
+    permuted_points = np.column_stack([permuted_xy, aligned_arr[:, 2]])
+
+    # Reverse Step 1: Inverse Permutation
+    world_arr = permuted_points[:, inv_perm_order]
+
+    path = [tuple(p) for p in world_arr]
+
+    curvature = compute_curvature(world_arr)
     speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
-    trajectory, total_time = build_time_parameterized_trajectory(path_arr, speeds, dt)
-    path_length = float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
+    trajectory, total_time = build_time_parameterized_trajectory(world_arr, speeds, dt)
+    path_length = (
+        float(np.sum(np.linalg.norm(world_arr[1:] - world_arr[:-1], axis=1)))
+        if len(world_arr) > 1
+        else 0.0
+    )
     return path, trajectory, path_length
 
 
