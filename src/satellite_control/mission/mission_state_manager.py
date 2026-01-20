@@ -439,7 +439,7 @@ class MissionStateManager:
                 sample = self._sample_dxf_trajectory(elapsed)
                 if sample is None:
                     trajectory_out[k] = (
-                        trajectory_out[k - 1] if k > 0 else current_state
+                        trajectory_out[k - 1] if k > 0 else current_state[:13]
                     )
                     continue
                 pos, vel = sample
@@ -518,7 +518,7 @@ class MissionStateManager:
             if target is not None:
                 trajectory_out[:] = target
             else:
-                trajectory_out[:] = current_state
+                trajectory_out[:] = current_state[:13]
                 trajectory_out[:, 7:] = 0  # Zero velocities
 
     def get_trajectory(
@@ -607,7 +607,7 @@ class MissionStateManager:
             elif external_target_state is not None:
                 trajectory[:] = external_target_state
             else:
-                trajectory[:] = current_state
+                trajectory[:] = current_state[:13]
                 trajectory[:, 7:] = 0
 
         return trajectory
@@ -623,7 +623,7 @@ class MissionStateManager:
         """Helper to sample from precomputed trajectory (scan/custom)."""
         traj = self._get_dxf_trajectory_array()
         if traj is None or traj.size == 0:
-            trajectory_out[:] = current_state
+            trajectory_out[:] = current_state[:13]
             trajectory_out[:, 7:] = 0
             return
 
