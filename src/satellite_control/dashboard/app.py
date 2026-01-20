@@ -739,7 +739,14 @@ async def preview_trajectory(config: MeshScanConfigModel):
                 vertices = load_obj_vertices(config.obj_path)
                 _, max_bounds, _, _ = compute_mesh_bounds(vertices)
                 min_bounds = vertices.min(axis=0)
-                object_height = max_bounds[2] - min_bounds[2]  # Z height
+                # Select axis dimension based on scan_axis
+                axis_idx = 2
+                if config.scan_axis == "X":
+                    axis_idx = 0
+                elif config.scan_axis == "Y":
+                    axis_idx = 1
+
+                object_height = max_bounds[axis_idx] - min_bounds[axis_idx]
                 levels = max(1, int(object_height / config.level_spacing))
             except Exception:
                 # Fallback to default if can't read object
