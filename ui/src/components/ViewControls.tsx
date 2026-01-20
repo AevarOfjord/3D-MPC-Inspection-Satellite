@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Vector3, Camera } from 'three';
 import { useCameraStore } from '../store/cameraStore';
 
 const ROTATE_STEP_RAD = Math.PI / 24;
@@ -20,15 +20,15 @@ export function ViewControls({ onRequestFree }: ViewControlsProps) {
   const nudgeRotate = (azimuthDelta: number, polarDelta: number) => {
     if (!controls) return;
     onRequestFree();
-    controls.rotateLeft(azimuthDelta);
-    controls.rotateUp(polarDelta);
+    (controls as any).rotateLeft(azimuthDelta);
+    (controls as any).rotateUp(polarDelta);
     controls.update();
   };
 
   const nudgePan = (right: number, up: number) => {
     if (!controls) return;
     onRequestFree();
-    const camera = controls.object as unknown as { position: Vector3; matrixWorld: { elements: number[] }; updateMatrixWorld: () => void };
+    const camera = controls.object as unknown as Camera;
     const target = (controls as unknown as { target: Vector3 }).target;
     camera.updateMatrixWorld();
     const distance = camera.position.distanceTo(target);
