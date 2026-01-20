@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { trajectoryApi, type MeshScanConfig } from '../api/trajectory';
+import { useHistory } from './useHistory';
 
 export type TransformMode = 'translate' | 'rotate';
-export type SelectionType = 'satellite' | 'target' | `obstacle-${number}` | null;
+export type SelectionType = 'satellite' | 'target' | `obstacle-${number}` | `waypoint-${number}` | null;
 
 export function useMissionBuilder() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [modelPath, setModelPath] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [previewPath, setPreviewPath] = useState<[number, number, number][]>([]);
+  
+  // History-managed State for Path (Waypoints)
+  const pathHistory = useHistory<[number, number, number][]>([]);
+  const previewPath = pathHistory.state; // Alias for convenience
+  const [isManualMode, setIsManualMode] = useState(false);
+
   const [stats, setStats] = useState<{ duration: number; length: number; points: number } | null>(null);
   const [savedMissionName, setSavedMissionName] = useState<string | null>(null);
   
@@ -64,7 +70,11 @@ export function useMissionBuilder() {
       try {
           const previewConfig = { ...config, level_spacing: levelSpacing };
           const res = await trajectoryApi.previewTrajectory(previewConfig);
-          setPreviewPath(res.path);
+          
+          // New generation resets manual mode and history
+          pathHistory.set(res.path); 
+          setIsManualMode(false);
+          
           setStats({
               duration: res.estimated_duration,
               length: res.path_length,
@@ -86,7 +96,13 @@ export function useMissionBuilder() {
           target_position: objectPosition,
           target_orientation: objectAngle,
           obstacles: obstacles.map(o => ({ position: o.position, radius: o.radius })),
-          mesh_scan: { ...config, level_spacing: levelSpacing }
+          mesh_scan: { ...config, level_spacing: levelSpacing },
+          // TODO: If isManualMode, we might need a different payload structure or flag
+          // keeping as is for now, assuming backend regenerates unless we send explicit points.
+          // For now, if manual, we heavily rely on backend accepting 'custom_path' or similar if implemented.
+          // Since backend API wasn't changed, we assume saved config regenerates path. 
+          // WARNING: Manual edits won't persist to backend re-generation without API change.
+          // For this MVP, we will only visualize manual edits locally.
       };
       try {
           const res = await trajectoryApi.saveMission(name, missionPayload);
@@ -127,6 +143,24 @@ export function useMissionBuilder() {
       setObstacles(newObs);
   };
 
+  // --- Manual Path Editing ---
+  const handleWaypointMove = (idx: number, newPos: [number, number, number]) => {
+      if (!isManualMode) setIsManualMode(true);
+      
+      const newPath = [...previewPath];
+      newPath[idx] = newPos;
+      
+      // We use updatePresent for drag operations to avoid spamming history
+      // Ideally onDragEnd we push to history. 
+      // specific implementation triggers set() on drag end, updatePresent on drag
+      pathHistory.updatePresent(newPath);
+  };
+
+  const commitWaypointMove = () => {
+      // Pushes current state to history stack (checkpoint)
+      pathHistory.set([...previewPath]);
+  };
+
   // --- Transform Helper ---
   
   const handleObjectTransform = (key: string, o: any) => {
@@ -148,6 +182,9 @@ export function useMissionBuilder() {
           const newObs = [...obstacles];
           newObs[idx].position = pos;
           setObstacles(newObs);
+      } else if (key.startsWith('waypoint-')) {
+          const idx = parseInt(key.split('-')[1]);
+          handleWaypointMove(idx, pos);
       }
   };
 
@@ -157,6 +194,7 @@ export function useMissionBuilder() {
         modelPath,
         loading,
         previewPath,
+        isManualMode,
         stats,
         savedMissionName,
         startPosition,
@@ -167,7 +205,10 @@ export function useMissionBuilder() {
         selectedObjectId,
         transformMode,
         config,
-        levelSpacing
+        levelSpacing,
+        // History State
+        canUndo: pathHistory.canUndo,
+        canRedo: pathHistory.canRedo
     },
     setters: {
         setStartPosition,
@@ -188,9 +229,12 @@ export function useMissionBuilder() {
         removeObstacle,
         updateObstacle,
         handleObjectTransform,
-        // Expose setters needed for Viewport actions
         setSelectedObjectId,
-        setTransformMode
+        setTransformMode,
+        // History Actions
+        undo: pathHistory.undo,
+        redo: pathHistory.redo,
+        commitWaypointMove
     }
   };
 }

@@ -1,6 +1,7 @@
-import { Upload, Trash2, Plus, Eye, Save, Play } from 'lucide-react';
+import { Upload, Trash2, Plus, Eye, Save, Play, Undo, Redo, RefreshCcw, Gauge } from 'lucide-react';
 import { HudButton, HudInput, HudSection } from './HudComponents';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
+import { ConstraintReadout } from './ConstraintVisualizer';
 
 type BuilderHook = ReturnType<typeof useMissionBuilder>;
 
@@ -21,9 +22,43 @@ export function BuilderSidebar({ builder, onExit }: BuilderSidebarProps) {
         <div className="w-96 bg-slate-950 border-r border-slate-800 flex flex-col shadow-2xl z-20 h-full">
             <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
                 <h2 className="font-bold text-lg tracking-wider text-white">MISSION EDITOR</h2>
+                <div className="flex gap-1">
+                    <HudButton 
+                        size="sm" 
+                        variant="ghost" 
+                        disabled={!state.canUndo}
+                        onClick={actions.undo}
+                    >
+                        <Undo size={16} />
+                    </HudButton>
+                    <HudButton 
+                        size="sm" 
+                        variant="ghost" 
+                        disabled={!state.canRedo}
+                        onClick={actions.redo}
+                    >
+                        <Redo size={16} />
+                    </HudButton>
+                </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                
+                {/* Engineering Constraints HUD */}
+                {state.previewPath.length > 0 && (
+                     <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
+                        <div className="flex items-center gap-2 mb-2 text-cyan-400 font-bold text-xs uppercase">
+                            <Gauge size={14} /> ENGINEERING CHECKS
+                        </div>
+                        <ConstraintReadout points={state.previewPath} />
+                        {state.isManualMode && (
+                             <div className="mt-2 text-[10px] text-orange-400 font-mono bg-orange-500/10 px-2 py-1 rounded border border-orange-500/30 flex items-center gap-2">
+                                 <span>⚠️ MANUAL MODE ACTIVE</span>
+                                 <button onClick={actions.handlePreview} title="Reset to Auto" className="text-white hover:underline"><RefreshCcw size={10} /></button>
+                             </div>
+                        )}
+                     </div>
+                )}
                 
                 {/* Object Upload */}
                 <div className="border border-dashed border-slate-700 rounded-lg p-6 text-center hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all group">

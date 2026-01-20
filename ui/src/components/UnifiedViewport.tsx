@@ -1,7 +1,7 @@
 import { useRef, useCallback, Suspense, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Stars, GizmoHelper, GizmoViewcube, TransformControls, Line, Grid, useCursor } from '@react-three/drei';
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewcube, TransformControls, Grid } from '@react-three/drei';
+import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useLoader } from '@react-three/fiber';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -31,6 +31,8 @@ import { CustomMeshModel } from './CustomMeshModel';
 import { HudPanel } from './HudComponents';
 import { Move3d, Rotate3d, MousePointer2 } from 'lucide-react';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
+import { EditableTrajectory } from './EditableTrajectory';
+import { ConstraintVisualizer } from './ConstraintVisualizer';
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
@@ -134,63 +136,7 @@ function SatellitePreview({ position, rotation }: { position: [number, number, n
     );
 }
 
-function TrajectoryPath({ 
-    points, 
-    onHover 
-}: { 
-    points: [number, number, number][]; 
-    onHover: (point: [number, number, number] | null) => void;
-}) {
-    const [highlightPoint, setHighlightPoint] = useState<[number, number, number] | null>(null);
-    useCursor(!!highlightPoint);
-    
-    if (!points || points.length === 0) return null;
-    const vectors = points.map(p => new THREE.Vector3(...p));
-    const curve = new THREE.CatmullRomCurve3(vectors);
-    
-    // Find closest point logic here... simplified for now since we did it in TrajectoryBuilder
-    // Reusing the same component logic would be best but inline for speed.
-    // Copying logic from TrajectoryBuilder:
-    const findClosestPoint = (hitPoint: THREE.Vector3): [number, number, number] => {
-        let closestDist = Infinity;
-        let closestPoint = points[0];
-        for (const p of points) {
-            const dist = hitPoint.distanceTo(new THREE.Vector3(...p));
-            if (dist < closestDist) {
-                closestDist = dist;
-                closestPoint = p;
-            }
-        }
-        return closestPoint;
-    };
-    
-    return (
-        <group>
-            <Line points={vectors} color="#06b6d4" lineWidth={2} transparent opacity={0.6} />
-            <mesh 
-                onPointerMove={(e) => {
-                    e.stopPropagation();
-                    const val = findClosestPoint(e.point);
-                    setHighlightPoint(val);
-                    onHover(val);
-                }}
-                onPointerOut={() => {
-                    setHighlightPoint(null);
-                    onHover(null);
-                }}
-            >
-                <tubeGeometry args={[curve, 64, 0.2, 8, false]} />
-                <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-            {highlightPoint && (
-                <mesh position={highlightPoint}>
-                    <sphereGeometry args={[0.1, 16, 16]} />
-                    <meshBasicMaterial color="#22d3ee" toneMapped={false} />
-                </mesh>
-            )}
-        </group>
-    );
-}
+// TrajectoryPath removed as it is replaced by EditableTrajectory
 
 // --- Main Unified Viewport ---
 
@@ -202,13 +148,13 @@ interface UnifiedViewportProps {
 }
 
 export function UnifiedViewport({ mode, viewMode, builderState, builderActions }: UnifiedViewportProps) {
-  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const controlsRef = useRef<TrackballControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
 
-  const handleControlsRef = useCallback((node: OrbitControlsImpl | null) => {
+  const handleControlsRef = useCallback((node: TrackballControlsImpl | null) => {
     controlsRef.current = node;
-    if (node) setControls(node);
+    if (node) setControls(node as any); // Type assertion for generic store
   }, [setControls]);
 
   return (
@@ -221,10 +167,11 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         */}
         <CameraManager mode={viewMode} />
         
-        <OrbitControls 
+        <TrackballControls 
           ref={handleControlsRef} 
           makeDefault 
           enabled={!builderState?.selectedObjectId} // Disable orbit when dragging gizmo
+          rotateSpeed={4.0}
         />
         
         {/* Environment */}
@@ -233,9 +180,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
         
-        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-           <GizmoViewcube />
-        </GizmoHelper>
+
 
         {mode === 'monitor' && (
             <>
@@ -318,10 +263,20 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                         </TransformControls>
                     ))}
 
-                    <TrajectoryPath points={builderState.previewPath} onHover={setHoveredPoint} />
+                    {/* Advanced Path Builder */}
+                    <EditableTrajectory 
+                        points={builderState.previewPath} 
+                        onHover={setHoveredPoint} 
+                        builderActions={builderActions}
+                        selectedId={builderState.selectedObjectId}
+                    />
+                    <ConstraintVisualizer points={builderState.previewPath} />
                 </group>
             </Suspense>
         )}
+        <GizmoHelper alignment="top-right" margin={[80, 80]} key={`gizmo-${mode}`}>
+           <GizmoViewcube />
+        </GizmoHelper>
       </Canvas>
       
       {/* Plan Mode Overlay Controls */}
