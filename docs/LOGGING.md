@@ -77,7 +77,6 @@ import logging
 configure_module_log_levels({
     "src.satellite_control.core.mpc_controller": logging.DEBUG,
     "src.satellite_control.core.simulation": logging.INFO,
-    "src.satellite_control.core.mujoco_satellite": logging.WARNING,
 })
 ```
 

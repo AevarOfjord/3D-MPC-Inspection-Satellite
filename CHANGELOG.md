@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+- Removed legacy mission manager/state manager/plugin system in favor of path-only MPCC.
+- Deleted obsolete plugin configuration examples.
+
 ## Version 4.0.0 - January 13, 2026
 
 ### Features
@@ -44,7 +50,7 @@
 
 ## Summary
 
-Comprehensive codebase improvements to bring the Satellite_3D_MuJoCo project to production-ready form.
+Comprehensive codebase improvements to bring the Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel project to production-ready form.
 
 ---
 

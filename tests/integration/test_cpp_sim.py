@@ -22,7 +22,8 @@ def test_cpp_engine_initialization():
     # Initialize simulation
     # Note: cfg argument is deprecated/legacy used for hydration but we pass simulation_config directly
     sim = SatelliteMPCLinearizedSimulation(
-        cfg=None, simulation_config=sim_config, use_mujoco_viewer=False
+        cfg=None,
+        simulation_config=sim_config,
     )
 
     # Check satellite type
@@ -39,7 +40,6 @@ def test_cpp_engine_stepping():
     sim = SatelliteMPCLinearizedSimulation(
         cfg=None,
         simulation_config=sim_config,
-        use_mujoco_viewer=False,
         start_pos=(1.0, 0.0, 0.0),  # Will be overridden by init params if not careful?
         # SatelliteMPCLinearizedSimulation uses legacy kwargs for start_pos overrides
         # but delegates to SimulationInitializer which uses them.

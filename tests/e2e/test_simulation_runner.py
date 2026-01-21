@@ -38,7 +38,6 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
     sim = SatelliteMPCLinearizedSimulation(
         start_pos=(1.0, 1.0, 0.0),
         target_pos=(0.0, 0.0, 0.0),
-        use_mujoco_viewer=False,
         simulation_config=simulation_config,
     )
 
@@ -55,8 +54,7 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
 
     try:
         for _ in range(steps):
-            # Physics Step (calls Mujoco step internally)
-            # The satellite object in simulation is SatelliteThrusterTester
+            # Physics Step
             sim.satellite.update_physics(sim.satellite.dt)
             sim.simulation_time += dt
 

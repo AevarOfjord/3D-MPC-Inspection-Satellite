@@ -26,8 +26,7 @@ def mock_simulation():
     sim.satellite.dt = 0.005
     sim.satellite.simulation_time = 0.0
     sim.satellite.update_physics = MagicMock()
-    sim.satellite.is_viewer_paused = MagicMock(return_value=False)
-    sim.use_mujoco_viewer = False
+    sim.satellite.fig = None
     sim.data_logger = MagicMock()
     sim.data_logger.clear_logs = MagicMock()
     sim.data_logger.get_log_count = MagicMock(return_value=100)
@@ -41,9 +40,8 @@ def mock_simulation():
     sim.print_performance_summary = MagicMock()
     sim.visualizer = MagicMock()
     sim.visualizer.sync_from_controller = MagicMock()
-    sim.visualizer.save_mujoco_video = MagicMock()
     sim.get_current_state = MagicMock(return_value=np.zeros(13))
-    sim.update_target_state_for_mode = MagicMock()
+    sim.update_path_reference_state = MagicMock()
     sim.update_mpc_control = MagicMock()
     sim.process_command_queue = MagicMock()
     sim.log_physics_step = MagicMock()
@@ -55,6 +53,9 @@ def mock_simulation():
     sim.performance_monitor = MagicMock()
     sim.performance_monitor.record_physics_step = MagicMock()
     sim.performance_monitor.increment_step = MagicMock()
+    sim.continuous_mode = False
+    sim.mpc_controller = MagicMock()
+    sim.mpc_controller.s = 0.0
     # V3.0.0: Add simulation_config to mock
     sim.simulation_config = SimulationConfig.create_default()
     return sim
@@ -72,41 +73,28 @@ class TestSimulationLoopInitialization:
 class TestSimulationLoopRun:
     """Test the run method."""
 
-    @patch("src.satellite_control.core.simulation_loop.use_structured_config")
-    def test_run_sets_up_data_directories(self, mock_use_config, mock_simulation):
+    def test_run_sets_up_data_directories(self, mock_simulation):
         """Test that data directories are set up."""
         loop = SimulationLoop(mock_simulation)
-        mock_use_config.return_value.__enter__ = MagicMock()
-        mock_use_config.return_value.__exit__ = MagicMock(return_value=None)
 
-        # Mock the loop to exit immediately
-        mock_simulation.is_running = False
-
-        with patch.object(loop, "_run_with_globals", return_value=None):
-            loop.run(show_animation=False, structured_config=MagicMock())
+        with patch.object(loop, "_run_batch_mode", return_value=None):
+            loop._run_with_globals(show_animation=False)
 
         mock_simulation.data_logger.clear_logs.assert_called_once()
         mock_simulation.physics_logger.clear_logs.assert_called_once()
         mock_simulation.create_data_directories.assert_called_once()
 
-    @patch("src.satellite_control.core.simulation_loop.use_structured_config")
-    def test_run_initializes_context(self, mock_use_config, mock_simulation):
+    def test_run_initializes_context(self, mock_simulation):
         """Test that simulation context is initialized."""
-        from src.satellite_control.core.simulation_context import SimulationContext
-
         loop = SimulationLoop(mock_simulation)
-        mock_use_config.return_value.__enter__ = MagicMock()
-        mock_use_config.return_value.__exit__ = MagicMock(return_value=None)
 
-        # Mock the loop to exit immediately
-        mock_simulation.is_running = False
+        if hasattr(mock_simulation, "context"):
+            delattr(mock_simulation, "context")
 
-        with patch.object(loop, "_run_with_globals", return_value=None):
-            loop.run(show_animation=False, structured_config=MagicMock())
+        with patch.object(loop, "_run_batch_mode", return_value=None):
+            loop._run_with_globals(show_animation=False)
 
-        # Context should be initialized if it doesn't exist
-        if not hasattr(mock_simulation, "context"):
-            assert hasattr(mock_simulation, "context")
+        assert hasattr(mock_simulation, "context")
 
 
 class TestSimulationLoopBatchMode:
@@ -125,7 +113,7 @@ class TestSimulationLoopBatchMode:
         # Make loop exit after one iteration
         call_count = 0
 
-        def side_effect():
+        def side_effect(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count > 1:
@@ -133,28 +121,10 @@ class TestSimulationLoopBatchMode:
 
         mock_simulation.is_running = True
         with patch.object(loop, "update_step", side_effect=side_effect):
-            with patch.object(loop, "_run_batch_mode") as mock_batch:
-                mock_batch.return_value = None
-                loop._run_batch_mode()
+            loop._run_batch_mode()
 
         # Verify physics was called
         assert mock_simulation.process_command_queue.called or mock_simulation.satellite.update_physics.called
-
-    def test_batch_mode_handles_viewer_pause(self, mock_simulation):
-        """Test that batch mode handles MuJoCo viewer pause."""
-        loop = SimulationLoop(mock_simulation)
-        mock_simulation.use_mujoco_viewer = True
-        mock_simulation.satellite.is_viewer_paused = MagicMock(return_value=True)
-        mock_simulation.satellite.sync_viewer = MagicMock()
-
-        # Make loop exit immediately
-        mock_simulation.is_running = False
-
-        with patch("time.sleep"):
-            loop._run_batch_mode()
-
-        # Should handle pause state
-        assert True  # Test passes if no exception
 
 
 class TestSimulationLoopUpdateStep:
@@ -177,7 +147,7 @@ class TestSimulationLoopUpdateStep:
 
         loop.update_step(None)
 
-        mock_simulation.update_target_state_for_mode.assert_called_once()
+        mock_simulation.update_path_reference_state.assert_called_once()
 
     def test_update_step_updates_mpc_control(self, mock_simulation):
         """Test that update_step updates MPC control."""
@@ -244,18 +214,12 @@ class TestSimulationLoopTermination:
         assert mock_simulation.is_running is False
 
     def test_termination_on_target_reached(self, mock_simulation):
-        """Test termination when target is reached and held."""
-        # V3.0.0: Update simulation_config instead of SatelliteConfig
-        mock_simulation.simulation_config.app_config.simulation.use_final_stabilization = False
-        mock_simulation.simulation_config.app_config.simulation.waypoint_final_stabilization_time = 2.0
-        mock_simulation.simulation_config.mission_state.enable_waypoint_mode = False
-        mock_simulation.simulation_config.mission_state.dxf_shape_mode_active = False
-        
+        """Test termination when path progress reaches the end."""
         loop = SimulationLoop(mock_simulation)
         mock_simulation.is_running = True
-        mock_simulation.check_target_reached = MagicMock(return_value=True)
-        mock_simulation.target_reached_time = 5.0
-        mock_simulation.simulation_time = 8.0
+        mock_simulation.simulation_config.mission_state.dxf_path_length = 1.0
+        mock_simulation.mpc_controller.s = 1.0
+        mock_simulation.simulation_time = 1.0
 
         result = loop._check_termination_conditions()
 
@@ -276,77 +240,6 @@ class TestSimulationLoopTermination:
 
         assert result is False
         assert mock_simulation.is_running is True
-
-
-class TestSimulationLoopWaypointHandling:
-    """Test waypoint advancement logic."""
-
-    def test_waypoint_advancement(self, mock_simulation):
-        """Test that waypoints are advanced correctly."""
-        # V3.0.0: Update simulation_config instead of SatelliteConfig
-        from src.satellite_control.config.mission_state import MissionState
-        from dataclasses import replace
-        
-        mission_state = replace(
-            mock_simulation.simulation_config.mission_state,
-            enable_waypoint_mode=True,
-            current_target_index=0,
-            waypoint_targets=[(1.0, 1.0, 0.0), (2.0, 2.0, 0.0)],
-        )
-        mock_simulation.simulation_config = replace(
-            mock_simulation.simulation_config,
-            mission_state=mission_state,
-        )
-        mock_simulation.simulation_config.app_config.simulation.waypoint_final_stabilization_time = 2.0
-        mock_simulation.simulation_config.app_config.simulation.target_hold_time = 1.0
-        
-        # Mock mission_manager
-        mock_simulation.mission_manager = MagicMock()
-        mock_simulation.mission_manager.advance_to_next_target = MagicMock(return_value=True)
-        mock_simulation.mission_manager.get_current_waypoint_target = MagicMock(
-            return_value=((2.0, 2.0, 0.0), (0.0, 0.0, 0.0))
-        )
-        
-        loop = SimulationLoop(mock_simulation)
-        mock_simulation.target_maintenance_time = 1.5
-        mock_simulation.target_reached_time = 0.0
-        mock_simulation.simulation_time = 1.5
-
-        result = loop._handle_waypoint_advancement()
-
-        # Should attempt to advance
-        assert isinstance(result, bool)
-
-    def test_waypoint_completion(self, mock_simulation):
-        """Test that waypoint mission completion is detected."""
-        # V3.0.0: Update simulation_config instead of SatelliteConfig
-        from src.satellite_control.config.mission_state import MissionState
-        from dataclasses import replace
-        
-        mission_state = replace(
-            mock_simulation.simulation_config.mission_state,
-            enable_waypoint_mode=True,
-            current_target_index=1,
-            waypoint_targets=[(1.0, 1.0, 0.0), (2.0, 2.0, 0.0)],
-        )
-        mock_simulation.simulation_config = replace(
-            mock_simulation.simulation_config,
-            mission_state=mission_state,
-        )
-        mock_simulation.simulation_config.app_config.simulation.waypoint_final_stabilization_time = 2.0
-        
-        # Mock mission_manager
-        mock_simulation.mission_manager = MagicMock()
-        mock_simulation.mission_manager.advance_to_next_target = MagicMock(return_value=False)
-        
-        loop = SimulationLoop(mock_simulation)
-        mock_simulation.target_maintenance_time = 2.5
-        mock_simulation.simulation_time = 5.0
-
-        result = loop._handle_waypoint_advancement()
-
-        # Should detect completion
-        assert isinstance(result, bool)
 
 
 class TestSimulationLoopDataSaving:

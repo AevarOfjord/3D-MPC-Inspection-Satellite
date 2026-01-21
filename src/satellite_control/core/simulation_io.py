@@ -121,8 +121,9 @@ class SimulationIO:
         if not self.sim.data_save_path:
             return
 
-        mission_manager = getattr(self.sim, "mission_manager", None)
-        mission_state = getattr(mission_manager, "mission_state", None)
+        mission_state = getattr(self.sim, "mission_state", None)
+        if mission_state is None and getattr(self.sim, "simulation_config", None):
+            mission_state = getattr(self.sim.simulation_config, "mission_state", None)
         if mission_state is None:
             return
 

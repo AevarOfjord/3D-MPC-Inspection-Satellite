@@ -19,7 +19,7 @@ Complete guide to running simulations, understanding mission types, and the simu
 
 ## Overview
 
-The satellite control system supports **two primary mission types**, each with flexible configuration through an interactive CLI menu. The simulation uses a high-fidelity physics engine (MuJoCo) with Model Predictive Control (MPC) running at different rates for optimal performance.
+The satellite control system supports **two primary mission types**, each with flexible configuration through an interactive CLI menu. The simulation uses a high-fidelity custom C++ physics engine with Model Predictive Control (MPC) running at different rates for optimal performance.
 
 **Quick Start:**
 
@@ -146,7 +146,7 @@ flowchart TD
         MissionLogic --> ControlCheck{"Control Interval?<br/>(60 ms)"}
 
         subgraph MPC_Cycle ["2. Control Cycle (MPC)"]
-            ControlCheck -- Yes --> GetState["Get State from MuJoCo"]
+            ControlCheck -- Yes --> GetState["Get State from C++ Engine"]
             GetState --> AddNoise["Add Sensor Noise<br/>(If Enabled)"]
             AddNoise --> SolveMPC["Solve MPC Optimization<br/>(OSQP - QP Solver)"]
             SolveMPC --> QueueCmds["Queue Thruster Commands<br/>(PWM Duty Cycles)"]
@@ -157,7 +157,7 @@ flowchart TD
 
         subgraph Physics_Step ["3. Physics & Actuation"]
             ProcCmds --> ApplyForce["Apply Forces to Model"]
-            ApplyForce --> StepPhysics["Step MuJoCo Physics<br/>(dt = 5 ms)"]
+            ApplyForce --> StepPhysics["Step Physics (C++ Engine)<br/>(dt = 5 ms)"]
         end
 
         StepPhysics --> LogData["4. Log Data (CSV)"]
@@ -171,19 +171,19 @@ flowchart TD
 
 ### Component Interactions
 
-**1. Mission Logic** (`mission_state_manager.py`)
+**1. Path Reference** (`mission_state.py` + `mpc_controller.py`)
 
-Determines target state based on mission type:
+MPCC derives the reference state from the configured path:
 
-| Mission Type            | Target Behavior                        |
-| ----------------------- | -------------------------------------- |
-| **Waypoint Navigation** | Static target, switches when converged |
-| **Shape Following**     | Dynamic target moving along path       |
+**Inputs:**
+
+- `mission_state.mpcc_path_waypoints` - Path waypoints
+- Path progress state `s` and virtual speed `v_s`
 
 **Outputs:**
 
-- `target_state` - Full target state [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
-- `mission_phase` - Current state (APPROACHING, STABILIZING, etc.)
+- `target_state` - Reference state aligned to path tangent
+- `path_s` / `path_v_s` - Progress metrics used for logging/visualization
 
 **2. Control Cycle (MPC)**
 
@@ -207,7 +207,7 @@ Runs at **16.67 Hz** (every 60ms):
 - 8 thruster PWM duty cycles: u ∈ [0, 1]
 - Only first control action applied (receding horizon)
 
-**3. Physics & Actuation** (`mujoco_satellite.py`)
+**3. Physics & Actuation** (`cpp_satellite.py`)
 
 Runs at **200 Hz** (every 5ms):
 
@@ -216,9 +216,9 @@ Runs at **200 Hz** (every 5ms):
 1. **Thruster Manager** - Simulates valve delays and ramp-up (if enabled)
 2. **Force Calculation** - Converts PWM to force vectors
 3. **Frame Transform** - Rotates body-frame forces to world frame
-4. **Apply to MuJoCo** - Sets `data.xfrc_applied`
+4. **Apply to Physics Engine** - Applies forces/torques for the next step
 
-**MuJoCo Integration:**
+**Physics Integration:**
 
 - Computes accelerations from forces (F = ma, τ = Iα)
 - Integrates to update velocities
@@ -264,7 +264,7 @@ The simulation uses a **two-rate loop structure** for optimal performance:
 - **Purpose:** High-fidelity dynamics integration
 - **What happens:**
   - Apply thruster forces
-  - Integrate equations of motion (MuJoCo)
+  - Integrate equations of motion (C++ engine)
   - Update positions, velocities, orientations
 
 ### Why Two Rates?
@@ -389,7 +389,7 @@ All constants modifiable in `src/satellite_control/config/timing.py`.
 1. **MPC Solver** - Dominates computation
    - Scales with horizon length (N=50)
    - Typical: 1-2ms with OSQP
-2. **Visualization** - If using MuJoCo viewer
+2. **Visualization** - Headless or dashboard visualization
    - Rendering can slow to real-time
    - Disable with `--no-anim` for max speed
 
@@ -466,7 +466,7 @@ Data/
 **Solutions:**
 
 1. Reduce physics timestep: `SIMULATION_DT = 0.002` (500 Hz)
-2. Check MuJoCo solver warnings in console
+2. Check solver warnings in console
 3. Verify forces are reasonable magnitude (<10N)
 
 ### Control Oscillations

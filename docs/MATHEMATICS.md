@@ -26,7 +26,7 @@
 
 - Subscript "world" or "w": world/inertial frame tied to the simulation coordinate system
 - Subscript "body" or "b": body-fixed frame that spins with the vehicle
-- 𝐑(θ): rotation matrix from body to world frame, implemented in the dynamics linearization/integration code (`mpc_controller.py`, `mujoco_satellite.py`)
+- 𝐑(θ): rotation matrix from body to world frame, implemented in the dynamics linearization/integration code (`mpc_controller.py`, `cpp_satellite.py`)
 
 ---
 
@@ -56,7 +56,7 @@ graph LR
     A[Physics<br/>Simulator] -->|x_current| B[MPC<br/>OSQP Solver]
     B -->|u*<br/>Continuous<br/>Commands| C[PWM<br/>Modulator]
     C -->|Thruster<br/>Pulses| D[Dynamics<br/>Integration]
-    D -->|Forces &<br/>Torques| E[MuJoCo<br/>Integrator]
+    D -->|Forces &<br/>Torques| E[C++<br/>Integrator]
     E -->|x_new| A
 
     style B fill:#f9f,stroke:#333,stroke-width:3px
@@ -67,11 +67,11 @@ graph LR
 **Simulation Loop Frequency:**
 
 - **Control loop**: 16.67 Hz (60ms per cycle)
-- **Physics integration**: 200 Hz (5ms per step) - MuJoCo simulation step
+- **Physics integration**: 200 Hz (5ms per step) - C++ simulation step
 
 **Key Components:**
 
-- **Physics Simulator**: Uses MuJoCo to simulate rigid body dynamics with high fidelity.
+- **Physics Simulator**: Uses C++ to simulate rigid body dynamics with high fidelity.
 - **MPC Controller**: Solves a Convex QP using OSQP to compute optimal control efforts.
 - **Dynamics Integration**: Applies thruster forces to the physics engine based on control commands.
 
@@ -85,11 +85,11 @@ graph LR
 
 | Symbol | Meaning                           | Code Variable(s)                                                       | File(s)                                                                                 | Notes                                                                    |
 | :----: | --------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-|   𝐱    | State Vector [x, y, vₓ, vᵧ, θ, ω] | `x_current`, `state`, `current_state`, `self.state`, `state_history`   | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `mission_state_manager.py` | Note: MPC internally reorders to [x, y, θ, vₓ, vᵧ, ω]                    |
+|   𝐱    | State Vector [x, y, vₓ, vᵧ, θ, ω] | `x_current`, `state`, `current_state`, `self.state`, `state_history`   | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`                              | Note: MPC internally reorders to [x, y, θ, vₓ, vᵧ, ω]                    |
 |   𝐮    | Control Vector (8 thrusters)      | `u_vars`, `control_action`, `u`, `thruster_commands`, `prev_thrusters` | `mpc_controller.py`, `simulation.py`                                                    | PWM: u_i ∈ [0,1]                                                         |
 |   𝐀    | State transition matrix (6×6)     | `A` from `linearize_dynamics()`                                        | `mpc_controller.py`                                                                     | Built/cached in `SatelliteMPCOptimized.linearize_dynamics()` every solve |
 |   𝐁    | Control input matrix (6×8)        | `B` from `linearize_dynamics()`                                        | `mpc_controller.py`                                                                     | Angle-dependent, includes thruster geometry                              |
-|  𝐑(θ)  | Rotation matrix (2×2)             | Computed inline with `np.cos(theta)`, `np.sin(theta)`                  | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`                             | Transforms body frame to world frame.                                    |
+|  𝐑(θ)  | Rotation matrix (2×2)             | Computed inline with `np.cos(theta)`, `np.sin(theta)`                  | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`                             | Transforms body frame to world frame.                                    |
 
 ### Cost Function Weights
 
@@ -110,26 +110,26 @@ graph LR
 |   N    | Prediction horizon (steps)    | `self.N`, `prediction_horizon`, `mpc_params["prediction_horizon"]` | `mpc_controller.py`, `config/mpc_params.py`                                      | 50 steps = 3.0s                     |
 |   M    | Control horizon (steps)       | `self.M`, `control_horizon`, `mpc_params["control_horizon"]`       | `mpc_controller.py`, `config/mpc_params.py`                                      | 50 steps = 3.0s                     |
 |   Δt   | Control timestep (seconds)    | `self.dt`, `dt`, `CONTROL_DT`, `mpc_params["dt"]`                  | `mpc_controller.py`, `config/mpc_params.py`, `config/timing.py`, `simulation.py` | 0.06s (16.67 Hz)                    |
-| Δt_sim | Simulation timestep (seconds) | `dt`, `SIMULATION_DT`                                              | `simulation.py`, `mujoco_satellite.py`, `config/timing.py`                       | 0.005s (200 Hz physics integration) |
+| Δt_sim | Simulation timestep (seconds) | `dt`, `SIMULATION_DT`                                              | `simulation.py`, `cpp_satellite.py`, `config/timing.py`                       | 0.005s (200 Hz physics integration) |
 
 ### Physical Parameters
 
 | Symbol | Meaning                        | Code Variable                                                                                                                   | File(s)                                                                                                 | Value                               |
 | :----: | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-|   m    | Satellite mass                 | `self.total_mass`, `satellite_params["mass"]`, `PhysicsConfig.total_mass`, `SatelliteConfig.TOTAL_MASS`                         | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `config/physics.py`, `satellite_config.py` | 10.0 kg                             |
-|   I    | Moment of inertia              | `self.moment_of_inertia`, `satellite_params["inertia"]`, `PhysicsConfig.moment_of_inertia`, `SatelliteConfig.MOMENT_OF_INERTIA` | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `config/physics.py`, `satellite_config.py` | 0.140 kg·m²                         |
-|  c_d   | Linear damping coefficient     | `PhysicsConfig.linear_damping_coeff`, `SatelliteConfig.LINEAR_DAMPING_COEFF`                                                    | `simulation.py`, `mujoco_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·s/m (disabled by default)     |
-|  c_r   | Rotational damping coefficient | `PhysicsConfig.rotational_damping_coeff`, `SatelliteConfig.ROTATIONAL_DAMPING_COEFF`                                            | `simulation.py`, `mujoco_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·m·s/rad (disabled by default) |
+|   m    | Satellite mass                 | `self.total_mass`, `satellite_params["mass"]`, `PhysicsConfig.total_mass`, `SatelliteConfig.TOTAL_MASS`                         | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py` | 10.0 kg                             |
+|   I    | Moment of inertia              | `self.moment_of_inertia`, `satellite_params["inertia"]`, `PhysicsConfig.moment_of_inertia`, `SatelliteConfig.MOMENT_OF_INERTIA` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py` | 0.140 kg·m²                         |
+|  c_d   | Linear damping coefficient     | `PhysicsConfig.linear_damping_coeff`, `SatelliteConfig.LINEAR_DAMPING_COEFF`                                                    | `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·s/m (disabled by default)     |
+|  c_r   | Rotational damping coefficient | `PhysicsConfig.rotational_damping_coeff`, `SatelliteConfig.ROTATIONAL_DAMPING_COEFF`                                            | `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·m·s/rad (disabled by default) |
 |   L    | Satellite size                 | `SatelliteConfig.SATELLITE_SIZE`, `satellite_params["size"]`, `PhysicsConfig.satellite_size`                                    | `config/physics.py`, `satellite_config.py`, `simulation_visualization.py`                               | 0.29 m                              |
 
 ### Thruster Configuration
 
 |   Symbol    | Meaning                         | Code Variable                                                                                | File(s)                                                                            | Notes                                        |
 | :---------: | ------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------- |
-|     F_i     | Thruster force magnitude (N)    | `self.thruster_forces`, `THRUSTER_FORCES`, `satellite_params["thruster_forces"]`             | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `satellite_config.py` | Array of 8 calibrated values (0.428-0.484 N) |
-|     𝐫_i     | Thruster position (body frame)  | `self.thruster_positions`, `THRUSTER_POSITIONS`, `satellite_params["thruster_positions"]`    | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `satellite_config.py` | (x, y) in meters, 8×2 array                  |
-|     𝐝_i     | Thruster direction (body frame) | `self.thruster_directions`, `THRUSTER_DIRECTIONS`, `satellite_params["thruster_directions"]` | `mpc_controller.py`, `simulation.py`, `mujoco_satellite.py`, `satellite_config.py` | Unit vectors, 8×2 array                      |
-|     τ_i     | Thruster torque (N·m)           | Computed inline: `r_x * F_y - r_y * F_x`                                                     | `mpc_controller.py` (line ~280), `simulation.py`, `mujoco_satellite.py`            | τ = r × F (2D cross product)                 |
+|     F_i     | Thruster force magnitude (N)    | `self.thruster_forces`, `THRUSTER_FORCES`, `satellite_params["thruster_forces"]`             | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | Array of 8 calibrated values (0.428-0.484 N) |
+|     𝐫_i     | Thruster position (body frame)  | `self.thruster_positions`, `THRUSTER_POSITIONS`, `satellite_params["thruster_positions"]`    | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | (x, y) in meters, 8×2 array                  |
+|     𝐝_i     | Thruster direction (body frame) | `self.thruster_directions`, `THRUSTER_DIRECTIONS`, `satellite_params["thruster_directions"]` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | Unit vectors, 8×2 array                      |
+|     τ_i     | Thruster torque (N·m)           | Computed inline: `r_x * F_y - r_y * F_x`                                                     | `mpc_controller.py` (line ~280), `simulation.py`, `cpp_satellite.py`            | τ = r × F (2D cross product)                 |
 | n_thrusters | Number of thrusters             | `8` (hardcoded), `len(thruster_forces)`                                                      | All files with thruster logic                                                      | Always 8 for this satellite                  |
 
 ### State Bounds and Constraints
@@ -156,12 +156,12 @@ graph LR
 
 | Function                  | Mathematical Operation       | Code Function                                         | File(s)                    | Used In                                                                                         |
 | ------------------------- | ---------------------------- | ----------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| Angle normalization       | θ → [-π, π]                  | `normalize_angle(angle)`                              | `navigation_utils.py`      | `mpc_controller.py`, `simulation.py`, `mission_state_manager.py`                                |
-| Shortest rotation         | min(θ₁→θ₂)                   | `angle_difference(target, current)`                   | `navigation_utils.py`      | `mpc_controller.py`, `mission.py`, mission logic (consolidated into `mission_state_manager.py`) |
-| Distance to line          | d(P, AB)                     | `point_to_line_distance(point, line_start, line_end)` | `navigation_utils.py`      | mission logic (consolidated into `mission_state_manager.py`), `mission.py`                      |
-| Obstacle avoidance helper | Path planning with obstacles | `calculate_safe_path_to_waypoint()`                   | `navigation_utils.py`      | mission logic (consolidated into `mission_state_manager.py`), `mission.py`                      |
+| Angle normalization       | θ → [-π, π]                  | `normalize_angle(angle)`                              | `navigation_utils.py`      | `mpc_controller.py`, `simulation.py`                                                            |
+| Shortest rotation         | min(θ₁→θ₂)                   | `angle_difference(target, current)`                   | `navigation_utils.py`      | `mpc_controller.py`, `simulation.py`                                                            |
+| Distance to line          | d(P, AB)                     | `point_to_line_distance(point, line_start, line_end)` | `navigation_utils.py`      | `path_following.py`                                                                             |
+| Obstacle avoidance helper | Path planning with obstacles | `calculate_safe_path_to_waypoint()`                   | `navigation_utils.py`      | `path_following.py`                                                                             |
 | Distance calculation      | ‖P₁ - P₂‖                    | `np.linalg.norm(p1 - p2)`                             | Standard numpy             | All files computing distances                                                                   |
-| Target reached check      | Error < threshold            | `MissionStateManager._handle_multi_point_mode()`      | `mission_state_manager.py` | `mission.py`, `simulation.py`                                                                   |
+| Target reached check      | Error < threshold            | `SatelliteMPCLinearizedSimulation.check_target_reached()` | `simulation.py`        | `simulation.py`                                                                                |
 
 ### Adaptive Behavior and Advanced Features
 
@@ -172,22 +172,21 @@ graph LR
 | Warm starting              | Shift previous solution by 1 timestep                  | `mpc_controller.py`             | `_apply_warm_start()` (~520-560)                        | Copies `u[k+1]` → `u[k]`, sets primal variables for OSQP                                         |
 | Damping zone               | Distance threshold for aggressive damping              | `config/mpc_params.py`          | `DAMPING_ZONE`                                          | 0.25 m from target                                                                               |
 | Fallback controller        | Simple proportional control if MPC fails               | `mpc_controller.py`             | `_get_fallback_control()` (~700-750)                    | K_p gains tuned for stability                                                                    |
-| State validation           | Check bounds before/after integration                  | `simulation_state_validator.py` | `validate_state()`, `enforce_constraints()`             | Used in `simulation.py`, `mujoco_satellite.py`                                                   |
-| Mission state tracking     | Track waypoints, timing, convergence                   | `mission_state_manager.py`      | Full class                                              | Used in `mission.py`, `simulation.py`                                                            |
+| State validation           | Check bounds before/after integration                  | `simulation_state_validator.py` | `validate_state()`, `enforce_constraints()`             | Used in `simulation.py`, `cpp_satellite.py`                                                   |
+| Mission state tracking     | Track path config and progress                         | `mission_state.py`              | `MissionState` dataclass                               | Used in `simulation.py`                                                                          |
 | Data logging               | Record all state, control, timing data                 | `data_logger.py`                | Full class                                              | Saves to CSV in `Data/` folder                                                                   |
 
 ### Mission and Path Planning
 
 | Concept           | Code Variable/Class                   | File(s)                                                                                           | Description                          |
 | ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Mission types     | `"waypoint"`, `"shape"`, `"circling"` | `mission.py`, `interactive_cli.py`, `interactive_cli.py`                                          | Different mission execution modes    |
-| Waypoint list     | `waypoints` array of [x, y, θ]        | `mission.py`, `mission_state_manager.py`                                                          | Target poses for waypoint missions   |
-| Current target    | `x_target`, `target_state`            | `mpc_controller.py`, `simulation.py`, `mission.py`                                                | Current goal passed to MPC           |
-| Path planner      | `PathPlanningManager` class           | mission logic (consolidated into `mission_state_manager.py`)                                      | Generates obstacle-free paths        |
-| Obstacles         | `obstacles` list of circles (x, y, r) | mission logic (consolidated into `mission_state_manager.py`), `mission.py`, `config/obstacles.py` | Circular obstacles to avoid          |
-| Shape definitions | DXF file parsing                      | `DXF/dxf_shape_maker.py`, `mission.py`                                                            | Reads CAD shapes as waypoints        |
-| Mission manager   | `MissionManager` class                | `mission.py`                                                                                      | High-level mission orchestration     |
-| Mission state     | `MissionStateManager` class           | `mission_state_manager.py`                                                                        | Tracks progress, timing, convergence |
+| Mission types     | `"path_following"`, `"scan_object"`   | `interactive_cli.py`                                                                              | Path-only mission modes              |
+| Waypoint list     | `mpcc_path_waypoints` array           | `mission_state.py`                                                                                | Path waypoints for MPCC              |
+| Current target    | `target_state`                         | `mpc_controller.py`, `simulation.py`                                                             | Path reference passed to MPC         |
+| Path planner      | `build_point_to_point_path()`         | `path_following.py`                                                                               | Generates straight-line paths        |
+| Obstacles         | `obstacles` list of spheres           | `mission_state.py`, `config/obstacles.py`                                                         | Obstacle data for visualization/MPC  |
+| Shape definitions | DXF file parsing                      | `trajectory_utils.py`                                                                             | Reads CAD shapes as paths            |
+| Mission state     | `MissionState` dataclass              | `mission_state.py`                                                                                | Path config, scan config, obstacles  |
 
 ### Visualization and Output
 
@@ -221,7 +220,7 @@ t= 12.3s: APPROACHING (t=12.3s) pos_err=0.452m, ang_err= 15.3°
 | ----------------- | ----------------------------- | -------------------------------------- |
 | Unit tests        | `tests/test_*.py`             | pytest suite for individual components |
 | Integration tests | `tests/test_integration_*.py` | End-to-end mission tests               |
-| Test environment  | `mujoco_satellite.py`         | Simplified simulator for fast testing  |
+| Test environment  | `cpp_satellite.py`         | Simplified simulator for fast testing  |
 | Conftest fixtures | `tests/conftest.py`           | Shared test fixtures and utilities     |
 | Test modes        | `interactive_cli.py`          | Pre-configured test scenarios          |
 
@@ -280,7 +279,7 @@ Where:
 
 **Implementation notes**
 
-- **Simulation:** `simulation.py` copies the truth state from `SatelliteThrusterTester` (already world-frame), so no extra rotation matrix is required—only the `[v_x, v_y, θ]` reorder inside `mpc_controller.py`.
+- **Simulation:** `simulation.py` copies the truth state from the C++ simulator (already world-frame), so no extra rotation matrix is required—only the `[v_x, v_y, θ]` reorder inside `mpc_controller.py`.
 
 ### Coordinate Frames
 
@@ -404,7 +403,7 @@ graph TB
 | θ = 180°        | [-1, 0] (left) | [1, 0] (right)  | Pushes satellite right |
 | θ = 270°        | [-1, 0] (left) | [0, 1] (up)     | Pushes satellite up    |
 
-**Code Implementation:** MPC linearization rotates forces in `mpc_controller.py` (around lines 199–215), and the simulator mirrors the same operation when applying thrust in `mujoco_satellite.py` (lines ~262–295).
+**Code Implementation:** MPC linearization rotates forces in `mpc_controller.py` (around lines 199–215), and the simulator mirrors the same operation when applying thrust in `cpp_satellite.py` (lines ~262–295).
 
 ---
 
@@ -412,7 +411,7 @@ graph TB
 
 ### Equation of Motion (Model Used for MPC Linearization)
 
-The MPC linearizes a simplified planar rigid-body model. We keep only the thruster-generated accelerations and drop the damping/disturbance terms (those live exclusively in the high-fidelity simulator inside `mujoco_satellite.py`). The linearization state is reordered to
+The MPC linearizes a simplified planar rigid-body model. We keep only the thruster-generated accelerations and drop the damping/disturbance terms (those live exclusively in the high-fidelity simulator inside `cpp_satellite.py`). The linearization state is reordered to
 
 $$\mathbf{x}_{\text{lin}} = [x,\, y,\, \theta,\, v_x,\, v_y,\, \omega]^T$$
 
@@ -438,7 +437,7 @@ This minimal model is what `SatelliteMPCOptimized.linearize_dynamics()` discreti
 
 **Implementation split**
 
-- **Simulation:** `mujoco_satellite.py` uses the richer model (damping, disturbances, valve delays) for propagation, but still feeds the simplified 6-state vector to the MPC so control math is consistent.
+- **Simulation:** `cpp_satellite.py` uses the richer model (damping, disturbances, valve delays) for propagation, but still feeds the simplified 6-state vector to the MPC so control math is consistent.
 
 ### Moment of Inertia Calculation
 
@@ -501,7 +500,7 @@ $$\tau_{\text{total}} = \sum_{i=1}^{8} \tau_i$$
 
 **Implementation notes**
 
-- **Simulation:** `mujoco_satellite.py` applies the same PWM pattern inside the physics loop, and when `USE_REALISTIC_PHYSICS=True` (default) it emulates valve delays/ramp profiles so the simulator mirrors realistic behavior.
+- **Simulation:** `cpp_satellite.py` applies the same PWM pattern inside the physics loop, and when `USE_REALISTIC_PHYSICS=True` (default) it emulates valve delays/ramp profiles so the simulator mirrors realistic behavior.
 
 ### Force and Torque Coupling Example
 
@@ -693,7 +692,7 @@ External influences (drag, valve delays, injected gusts, measurement noise) are 
 
 **Important:** By default, realistic physics effects are **disabled** for ideal simulation:
 
-- **Simulation:** `mujoco_satellite.py` can optionally add damping, random forces, torque impulses, valve delay, and measurement noise when `use_realistic_physics=True`. By default this is set to `False` for idealized testing.
+- **Simulation:** `cpp_satellite.py` can optionally add damping, random forces, torque impulses, valve delay, and measurement noise when `use_realistic_physics=True`. By default this is set to `False` for idealized testing.
 - **Configuration knobs:** `SatelliteConfig.LINEAR_DAMPING_COEFF` (default: 0.0) and `SatelliteConfig.ROTATIONAL_DAMPING_COEFF` (default: 0.0) defined in `config/physics.py`. When realistic physics is enabled, these can be set to non-zero values (e.g., 1.8 N·s/m and 0.3 N·m·s/rad).
 
 ---
@@ -781,7 +780,7 @@ Because the plan is recomputed every cycle, the controller automatically rejects
 
 ## Navigation Mathematics
 
-**Implementation notes:** These navigation helpers live in `utils/navigation_utils.py`. The MuJoCo simulator provides perfect state measurements (unless noise is explicitly injected for testing robustness).
+**Implementation notes:** These navigation helpers live in `utils/navigation_utils.py`. The C++ simulator provides perfect state measurements (unless noise is explicitly injected for testing robustness).
 
 ### Angle Normalization
 

@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 class CppSatelliteSimulator:
     """
     Python wrapper for the C++ Simulation Engine.
-    Mimics the interface of MuJoCoSatelliteSimulator for seamless drop-in replacement.
+    Mimics the legacy Python simulator interface for seamless drop-in replacement.
 
-    Faster than MuJoCo for orbital dynamics simulation.
+    Faster than the legacy Python physics backend for orbital dynamics simulation.
     """
 
     def __init__(self, app_config: Any):
@@ -63,7 +63,7 @@ class CppSatelliteSimulator:
 
         self.engine = SimulationEngine(self._cpp_params, orbital_mean_motion)
 
-        # Local state cache to match MuJoCo access patterns if needed,
+        # Local state cache to match legacy access patterns if needed,
         # or just fetch from engine on demand.
         # But setters need to update engine.
 
@@ -210,8 +210,7 @@ class CppSatelliteSimulator:
     def apply_force(self, force: List[float]):
         """
         Set thruster duty cycles for the NEXT step.
-        MuJoCoSatelliteSimulator applies forces immediately or stores them?
-        MuJoCo applies them during step.
+        Legacy Python simulator applied forces during integration.
         Here we store them for update_physics.
         """
         self._current_thruster_cmds = force

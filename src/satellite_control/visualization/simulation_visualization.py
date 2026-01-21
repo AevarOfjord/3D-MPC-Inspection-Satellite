@@ -1553,11 +1553,9 @@ class SimulationVisualizationManager:
             print("\n Animation, Plots and Summary will now be generated!")
 
             # Check for MissionState (V4.0.0)
-            mission_state = None
-            if hasattr(self.controller, "mission_manager") and getattr(
-                self.controller.mission_manager, "mission_state", None
-            ):
-                mission_state = self.controller.mission_manager.mission_state
+            mission_state = getattr(self.controller, "mission_state", None)
+            if mission_state is None and hasattr(self.controller, "simulation_config"):
+                mission_state = getattr(self.controller.simulation_config, "mission_state", None)
 
             # Check for AppConfig (V4.0.0)
             app_config = None

@@ -100,7 +100,7 @@ Documentation is automatically built in CI (`.github/workflows/ci.yml`). The bui
 If you see import errors when building:
 - Check that all dependencies are installed
 - Verify `sys.path` in `docs/conf.py` includes the source directory
-- Some external dependencies (mujoco, osqp) are mocked - this is normal
+- Some external dependencies (osqp, gurobipy) are mocked - this is normal
 
 ### Missing Documentation
 

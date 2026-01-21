@@ -28,14 +28,6 @@ Thruster Manager
    :undoc-members:
    :show-inheritance:
 
-MuJoCo Satellite
-----------------
-
-.. automodule:: src.satellite_control.core.mujoco_satellite
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Error Handling
 --------------
 

@@ -51,7 +51,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("z_tilt_max_rad", &MPCParams::z_tilt_max_rad)
         // Collision avoidance (V3.0.0)
         .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
-        .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin);
+        .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin)
+        // Path Following (V4.0.1) - General Path MPCC
+        .def_readwrite("mode_path_following", &MPCParams::mode_path_following)
+        .def_readwrite("Q_contour", &MPCParams::Q_contour)
+        .def_readwrite("Q_progress", &MPCParams::Q_progress)
+        .def_readwrite("Q_smooth", &MPCParams::Q_smooth)
+        .def_readwrite("v_target", &MPCParams::v_target);
 
     // Control Result
     py::class_<ControlResult>(m, "ControlResult")
@@ -94,6 +100,9 @@ PYBIND11_MODULE(_cpp_mpc, m) {
              "Compute optimal control action using a trajectory reference")
         .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
         .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
+        .def("set_path_data", &MPCControllerCpp::set_path_data,
+             py::arg("path_data"),
+             "Set path data for general path following. path_data is list of [s, x, y, z] arrays.")
         .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
         .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
         .def_property_readonly("dt", &MPCControllerCpp::dt);

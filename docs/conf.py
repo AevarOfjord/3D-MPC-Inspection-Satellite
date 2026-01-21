@@ -52,7 +52,7 @@ autodoc_default_options = {
 }
 autodoc_typehints = "description"
 autodoc_typehints_format = "short"
-autodoc_mock_imports = ["mujoco", "osqp", "gurobipy"]  # Mock external dependencies
+autodoc_mock_imports = ["osqp", "gurobipy"]  # Mock external dependencies
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "sphinx_rtd_theme"

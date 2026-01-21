@@ -618,6 +618,7 @@ def build_mesh_scan_trajectory(
     dt: float,
     z_margin: float = 0.0,
     scan_axis: str = "Z",
+    build_trajectory: bool = True,
 ) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
     """Generate adaptive scan path using mesh slicing."""
     vertices, faces = load_obj_data(obj_path)
@@ -920,14 +921,17 @@ def build_mesh_scan_trajectory(
 
     path = [tuple(p) for p in world_arr]
 
-    curvature = compute_curvature(world_arr)
-    speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
-    trajectory, total_time = build_time_parameterized_trajectory(world_arr, speeds, dt)
     path_length = (
         float(np.sum(np.linalg.norm(world_arr[1:] - world_arr[:-1], axis=1)))
         if len(world_arr) > 1
         else 0.0
     )
+    if not build_trajectory:
+        return path, np.empty((0, 7), dtype=float), path_length
+
+    curvature = compute_curvature(world_arr)
+    speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
+    trajectory, total_time = build_time_parameterized_trajectory(world_arr, speeds, dt)
     return path, trajectory, path_length
 
 
@@ -946,6 +950,7 @@ def build_cylinder_scan_trajectory(
     ring_shape: str = "circle",
     hold_start: float = 0.0,
     hold_end: float = 0.0,
+    build_trajectory: bool = True,
 ) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
     """Generate scan path and trajectory for a cylinder."""
     ring_step, points_per_ring = compute_scan_sampling(
@@ -985,11 +990,15 @@ def build_cylinder_scan_trajectory(
     raw_path_arr = np.array(raw_path, dtype=float)
     path_arr = _apply_pose(raw_path_arr, position=center, rotation_xyz=rotation_xyz)
 
+    path_length = float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
+    if not build_trajectory:
+        empty_traj = np.empty((0, 7), dtype=float)
+        return [tuple(map(float, p)) for p in path_arr], empty_traj, path_length
+
     curvature = compute_curvature(path_arr)
     speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
     trajectory, total_time = build_time_parameterized_trajectory(path_arr, speeds, dt)
     trajectory, total_time = apply_hold_segments(
         trajectory, dt=dt, hold_start=hold_start, hold_end=hold_end
     )
-    path_length = float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
     return [tuple(map(float, p)) for p in path_arr], trajectory, path_length

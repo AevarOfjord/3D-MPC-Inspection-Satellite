@@ -17,7 +17,6 @@ from src.satellite_control.core.simulation_initialization import SimulationIniti
 def mock_simulation():
     """Create a mock simulation object for testing."""
     sim = MagicMock()
-    sim.use_mujoco_viewer = False
     return sim
 
 
@@ -35,10 +34,8 @@ class TestSimulationInitializerInitialization:
         """Test that initializer can be created."""
         initializer = SimulationInitializer(
             simulation=mock_simulation,
-            use_mujoco_viewer=False,
         )
         assert initializer.simulation == mock_simulation
-        assert initializer.use_mujoco_viewer is False
         assert initializer.simulation_config is None
 
     def test_initializer_with_config(self, mock_simulation, simulation_config):
@@ -46,7 +43,6 @@ class TestSimulationInitializerInitialization:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
         assert initializer.simulation_config == simulation_config
 
@@ -56,7 +52,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -73,7 +68,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -91,7 +85,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -108,7 +101,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -125,7 +117,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -142,7 +133,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         target_pos = (2.0, 3.0)
@@ -158,14 +148,13 @@ class TestSimulationInitializerInitialize:
         # Verify target state was set
         assert hasattr(mock_simulation, "target_state")
         assert mock_simulation.target_state.shape == (13,)
-        # Check position
-        assert np.allclose(mock_simulation.target_state[0:3], [2.0, 3.0, 0.0])
+        # Path-following uses the start position as the initial reference
+        assert np.allclose(mock_simulation.target_state[0:3], [1.0, 2.0, 0.0])
         # Check quaternion (should be non-zero for non-zero angle)
         assert np.any(mock_simulation.target_state[3:7] != 0)
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -182,7 +171,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -199,7 +187,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -219,7 +206,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -236,7 +222,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -253,7 +238,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -269,7 +253,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -286,7 +269,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -303,7 +285,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -319,7 +300,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -336,7 +316,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -353,7 +332,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         # Initialize with None values (should use defaults)
@@ -370,7 +348,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -387,7 +364,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -404,7 +380,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -424,7 +399,6 @@ class TestSimulationInitializerInitialize:
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
-    @patch("src.satellite_control.core.simulation_initialization.MissionStateManager")
     @patch("src.satellite_control.core.simulation_initialization.create_state_validator_from_config")
     @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
     @patch("src.satellite_control.core.simulation_initialization.create_mission_report_generator")
@@ -441,7 +415,6 @@ class TestSimulationInitializerInitialize:
         mock_report_gen,
         mock_data_logger,
         mock_validator,
-        mock_mission_mgr,
         mock_mpc,
         mock_simulation,
         simulation_config,
@@ -458,7 +431,6 @@ class TestSimulationInitializerInitialize:
         initializer = SimulationInitializer(
             simulation=mock_simulation,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         initializer.initialize(
@@ -473,7 +445,7 @@ class TestSimulationInitializerInitialize:
         assert hasattr(mock_simulation, "target_state")
         assert hasattr(mock_simulation, "thruster_manager")
         assert hasattr(mock_simulation, "mpc_controller")
-        assert hasattr(mock_simulation, "mission_manager")
+        assert hasattr(mock_simulation, "mission_state")
         assert hasattr(mock_simulation, "state_validator")
         assert hasattr(mock_simulation, "data_logger")
         assert hasattr(mock_simulation, "physics_logger")

@@ -36,7 +36,6 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   └── testing/             # Monte Carlo (2 files)
 ├── ui/                      # React + Three.js web interface
 ├── config/                  # Hydra YAML configs
-├── models/                  # MuJoCo XML models
 ├── tests/                   # pytest test suite (31 files)
 ├── docs/                    # Documentation
 ├── run_simulation.py        # Simulation entry point
@@ -67,7 +66,7 @@ def run(
     duration: float,     # Max simulation time
     no_anim: bool,       # Headless mode
     classic: bool,       # Text-based menu
-    engine: str,         # 'mujoco' or 'cpp'
+    engine: str,         # 'cpp'
     mission_file: str,   # Mission JSON path
 ): ...
 ```
@@ -83,8 +82,7 @@ The simulation engine with modular components:
 | `simulation.py` | 1115 | `SatelliteMPCLinearizedSimulation` - main orchestrator |
 | `simulation_loop.py` | 675 | `SimulationLoop` - animation/batch execution |
 | `simulation_initialization.py` | 520 | `SimulationInitializer` - setup logic |
-| `mujoco_satellite.py` | 900 | `MuJoCoSatellite` - physics backend |
-| `cpp_satellite.py` | 210 | `CppSatellite` - C++ physics backend |
+| `cpp_satellite.py` | 210 | `CppSatelliteSimulator` - C++ physics backend |
 | `thruster_manager.py` | 340 | Valve delays, PWM modulation |
 | `performance_monitor.py` | 290 | Timing statistics, metrics |
 | `simulation_logger.py` | 280 | CSV/JSON data logging |
@@ -102,9 +100,9 @@ class SatelliteMPCLinearizedSimulation:
     """Main simulation orchestrator."""
     
     # Core Components
-    satellite: MuJoCoSatellite      # Physics backend
+    satellite: CppSatelliteSimulator  # Physics backend
     mpc_controller: MPCController    # Control algorithm
-    mission_manager: MissionManager  # Mission logic
+    mission_state: MissionState      # Path-following state
     thruster_manager: ThrusterManager # Actuator physics
     
     # State
@@ -249,38 +247,22 @@ AppConfig
 
 ---
 
-## src/satellite_control/mission/ (16 files)
+## src/satellite_control/mission/ (11 files)
 
 Mission configuration and execution:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `mission_state_manager.py` | 1750 | Core mission logic, phase management |
 | `interactive_cli.py` | 1230 | Rich-based interactive menus |
 | `mission_report_generator.py` | 900 | PDF/HTML report generation |
-| `mission_cli.py` | 760 | Text-based CLI menus |
-| `mission_manager.py` | 420 | High-level mission orchestration |
-| `plugin.py` | 430 | Mission plugin system |
-| `mission_executor.py` | 295 | Execution engine |
-| `sequencer.py` | 240 | Multi-stage mission sequencing |
 | `trajectory_utils.py` | 195 | Spline trajectory generation |
 | `mesh_scan.py` | 210 | 3D object scanning missions |
 | `mission_types.py` | 165 | Mission, Waypoint, Phase dataclasses |
 | `mission_factory.py` | 155 | Mission creation helpers |
 | `path_following.py` | 110 | DXF/shape following |
-| `mission_handler_base.py` | 75 | Abstract handler |
-| `mission_logic.py` | 220 | Waypoint advancement logic |
+| `starlink_orbit.py` | 180 | Starlink inspection path generation |
+| `mission_logic.py` | 220 | Path/shape generation helpers |
 | `__init__.py` | - | Module exports |
-
-### Mission Plugin System
-
-```
-src/satellite_control/mission/plugins/
-├── __init__.py
-├── point_to_point.py     # Simple navigation
-├── waypoint_sequence.py  # Multi-waypoint
-└── shape_following.py    # DXF path tracking
-```
 
 ---
 
@@ -340,7 +322,6 @@ Converts waypoints to time-parameterized trajectories.
 | `dashboard.py` | 1340 | Deprecated matplotlib dashboard |
 | `video_renderer.py` | 810 | FFmpeg-based MP4 generation |
 | `simulation_visualization.py` | 920 | 3D trajectory animation |
-| `mujoco_replay_visualizer.py` | 400 | MuJoCo replay from CSV |
 | `satellite_2d_diagram.py` | 310 | Thruster layout diagram |
 | `shape_utils.py` | 160 | DXF parsing utilities |
 | `__init__.py` | - | Module exports |
@@ -390,7 +371,6 @@ async def websocket_live(websocket: WebSocket)
 | `logging_config.py` | 180 | Logging setup |
 | `navigation_utils.py` | 165 | Angle normalization, distance |
 | `caching.py` | 160 | LRU caching decorators |
-| `viewer_overlay.py` | 150 | MuJoCo overlay text |
 | `state_converter.py` | 100 | State vector conversion |
 | `orientation_utils.py` | 60 | Quaternion ↔ Euler conversion |
 | `__init__.py` | - | Module exports |
@@ -451,22 +431,6 @@ config/
     └── obstacle_demo.json
 ```
 
-### models/ (MuJoCo XML)
-
-```
-models/
-├── satellite.xml          # Base model
-├── satellite_3d.xml       # 3D with Z thrusters
-├── satellite_rw.xml       # With reaction wheels
-├── satellite_planar.xml   # 2D constrained
-├── satellite_fleet.xml    # Multi-satellite
-└── meshes/               # STL files
-    ├── thruster_*.stl
-    └── body.stl
-```
-
----
-
 ## Test Suite
 
 ### tests/ (31 test files)
@@ -475,7 +439,7 @@ models/
 |----------|-------|
 | **Unit Tests** | `test_config.py`, `test_caching.py`, `test_navigation_utils.py`, `test_orientation_utils.py`, `test_shape_utils.py`, `test_state_converter.py` |
 | **Component Tests** | `test_mpc_controller.py`, `test_thruster_manager.py`, `test_simulation_loop.py`, `test_simulation_logger.py`, `test_simulation_io.py`, `test_simulation_initialization.py`, `test_simulation_context.py`, `test_simulation_state_validator.py`, `test_data_logger.py`, `test_performance_monitor.py`, `test_video_renderer.py`, `test_plot_generator.py`, `test_spline_path.py` |
-| **Mission Tests** | `test_mission_state_manager.py`, `test_mission_state_refactor.py`, `test_presets.py` |
+| **Mission Tests** | `test_mission_state_refactor.py`, `test_presets.py` |
 | **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
 | **Property-Based** | `test_property_based.py` |
 | **Benchmarks** | `test_benchmark.py` |
@@ -518,8 +482,8 @@ graph LR
     end
     
     subgraph Physics
-        SIM --> MJ[MuJoCo]
-        MJ --> STATE[State Vector]
+        SIM --> CPPENG[C++ Engine]
+        CPPENG --> STATE[State Vector]
     end
     
     subgraph Output

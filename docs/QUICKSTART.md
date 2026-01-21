@@ -17,8 +17,8 @@ Get your first satellite control simulation running in 5 minutes.
 ### 1. Clone and Navigate
 
 ```bash
-git clone https://github.com/AevarOfjord/Satellite_2D_MuJoCo.git
-cd Satellite_3D_MuJoCo
+git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel.git
+cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 ```
 
 ### 2. Create Virtual Environment
@@ -35,7 +35,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Note:** This installs MuJoCo physics engine, OSQP solver, and visualization tools (~150MB).
+**Note:** This installs the OSQP solver and visualization tools (~150MB).
 
 ### 4. Install FFmpeg (for animations)
 
@@ -155,7 +155,7 @@ pytest tests/
 
 ```bash
 # Ensure you're in project root and venv is activated
-pwd  # Should show .../Satellite_3D_MuJoCo
+pwd  # Should show .../Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 which python  # Should show .../venv/bin/python
 ```
 
@@ -183,7 +183,7 @@ python run_simulation.py --no-anim --auto
 ## What Just Happened?
 
 1. **MPC Controller** computed optimal thruster commands every 60ms
-2. **MuJoCo Physics** simulated satellite dynamics at 200Hz
+2. **C++ Physics** simulated satellite dynamics at 200Hz
 3. **8 Thrusters** fired based on continuous PWM duty cycles
 4. **Data Logger** recorded full mission telemetry
 5. **Visualizer** created animation and plots

@@ -13,7 +13,7 @@ from typing import List
 
 class ReactionWheelParams(BaseModel):
     """Configuration for a single reaction wheel."""
-    
+
     axis: Tuple[float, float, float] = Field(
         ...,
         description="Rotation axis vector (x, y, z)",
@@ -28,6 +28,7 @@ class ReactionWheelParams(BaseModel):
         gt=0,
         description="Rotational inertia in kg*m^2",
     )
+
 
 class SatellitePhysicalParams(BaseModel):
     """
@@ -87,8 +88,8 @@ class SatellitePhysicalParams(BaseModel):
     # Physics Engine
     engine: str = Field(
         "cpp",
-        pattern="^(mujoco|cpp)$",
-        description="Physics engine backend ('mujoco' or 'cpp')",
+        pattern="^(cpp)$",
+        description="Physics engine backend ('cpp')",
     )
 
     # Damping
@@ -361,6 +362,36 @@ class MPCParams(BaseModel):
         ge=0.0,
         le=5.0,
         description="Safety margin around obstacles in meters",
+    )
+
+    # Path Following (V4.0.1) - General Path MPCC
+    mode_path_following: bool = Field(
+        False,
+        description="Enable path following (MPCC) mode",
+    )
+    Q_contour: float = Field(
+        1000.0,
+        ge=0.0,
+        le=100000.0,
+        description="Contouring weight - penalizes distance from path [unitless]",
+    )
+    Q_progress: float = Field(
+        100.0,
+        ge=0.0,
+        le=10000.0,
+        description="Progress weight - penalizes deviation from target speed [unitless]",
+    )
+    Q_smooth: float = Field(
+        10.0,
+        ge=0.0,
+        le=1000.0,
+        description="Smoothness weight - penalizes velocity changes [unitless]",
+    )
+    v_target: float = Field(
+        0.1,
+        gt=0.0,
+        le=1.0,
+        description="Target speed along path [m/s]",
     )
 
     @field_validator("thruster_type")

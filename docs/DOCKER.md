@@ -95,7 +95,6 @@ Set environment variables for configuration:
 ```bash
 docker run --rm \
   -e PYTHONUNBUFFERED=1 \
-  -e MUJOCO_GL=egl \
   satellite-control:latest
 ```
 
@@ -103,7 +102,6 @@ docker run --rm \
 
 - `PYTHONUNBUFFERED=1` - Unbuffered Python output
 - `PYTHONDONTWRITEBYTECODE=1` - Don't write .pyc files
-- `MUJOCO_GL=egl` - MuJoCo rendering backend (headless)
 
 ## Running Different Commands
 
@@ -173,14 +171,6 @@ If you encounter permission issues with mounted volumes:
 ```bash
 # Fix permissions
 sudo chown -R $USER:$USER Data/
-```
-
-### MuJoCo Rendering
-
-For headless rendering, ensure `MUJOCO_GL=egl` is set:
-
-```bash
-docker run --rm -e MUJOCO_GL=egl satellite-control:latest
 ```
 
 ### Memory Issues
@@ -282,4 +272,3 @@ exit
 
 - [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [MuJoCo Docker Guide](https://mujoco.readthedocs.io/en/latest/programming.html#docker)

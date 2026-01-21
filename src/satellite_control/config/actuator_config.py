@@ -120,11 +120,6 @@ class ActuatorConfig:
         else:
             return 13  # Standard 6-DOF state
 
-    @property
-    def model_path(self) -> str:
-        """Get MuJoCo model path for this actuator mode."""
-        return "models/satellite_3d.xml"
-
     def get_control_labels(self) -> list:
         """Get human-readable labels for control vector elements."""
         if self.mode == ActuatorMode.REACTION_WHEELS:

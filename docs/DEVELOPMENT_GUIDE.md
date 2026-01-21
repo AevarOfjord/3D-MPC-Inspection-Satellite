@@ -27,8 +27,8 @@ This guide provides technical details for developers and engineers interested in
 
 ```bash
 # Clone the repository (or your fork)
-git clone https://github.com/AevarOfjord/Satellite_2D_MuJoCo.git
-cd Satellite_3D_MuJoCo
+git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel.git
+cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 
 # Create virtual environment (highly recommended)
 python3 -m venv venv
@@ -71,7 +71,7 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 2. **Modular Architecture**: Each module has a single responsibility
 
    - `mpc_controller.py`: Optimization only
-   - `mujoco_satellite.py`: Physics simulation only
+   - `cpp_satellite.py`: Physics simulation only
    - `simulation.py`: Control loop orchestration
 
 3. **Type Hints**: All functions use comprehensive type hints
@@ -140,7 +140,7 @@ mypy src/
 - **Imports**: Group in standard order (enforced by `isort`):
 
   1. Standard library (`import os`, `import sys`)
-  2. Third-party (`import numpy`, `import mujoco`)
+  2. Third-party (`import numpy`, `import osqp`)
   3. Local (`from src.satellite_control.config import SatelliteConfig`)
 
 - **Functions**: Keep < 50 lines when possible
@@ -367,24 +367,20 @@ def configure_figure8_mission(
     return mission
 ```
 
-#### Step 2: Add Mission Handler
+#### Step 2: Attach Path to MissionState
 
-Create handler in `src/satellite_control/mission/mission_state_manager.py`:
+Attach the generated path to the mission state so MPCC can follow it:
 
 ```python
-def _update_figure8_mission(self, current_state: Dict) -> Tuple[float, float, float]:
-    """Update target for figure-8 mission.
+from src.satellite_control.config.simulation_config import SimulationConfig
 
-    Args:
-        current_state: Current satellite state
+simulation_config = SimulationConfig.create_default()
+mission_state = simulation_config.mission_state
 
-    Returns:
-        Target (x, y, yaw) tuple
-    """
-    # Find closest point on path
-    # Update target based on progress
-    # Return next target position and orientation
-    pass
+path = [(float(px), float(py), 0.0) for px, py in zip(x, y)]
+mission_state.mpcc_path_waypoints = path
+mission_state.dxf_shape_path = path
+mission_state.dxf_target_speed = speed
 ```
 
 #### Step 3: Add CLI Menu Option
@@ -856,7 +852,7 @@ If you discover bugs in the original project:
 
    - Clear problem description
    - Steps to reproduce
-   - Environment info (OS, Python version, MuJoCo version)
+   - Environment info (OS, Python version, compiler/toolchain)
    - Error messages or log snippets
    - Suggested fix if you have one
 
@@ -943,14 +939,14 @@ profiler.plot_histogram("section_name")
 # Problem: "ModuleNotFoundError: No module named 'src.satellite_control'"
 
 # Solution 1: Always run from project root
-cd /path/to/Satellite_3D_MuJoCo
+cd /path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 python run_simulation.py
 
 # Solution 2: Install package in editable mode
 pip install -e .
 
 # Solution 3: Add to PYTHONPATH
-export PYTHONPATH="${PYTHONPATH}:/path/to/Satellite_3D_MuJoCo"
+export PYTHONPATH="${PYTHONPATH}:/path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel"
 ```
 
 ### Test Discovery Issues
@@ -983,17 +979,14 @@ result = external_function()  # type: ignore
 result = legacy_code()  # type: ignore  # TODO: add types to legacy module
 ```
 
-### MuJoCo Installation Issues
+### C++ Extension Build Issues
 
 ```bash
-# Ensure MuJoCo is properly installed
-pip install mujoco
+# Rebuild the native extension in editable mode
+pip install -e .
 
 # Verify installation
-python -c "import mujoco; print(mujoco.__version__)"
-
-# If issues persist, check MuJoCo documentation:
-# https://mujoco.readthedocs.io/
+python -c "from satellite_control.cpp import _cpp_sim; print('ok')"
 ```
 
 ### OSQP Solver Issues
@@ -1013,7 +1006,6 @@ python -c "import osqp; print(osqp.__version__)"
 
 ### Documentation
 
-- **MuJoCo**: https://mujoco.readthedocs.io/
 - **OSQP**: https://osqp.org/docs/
 - **NumPy**: https://numpy.org/doc/
 - **Rich**: https://rich.readthedocs.io/ (for terminal UI)

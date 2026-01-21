@@ -13,7 +13,6 @@ from .mission_factory import (
     create_station_keeping_mission,
     create_inspection_mission,
 )
-from .mission_executor import MissionExecutor
 
 __all__ = [
     "Mission",
@@ -21,7 +20,6 @@ __all__ = [
     "MissionStatus",
     "MissionType",
     "Waypoint",
-    "MissionExecutor",
     "create_flyby_mission",
     "create_circumnavigation_mission",
     "create_station_keeping_mission",

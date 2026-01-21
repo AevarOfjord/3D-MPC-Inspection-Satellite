@@ -219,7 +219,6 @@ class MonteCarloRunner:
                     trial_config.initial_wy,
                     trial_config.initial_wz,
                 ),
-                use_mujoco_viewer=False,  # Headless mode
             )
 
             # Set mission parameters for point-to-point

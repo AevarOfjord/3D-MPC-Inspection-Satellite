@@ -41,7 +41,7 @@ conda activate satellite
 
 ### Missing Dependencies
 
-**Problem**: `ModuleNotFoundError` for mujoco, osqp, numpy, scipy, etc.
+**Problem**: `ModuleNotFoundError` for osqp, numpy, scipy, etc.
 
 **Solution**:
 
@@ -50,21 +50,21 @@ conda activate satellite
 pip install --upgrade -r requirements.txt
 
 # If specific package fails, install individually
-pip install mujoco osqp numpy scipy matplotlib rich questionary
+pip install osqp numpy scipy matplotlib rich questionary
 ```
 
-### MuJoCo Installation Issues
+### C++ Extension Build Issues
 
-**Problem**: "Cannot find MuJoCo library" or import errors
+**Problem**: Errors building or importing the C++ extension (`_cpp_sim`)
 
 **Solution**:
 
 ```bash
-# MuJoCo is included in pip package (no manual install needed)
-pip install mujoco
+# Ensure build tools are installed, then rebuild the package
+pip install -e .
 
 # Verify installation
-python -c "import mujoco; print(mujoco.__version__)"
+python -c "from satellite_control.cpp import _cpp_sim; print('ok')"
 ```
 
 ### FFmpeg Not Found
@@ -211,7 +211,7 @@ ANGLE_TOLERANCE = np.deg2rad(5)  # degrees (was 3)
 
 ```bash
 # Ensure you're in project root
-cd /Users/aevar/Desktop/Satellite_3D_MuJoCo
+cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pwd  # Should show project root
 
 # Run from project root
@@ -409,7 +409,7 @@ self.fps = 60       # Increase from 30 for smoother
 pip install pytest pytest-cov
 
 # Run from project root
-cd /Users/aevar/Desktop/Satellite_3D_MuJoCo
+cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pytest tests/
 
 # If module import errors, check __init__.py files
@@ -642,7 +642,7 @@ python -m src.satellite_control.visualization.unified_visualizer
 pip install pytest
 
 # Run from project root
-cd /Users/aevar/Desktop/Satellite_3D_MuJoCo
+cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pytest tests/
 ```
 

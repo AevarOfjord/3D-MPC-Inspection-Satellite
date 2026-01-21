@@ -113,6 +113,8 @@ class SimulationLogger:
         mpc_iterations = mpc_info.get("iterations") if mpc_info else None
         mpc_optimality_gap = mpc_info.get("optimality_gap") if mpc_info else None
         mpc_computation_time = mpc_info.get("mpc_computation_time", 0.0)
+        path_s = mpc_info.get("path_s") if mpc_info else None
+        path_v_s = mpc_info.get("path_v_s") if mpc_info else None
 
         # Velocity errors
         error_vx = targ_vx - curr_vx
@@ -198,6 +200,8 @@ class SimulationLogger:
             "MPC_Objective": mpc_objective,
             "MPC_Iterations": mpc_iterations,
             "MPC_Optimality_Gap": mpc_optimality_gap,
+            "Path_S": path_s,
+            "Path_V_S": path_v_s,
             "Command_Vector": command_vector_str,
             "Command_Hex": command_hex,
             "Command_Sent_Time": command_sent_time,

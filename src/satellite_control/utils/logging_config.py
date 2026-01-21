@@ -204,7 +204,6 @@ def configure_module_log_levels(module_levels: Dict[str, int]) -> None:
 DEFAULT_MODULE_LEVELS: Dict[str, int] = {
     "src.satellite_control.core.mpc_controller": logging.INFO,
     "src.satellite_control.core.simulation": logging.INFO,
-    "src.satellite_control.core.mujoco_satellite": logging.WARNING,
     "src.satellite_control.control.mpc_controller": logging.INFO,
 }
 

@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **MUJOCO_LOG.TXT** - Log file removed from documentation directory
+ - **LEGACY_PHYSICS_LOG.TXT** - Log file removed from documentation directory
 - **CODE_OF_CONDUCT.md** - Removed as not applicable for portfolio project
 - **SECURITY.md** - Removed as not applicable for simulation project
 - **SIMULATION_TESTING_GUIDE.md** - Consolidated into TESTING.md
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial satellite control system implementation
-- MuJoCo physics integration (200 Hz)
+- Physics integration (200 Hz)
 - OSQP-based Model Predictive Control (16.67 Hz)
 - Waypoint navigation mission type
 - Shape following mission type
@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date       | Description                                     |
 | ------- | ---------- | ----------------------------------------------- |
 | 2.0.0   | 2026-01-06 | Documentation reorganization and enhancement    |
-| 1.0.0   | 2025-12-10 | Initial release with MPC and MuJoCo integration |
+| 1.0.0   | 2025-12-10 | Initial release with MPC and physics integration |
 
 ---
 

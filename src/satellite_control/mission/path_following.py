@@ -17,7 +17,6 @@ from src.satellite_control.mission.trajectory_utils import (
     compute_curvature,
     compute_speed_profile,
 )
-from src.satellite_control.planning.rrt_star import Obstacle, RRTStarPlanner
 
 
 def _interpolate_segment(
@@ -40,56 +39,24 @@ def build_point_to_point_path(
     rrt_step: float = 0.5,
     rrt_max_iter: int = 800,
 ) -> List[Tuple[float, float, float]]:
-    """Generate a path through waypoints with optional RRT* obstacle avoidance."""
+    """Generate a straight-line path through waypoints (no path planning)."""
     if len(waypoints) < 2:
         raise ValueError("At least two waypoints are required.")
 
-    points = [np.array(p, dtype=float) for p in waypoints]
+    points = []
+    for p in waypoints:
+        arr = np.array(p, dtype=float)
+        if arr.shape == (2,):
+            arr = np.pad(arr, (0, 1), "constant")
+        if arr.shape[0] > 3:
+            arr = arr[:3]
+        points.append(arr)
     path: List[Tuple[float, float, float]] = [tuple(map(float, points[0]))]
-
-    has_obstacles = bool(obstacles)
-    rrt_obstacles: List[Obstacle] = []
-    if has_obstacles:
-        for obs in obstacles or []:
-            rrt_obstacles.append(Obstacle(position=np.array(obs[:3], dtype=float), radius=float(obs[3])))
-
-    bounds_min = np.min(points, axis=0)
-    bounds_max = np.max(points, axis=0)
-    if has_obstacles:
-        obs_positions = np.array([o.position for o in rrt_obstacles], dtype=float)
-        if obs_positions.size:
-            bounds_min = np.minimum(bounds_min, obs_positions.min(axis=0))
-            bounds_max = np.maximum(bounds_max, obs_positions.max(axis=0))
-    margin = 2.0
-    bounds_min = bounds_min - margin
-    bounds_max = bounds_max + margin
-
-    planner = RRTStarPlanner(
-        bounds_min=tuple(bounds_min),
-        bounds_max=tuple(bounds_max),
-        step_size=rrt_step,
-        max_iter=rrt_max_iter,
-        search_radius=1.5,
-    )
 
     for idx in range(len(points) - 1):
         start = points[idx]
         end = points[idx + 1]
-        segment_points: List[Tuple[float, float, float]]
-
-        if has_obstacles:
-            rrt_path = planner.plan(start, end, rrt_obstacles)
-            if not rrt_path:
-                segment_points = _interpolate_segment(start, end, step_size)
-            else:
-                segment_points = []
-                prev = start
-                for node in rrt_path:
-                    node_arr = np.array(node, dtype=float)
-                    segment_points.extend(_interpolate_segment(prev, node_arr, step_size))
-                    prev = node_arr
-        else:
-            segment_points = _interpolate_segment(start, end, step_size)
+        segment_points = _interpolate_segment(start, end, step_size)
 
         path.extend(segment_points)
 

@@ -21,7 +21,7 @@ Features:
 - Mode-specific stabilization requirements
 - Configurable timeout limits
 - Independent control and simulation rates
-- Integration with mission_state_manager timing
+- Integration with mission_state timing
 """
 
 import logging

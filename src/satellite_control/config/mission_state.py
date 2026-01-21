@@ -251,6 +251,15 @@ class MissionState:
     def dxf_shape_path(self, value: List[Tuple[float, float, float]]):
         self.shape.path = value
 
+    # --- Path Following (MPCC) ---
+    @property
+    def mpcc_path_waypoints(self) -> List[Tuple[float, float, float]]:
+        return self.shape.path
+
+    @mpcc_path_waypoints.setter
+    def mpcc_path_waypoints(self, value: List[Tuple[float, float, float]]):
+        self.shape.path = value
+
     @property
     def dxf_base_shape(self) -> List[Tuple[float, float, float]]:
         return self.shape.base_shape
@@ -675,6 +684,8 @@ class MissionState:
             WAYPOINT_NAVIGATION, WAYPOINT_NAVIGATION_MULTI,
             SHAPE_FOLLOWING, or NONE
         """
+        if self.mpcc_path_waypoints:
+            return "PATH_FOLLOWING"
         if self.trajectory.active:
             return "TRAJECTORY"
         if self.scan.active:

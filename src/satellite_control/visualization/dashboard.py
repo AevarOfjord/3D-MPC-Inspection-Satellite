@@ -1345,20 +1345,7 @@ def main():
             "⚠️ **Note:** Running a simulation will block the dashboard until completion. For long simulations, consider using the CLI: `satellite-control run`"
         )
 
-        # Mission selection
-        st.subheader("Mission Configuration")
-
-        from src.satellite_control.mission.plugin import get_registry
-
-        registry = get_registry()
-        available_plugins = registry.list_plugins()
-
-        mission_type = st.selectbox(
-            "Mission Type",
-            options=["waypoint", "shape_following"] + available_plugins,
-            index=0,
-            help="Select the type of mission to run",
-        )
+        st.subheader("Path Configuration")
 
         # Basic parameters
         col1, col2 = st.columns(2)

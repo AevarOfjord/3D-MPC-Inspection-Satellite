@@ -59,6 +59,7 @@ from src.satellite_control.utils.navigation_utils import (
     point_to_line_distance,
 )
 from src.satellite_control.utils.orientation_utils import (
+    euler_xyz_to_quat_wxyz,
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
 )
@@ -72,17 +73,15 @@ logger = setup_logging(__name__, log_file=None, simple_format=True)
 plt.rcParams["animation.ffmpeg_path"] = Constants.FFMPEG_PATH
 
 try:
-    from src.satellite_control.mission.mission_manager import MissionManager
     from src.satellite_control.visualization.unified_visualizer import (
         UnifiedVisualizationGenerator,
     )
 except ImportError:
     logger.warning(
-        "WARNING: Could not import visualization or mission components. "
+        "WARNING: Could not import visualization components. "
         "Limited functionality available."
     )
     UnifiedVisualizationGenerator = None  # type: ignore
-    MissionManager = None  # type: ignore
 
 
 class SatelliteMPCLinearizedSimulation:
@@ -113,7 +112,7 @@ class SatelliteMPCLinearizedSimulation:
         start_vz: float = 0.0,
         start_omega: Union[float, Tuple[float, float, float]] = 0.0,
         simulation_config: Optional[SimulationConfig] = None,
-        use_mujoco_viewer: bool = False,
+        config_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
     ):
         """
         Initialize linearized MPC simulation.
@@ -129,33 +128,16 @@ class SatelliteMPCLinearizedSimulation:
             start_vz: Initial Z velocity.
             start_omega: Initial angular velocity.
             simulation_config: Optional SimulationConfig object (overrides cfg).
-            use_mujoco_viewer: If True, use MuJoCo viewer.
+            config_overrides: Optional SimulationConfig overrides (legacy compatibility).
         """
-        self.use_mujoco_viewer = use_mujoco_viewer
         self.cfg = cfg
 
         # Initialize placeholders
         self.simulation_config = simulation_config
         self.structured_config: Optional[SimulationConfig] = None  # Alias
 
-        # V5.0 Autonomy Components
-        from src.satellite_control.planning.rrt_star import RRTStarPlanner
-        from src.satellite_control.planning.trajectory_generator import (
-            TrajectoryGenerator,
-        )
-
-        self.planner = RRTStarPlanner(
-            bounds_min=(-20, -20, -20), bounds_max=(20, 20, 20)
-        )
-        # Initialize Sequencer (will be populated if mission file is loaded)
-        from src.satellite_control.mission.sequencer import MissionSequencer
-
-        # Mission state is available after full init, but we can set placeholder
-        self.sequencer: Optional[MissionSequencer] = None
-
-        self.trajectory_generator = TrajectoryGenerator(avg_velocity=0.5)
-        self.planned_path = []  # List of waypoints [x,y,z]
-        self.active_trajectory = None  # Time-parameterized trajectory
+        # Path-only mode: planning and trajectory generation are disabled.
+        self.planned_path = []  # Path waypoints [x, y, z]
         self.last_solve_time = 0.0  # Track last MPC solve time for physics logging
 
         # Hydra Config Adoption
@@ -197,13 +179,19 @@ class SatelliteMPCLinearizedSimulation:
         if self.simulation_config is None:
             if isinstance(self.cfg, AppConfig):
                 self.simulation_config = SimulationConfig(app_config=self.cfg)
+            else:
+                self.simulation_config = SimulationConfig.create_default()
+
+        if config_overrides:
+            self.simulation_config = SimulationConfig.create_with_overrides(
+                config_overrides, base_config=self.simulation_config
+            )
 
         self.structured_config = self.simulation_config
 
         self.initializer = SimulationInitializer(
             simulation=self,
             simulation_config=self.simulation_config,
-            use_mujoco_viewer=self.use_mujoco_viewer,
         )
         # We might need to monkey-patch or update the initializer to support this.
         # Or better, we just overwrite the .initialize call
@@ -226,14 +214,6 @@ class SatelliteMPCLinearizedSimulation:
             start_vz,
             start_omega,
         )
-
-        # Initialize Mission Sequencer if MissionManager is present
-        if (
-            hasattr(self, "mission_manager")
-            and self.mission_manager
-            and self.mission_manager.mission_state
-        ):
-            self.sequencer = MissionSequencer(self.mission_manager.mission_state)
 
     def get_current_state(self) -> np.ndarray:
         """Get current satellite state [pos(3), quat(4), vel(3), ang_vel(3)]."""
@@ -388,92 +368,38 @@ class SatelliteMPCLinearizedSimulation:
             satellite=self.satellite,
         )
 
-    def update_target_state_for_mode(self, current_state: np.ndarray) -> None:
+    def update_path_reference_state(self, current_state: np.ndarray) -> None:
         """
-        Update the target state based on the current control mode.
-
-        Delegates to MissionStateManager for centralized mission logic.
-        Replaces ~330 lines of complex nested code with clean delegation.
+        Update the reference state from the MPCC path data.
 
         Args:
             current_state: Current state vector [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
         """
-        # Track target index to detect waypoint advances (V4.0.0: use mission_manager)
-        prev_target_index = (
-            self.mission_manager.mission_state.current_target_index
-            if self.mission_manager and self.mission_manager.mission_state
-            else 0
-        )
+        if not hasattr(self, "mpc_controller") or not self.mpc_controller:
+            self.target_state = current_state[:13].copy()
+            return
 
-        # Delegate to MissionStateManager for centralized mission logic
-        target_state = self.mission_manager.update_target_state(
-            current_position=self.satellite.position,
-            current_quat=self.satellite.quaternion,
-            current_time=self.simulation_time,
-            current_state=current_state,
-        )
+        if getattr(self.mpc_controller, "mode_path_following", False):
+            pos_ref, tangent = self.mpc_controller.get_path_reference()
+            target_state = np.zeros(13, dtype=float)
+            target_state[0:3] = pos_ref
 
-        # Detect if MissionStateManager advanced to a new waypoint (V4.0.0: use mission_manager)
-        new_target_index = (
-            self.mission_manager.mission_state.current_target_index
-            if self.mission_manager and self.mission_manager.mission_state
-            else 0
-        )
-        if new_target_index != prev_target_index:
-            # Check if mission is complete to avoid false reset (V4.0.0: use mission_manager)
-            is_mission_complete = (
-                self.mission_manager.mission_state.multi_point_phase == "COMPLETE"
-                if self.mission_manager and self.mission_manager.mission_state
-                else False
-            )
+            if np.linalg.norm(tangent) > 1e-6:
+                yaw = float(np.arctan2(tangent[1], tangent[0]))
+            else:
+                _, _, yaw = quat_wxyz_to_euler_xyz(current_state[3:7])
 
-            # Only reset if NOT complete (advancing to valid next target)
-            if not is_mission_complete:
-                # Reset target reached status for proper phase display
-                self.target_reached_time = None
-                self.target_maintenance_time = 0.0
-                self.approach_phase_start_time = self.simulation_time
+            target_state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, yaw))
 
-        # If mission returns None, it means mission is complete
-        if target_state is None:
-            # Check if it's a completion signal (mission finished)
-            if self.mission_manager.dxf_completed:
-                logger.info("DXF PROFILE COMPLETED! Profile successfully traversed.")
-                self.is_running = False
-                self.print_performance_summary()
-                return
-        else:
-            # Check for significant target change in Waypoint Mode (Robustness fallback)
-            # Triggers if index tracking failed to catch the transition (V4.0.0: use mission_manager)
-            enable_waypoint = (
-                self.mission_manager.mission_state.enable_waypoint_mode
-                if self.mission_manager and self.mission_manager.mission_state
-                else False
-            )
-            if self.target_state is not None and enable_waypoint:
-                # 3D Position Change
-                pos_change = np.linalg.norm(target_state[:3] - self.target_state[:3])
+            v_target = 0.0
+            if self.simulation_config is not None:
+                v_target = float(self.simulation_config.app_config.mpc.v_target)
+            target_state[7:10] = tangent * v_target
 
-                # 3D Angle Change (Quaternion)
-                q1 = target_state[3:7]
-                q2 = self.target_state[3:7]
-                dot = np.abs(np.dot(q1, q2))
-                dot = min(1.0, max(-1.0, dot))
-                ang_change = 2.0 * np.arccos(dot)
-
-                if pos_change > 1e-4 or ang_change > 1e-4:
-                    if self.target_reached_time is not None:
-                        logger.info(
-                            "Target changed significantly - resetting reached timer"
-                        )
-                        self.target_reached_time = None
-                        self.target_maintenance_time = 0.0
-                        self.approach_phase_start_time = self.simulation_time
-
-            # Update our target state from the mission manager
             self.target_state = target_state
+            return
 
-        return
+        self.target_state = current_state[:13].copy()
 
     def update_mpc_control(self) -> None:
         """Update control action using linearized MPC with strict timing."""
@@ -494,82 +420,14 @@ class SatelliteMPCLinearizedSimulation:
             mpc_start_sim_time = self.simulation_time
             mpc_start_wall_time = time.time()
 
-            # Generate Trajectory for Smart MPC
-            horizon = getattr(self.mpc_controller, "N", 10)
-            dt = getattr(self.mpc_controller, "dt", 0.05)
-
-            # Autonomy V5.0: Trajectory Tracking
-            target_trajectory = None
-
-            if self.active_trajectory is not None and len(self.active_trajectory) > 0:
-                # Sample trajectory horizon
-                t_start = self.simulation_time
-                # trajectory format: [time, x, y, z, vx, vy, vz, ...] 
-                # We need 16-D state: [pos(3), quat(4), vel(3), ang_vel(3), wheel_speeds(3)]
-                
-                dt = getattr(self.mpc_controller, "dt", 0.05)
-                horizon = getattr(self.mpc_controller, "N", 10)
-                traj_matrix = np.zeros((horizon, 16))
-                
-                # Get current target quaternion from existing target state or current state
-                current_target_quat = self.target_state[3:7]
-                
-                valid_traj = True
-                for k in range(horizon):
-                    t_k = t_start + k * dt
-                    
-                    if t_k > self.active_trajectory[-1, 0]:
-                        # Clamp to end
-                        pt = self.active_trajectory[-1]
-                        pos = pt[1:4]
-                        vel = np.zeros(3)
-                    else:
-                        # Interpolate
-                        pos = np.zeros(3)
-                        vel = np.zeros(3)
-                        for i in range(3):
-                            pos[i] = np.interp(t_k, self.active_trajectory[:, 0], self.active_trajectory[:, 1+i])
-                            vel[i] = np.interp(t_k, self.active_trajectory[:, 0], self.active_trajectory[:, 4+i])
-                    
-                    traj_matrix[k, 0:3] = pos
-                    traj_matrix[k, 3:7] = current_target_quat
-                    traj_matrix[k, 7:10] = vel
-                
-                target_trajectory = traj_matrix
-                
-                # Update immediate target state for logging/metrics
-                self.target_state = traj_matrix[0, :13]
-
-            else:
-                # Legacy / Mission Manager Fallback
-                mission_state = (
-                    self.mission_manager.mission_state
-                    if self.mission_manager and self.mission_manager.mission_state
-                    else None
-                )
-                use_trajectory = bool(
-                    mission_state
-                    and (
-                        mission_state.dxf_shape_mode_active
-                        or getattr(mission_state, "mesh_scan_mode_active", False)
-                        or getattr(mission_state, "trajectory_mode_active", False)
-                    )
-                )
-
-                if use_trajectory and hasattr(self.mission_manager, "get_trajectory"):
-                    target_trajectory = self.mission_manager.get_trajectory(
-                        current_time=self.simulation_time,
-                        dt=dt,
-                        horizon=horizon,
-                        current_state=current_state,
-                        external_target_state=self.target_state,
-                    )
-
-            # Update obstacles (V3.0.0)
-            if self.mission_manager.mission_state:
-                self.mpc_runner.update_obstacles(
-                    self.mission_manager.mission_state.obstacles
-                )
+            # Update obstacles (path-only)
+            mission_state = (
+                self.simulation_config.mission_state
+                if self.simulation_config is not None
+                else None
+            )
+            if mission_state is not None:
+                self.mpc_runner.update_obstacles(mission_state.obstacles)
 
             # Compute action
             (
@@ -582,7 +440,6 @@ class SatelliteMPCLinearizedSimulation:
                 true_state=current_state,
                 target_state=self.target_state,
                 previous_thrusters=self.previous_thrusters,
-                target_trajectory=target_trajectory,
             )
 
             # Track solve time for high-frequency logging
@@ -624,39 +481,9 @@ class SatelliteMPCLinearizedSimulation:
 
     def replan_path(self):
         """
-        Trigger RRT* replanning from current state to target state.
-        Updates self.planned_path and self.active_trajectory.
+        Path replanning is disabled in path-only mode.
         """
-        current_state = self.get_current_state()
-        start_pos = current_state[0:3]
-        target_pos = self.target_state[0:3]
-
-        obstacles = []
-        if self.mission_manager and self.mission_manager.mission_state:
-            from src.satellite_control.planning.rrt_star import Obstacle
-
-            for obs in self.mission_manager.mission_state.obstacles:
-                obstacles.append(
-                    Obstacle(position=np.array(obs.position), radius=obs.radius)
-                )
-
-        logger.info(
-            f"Replanning path from {start_pos} to {target_pos} with {len(obstacles)} obstacles..."
-        )
-
-        waypoints = self.planner.plan(start_pos, target_pos, obstacles)
-
-        if waypoints:
-            self.planned_path = [list(p) for p in waypoints]
-            logger.info(f"Path found: {len(waypoints)} waypoints")
-
-            if self.mission_manager and self.mission_manager.mission_state:
-                from src.satellite_control.mission.sequencer import MissionSequencer
-
-                self.sequencer = MissionSequencer(self.mission_manager.mission_state)
-        else:
-            logger.warning("RRT* failed to find a path!")
-            self.planned_path = []
+        logger.info("Path replanning is disabled for MPCC path-following.")
 
     def log_simulation_step(
         self,
@@ -709,45 +536,25 @@ class SatelliteMPCLinearizedSimulation:
         self.last_pos_error = pos_error
         self.last_ang_error = ang_error
 
-        # Determine status message
-        status_msg = f"Traveling to Target (t={self.simulation_time:.1f}s)"
+        # Determine status message (path-only)
         stabilization_time = None
-        mission_phase = (
-            "STABILIZING" if self.target_reached_time is not None else "APPROACHING"
-        )
+        mission_phase = "PATH_FOLLOWING"
+        status_msg = f"Following Path (t={self.simulation_time:.1f}s)"
 
-        if self.target_reached_time is not None:
-            stabilization_time = self.simulation_time - self.target_reached_time
-            status_msg = f"Stabilizing on Target (t = {stabilization_time:.1f}s)"
-
-        elif (
-            self.mission_manager
-            and self.mission_manager.mission_state
-            and self.mission_manager.mission_state.dxf_shape_mode_active
-        ):
-            phase = self.mission_manager.mission_state.dxf_shape_phase or "UNKNOWN"
-            mission_phase = phase
-            # Map internal phase names to user-friendly display names
-            phase_display_names = {
-                "POSITIONING": "Traveling to Path",
-                "PATH_STABILIZATION": "Stabilizing on Path",
-                "TRACKING": "Traveling on Path",
-                "STABILIZING": "Stabilizing on Path",
-                "RETURNING": "Traveling to Target",
-            }
-            display_phase = phase_display_names.get(phase, phase)
-            # For RETURNING phase, check if we're stabilizing at the end
-            if phase == "RETURNING" and self.target_reached_time is not None:
-                display_phase = "Stabilizing on Target"
-            status_msg = f"{display_phase} (t = {self.simulation_time:.1f}s)"
-        elif self.mission_manager and self.mission_manager.mission_state:
-            if (
-                self.mission_manager.mission_state.trajectory_mode_active
-                or self.mission_manager.mission_state.mesh_scan_mode_active
-            ):
-                mission_phase = "TRAJECTORY"
-        else:
-            status_msg = f"Traveling to Target (t = {self.simulation_time:.1f}s)"
+        path_s = getattr(self.mpc_controller, "s", None)
+        path_len = None
+        if hasattr(self.mpc_controller, "_path_length"):
+            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+        if path_len is None or path_len <= 0.0:
+            if self.simulation_config is not None:
+                path_len = float(
+                    getattr(self.simulation_config.mission_state, "dxf_path_length", 0.0)
+                    or 0.0
+                )
+        if path_s is not None and path_len:
+            status_msg = (
+                f"Following Path (s={path_s:.2f}/{path_len:.2f}m, t={self.simulation_time:.1f}s)"
+            )
 
         # Prepare display variables and update command history
         if thruster_action.ndim > 1:
@@ -866,14 +673,27 @@ class SatelliteMPCLinearizedSimulation:
 
     def check_target_reached(self) -> bool:
         """
-        Check if satellite has reached the target within tolerances.
-
-        Delegates to SimulationStateValidator for tolerance checking.
+        Check if path progress has reached the end.
         """
-        current_state = self.get_current_state()
-        return self.state_validator.check_target_reached(
-            current_state, self.target_state
-        )
+        if not hasattr(self, "mpc_controller") or not self.mpc_controller:
+            return False
+
+        if not getattr(self.mpc_controller, "mode_path_following", False):
+            return False
+
+        path_len = 0.0
+        if hasattr(self.mpc_controller, "_path_length"):
+            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+        if path_len <= 0.0 and self.simulation_config is not None:
+            path_len = float(
+                getattr(self.simulation_config.mission_state, "dxf_path_length", 0.0)
+                or 0.0
+            )
+        if path_len <= 0.0:
+            return False
+
+        path_s = float(getattr(self.mpc_controller, "s", 0.0) or 0.0)
+        return path_s >= path_len
 
     def draw_simulation(self) -> None:
         """Draw the simulation with satellite, target, and trajectory."""
@@ -1040,15 +860,13 @@ class SatelliteMPCLinearizedSimulation:
                 self.context.dt = self.satellite.dt
                 self.context.control_dt = self.control_update_interval
 
-        # Update Mission Sequencer
-        if hasattr(self, "sequencer") and self.sequencer:
-            self.sequencer.update(self.simulation_time, self.get_current_state())
-
-        # 4. Step the Simulation Loop
-        if hasattr(self, "sequencer") and self.sequencer:
-            self.sequencer.update(self.simulation_time, self.get_current_state())
-
         self.loop.update_step(None)
+
+    def update_simulation(self, frame: Optional[int] = None) -> None:
+        """
+        Legacy alias for step() to maintain compatibility with older tests/tools.
+        """
+        self.step()
 
     def is_complete(self) -> bool:
         """
@@ -1074,7 +892,7 @@ class SatelliteMPCLinearizedSimulation:
         if hasattr(self, "visualizer") and hasattr(self.visualizer, "close"):
             self.visualizer.close()
 
-        # Close MuJoCo viewer if accessible
+        # Close satellite resources if accessible
         if hasattr(self, "satellite") and hasattr(self.satellite, "close"):
             self.satellite.close()
 

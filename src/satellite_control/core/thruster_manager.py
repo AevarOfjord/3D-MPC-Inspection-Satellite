@@ -11,13 +11,19 @@ Thruster Valve Behavior:
 - PWM commands use duty cycle logic within control intervals
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, Protocol
 
 import numpy as np
 
-if TYPE_CHECKING:
-    # Avoid circular import
-    from src.satellite_control.core.mujoco_satellite import SatelliteThrusterTester
+class ThrusterTarget(Protocol):
+    """Minimal interface for thruster sink implementations."""
+
+    active_thrusters: set
+    thruster_activation_time: dict
+    thruster_deactivation_time: dict
+
+    def set_thruster_level(self, thruster_id: int, level: float) -> None:
+        """Set the normalized thrust level for a thruster."""
 
 
 class ThrusterManager:
@@ -124,7 +130,7 @@ class ThrusterManager:
         control_update_interval: float,
         last_control_update: float,
         sim_dt: float,
-        satellite: Optional["SatelliteThrusterTester"] = None,
+        satellite: Optional[ThrusterTarget] = None,
     ) -> None:
         """
         Update actual thruster output based on valve delays and ramp-up.
@@ -250,7 +256,7 @@ class ThrusterManager:
 
     def _update_satellite_thrusters(
         self,
-        satellite: "SatelliteThrusterTester",
+        satellite: ThrusterTarget,
         simulation_time: float,
     ) -> None:
         """

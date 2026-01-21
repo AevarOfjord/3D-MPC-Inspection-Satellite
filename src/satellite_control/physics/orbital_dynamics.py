@@ -196,7 +196,7 @@ def compute_cw_force(
     orbital_config: Optional[OrbitalConfig] = None,
 ) -> np.ndarray:
     """
-    Compute CW gravitational force for MuJoCo xfrc_applied.
+    Compute CW gravitational force for external force application.
 
     Args:
         position: Relative position [x, y, z] [m]

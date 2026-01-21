@@ -7,7 +7,7 @@ Extracted from simulation.py to improve modularity.
 This module handles:
 - Satellite physics initialization
 - MPC controller setup
-- Mission manager setup
+- Mission state setup
 - Data logging setup
 - Performance monitoring setup
 - State validation setup
@@ -22,15 +22,10 @@ import numpy as np
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.control.mpc_controller import MPCController
-
-# MuJoCoSatelliteSimulator now only used for post-simulation replay/viewer
 from src.satellite_control.core.simulation_io import SimulationIO
 from src.satellite_control.core.thruster_manager import ThrusterManager
 from src.satellite_control.mission.mission_report_generator import (
     create_mission_report_generator,
-)
-from src.satellite_control.mission.mission_state_manager import (
-    MissionStateManager,
 )
 from src.satellite_control.utils.data_logger import create_data_logger
 from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
@@ -53,7 +48,6 @@ class SimulationInitializer:
         self,
         simulation: Any,  # SatelliteMPCLinearizedSimulation instance
         simulation_config: Optional[SimulationConfig] = None,
-        use_mujoco_viewer: bool = False,  # Run headless by default
     ):
         """
         Initialize the simulation initializer.
@@ -61,11 +55,9 @@ class SimulationInitializer:
         Args:
             simulation: The simulation instance to initialize
             simulation_config: Optional SimulationConfig (preferred)
-            use_mujoco_viewer: Whether to use MuJoCo viewer
         """
         self.simulation = simulation
         self.simulation_config = simulation_config
-        self.use_mujoco_viewer = use_mujoco_viewer
 
     def initialize(
         self,
@@ -98,6 +90,9 @@ class SimulationInitializer:
             )
         app_config = self.simulation_config.app_config
 
+        # Path-only mode: enforce MPCC path-following
+        app_config.mpc.mode_path_following = True
+
         # Use Constants for default positions (these are not mutable)
         if start_pos is None:
             start_pos = Constants.DEFAULT_START_POS
@@ -107,6 +102,11 @@ class SimulationInitializer:
             start_angle = Constants.DEFAULT_START_ANGLE
         if target_angle is None:
             target_angle = Constants.DEFAULT_TARGET_ANGLE
+
+        path_target_pos = target_pos
+        if app_config.mpc.mode_path_following:
+            target_pos = start_pos
+            target_angle = start_angle
 
         # Initialize satellite physics
         self._initialize_satellite_physics(
@@ -137,18 +137,63 @@ class SimulationInitializer:
         # Initialize MPC controller
         self._initialize_mpc_controller(app_config)
 
-        # Initialize mission manager
-        self._initialize_mission_manager()
+        # Initialize mission state (path-only)
+        self.simulation.mission_state = self.simulation_config.mission_state
+        mission_state = self.simulation.mission_state
 
         # Configure Obstacles on Controller (V3.0.0)
         if (
             hasattr(self.simulation.mpc_controller, "set_obstacles")
-            and self.simulation.mission_manager.mission_state.obstacles_enabled
+            and mission_state.obstacles_enabled
         ):
             logger.info("Configuring MPC Controller with obstacles...")
-            self.simulation.mpc_controller.set_obstacles(
-                self.simulation.mission_manager.mission_state.obstacles
+            self.simulation.mpc_controller.set_obstacles(mission_state.obstacles)
+        
+        # Configure Path for Path-Following Mode (V4.0.1)
+        if (
+            app_config.mpc.mode_path_following
+            and not getattr(mission_state, "mpcc_path_waypoints", None)
+            and start_pos is not None
+            and path_target_pos is not None
+        ):
+            from src.satellite_control.mission.path_following import (
+                build_point_to_point_path,
             )
+
+            path = build_point_to_point_path(
+                waypoints=[tuple(start_pos), tuple(path_target_pos)],
+                obstacles=None,
+                step_size=0.1,
+            )
+            path_length = float(
+                np.sum(
+                    np.linalg.norm(
+                        np.array(path[1:], dtype=float)
+                        - np.array(path[:-1], dtype=float),
+                        axis=1,
+                    )
+                )
+            )
+            mission_state.mpcc_path_waypoints = path
+            mission_state.dxf_shape_path = path
+            mission_state.dxf_path_length = path_length
+            mission_state.dxf_target_speed = float(app_config.mpc.v_target)
+
+        if app_config.mpc.mode_path_following:
+            mission_state.enable_waypoint_mode = False
+            mission_state.enable_multi_point_mode = False
+            mission_state.trajectory_mode_active = False
+            mission_state.dxf_shape_mode_active = False
+
+        if (
+            app_config.mpc.mode_path_following
+            and hasattr(self.simulation.mpc_controller, "set_path")
+            and hasattr(mission_state, "mpcc_path_waypoints")
+            and mission_state.mpcc_path_waypoints
+        ):
+            logger.info("Configuring MPC Controller with path data for path-following...")
+            self.simulation.mpc_controller.set_path(mission_state.mpcc_path_waypoints)
+            self.simulation.planned_path = list(mission_state.mpcc_path_waypoints)
 
         # Initialize state validator
         self._initialize_state_validator()
@@ -209,7 +254,6 @@ class SimulationInitializer:
                 "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
             )
 
-        # V2.0.0: C++ is now the ONLY physics engine. MuJoCo used for visualization only.
         logger.info("Initializing C++ Physics Engine...")
         try:
             from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
@@ -223,9 +267,6 @@ class SimulationInitializer:
                 f"C++ Physics Engine required but not found: {e}. "
                 "Please run 'pip install -e .' to compile."
             ) from e
-
-        # MuJoCo is kept only for visualization/replay (launched separately)
-        self._mujoco_viewer_available = self.use_mujoco_viewer
 
         self.simulation.satellite.external_simulation_mode = True
 
@@ -269,7 +310,7 @@ class SimulationInitializer:
         # Velocities = 0
 
         logger.info(
-            f"INFO: POINT-TO-POINT MODE: Target ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
+            f"INFO: Initial reference state set to ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
         )
 
     def _initialize_simulation_timing(self, app_config: Any) -> None:
@@ -386,27 +427,6 @@ class SimulationInitializer:
             # This avoids the complex round-trip to Hydra OmegaConf
             self.simulation.mpc_controller = MPCController(cfg=app_config)
 
-    def _initialize_mission_manager(self) -> None:
-        """Initialize mission state manager (V4.0.0: simulation_config required)."""
-        if self.simulation_config is None:
-            raise ValueError(
-                "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
-            )
-
-        # V4.0.0: simulation_config is required, so mission_state and app_config are always available
-        mission_state = self.simulation_config.mission_state
-        app_config = self.simulation_config.app_config
-
-        self.simulation.mission_manager = MissionStateManager(
-            mission_state=mission_state,  # V4.0.0: Required
-            app_config=app_config,  # V4.0.0: Required
-            position_tolerance=self.simulation.position_tolerance,
-            angle_tolerance=self.simulation.angle_tolerance,
-            normalize_angle_func=self.simulation.normalize_angle,
-            angle_difference_func=self.simulation.angle_difference,
-            point_to_line_distance_func=self.simulation.point_to_line_distance,
-        )
-
     def _initialize_state_validator(self) -> None:
         """Initialize state validator."""
         self.simulation.state_validator = create_state_validator_from_config(
@@ -415,7 +435,8 @@ class SimulationInitializer:
                 "angle_tolerance": self.simulation.angle_tolerance,
                 "velocity_tolerance": self.simulation.velocity_tolerance,
                 "angular_velocity_tolerance": self.simulation.angular_velocity_tolerance,
-            }
+            },
+            app_config=self.simulation_config.app_config if self.simulation_config else None,
         )
 
     def _initialize_io_helper(self) -> None:

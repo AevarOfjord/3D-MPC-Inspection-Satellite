@@ -8,12 +8,12 @@ Common questions about the Satellite Control System.
 
 ### What is this project?
 
-A high-fidelity satellite control simulation using Model Predictive Control (MPC) with MuJoCo physics. It demonstrates real-time optimal control of a 3D satellite model with a planar 8-thruster layout (Z translation via attitude/tilt).
+A high-fidelity satellite control simulation using Model Predictive Control (MPC) with a custom C++ physics engine. It demonstrates real-time optimal control of a 3D satellite model with a planar 8-thruster layout (Z translation via attitude/tilt).
 
 **Key Features:**
 
 - OSQP-based MPC solver (~1-2ms solve times)
-- MuJoCo physics engine (200 Hz integration)
+- C++ physics engine (200 Hz integration)
 - Waypoint navigation and shape following missions
 - Real-time visualization and comprehensive telemetry
 
@@ -44,9 +44,15 @@ Check yours:
 python --version
 ```
 
-### Do I need to install MuJoCo separately?
+### Do I need to install the C++ engine separately?
 
-**No!** MuJoCo is included in the pip package. Just run:
+**No.** Build steps are handled when you install the project. Run:
+
+```bash
+pip install -e .
+```
+
+If you are setting up dependencies first:
 
 ```bash
 pip install -r requirements.txt
@@ -54,9 +60,8 @@ pip install -r requirements.txt
 
 ### Why does installation take so long?
 
-The system installs several large packages:
+The system installs several packages:
 
-- MuJoCo physics engine (~100MB)
 - NumPy, SciPy (scientific computing)
 - Matplotlib (visualization)
 - OSQP (optimization solver)
@@ -274,7 +279,7 @@ enable_random_disturbances = True
 You're not in the project root directory.
 
 ```bash
-cd /path/to/Satellite_3D_MuJoCo
+cd /path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 python run_simulation.py
 ```
 

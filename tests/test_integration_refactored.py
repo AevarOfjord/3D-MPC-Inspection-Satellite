@@ -31,17 +31,15 @@ class TestRefactoredComponentsIntegration:
         """Test that SimulationInitializer and SimulationLoop work together."""
         # Create a minimal simulation instance
         sim = MagicMock()
-        sim.use_mujoco_viewer = False
 
         # Initialize using SimulationInitializer
         initializer = SimulationInitializer(
             simulation=sim,
             simulation_config=simulation_config,
-            use_mujoco_viewer=False,
         )
 
         with patch(
-            "src.satellite_control.core.simulation_initialization.SatelliteThrusterTester"
+            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
         ) as mock_sat:
             mock_sat_instance = MagicMock()
             mock_sat_instance.dt = 0.005
@@ -86,7 +84,6 @@ class TestRefactoredComponentsIntegration:
                 # Create simulation
                 sim = SatelliteMPCLinearizedSimulation(
                     simulation_config=simulation_config,
-                    use_mujoco_viewer=False,
                 )
 
                 # Verify initializer was used
@@ -103,11 +100,10 @@ class TestInitializerLoopDataFlow:
     def test_state_passed_correctly(self, simulation_config):
         """Test that state is correctly passed from initializer to loop."""
         sim = MagicMock()
-        sim.use_mujoco_viewer = False
 
         # Setup mocks for initialization
         with patch(
-            "src.satellite_control.core.simulation_initialization.SatelliteThrusterTester"
+            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
         ) as mock_sat:
             mock_sat_instance = MagicMock()
             mock_sat_instance.dt = 0.005
@@ -119,7 +115,6 @@ class TestInitializerLoopDataFlow:
             initializer = SimulationInitializer(
                 simulation=sim,
                 simulation_config=simulation_config,
-                use_mujoco_viewer=False,
             )
 
             initializer.initialize(
@@ -179,12 +174,10 @@ class TestErrorRecovery:
     def test_initializer_handles_missing_config(self):
         """Test that initializer handles missing config gracefully."""
         sim = MagicMock()
-        sim.use_mujoco_viewer = False
 
         initializer = SimulationInitializer(
             simulation=sim,
             simulation_config=None,  # No config provided
-            use_mujoco_viewer=False,
         )
 
         # Should fall back to global config
@@ -192,7 +185,7 @@ class TestErrorRecovery:
 
         # Should still be able to initialize (will use SatelliteConfig)
         with patch(
-            "src.satellite_control.core.simulation_initialization.SatelliteThrusterTester"
+            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
         ):
             # Should not raise exception
             try:

@@ -22,6 +22,7 @@ from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulati
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.timing import SIMULATION_DT
 from src.satellite_control.mission.mission_types import Obstacle
+from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -267,7 +268,7 @@ class SimulationManager:
 
         try:
             mpc_dt = float(sim_config.app_config.mpc.dt)
-            path, trajectory, path_length = build_mesh_scan_trajectory(
+            path, _, path_length = build_mesh_scan_trajectory(
                 obj_path=mesh_scan.obj_path,
                 standoff=mesh_scan.standoff,
                 levels=mesh_scan.levels,
@@ -277,6 +278,7 @@ class SimulationManager:
                 lateral_accel=mesh_scan.lateral_accel,
                 dt=mpc_dt,
                 z_margin=mesh_scan.z_margin,
+                build_trajectory=False,
             )
         except Exception as exc:
             logger.error(f"Mesh scan generation failed: {exc}")
@@ -286,6 +288,8 @@ class SimulationManager:
             return
 
         ms = sim_config.mission_state
+        sim_config.app_config.mpc.mode_path_following = True
+        sim_config.app_config.mpc.v_target = mesh_scan.speed_max
         ms.mesh_scan_mode_active = True
         ms.mesh_scan_obj_path = mesh_scan.obj_path
         ms.mesh_scan_standoff = mesh_scan.standoff
@@ -296,13 +300,12 @@ class SimulationManager:
         ms.mesh_scan_lateral_accel = mesh_scan.lateral_accel
         ms.mesh_scan_z_margin = mesh_scan.z_margin
 
-        ms.dxf_shape_mode_active = True
+        ms.dxf_shape_mode_active = False
         ms.dxf_shape_path = path
         ms.dxf_path_length = path_length
         ms.dxf_target_speed = mesh_scan.speed_max
-        ms.dxf_trajectory = trajectory.tolist()
-        ms.dxf_trajectory_dt = mpc_dt
-        ms.dxf_shape_phase = "POSITIONING"
+        ms.mpcc_path_waypoints = path
+        ms.trajectory_mode_active = False
 
     def _get_telemetry_dict(self) -> Dict[str, Any]:
         """Construct telemetry dictionary from current simulation state."""
@@ -312,21 +315,20 @@ class SimulationManager:
         state = self.sim_instance.get_current_state()
 
         # Fallback values if sim_instance properties aren't ready
-        tgt_pos = (
-            self.sim_instance.target_state[0:3]
-            if hasattr(self.sim_instance, "target_state")
-            else (0, 0, 0)
-        )
-
-        # Use commanded orientation from config if available, else derive?
-        # The original code used global config variables for command orientation.
-        # We can try to use sim_instance target state orientation or the config.
-        # sim_instance.target_state[3:7] is the quaternion.
-        # The frontend expects 'target_orientation' as Euler angles (roll, pitch, yaw)?
-        # Original: "target_orientation": tgt_ori (from config)
-        # Let's use config if available, else 0.
+        tgt_state = getattr(self.sim_instance, "target_state", None)
+        tgt_pos = (0.0, 0.0, 0.0)
+        tgt_quat = None
         tgt_ori = (0.0, 0.0, 0.0)
-        if self.current_mission_config:
+
+        if tgt_state is not None and len(tgt_state) >= 7:
+            tgt_pos = tuple(float(v) for v in tgt_state[0:3])
+            tgt_quat = tuple(float(v) for v in tgt_state[3:7])
+            try:
+                tgt_ori = tuple(quat_wxyz_to_euler_xyz(tgt_quat).tolist())
+            except Exception:
+                tgt_ori = (0.0, 0.0, 0.0)
+        elif self.current_mission_config:
+            tgt_pos = tuple(self.current_mission_config.target_position)
             tgt_ori = tuple(self.current_mission_config.target_orientation)
 
         num_thrusters = getattr(self.sim_instance.mpc_controller, "num_thrusters", 12)
@@ -353,6 +355,7 @@ class SimulationManager:
             "angular_velocity": state[10:13],
             "target_position": tgt_pos,
             "target_orientation": tgt_ori,
+            "target_quaternion": tgt_quat,
             "thrusters": last_output[:num_thrusters],
             "rw_torque": last_output[num_thrusters:],
             "obstacles": obstacles,
@@ -754,7 +757,7 @@ async def preview_trajectory(config: MeshScanConfigModel):
 
         # Use simple default dt for preview
         dt = 0.1
-        path, trajectory, path_length = build_mesh_scan_trajectory(
+        path, _, path_length = build_mesh_scan_trajectory(
             obj_path=config.obj_path,
             standoff=config.standoff,
             levels=levels,
@@ -765,10 +768,12 @@ async def preview_trajectory(config: MeshScanConfigModel):
             dt=dt,
             z_margin=config.z_margin,
             scan_axis=config.scan_axis,
+            build_trajectory=False,
         )
 
         # Calculate approximate duration
-        duration = trajectory.shape[0] * dt
+        speed = max(float(config.speed_max), 1e-3)
+        duration = float(path_length) / speed
 
         return {
             "status": "success",

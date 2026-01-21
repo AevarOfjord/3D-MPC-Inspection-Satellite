@@ -33,15 +33,15 @@ source .venv311/bin/activate
 
 # Upgrade pip
 echo "Upgrading pip..."
-pip install --upgrade pip
+python -m pip install --upgrade pip
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
-# Install the package (builds C++ extension)
+# Install the package (builds C++ extension) and dev tools
 echo "Installing satellite_control package (showing build progress)..."
-pip install -v .
+python -m pip install -v ".[dev]"
 
 # Copy .so files to src for development
 echo "Copying compiled extensions..."

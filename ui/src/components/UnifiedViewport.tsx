@@ -14,7 +14,6 @@ import { SatelliteModel } from './SatelliteModel';
 import { TargetMarker } from './Earth';
 import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
-import { TargetGuides } from './TargetGuides';
 // FinalStateMarker and Obstacles are not exported from Viewport.tsx, so we don't import them.
 // LiveObstaclesRender handles obstacles internally now.
 // Note: Created duplicate export for Obstacles in Viewport.tsx or extracting it? 
@@ -186,7 +185,6 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
             <>
                 <LiveObstaclesRender />
                 <SatelliteModel />
-                <TargetGuides />
                 <Trajectory />
                 <PlannedPath />
                 {/* FinalStateMarker removed for brevity or need import */}

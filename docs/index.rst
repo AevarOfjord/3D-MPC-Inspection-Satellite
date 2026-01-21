@@ -1,7 +1,7 @@
 Satellite Thruster Control System
 =================================
 
-Model Predictive Control system for satellite thruster control with MuJoCo physics simulation.
+Model Predictive Control system for satellite thruster control with a custom C++ physics engine.
 
 .. toctree::
    :maxdepth: 2

@@ -26,7 +26,9 @@ set(OSQP_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(osqp)
 
 # Common Dependencies
-find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+message(STATUS "Python3_EXECUTABLE: ${Python3_EXECUTABLE}")
+message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 find_package(pybind11 CONFIG REQUIRED)
 
 # --- Module: _cpp_mpc ---
@@ -36,7 +38,7 @@ add_library(_cpp_mpc MODULE
     src/satellite_control/cpp/mpc_controller.cpp
     src/satellite_control/cpp/obstacle.cpp
 )
-target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python::Module Eigen3::Eigen osqpstatic)
+target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
 target_compile_features(_cpp_mpc PRIVATE cxx_std_17)
 set_target_properties(_cpp_mpc PROPERTIES PREFIX "")
@@ -45,7 +47,7 @@ install(TARGETS _cpp_mpc DESTINATION satellite_control/cpp)
 # Helper macro for future modules
 macro(add_satellite_module name sources)
     add_library(${name} MODULE ${sources} ${ARGN})
-    target_link_libraries(${name} PRIVATE pybind11::headers Python::Module Eigen3::Eigen)
+    target_link_libraries(${name} PRIVATE pybind11::headers Python3::Module Eigen3::Eigen)
     target_compile_features(${name} PRIVATE cxx_std_17)
     set_target_properties(${name} PROPERTIES PREFIX "")
     install(TARGETS ${name} DESTINATION satellite_control/cpp)

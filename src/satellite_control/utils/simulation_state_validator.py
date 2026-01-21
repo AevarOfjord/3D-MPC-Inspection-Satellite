@@ -373,12 +373,13 @@ class SimulationStateValidator:
 
         # Get noise parameters from app_config if available, otherwise fallback
         if self.app_config and self.app_config.physics:
-            # Note: Noise parameters not yet in AppConfig, so use defaults
-            # TODO: Add noise parameters to AppConfig in future refactor
-            position_noise_std = 0.0
-            velocity_noise_std = 0.0
-            angle_noise_std = 0.0
-            angular_velocity_noise_std = 0.0
+            physics = self.app_config.physics
+            position_noise_std = getattr(physics, "position_noise_std", 0.0)
+            velocity_noise_std = getattr(physics, "velocity_noise_std", 0.0)
+            angle_noise_std = getattr(physics, "angle_noise_std", 0.0)
+            angular_velocity_noise_std = getattr(
+                physics, "angular_velocity_noise_std", 0.0
+            )
         else:
             # V4.0.0: Use default config if not provided (no noise by default)
             default_config = SimulationConfig.create_default()

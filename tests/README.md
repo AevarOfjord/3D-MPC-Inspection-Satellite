@@ -15,7 +15,6 @@ python3 -m pytest tests/
 - `test_mpc_controller.py` - Tests for MPC controller
 - `test_config.py` - Tests for configuration validation
 - `test_model.py` - Tests for physical model
-- `test_mission_state_manager.py` - Tests for mission logic
 - `test_integration_basic.py` - Basic integration tests
 - `test_integration_missions.py` - Mission integration tests
 - Additional test files as needed

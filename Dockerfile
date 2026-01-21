@@ -53,8 +53,7 @@ USER satellite
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    MUJOCO_GL=egl
+    PYTHONDONTWRITEBYTECODE=1
 
 # Default command (headless simulation)
 CMD ["python", "run_simulation.py", "run", "--headless"]

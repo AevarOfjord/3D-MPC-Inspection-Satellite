@@ -79,15 +79,15 @@ class InteractiveMissionCLI:
 
         choices = [
             questionary.Choice(
-                title="›  Mission 1: Point-to-Point Path (trajectory)",
+                title="›  Mission 1: Point-to-Point Path (MPCC)",
                 value="path_following",
             ),
             questionary.Choice(
-                title="◇  Mission 2: Scan Object (cylinder)",
+                title="◇  Mission 2: Scan Object (path-only)",
                 value="scan_object",
             ),
             questionary.Choice(
-                title="◆  Mission 3: Circle Starlink Satellite",
+                title="◆  Mission 3: Circle Starlink Satellite (path-only)",
                 value="starlink_orbit",
             ),
             questionary.Choice(
@@ -272,8 +272,8 @@ class InteractiveMissionCLI:
 
         # Return full preset dict (includes obstacles, targets, etc.)
         # This allows _apply_preset to work correctly
-        preset["mission_type"] = "waypoint_navigation"
-        preset["mode"] = "multi_point"
+        preset["mission_type"] = "path_following"
+        preset["mode"] = "path_following"
         preset["preset_name"] = preset_name
         preset["preset_name"] = preset_name
         return preset
@@ -321,29 +321,31 @@ class InteractiveMissionCLI:
             )
 
             try:
-                # MeshScanConfigModel fields
-                path, trajectory, path_length = build_mesh_scan_trajectory(
+                # MeshScanConfigModel fields (path-only)
+                speed_max = float(mesh_scan.get("speed_max", 0.2))
+                path, _, path_length = build_mesh_scan_trajectory(
                     obj_path=mesh_scan.get("obj_path"),
                     standoff=mesh_scan.get("standoff", 0.5),
                     levels=mesh_scan.get("levels", 8),
                     points_per_circle=mesh_scan.get("points_per_circle", 72),
-                    v_max=mesh_scan.get("speed_max", 0.2),
+                    v_max=speed_max,
                     v_min=mesh_scan.get("speed_min", 0.05),
                     lateral_accel=mesh_scan.get("lateral_accel", 0.05),
                     dt=float(simulation_config.app_config.mpc.dt),
                     z_margin=mesh_scan.get("z_margin", 0.0),
+                    build_trajectory=False,
                 )
+
+                simulation_config.app_config.mpc.mode_path_following = True
+                simulation_config.app_config.mpc.v_target = speed_max
 
                 ms.mesh_scan_mode_active = True
                 ms.mesh_scan_obj_path = mesh_scan.get("obj_path")
                 ms.dxf_shape_path = path
                 ms.dxf_path_length = path_length
-                ms.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
-                # Force start pos to match path start if applicable?
-                # Usually scan starts from approach.
-                if path:
-                    # Update target to first point?
-                    pass
+                ms.dxf_target_speed = speed_max
+                ms.trajectory_mode_active = False
+                ms.mpcc_path_waypoints = path
             except Exception as e:
                 console.print(
                     f"[yellow]Warning: Failed to rebuild scan path: {e}[/yellow]"
@@ -443,18 +445,33 @@ class InteractiveMissionCLI:
         mission_state.obstacles_enabled = len(obstacles) > 0
 
         targets = preset.get("targets", [])
-        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
-        waypoint_angles = [
-            t[1]
-            if isinstance(t[1], (tuple, list)) and len(t[1]) == 3
-            else (0.0, 0.0, float(t[1]))
-            for t in targets
-        ]
+        start_pos = preset.get("start_pos")
+        if start_pos and targets:
+            from src.satellite_control.mission.path_following import (
+                build_point_to_point_path,
+            )
 
-        mission_state.enable_waypoint_mode = True
-        mission_state.enable_multi_point_mode = True
-        mission_state.waypoint_targets = [t[0] for t in targets]
-        mission_state.waypoint_angles = waypoint_angles
+            positions = [start_pos] + [t[0] for t in targets]
+            path = build_point_to_point_path(
+                waypoints=positions,
+                obstacles=None,
+                step_size=0.1,
+            )
+            path_length = float(
+                np.sum(
+                    np.linalg.norm(
+                        np.array(path[1:], dtype=float)
+                        - np.array(path[:-1], dtype=float),
+                        axis=1,
+                    )
+                )
+            )
+            mission_state.mpcc_path_waypoints = path
+            mission_state.dxf_shape_path = path
+            mission_state.dxf_path_length = path_length
+
+        mission_state.enable_waypoint_mode = False
+        mission_state.enable_multi_point_mode = False
         mission_state.current_target_index = 0
         mission_state.target_stabilization_start_time = None
 
@@ -572,12 +589,12 @@ class InteractiveMissionCLI:
         """Mission 1: Point-to-point path with trajectory tracking."""
         from src.satellite_control.config.simulation_config import SimulationConfig
         from src.satellite_control.mission.path_following import (
-            build_point_to_point_trajectory,
+            build_point_to_point_path,
         )
 
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
-
+        
         console.print()
         console.print(Panel("Mission 1: Point-to-Point Path", style="green"))
 
@@ -626,30 +643,26 @@ class InteractiveMissionCLI:
         obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
 
         positions = [start_pos] + [wp[0] for wp in waypoints]
-        dt = float(simulation_config.app_config.mpc.dt)
-        path, trajectory, total_time = build_point_to_point_trajectory(
+        path = build_point_to_point_path(
             waypoints=positions,
-            obstacles=obstacles if obstacles_enabled else None,
-            v_max=speed,
-            v_min=0.05,
-            lateral_accel=0.05,
-            dt=dt,
-            hold_start=5.0,
-            hold_end=5.0,
+            obstacles=None,
+            step_size=0.1,
+        )
+        path_length = float(
+            np.sum(
+                np.linalg.norm(
+                    np.array(path[1:], dtype=float) - np.array(path[:-1], dtype=float),
+                    axis=1,
+                )
+            )
         )
 
-        mission_state.trajectory_mode_active = True
+        mission_state.trajectory_mode_active = False
         mission_state.trajectory_type = "path"
-        mission_state.trajectory_start_time = None
-        mission_state.trajectory_total_time = total_time
-        mission_state.trajectory_hold_start = 5.0
         mission_state.trajectory_hold_end = 5.0
-        mission_state.trajectory_start_orientation = start_angle
-        mission_state.trajectory_end_orientation = waypoints[-1][1]
         mission_state.dxf_target_speed = speed
-        mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
-        mission_state.dxf_trajectory_dt = dt
         mission_state.dxf_shape_path = path
+        mission_state.dxf_path_length = path_length
         mission_state.dxf_shape_mode_active = False
         mission_state.mesh_scan_mode_active = False
         mission_state.enable_waypoint_mode = False
@@ -657,11 +670,18 @@ class InteractiveMissionCLI:
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
 
+        # Enable path-following MPC mode
+        simulation_config.app_config.mpc.mode_path_following = True
+        simulation_config.app_config.mpc.v_target = speed
+        # Store path waypoints for MPC initialization
+        mission_state.mpcc_path_waypoints = path  # Pass to simulation for set_path()
+
         return {
-            "mission_type": "trajectory_path",
+            "mission_type": "path_following",
             "start_pos": start_pos,
             "start_angle": start_angle,
             "simulation_config": simulation_config,
+            "mpcc_path": path,  # Include path for MPC initialization
         }
 
     def run_scan_mission(self) -> Dict[str, Any]:
@@ -729,33 +749,9 @@ class InteractiveMissionCLI:
         obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
 
         dt = float(simulation_config.app_config.mpc.dt)
-        # Calculate approach time for hold_start
-        # Cylinder settings (matches build_cylinder_scan_trajectory logic)
-        scan_r = 0.25 + max(standoff, 0.0)
-        scan_h = 3.0
-        z_start = -0.5 * scan_h  # Bottom of cylinder
-
-        # Local start point (0 angle)
-        local_start = np.array([scan_r, 0.0, z_start])
-
-        # Rotate by object orientation
-        from scipy.spatial.transform import Rotation
-
-        rot = Rotation.from_euler("xyz", obj_angle, degrees=False)
-        rotated_start = rot.apply(local_start)
-
-        # Translate by object pose
-        final_start = rotated_start + np.array(obj_pose)
-
-        # Calculate distance and time
-        start_pos_arr = np.array(start_pos)
-        dist = np.linalg.norm(final_start - start_pos_arr)
-        approach_time = dist / max(speed, 0.01)
-
-        hold_start_val = approach_time + 5.0  # Add 5s buffer for settling
 
         if selection == "cylinder":
-            path, trajectory, total_time = build_cylinder_scan_trajectory(
+            path, _, path_length = build_cylinder_scan_trajectory(
                 center=obj_pose,
                 rotation_xyz=obj_angle,
                 radius=0.25,
@@ -768,12 +764,13 @@ class InteractiveMissionCLI:
                 lateral_accel=0.05,
                 dt=dt,
                 ring_shape="circle",
-                hold_start=hold_start_val,
-                hold_end=5.0,
+                hold_start=0.0,
+                hold_end=0.0,
+                build_trajectory=False,
             )
         else:
             # Placeholder: default to cylinder if OBJ is not yet supported
-            path, trajectory, total_time = build_cylinder_scan_trajectory(
+            path, _, path_length = build_cylinder_scan_trajectory(
                 center=obj_pose,
                 rotation_xyz=obj_angle,
                 radius=0.25,
@@ -786,22 +783,19 @@ class InteractiveMissionCLI:
                 lateral_accel=0.05,
                 dt=dt,
                 ring_shape="circle",
-                hold_start=hold_start_val,
-                hold_end=5.0,
+                hold_start=0.0,
+                hold_end=0.0,
+                build_trajectory=False,
             )
             mission_state.mesh_scan_obj_path = selection
 
-        mission_state.trajectory_mode_active = True
+        simulation_config.app_config.mpc.mode_path_following = True
+        simulation_config.app_config.mpc.v_target = speed
+        mission_state.trajectory_mode_active = False
         mission_state.trajectory_type = "scan"
-        mission_state.trajectory_start_time = None
-        mission_state.trajectory_total_time = total_time
-        mission_state.trajectory_hold_start = hold_start_val
-        mission_state.trajectory_hold_end = 5.0
-        mission_state.trajectory_start_orientation = start_angle
-        mission_state.trajectory_end_orientation = None
-        mission_state.trajectory_object_center = obj_pose
         mission_state.mesh_scan_mode_active = True
         mission_state.dxf_target_speed = speed
+        mission_state.dxf_path_length = path_length
         mission_state.mesh_scan_object_pose = (
             obj_pose[0],
             obj_pose[1],
@@ -814,14 +808,14 @@ class InteractiveMissionCLI:
         mission_state.mesh_scan_fov_deg = 60.0
         mission_state.mesh_scan_overlap = 0.85
         mission_state.mesh_scan_ring_shape = "circle"
-        mission_state.dxf_trajectory = [tuple(map(float, row)) for row in trajectory]
-        mission_state.dxf_trajectory_dt = dt
         mission_state.dxf_shape_path = path
         mission_state.dxf_shape_mode_active = False
         mission_state.enable_waypoint_mode = False
         mission_state.enable_multi_point_mode = False
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
+        mission_state.trajectory_hold_end = 5.0
+        mission_state.mpcc_path_waypoints = path
 
         return {
             "mission_type": "scan_object",
@@ -912,26 +906,8 @@ class InteractiveMissionCLI:
 
         obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
 
-        dt = float(simulation_config.app_config.mpc.dt)
-
-        # Calculate approach time for hold_start
-        orbit_start_radius = radius_xy + max(standoff, 0.0)
-        local_start = np.array(
-            [orbit_start_radius, 0.0, 0.0]
-        )  # Approximate first waypoint
-        from scipy.spatial.transform import Rotation
-
-        rot = Rotation.from_euler("xyz", starlink_angle, degrees=False)
-        rotated_start = rot.apply(local_start)
-        final_start = rotated_start + np.array(starlink_pos)
-
-        start_pos_arr = np.array(start_pos)
-        dist = np.linalg.norm(final_start - start_pos_arr)
-        approach_time = dist / max(speed, 0.01)
-        hold_start_val = approach_time + 5.0  # Add 5s buffer for settling
-
         try:
-            path, trajectory, path_length, orientations = (
+            path, _, path_length, _ = (
                 build_starlink_orbit_trajectory(
                     obj_path=str(obj_path),
                     center=starlink_pos,
@@ -942,39 +918,35 @@ class InteractiveMissionCLI:
                     v_max=speed,
                     v_min=0.05,
                     lateral_accel=0.05,
-                    dt=dt,
-                    hold_start=hold_start_val,
-                    hold_end=5.0,
                     camera_face="-Y",
+                    build_trajectory=False,
                 )
             )
         except Exception as e:
             console.print(f"[red]Error generating orbit trajectory: {e}[/red]")
             return {}
 
-        total_time = float(trajectory[-1, 0]) if len(trajectory) > 0 else 0.0
-
         console.print(
-            f"[green]Generated orbit: {len(path)} waypoints, {path_length:.1f}m total, {total_time:.1f}s duration[/green]"
+            f"[green]Generated orbit: {len(path)} waypoints, {path_length:.1f}m total[/green]"
         )
 
-        mission_state.trajectory_mode_active = True
+        mission_state.trajectory_mode_active = False
         mission_state.trajectory_type = "starlink_orbit"
-        mission_state.trajectory_start_time = None
-        mission_state.trajectory_total_time = total_time
-        mission_state.trajectory_hold_start = hold_start_val
         mission_state.trajectory_hold_end = 5.0
-        mission_state.trajectory_start_orientation = start_angle
-        mission_state.trajectory_end_orientation = None
-        mission_state.trajectory_object_center = starlink_pos
         mission_state.mesh_scan_mode_active = True
         mission_state.mesh_scan_obj_path = str(obj_path)
         mission_state.dxf_shape_path = path
+        mission_state.dxf_path_length = path_length
+        mission_state.dxf_target_speed = speed
         mission_state.dxf_shape_mode_active = False
         mission_state.enable_waypoint_mode = False
         mission_state.enable_multi_point_mode = False
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
+        mission_state.mpcc_path_waypoints = path
+
+        simulation_config.app_config.mpc.mode_path_following = True
+        simulation_config.app_config.mpc.v_target = speed
 
         return {
             "mission_type": "starlink_orbit",
@@ -1145,25 +1117,37 @@ class InteractiveMissionCLI:
         if not self._confirm_mission("Custom Waypoint Mission"):
             return {}
 
-        # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
-        waypoint_angles = [
-            wp[1]
-            if isinstance(wp[1], (tuple, list)) and len(wp[1]) == 3
-            else (0.0, 0.0, float(wp[1]))
-            for wp in waypoints
-        ]
+        positions = [start_pos] + [wp[0] for wp in waypoints]
+        from src.satellite_control.mission.path_following import (
+            build_point_to_point_path,
+        )
 
-        # Update MissionState (V3.0.0)
-        mission_state.enable_waypoint_mode = True
-        mission_state.enable_multi_point_mode = True
-        mission_state.waypoint_targets = [wp[0] for wp in waypoints]
-        mission_state.waypoint_angles = waypoint_angles
+        path = build_point_to_point_path(
+            waypoints=positions,
+            obstacles=None,
+            step_size=0.1,
+        )
+        path_length = float(
+            np.sum(
+                np.linalg.norm(
+                    np.array(path[1:], dtype=float) - np.array(path[:-1], dtype=float),
+                    axis=1,
+                )
+            )
+        )
+
+        # Update MissionState (path-following)
+        mission_state.mpcc_path_waypoints = path
+        mission_state.dxf_shape_path = path
+        mission_state.dxf_path_length = path_length
+        mission_state.enable_waypoint_mode = False
+        mission_state.enable_multi_point_mode = False
         mission_state.current_target_index = 0
         mission_state.target_stabilization_start_time = None
 
         return {
-            "mission_type": "waypoint_navigation",
-            "mode": "multi_point",
+            "mission_type": "path_following",
+            "mode": "path_following",
             "start_pos": start_pos,
             "start_angle": start_angle,
             "simulation_config": simulation_config,

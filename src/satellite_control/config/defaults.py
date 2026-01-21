@@ -78,6 +78,8 @@ def create_default_app_config() -> AppConfig:
         z_tilt_gain=0.35,
         z_tilt_max_deg=20.0,
         verbose_mpc=False,
+        mode_path_following=True,
+        v_target=timing.DEFAULT_TARGET_SPEED,
     )
 
     # Simulation

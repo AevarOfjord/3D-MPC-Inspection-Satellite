@@ -14,7 +14,6 @@ services:
       # - ./config:/app/config
     environment:
       - PYTHONUNBUFFERED=1
-      - MUJOCO_GL=egl
     # Override default command
     command: ["python", "run_simulation.py", "run", "--headless", "--duration", "10.0"]
     # For interactive use, uncomment:
@@ -33,7 +32,6 @@ services:
       - ./Data:/app/Data
     environment:
       - PYTHONUNBUFFERED=1
-      - MUJOCO_GL=egl
     command: ["python", "run_simulation.py", "run", "--headless"]
     # For development, you can override with:
     # docker-compose run satellite-dev python run_simulation.py run --help

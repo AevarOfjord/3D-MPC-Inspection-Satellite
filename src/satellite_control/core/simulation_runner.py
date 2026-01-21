@@ -8,7 +8,6 @@ import argparse
 from src.satellite_control.core.simulation import (
     SatelliteMPCLinearizedSimulation,
 )
-from src.satellite_control.mission.mission_manager import MissionManager
 
 
 def main():
@@ -33,38 +32,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Use mission manager for configuration (Centralized)
-    mission_manager = MissionManager()
-
     # V3.0.0: Create SimulationConfig instead of mutating SatelliteConfig
     from src.satellite_control.config.simulation_config import SimulationConfig
     
     simulation_config = None
     
-    if args.auto:
-        print("Running in AUTO mode with default parameters...")
-        # Create default config with auto mode parameters
-        simulation_config = SimulationConfig.create_default()
-        # Note: In V3.0.0, start/target positions should be set via MissionState
-        # For now, mission_manager will handle this
-    else:
-        # Interactive Mode
-        print("\nSatellite MPC Simulation")
-        print("========================\n")
-
-        mode = mission_manager.show_mission_menu()
-        mission_result = mission_manager.run_selected_mission(mode)
-        if not mission_result:
-            print("Mission configuration cancelled.")
-            return
-        
-        # Extract SimulationConfig if available (v2.0.0)
-        if isinstance(mission_result, dict) and "simulation_config" in mission_result:
-            simulation_config = mission_result["simulation_config"]
-        else:
-            # If no simulation_config returned, create default
-            # (V3.0.0: mission_manager should always return simulation_config)
-            simulation_config = SimulationConfig.create_default()
+    print("Running in path-only mode with default parameters...")
+    simulation_config = SimulationConfig.create_default()
 
     # Create and run simulation
     print("\nInitializing Simulation...")

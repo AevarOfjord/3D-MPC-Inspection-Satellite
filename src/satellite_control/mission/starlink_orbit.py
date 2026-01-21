@@ -171,6 +171,7 @@ def build_starlink_orbit_trajectory(
     hold_start: float = 5.0,
     hold_end: float = 5.0,
     camera_face: str = "-Y",
+    build_trajectory: bool = True,
 ) -> Tuple[
     List[Tuple[float, float, float]],
     np.ndarray,
@@ -198,7 +199,7 @@ def build_starlink_orbit_trajectory(
     Returns:
         Tuple of:
         - path: List of 3D waypoint positions
-        - trajectory: Time-parameterized trajectory array
+        - trajectory: Time-parameterized trajectory array (empty if build_trajectory=False)
         - path_length: Total path length [m]
         - orientations: List of Euler angle orientations for each waypoint
     """
@@ -233,6 +234,12 @@ def build_starlink_orbit_trajectory(
 
     path = [tuple(map(float, p)) for p in world_arr]
 
+    path_length = float(np.sum(np.linalg.norm(world_arr[1:] - world_arr[:-1], axis=1)))
+
+    if not build_trajectory:
+        empty_traj = np.empty((0, 7), dtype=float)
+        return path, empty_traj, path_length, local_orientations
+
     # Compute speed profile based on curvature
     curvature = compute_curvature(world_arr)
     speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
@@ -242,9 +249,6 @@ def build_starlink_orbit_trajectory(
     trajectory, total_time = apply_hold_segments(
         trajectory, dt=dt, hold_start=hold_start, hold_end=hold_end
     )
-
-    # Path length
-    path_length = float(np.sum(np.linalg.norm(world_arr[1:] - world_arr[:-1], axis=1)))
 
     return path, trajectory, path_length, local_orientations
 

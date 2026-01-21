@@ -12,7 +12,6 @@ import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
-import { TargetGuides } from './TargetGuides';
 import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
 import { useTelemetryStore } from '../store/telemetryStore';
@@ -152,7 +151,6 @@ export const Viewport = memo(function Viewport({ viewMode }: ViewportProps) {
         
         <Obstacles />
         <SatelliteModel />
-        <TargetGuides />
         <Trajectory />
         <PlannedPath />
         <FinalStateMarker />

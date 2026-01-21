@@ -2,6 +2,7 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <array>
 #include <vector>
 #include <memory>
 #include "osqp.h"
@@ -31,10 +32,10 @@ struct MPCParams {
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
     
-    // Constraints
-    double max_velocity = 1.0;          ///< Max velocity magnitude [m/s]
-    double max_angular_velocity = 1.0;  ///< Max angular velocity magnitude [rad/s]
-    double position_bounds = 10.0;      ///< Box constraint for position [m]
+    // Constraints (disabled when mode_path_following=true per V4.0.1 MPCC spec)
+    double max_velocity = 1.0;          ///< Max velocity magnitude [m/s] (disabled in MPCC mode)
+    double max_angular_velocity = 1.0;  ///< Max angular velocity [rad/s] (disabled in MPCC mode)
+    double position_bounds = 10.0;      ///< Box constraint for position [m] (disabled in MPCC mode)
     
     // Z-tilt
     bool enable_z_tilt = true;          ///< Enable heuristic Z-tilt correction
@@ -44,6 +45,13 @@ struct MPCParams {
     // Collision avoidance (V3.0.0)
     bool enable_collision_avoidance = false; ///< Enable obstacle avoidance
     double obstacle_margin = 0.5;            ///< Safety margin for obstacles [m]
+
+    // Path Following (V4.0.0) - General Path MPCC
+    bool mode_path_following = false;   ///< If true, use path following (MPCC) formulation
+    double Q_contour = 1000.0;          ///< Weight for contouring error (stay on path)
+    double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
+    double Q_smooth = 10.0;             ///< Weight for velocity smoothness
+    double v_target = 0.1;              ///< Target speed along path [m/s]
 };
 
 /**
@@ -193,14 +201,43 @@ private:
     int n_obs_constraints_ = 0;
     std::vector<std::vector<int>> obs_A_indices_; // Map[step][col] -> A index
     
+    // Map [step][0..2] -> Index in P_data_ for (x,s), (y,s), (z,s) cross terms
+    std::vector<std::vector<int>> path_P_indices_; 
+    // Map [step] -> Index in P_data_ for (s,s) diagonal entry
+    std::vector<int> path_s_diag_indices_;
+    // Map [step][0..5] -> Index in P_data_ for velocity block upper triangle
+    // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
+    std::vector<std::vector<int>> path_vel_P_indices_;
+    
     // -- Runtime Methods --
     void update_dynamics(const VectorXd& x_current);
     void update_cost(const VectorXd& x_target);
     void update_cost_trajectory(const MatrixXd& x_target_traj);
     void update_constraints(const VectorXd& x_current);
     void update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target);
+    void update_path_cost(const VectorXd& x_current); // Path following linearization
     VectorXd apply_z_tilt(const VectorXd& x_current, const VectorXd& x_target);
     
+    // Path following internal state
+    std::vector<double> s_guess_; // Guess for path parameter s over horizon
+    
+    // -- General Path Data (V4.0.1) --
+    // Path is defined as a list of (s, x, y, z) samples
+    // where s is the arc-length parameter
+    std::vector<double> path_s_;              // Arc-length samples [0, total_length]
+    std::vector<Eigen::Vector3d> path_points_; // Position samples
+    double path_total_length_ = 0.0;          // Total path length
+    bool path_data_valid_ = false;            // True if path data has been set
+    
+    // Helper methods for path interpolation
+    Eigen::Vector3d get_path_point(double s) const;
+    Eigen::Vector3d get_path_tangent(double s) const;
+    
+public:
+    // Set path data for general path following
+    void set_path_data(const std::vector<std::array<double, 4>>& path_data);
+    
+private:
     // Deprecated
     void apply_obstacle_constraints(const VectorXd& x_current);
 };

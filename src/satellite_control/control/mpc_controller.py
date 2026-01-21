@@ -89,17 +89,111 @@ class MPCController(Controller):
         mpc_params.z_tilt_max_rad = self.z_tilt_max_rad
 
         # Create C++ controller
+        # Path Following (V4.0.1) - General Path MPCC
+        mpc_params.mode_path_following = self.mode_path_following
+        mpc_params.Q_contour = self.Q_contour
+        mpc_params.Q_progress = self.Q_progress
+        mpc_params.Q_smooth = self.Q_smooth
+        mpc_params.v_target = self.v_target
+
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
         # Performance tracking
         self.solve_times: list[float] = []
 
+        # Path following state
+        self.s = 0.0
+        self._path_data: list[list[float]] = []  # [(s, x, y, z), ...]
+        self._path_set = False
+
         # Dimensions for external use
-        # Dimensions for external use
-        self.nx = 16
+        self.nx = 17 if self.mode_path_following else 16
         self.nu = self.num_rw_axes + self.num_thrusters
 
-        logger.info("MPC Controller initialized (C++ backend)")
+        logger.info(f"MPC Controller initialized (C++ backend). Thrusters: {self.num_thrusters}, RW: {self.num_rw_axes}")
+        logger.info(f"MPC Path Following Mode: {self.mode_path_following}")
+        logger.info(f"MPC Params Mode sent to C++: {mpc_params.mode_path_following}")
+    
+    def set_path(self, path_points: list[tuple[float, float, float]]) -> None:
+        """
+        Set the path for path-following mode.
+        
+        Args:
+            path_points: List of (x, y, z) waypoints. Arc-length is computed automatically.
+        """
+        if not path_points or len(path_points) < 2:
+            logger.warning("Path must have at least 2 points")
+            return
+        
+        # Build arc-length parameterized path
+        self._path_data = []
+        s = 0.0
+        prev_pt = None
+        
+        for pt in path_points:
+            if prev_pt is not None:
+                # Compute segment length
+                dx = pt[0] - prev_pt[0]
+                dy = pt[1] - prev_pt[1]
+                dz = pt[2] - prev_pt[2]
+                s += (dx**2 + dy**2 + dz**2) ** 0.5
+            
+            self._path_data.append([s, pt[0], pt[1], pt[2]])
+            prev_pt = pt
+        
+        # Store total length for clamping
+        self._path_length = s
+
+        # Send to C++ controller
+        self._cpp_controller.set_path_data(self._path_data)
+        self._path_set = True
+        self.s = 0.0  # Reset path parameter
+        
+        logger.info(f"Path set with {len(path_points)} points, total length: {s:.3f}m")
+
+    def get_path_reference(
+        self, s_query: Optional[float] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Get the path reference position and tangent for a given arc-length.
+
+        Returns:
+            Tuple of (position, unit_tangent). Falls back to zeros if path not set.
+        """
+        if not self._path_data or len(self._path_data) < 2:
+            return np.zeros(3, dtype=float), np.zeros(3, dtype=float)
+
+        s_val = float(self.s if s_query is None else s_query)
+        if hasattr(self, "_path_length"):
+            s_val = max(0.0, min(s_val, float(self._path_length)))
+
+        # Find the segment that contains s_val
+        idx = 0
+        while idx + 1 < len(self._path_data) and self._path_data[idx + 1][0] < s_val:
+            idx += 1
+
+        s0, x0, y0, z0 = self._path_data[idx]
+        s1, x1, y1, z1 = self._path_data[min(idx + 1, len(self._path_data) - 1)]
+
+        seg_len = s1 - s0
+        if seg_len <= 1e-9:
+            pos = np.array([x0, y0, z0], dtype=float)
+            tangent = np.array([0.0, 0.0, 0.0], dtype=float)
+            return pos, tangent
+
+        alpha = (s_val - s0) / seg_len
+        pos = np.array(
+            [x0 + alpha * (x1 - x0), y0 + alpha * (y1 - y0), z0 + alpha * (z1 - z0)],
+            dtype=float,
+        )
+        tangent = np.array([x1 - x0, y1 - y0, z1 - z0], dtype=float)
+        tan_norm = np.linalg.norm(tangent)
+        if tan_norm > 1e-9:
+            tangent /= tan_norm
+        else:
+            tangent[:] = 0.0
+
+        return pos, tangent
 
     def _extract_params_from_app_config(self, cfg: AppConfig) -> None:
         """Extract parameters from AppConfig."""
@@ -132,9 +226,7 @@ class MPCController(Controller):
             self.rw_torque_limits = [
                 float(rw.max_torque) for rw in self.reaction_wheels
             ]
-            self.rw_inertia = [
-                float(rw.inertia) for rw in self.reaction_wheels
-            ]
+            self.rw_inertia = [float(rw.inertia) for rw in self.reaction_wheels]
         else:
             self.reaction_wheels = []
             self.num_rw_axes = 0
@@ -162,7 +254,12 @@ class MPCController(Controller):
         self.z_tilt_gain = 0.35
         self.z_tilt_max_rad = np.deg2rad(20.0)
 
-
+        # Path Following (V4.0.1) - General Path MPCC
+        self.mode_path_following = mpc.mode_path_following
+        self.Q_contour = mpc.Q_contour
+        self.Q_progress = mpc.Q_progress
+        self.Q_smooth = mpc.Q_smooth
+        self.v_target = mpc.v_target
 
     @property
     def dt(self) -> float:
@@ -227,19 +324,57 @@ class MPCController(Controller):
         x_target_trajectory: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Compute optimal control action via C++ backend."""
+        # Handle Path Following State Augmentation
+        if self.mode_path_following:
+            # Append current path parameter s to state
+            # Ensure x_current is basic 16-dim state before appending
+            if len(x_current) == 16:
+                x_input = np.append(x_current, self.s)
+            else:
+                x_input = x_current  # Assuming already augmented or custom
+        else:
+            x_input = x_current
+
         use_traj = x_target_trajectory is not None
         if use_traj:
             traj = np.asarray(x_target_trajectory, dtype=float)
             if traj.ndim == 2 and traj.shape[1] == self.nx and traj.shape[0] > 0:
                 result = self._cpp_controller.get_control_action_trajectory(
-                    x_current, traj
+                    x_input, traj
                 )
             else:
-                result = self._cpp_controller.get_control_action(x_current, x_target)
+                result = self._cpp_controller.get_control_action(x_input, x_target)
         else:
-            result = self._cpp_controller.get_control_action(x_current, x_target)
+            result = self._cpp_controller.get_control_action(x_input, x_target)
+
         self.solve_times.append(result.solve_time)
-        return np.array(result.u), {
+
+        # Process output controls
+        u_out = np.array(result.u)
+
+        if self.mode_path_following:
+            # Extract virtual control v_s (last element)
+            v_s = u_out[-1]
+            
+            # Update internal path state s only if solved successfully
+            if result.status == 1:
+                self.s += v_s * self.dt
+                # Clamp s to valid range [0, L]
+                if self._path_set and hasattr(self, "_path_length"):
+                     self.s = max(0.0, min(self.s, self._path_length))
+            
+            # Strip virtual control from output so simulation gets only physical actuators
+            u_phys = u_out[:-1]
+
+            extras = {
+                "status": result.status,
+                "solve_time": result.solve_time,
+                "path_s": self.s,
+                "path_v_s": v_s,
+            }
+            return u_phys, extras
+
+        return u_out, {
             "status": result.status,
             "solve_time": result.solve_time,
         }

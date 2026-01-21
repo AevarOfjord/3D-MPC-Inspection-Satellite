@@ -62,7 +62,6 @@ class TestSimulationFactory:
         start_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         target_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         config_overrides: Optional[Dict[str, Any]] = None,
-        use_mujoco_viewer: bool = False,
     ):
         """
         Create a simulation instance for testing.
@@ -73,7 +72,6 @@ class TestSimulationFactory:
             start_angle: Starting orientation (roll, pitch, yaw) in radians
             target_angle: Target orientation (roll, pitch, yaw) in radians
             config_overrides: Additional config overrides
-            use_mujoco_viewer: Whether to use MuJoCo viewer (default: False)
 
         Returns:
             Configured SatelliteMPCLinearizedSimulation instance
@@ -95,7 +93,6 @@ class TestSimulationFactory:
             start_angle=start_angle,
             target_angle=target_angle,
             config_overrides=merged_config,
-            use_mujoco_viewer=use_mujoco_viewer,
         )
 
     def create_headless_simulation(
@@ -118,7 +115,6 @@ class TestSimulationFactory:
         return self.create_simulation(
             start_pos=start_pos,
             target_pos=target_pos,
-            use_mujoco_viewer=False,
             **kwargs,
         )
 

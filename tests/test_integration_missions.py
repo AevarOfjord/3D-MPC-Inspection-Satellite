@@ -61,9 +61,10 @@ def simple_simulation():
             "prediction_horizon": 10,
             "control_horizon": 8,
             "solver_time_limit": 0.05,
+            "dt": 0.25,
         },
         "simulation": {
-            "max_simulation_time": 10.0,
+            "max_duration": 10.0,
             "control_dt": 0.25,
         },
         "physics": {
@@ -93,9 +94,9 @@ class TestPointToPointMission:
         assert sim.satellite.position[0] == pytest.approx(0.5, abs=0.01)
         assert sim.satellite.position[1] == pytest.approx(0.5, abs=0.01)
 
-        # Check target state
-        assert sim.target_state[0] == pytest.approx(0.0, abs=0.01)
-        assert sim.target_state[1] == pytest.approx(0.0, abs=0.01)
+        # Path-following starts with reference at the start position
+        assert sim.target_state[0] == pytest.approx(0.5, abs=0.01)
+        assert sim.target_state[1] == pytest.approx(0.5, abs=0.01)
 
     def test_point_to_point_state_format(self, simple_simulation):
         """Test that state format is correct for point-to-point."""
@@ -103,8 +104,8 @@ class TestPointToPointMission:
 
         current_state = sim.get_current_state()
 
-        # Should be [pos(3), quat(4), vel(3), w(3)] format
-        assert len(current_state) == 13
+        # Should be [pos(3), quat(4), vel(3), w(3), wheel_speeds(3)] format
+        assert len(current_state) == 16
         assert current_state[0] == pytest.approx(0.5, abs=0.01)  # x
         assert current_state[1] == pytest.approx(0.5, abs=0.01)  # y
 
@@ -113,15 +114,12 @@ class TestPointToPointMission:
         sim = simple_simulation
 
         # Initially not at target
+        sim.mpc_controller._path_length = 1.0
+        sim.mpc_controller.s = 0.0
         assert not sim.check_target_reached()
 
-        # Move satellite to target
-        sim.satellite.position = np.array([0.0, 0.0, 0.0])
-        sim.satellite.velocity = np.array([0.0, 0.0, 0.0])
-        sim.satellite.angle = (0.0, 0.0, 0.0)
-        sim.satellite.angular_velocity = 0.0
-
-        # Now should be at target
+        # Mark path progress complete
+        sim.mpc_controller.s = 1.0
         assert sim.check_target_reached()
 
     def test_point_to_point_mpc_control_update(self, simple_simulation):
@@ -131,7 +129,7 @@ class TestPointToPointMission:
         # Mock the MPC solver to avoid optimization
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
-                np.array([1, 0, 1, 0, 0, 0, 0, 0]),  # Control action
+                np.ones(sim.mpc_controller.num_thrusters),  # Control action
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -155,11 +153,10 @@ class TestPointToPointMission:
             patch.object(
                 sim.mpc_controller, "get_control_action"
             ) as mock_mpc,
-            patch.object(sim.mission_manager, "update_target_state", return_value=None),
         ):
 
             mock_mpc.return_value = (
-                np.array([0, 0, 0, 0, 0, 0, 0, 0]),
+                np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -187,12 +184,11 @@ class TestMultiPointMission:
         # This test verifies the concept is testable with the new config system
         from src.satellite_control.config.mission_state import MissionState
         
-        mission_state = MissionState(
-            enable_waypoint_mode=True,
-            waypoint_targets=[(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
-            waypoint_angles=[(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)],
-            current_target_index=0,
-        )
+        mission_state = MissionState()
+        mission_state.enable_waypoint_mode = True
+        mission_state.waypoint_targets = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+        mission_state.waypoint_angles = [(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)]
+        mission_state.current_target_index = 0
         
         assert mission_state.enable_waypoint_mode is True
         assert len(mission_state.waypoint_targets) == 2
@@ -200,21 +196,20 @@ class TestMultiPointMission:
 
     def test_multi_point_target_advancement(self):
         """Test advancing to next target in waypoint mode (V4.0.0: uses MissionState)."""
-        # V4.0.0: Target advancement is handled by MissionStateManager, not SatelliteConfig
+        # Legacy waypoint advancement updates current_target_index directly.
         from src.satellite_control.config.mission_state import MissionState
         
-        mission_state = MissionState(
-            enable_waypoint_mode=True,
-            waypoint_targets=[(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
-            waypoint_angles=[(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)],
-            current_target_index=0,
-        )
+        mission_state = MissionState()
+        mission_state.enable_waypoint_mode = True
+        mission_state.waypoint_targets = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+        mission_state.waypoint_angles = [(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)]
+        mission_state.current_target_index = 0
         
         # Verify initial state
         assert mission_state.current_target_index == 0
         assert mission_state.waypoint_targets[0] == (1.0, 0.0, 0.0)
         
-        # Simulate advancement (in real code, MissionStateManager handles this)
+        # Simulate advancement by updating current_target_index.
         mission_state.current_target_index = 1
         assert mission_state.current_target_index == 1
         assert mission_state.waypoint_targets[1] == (0.0, 1.0, 0.0)
@@ -233,7 +228,7 @@ class TestMPCSimulationIntegration:
         def capture_state(x_current, x_target, prev_thrusters=None):
             nonlocal captured_state
             captured_state = x_current
-            return np.zeros(8), {
+            return np.zeros(sim.mpc_controller.num_thrusters), {
                 "status": 2,
                 "status_name": "OPTIMAL",
                 "solve_time": 0.01,
@@ -252,7 +247,10 @@ class TestMPCSimulationIntegration:
         """Test that simulation applies MPC control output."""
         sim = simple_simulation
 
-        control_action = np.array([1, 0, 1, 0, 1, 0, 1, 0])
+        thrusters = np.ones(sim.mpc_controller.num_thrusters)
+        control_action = np.concatenate(
+            [np.zeros(sim.mpc_controller.num_rw_axes), thrusters]
+        )
 
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
@@ -263,7 +261,7 @@ class TestMPCSimulationIntegration:
             sim.update_mpc_control()
 
             # Check that thrusters were set
-            assert np.array_equal(sim.current_thrusters, control_action)
+            assert np.array_equal(sim.current_thrusters, thrusters)
 
     def test_state_history_logging(self, simple_simulation):
         """Test that state history is logged correctly."""
@@ -271,7 +269,7 @@ class TestMPCSimulationIntegration:
 
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
-                np.zeros(8),
+                np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -294,7 +292,7 @@ class TestStateValidation:
         sim = simple_simulation
 
         current_state = sim.get_current_state()
-        assert len(current_state) == 13
+        assert len(current_state) == 16
 
         target_state = sim.target_state
         assert len(target_state) == 13
@@ -328,7 +326,7 @@ class TestStateValidation:
 
         # Position should be within bounds initially
         pos = sim.satellite.position
-        bounds = sim.mpc_controller.position_bounds
+        bounds = sim.simulation_config.app_config.mpc.position_bounds
 
         assert abs(pos[0]) <= bounds
         assert abs(pos[1]) <= bounds
@@ -338,7 +336,7 @@ class TestStateValidation:
         sim = simple_simulation
 
         vel = sim.satellite.velocity
-        max_vel = sim.mpc_controller.max_velocity
+        max_vel = sim.simulation_config.app_config.mpc.max_velocity
 
         # Initial velocity should be reasonable
         vel_mag = np.linalg.norm(vel)
@@ -352,9 +350,9 @@ class TestRealisticPhysics:
         """Test that sensor noise is applied when enabled."""
         config_overrides = {
             "physics": {
-                "USE_REALISTIC_PHYSICS": True,
-                "POSITION_NOISE_STD": 0.001,
-                "VELOCITY_NOISE_STD": 0.001,
+                "use_realistic_physics": True,
+                "position_noise_std": 0.001,
+                "velocity_noise_std": 0.001,
             }
         }
 
@@ -364,7 +362,8 @@ class TestRealisticPhysics:
             config_overrides=config_overrides,
         )
 
-        true_state = np.array([1.0, 2.0, 0.1, 0.2, 0.5, 0.05])
+        true_state = np.zeros(13)
+        true_state[0:3] = [1.0, 2.0, 0.1]
 
         # Apply noise multiple times
         noisy_states = [sim.get_noisy_state(true_state) for _ in range(10)]
@@ -374,9 +373,8 @@ class TestRealisticPhysics:
 
         # V4.0.0: Check app_config.physics.use_realistic_physics instead
         # At least some should be different (not all zero due to randomness)
-        if sim.mission_manager and sim.mission_manager.app_config:
-            if sim.mission_manager.app_config.physics.use_realistic_physics:
-                assert any(d > 0 for d in differences)
+        if sim.simulation_config and sim.simulation_config.app_config.physics.use_realistic_physics:
+            assert any(d > 0 for d in differences)
 
     def test_thruster_delay_simulation(self, simple_simulation):
         """Test thruster command delay processing."""
@@ -396,9 +394,9 @@ class TestRealisticPhysics:
         """Test that damping is applied when realistic physics enabled."""
         config_overrides = {
             "physics": {
-                "USE_REALISTIC_PHYSICS": True,
-                "LINEAR_DAMPING_COEFF": 0.1,
-                "ROTATIONAL_DAMPING_COEFF": 0.01,
+                "use_realistic_physics": True,
+                "damping_linear": 0.1,
+                "damping_angular": 0.01,
             }
         }
 
@@ -412,7 +410,7 @@ class TestRealisticPhysics:
         # Run simulation step
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
-                np.zeros(8),
+                np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -422,10 +420,9 @@ class TestRealisticPhysics:
 
             # V4.0.0: Check app_config.physics.use_realistic_physics instead
             # Velocity should decrease due to damping (if no thrusters active)
-            if sim.mission_manager and sim.mission_manager.app_config:
-                if sim.mission_manager.app_config.physics.use_realistic_physics:
-                    # Damping should reduce velocity over time
-                    pass  # Can't guarantee without running actual physics
+            if sim.simulation_config and sim.simulation_config.app_config.physics.use_realistic_physics:
+                # Damping should reduce velocity over time
+                pass  # Can't guarantee without running actual physics
 
 
 class TestErrorHandling:
@@ -472,7 +469,7 @@ class TestErrorHandling:
 
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
-                np.zeros(8),
+                np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -498,7 +495,7 @@ class TestDataLogging:
 
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
             mock_mpc.return_value = (
-                np.zeros(8),
+                np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
             )
 
@@ -516,7 +513,10 @@ class TestDataLogging:
         sim = simple_simulation
 
         with patch.object(sim.mpc_controller, "get_control_action") as mock_mpc:
-            control = np.array([1, 0, 1, 0, 1, 0, 1, 0])
+            thrusters = np.ones(sim.mpc_controller.num_thrusters)
+            control = np.concatenate(
+                [np.zeros(sim.mpc_controller.num_rw_axes), thrusters]
+            )
             mock_mpc.return_value = (
                 control,
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
@@ -533,7 +533,7 @@ class TestDataLogging:
             assert len(sim.control_history) > initial_length
 
             # Latest control should match
-            assert np.array_equal(sim.control_history[-1], control)
+            assert np.array_equal(sim.control_history[-1], thrusters)
 
 
 class TestMissionCompletion:
@@ -552,7 +552,7 @@ class TestMissionCompletion:
         # Set target reached
         sim.target_reached_time = sim.simulation_time
 
-        # V4.0.0: Advance time past stabilization (no need to patch - use mission_manager)
+        # V4.0.0: Advance time past stabilization (path-following mode)
         # waypoint_final_stabilization_time is in app_config.simulation
         sim.simulation_time = sim.target_reached_time + 1.0
 

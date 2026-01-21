@@ -555,7 +555,7 @@ Q_ANGULAR_VELOCITY = 2000.0   # Increase from 1500
 
 ```bash
 # Ensure you're in project root
-cd /Users/aevar/Desktop/Satellite_3D_MuJoCo
+cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pwd  # Should show project root
 
 # Install pytest
