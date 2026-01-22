@@ -6,7 +6,7 @@ Provides detailed error messages for debugging configuration issues.
 
 Usage:
     from src.satellite_control.config.validator import ConfigValidator
-    
+
     validator = ConfigValidator()
     issues = validator.validate_all(config)
     if issues:
@@ -23,7 +23,7 @@ from src.satellite_control.config.models import AppConfig
 class ConfigValidator:
     """
     Comprehensive configuration validator.
-    
+
     Validates all aspects of configuration including:
     - Individual parameter validity
     - Cross-parameter consistency
@@ -35,10 +35,10 @@ class ConfigValidator:
     def validate_all(config: AppConfig) -> List[str]:
         """
         Validate entire configuration and return list of issues.
-        
+
         Args:
             config: AppConfig to validate
-            
+
         Returns:
             List of validation issue messages (empty if valid)
         """
@@ -92,7 +92,9 @@ class ConfigValidator:
         # Validate thruster forces are positive
         for thruster_id, force in physics.thruster_forces.items():
             if force <= 0:
-                issues.append(f"Thruster {thruster_id} force must be positive: {force} N")
+                issues.append(
+                    f"Thruster {thruster_id} force must be positive: {force} N"
+                )
             if force > 10:
                 issues.append(
                     f"Thruster {thruster_id} force seems unusually high: {force} N"
@@ -101,7 +103,9 @@ class ConfigValidator:
         # Damping validation
         if physics.use_realistic_physics:
             if physics.damping_linear < 0:
-                issues.append(f"Linear damping must be non-negative: {physics.damping_linear}")
+                issues.append(
+                    f"Linear damping must be non-negative: {physics.damping_linear}"
+                )
             if physics.damping_angular < 0:
                 issues.append(
                     f"Angular damping must be non-negative: {physics.damping_angular}"
@@ -116,7 +120,9 @@ class ConfigValidator:
 
         # Horizon validation
         if mpc.prediction_horizon <= 0:
-            issues.append(f"Prediction horizon must be positive: {mpc.prediction_horizon}")
+            issues.append(
+                f"Prediction horizon must be positive: {mpc.prediction_horizon}"
+            )
         if mpc.control_horizon <= 0:
             issues.append(f"Control horizon must be positive: {mpc.control_horizon}")
         if mpc.control_horizon > mpc.prediction_horizon:
@@ -129,30 +135,16 @@ class ConfigValidator:
         if mpc.dt <= 0:
             issues.append(f"MPC dt must be positive: {mpc.dt} s")
         if mpc.solver_time_limit <= 0:
-            issues.append(f"Solver time limit must be positive: {mpc.solver_time_limit} s")
+            issues.append(
+                f"Solver time limit must be positive: {mpc.solver_time_limit} s"
+            )
         if mpc.solver_time_limit >= mpc.dt:
             issues.append(
                 f"Solver time limit ({mpc.solver_time_limit}s) >= "
                 f"control dt ({mpc.dt}s) - solver may not complete in time"
             )
 
-        # Constraint validation
-        if mpc.max_velocity <= 0:
-            issues.append(f"Max velocity must be positive: {mpc.max_velocity} m/s")
-        if mpc.max_angular_velocity <= 0:
-            issues.append(
-                f"Max angular velocity must be positive: {mpc.max_angular_velocity} rad/s"
-            )
-        if mpc.position_bounds <= 0:
-            issues.append(f"Position bounds must be positive: {mpc.position_bounds} m")
-
         # Cost weight validation
-        if mpc.q_position < 0:
-            issues.append(f"Position weight must be non-negative: {mpc.q_position}")
-        if mpc.q_velocity < 0:
-            issues.append(f"Velocity weight must be non-negative: {mpc.q_velocity}")
-        if mpc.q_angle < 0:
-            issues.append(f"Angle weight must be non-negative: {mpc.q_angle}")
         if mpc.q_angular_velocity < 0:
             issues.append(
                 f"Angular velocity weight must be non-negative: {mpc.q_angular_velocity}"
@@ -184,7 +176,9 @@ class ConfigValidator:
         # Window size validation (if not headless)
         if not simulation.headless:
             if simulation.window_width <= 0:
-                issues.append(f"Window width must be positive: {simulation.window_width} px")
+                issues.append(
+                    f"Window width must be positive: {simulation.window_width} px"
+                )
             if simulation.window_height <= 0:
                 issues.append(
                     f"Window height must be positive: {simulation.window_height} px"
@@ -212,16 +206,12 @@ class ConfigValidator:
                 f"control dt ({config.mpc.dt}s). Recommend < 80% of control dt"
             )
 
-        # Max velocity should be reasonable for workspace
-        if config.mpc.max_velocity > config.mpc.position_bounds:
-            issues.append(
-                f"Max velocity ({config.mpc.max_velocity} m/s) exceeds position bounds "
-                f"({config.mpc.position_bounds} m) - may cause boundary violations"
-            )
-
         # Check if prediction horizon is reasonable
         prediction_time = config.mpc.prediction_horizon * config.mpc.dt
-        if config.simulation.max_duration > 0 and prediction_time > config.simulation.max_duration:
+        if (
+            config.simulation.max_duration > 0
+            and prediction_time > config.simulation.max_duration
+        ):
             issues.append(
                 f"Prediction horizon ({prediction_time:.1f}s) exceeds "
                 f"max simulation duration ({config.simulation.max_duration:.1f}s)"
@@ -233,20 +223,6 @@ class ConfigValidator:
     def _validate_safety(config: AppConfig) -> List[str]:
         """Validate safety constraints."""
         issues: List[str] = []
-
-        # Velocity limits should be reasonable
-        if config.mpc.max_velocity > 5.0:
-            issues.append(
-                f"Max velocity ({config.mpc.max_velocity} m/s) seems very high "
-                f"for a small satellite - verify this is intentional"
-            )
-
-        # Angular velocity limits
-        if config.mpc.max_angular_velocity > 10.0:
-            issues.append(
-                f"Max angular velocity ({config.mpc.max_angular_velocity} rad/s) "
-                f"seems very high - verify this is intentional"
-            )
 
         # Solver timeout should allow for real-time operation
         if config.mpc.solver_time_limit > 0.1:
@@ -261,10 +237,10 @@ class ConfigValidator:
     def validate_and_raise(config: AppConfig) -> None:
         """
         Validate configuration and raise exception if invalid.
-        
+
         Args:
             config: AppConfig to validate
-            
+
         Raises:
             ValueError: If configuration is invalid
         """
@@ -278,17 +254,18 @@ class ConfigValidator:
 def validate_config_at_startup(app_config: Optional[AppConfig] = None) -> None:
     """
     Validate configuration at application startup.
-    
+
     Should be called early in application initialization.
     Raises ValueError if configuration is invalid.
-    
+
     Args:
         app_config: Optional AppConfig to validate (v4.0.0). If None, uses defaults.
     """
     if app_config is None:
         # V4.0.0: Use default config if not provided (no SatelliteConfig fallback)
         from src.satellite_control.config.simulation_config import SimulationConfig
+
         default_config = SimulationConfig.create_default()
         app_config = default_config.app_config
-    
+
     ConfigValidator.validate_and_raise(app_config)

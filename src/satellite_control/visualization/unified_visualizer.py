@@ -30,7 +30,6 @@ import numpy as np
 from cycler import cycler
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from matplotlib.patches import Circle
 
 # V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
 from src.satellite_control.config.mission_state import MissionState
@@ -39,12 +38,7 @@ from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.constants import Constants
 
 # V4.0.0: mpc_params removed
-from src.satellite_control.visualization.shape_utils import (
-    get_demo_shape,
-    load_dxf_shape,
-    make_offset_path,
-    transform_shape,
-)
+
 
 matplotlib.use("Agg")  # Use non-interactive backend
 
@@ -149,7 +143,7 @@ class PlotStyle:
     COLOR_SIGNAL_POS = "#1f77b4"  # Blue (Position Signals)
     COLOR_SIGNAL_ANG = "#2ca02c"  # Green (Angular Signals)
 
-    COLOR_TARGET = "#d62728"  # Red (Targets/Reference)
+    COLOR_REFERENCE = "#d62728"  # Red (Reference)
     COLOR_THRESHOLD = "#d62728"  # Red (Limits/Tolerances)
 
     COLOR_BARS = "#1f77b4"  # Blue (Thruster Bars)
@@ -190,7 +184,6 @@ class UnifiedVisualizationGenerator:
         interactive: bool = False,
         load_data: bool = True,
         prefer_pandas: bool = True,
-        overlay_dxf: bool = False,
         app_config: Optional[AppConfig] = None,
         mission_state: Optional[MissionState] = None,
     ):
@@ -223,7 +216,6 @@ class UnifiedVisualizationGenerator:
             None  # dict of column -> array when csv backend
         )
         self.use_pandas = prefer_pandas
-        self.overlay_dxf = overlay_dxf  # Option to overlay DXF shape
 
         # Set titles and labels
         self._setup_labels()
@@ -246,27 +238,8 @@ class UnifiedVisualizationGenerator:
             self.satellite_size = default_config.app_config.physics.satellite_size
 
         self.satellite_color = "blue"
-        self.target_color = "red"
+        self.reference_color = "red"
         self.trajectory_color = "cyan"
-
-        # Get DXF shape data from mission_state if available, otherwise fallback
-        if mission_state:
-            self.dxf_base_shape = (
-                list(mission_state.dxf_base_shape)
-                if mission_state.dxf_base_shape
-                else []
-            )
-            self.dxf_offset_path = (
-                list(mission_state.dxf_shape_path)
-                if mission_state.dxf_shape_path
-                else []
-            )
-            self.dxf_center = (
-                mission_state.dxf_shape_center
-                if mission_state.dxf_shape_center
-                else None
-            )
-            self.dxf_center = None
 
         # V3.0.0: Get obstacles from mission_state
         if mission_state and hasattr(mission_state, "obstacles"):
@@ -568,9 +541,9 @@ class UnifiedVisualizationGenerator:
                 "Current_X",
                 "Current_Y",
                 "Current_Yaw",
-                "Target_X",
-                "Target_Y",
-                "Target_Yaw",
+                "Reference_X",
+                "Reference_Y",
+                "Reference_Yaw",
                 "Command_Vector",
             ]
             if self._data_backend == "pandas" and self.data is not None:
@@ -925,48 +898,48 @@ class UnifiedVisualizationGenerator:
             linewidth=2,
         )
 
-    def draw_target(
+    def draw_reference(
         self,
-        target_x: float,
-        target_y: float,
-        target_z: float,
-        target_roll: float,
-        target_pitch: float,
-        target_yaw: float,
+        reference_x: float,
+        reference_y: float,
+        reference_z: float,
+        reference_roll: float,
+        reference_pitch: float,
+        reference_yaw: float,
     ) -> None:
-        """Draw target position and orientation (3D)."""
+        """Draw reference position and orientation (3D)."""
         assert self.ax_main is not None, "ax_main must be initialized"
 
         self.ax_main.scatter(
-            target_x,
-            target_y,
-            target_z,
-            c=self.target_color,
+            reference_x,
+            reference_y,
+            reference_z,
+            c=self.reference_color,
             s=200,
             marker="x",
             linewidth=4,
-            label="Target",
+            label="Reference",
         )
 
-        # Target Sphere (wireframe visual)
+        # Reference sphere (wireframe visual)
         # Simple point for now, maybe add small circle in XY plane at Z
         # Matplotlib 3D doesn't support 'Circle' patch easily in 3D space, need plot_surface or plot(xs, ys, zs)
         theta = np.linspace(0, 2 * np.pi, 20)
-        cx = target_x + 0.1 * np.cos(theta)
-        cy = target_y + 0.1 * np.sin(theta)
-        cz = np.full_like(cx, target_z)
+        cx = reference_x + 0.1 * np.cos(theta)
+        cy = reference_y + 0.1 * np.sin(theta)
+        cz = np.full_like(cx, reference_z)
         self.ax_main.plot(
-            cx, cy, cz, color=self.target_color, alpha=0.5, linestyle="--"
+            cx, cy, cz, color=self.reference_color, alpha=0.5, linestyle="--"
         )
 
-        # Target orientation arrow (body X-axis)
+        # Reference orientation arrow (body X-axis)
         arrow_length = self.satellite_size * 0.6
-        cos_r = np.cos(target_roll)
-        sin_r = np.sin(target_roll)
-        cos_p = np.cos(target_pitch)
-        sin_p = np.sin(target_pitch)
-        cos_y = np.cos(target_yaw)
-        sin_y = np.sin(target_yaw)
+        cos_r = np.cos(reference_roll)
+        sin_r = np.sin(reference_roll)
+        cos_p = np.cos(reference_pitch)
+        sin_p = np.sin(reference_pitch)
+        cos_y = np.cos(reference_yaw)
+        sin_y = np.sin(reference_yaw)
         rotation_matrix = np.array(
             [
                 [
@@ -983,14 +956,14 @@ class UnifiedVisualizationGenerator:
             ]
         )
         body_x = rotation_matrix @ np.array([1.0, 0.0, 0.0])
-        arrow_end_x = target_x + arrow_length * body_x[0]
-        arrow_end_y = target_y + arrow_length * body_x[1]
-        arrow_end_z = target_z + arrow_length * body_x[2]
+        arrow_end_x = reference_x + arrow_length * body_x[0]
+        arrow_end_y = reference_y + arrow_length * body_x[1]
+        arrow_end_z = reference_z + arrow_length * body_x[2]
         self.ax_main.plot(
-            [target_x, arrow_end_x],
-            [target_y, arrow_end_y],
-            [target_z, arrow_end_z],
-            color=self.target_color,
+            [reference_x, arrow_end_x],
+            [reference_y, arrow_end_y],
+            [reference_z, arrow_end_z],
+            color=self.reference_color,
             alpha=0.8,
             linewidth=2,
         )
@@ -1262,7 +1235,7 @@ class UnifiedVisualizationGenerator:
                 PlotStyle.COLOR_SIGNAL_POS,
                 0,
             ),  # Blue (Grouped by association)
-            (error_lines, PlotStyle.COLOR_TARGET, 0),  # Red
+            (error_lines, PlotStyle.COLOR_REFERENCE, 0),  # Red
             (system_lines, PlotStyle.COLOR_PRIMARY, 0),  # Black
         ]
         y_pos = 0.85
@@ -1327,17 +1300,17 @@ class UnifiedVisualizationGenerator:
         active_thrusters = self.get_active_thrusters(command_vector)
 
         # Type-safe extraction
-        target_x = float(current_data.get("Target_X", 0.0) or 0.0)
-        target_y = float(current_data.get("Target_Y", 0.0) or 0.0)
-        target_z = float(
-            current_data.get("Target_Z", 0.0) or 0.0
-        )  # Assume Target_Z exists or default 0
-        target_roll = float(current_data.get("Target_Roll", 0.0) or 0.0)
-        target_pitch = float(current_data.get("Target_Pitch", 0.0) or 0.0)
-        target_yaw = float(current_data.get("Target_Yaw", 0.0) or 0.0)
+        reference_x = float(current_data.get("Reference_X", 0.0) or 0.0)
+        reference_y = float(current_data.get("Reference_Y", 0.0) or 0.0)
+        reference_z = float(
+            current_data.get("Reference_Z", 0.0) or 0.0
+        )  # Assume Reference_Z exists or default 0
+        reference_roll = float(current_data.get("Reference_Roll", 0.0) or 0.0)
+        reference_pitch = float(current_data.get("Reference_Pitch", 0.0) or 0.0)
+        reference_yaw = float(current_data.get("Reference_Yaw", 0.0) or 0.0)
 
-        self.draw_target(
-            target_x, target_y, target_z, target_roll, target_pitch, target_yaw
+        self.draw_reference(
+            reference_x, reference_y, reference_z, reference_roll, reference_pitch, reference_yaw
         )
 
         # Draw DXF if needed (ignored for now in 3D to keep simple, or project to Z=0)
@@ -1454,7 +1427,7 @@ class UnifiedVisualizationGenerator:
                 speedup_factor=self.speedup_factor,
                 satellite_size=self.satellite_size,
                 satellite_color=self.satellite_color,
-                target_color=self.target_color,
+                reference_color=self.reference_color,
                 trajectory_color=self.trajectory_color,
                 thrusters=self.thrusters,
                 dxf_base_shape=self.dxf_base_shape,
@@ -1503,11 +1476,11 @@ class UnifiedVisualizationGenerator:
         )
         axes[0].plot(
             time,
-            self._col("Target_X"),
-            color=PlotStyle.COLOR_TARGET,
+            self._col("Reference_X"),
+            color=PlotStyle.COLOR_REFERENCE,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target X",
+            label="Reference X",
         )
         axes[0].set_ylabel("X Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -1524,11 +1497,11 @@ class UnifiedVisualizationGenerator:
         )
         axes[1].plot(
             time,
-            self._col("Target_Y"),
-            color=PlotStyle.COLOR_TARGET,
+            self._col("Reference_Y"),
+            color=PlotStyle.COLOR_REFERENCE,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Y",
+            label="Reference Y",
         )
         axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].set_ylabel("Y Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -1546,11 +1519,11 @@ class UnifiedVisualizationGenerator:
         )
         axes[2].plot(
             time,
-            self._col("Target_Z"),
-            color=PlotStyle.COLOR_TARGET,
+            self._col("Reference_Z"),
+            color=PlotStyle.COLOR_REFERENCE,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Z",
+            label="Reference Z",
         )
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].set_ylabel("Z Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -1571,10 +1544,10 @@ class UnifiedVisualizationGenerator:
 
         # Get position tolerance from app_config or use default
         if self.app_config and hasattr(self.app_config.mpc, "position_tolerance"):
-            target_threshold = self.app_config.mpc.position_tolerance
+            reference_threshold = self.app_config.mpc.position_tolerance
         else:
             # Use constant from Constants
-            target_threshold = Constants.POSITION_TOLERANCE
+            reference_threshold = Constants.POSITION_TOLERANCE
 
         ax.plot(
             time,
@@ -1584,12 +1557,12 @@ class UnifiedVisualizationGenerator:
             label="Position Error",
         )
         ax.axhline(
-            y=target_threshold,
+            y=reference_threshold,
             color=PlotStyle.COLOR_THRESHOLD,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
             alpha=0.8,
-            label=f"Target Threshold ({target_threshold}m)",
+            label=f"Reference Threshold ({reference_threshold}m)",
         )
 
         ax.set_xlabel("Time (seconds)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -1641,9 +1614,9 @@ class UnifiedVisualizationGenerator:
 
         time = np.arange(self._get_len()) * float(self.dt)
 
-        def plot_angle(ax, title, current_col, target_col, ylabel):
+        def plot_angle(ax, title, current_col, reference_col, ylabel):
             cur_deg = np.degrees(np.array(self._col(current_col)))
-            tgt_deg = np.degrees(np.array(self._col(target_col)))
+            ref_deg = np.degrees(np.array(self._col(reference_col)))
 
             min_len = min(len(time), len(cur_deg))
             if min_len == 0:
@@ -1653,13 +1626,13 @@ class UnifiedVisualizationGenerator:
             cur_deg = cur_deg[:min_len]
             t_cur, y_cur = self._break_wrap_around(t_base, cur_deg)
 
-            tgt_vals = None
-            if len(tgt_deg) > 0:
-                tgt_min = min(len(time), len(tgt_deg))
-                t_tgt = time[:tgt_min]
-                tgt_deg = tgt_deg[:tgt_min]
-                t_tgt, y_tgt = self._break_wrap_around(t_tgt, tgt_deg)
-                tgt_vals = (t_tgt, y_tgt)
+            ref_vals = None
+            if len(ref_deg) > 0:
+                ref_min = min(len(time), len(ref_deg))
+                t_ref = time[:ref_min]
+                ref_deg = ref_deg[:ref_min]
+                t_ref, y_ref = self._break_wrap_around(t_ref, ref_deg)
+                ref_vals = (t_ref, y_ref)
 
             ax.plot(
                 t_cur,
@@ -1668,14 +1641,14 @@ class UnifiedVisualizationGenerator:
                 linewidth=PlotStyle.LINEWIDTH,
                 label=f"Current {title}",
             )
-            if tgt_vals is not None:
+            if ref_vals is not None:
                 ax.plot(
-                    tgt_vals[0],
-                    tgt_vals[1],
-                    color=PlotStyle.COLOR_TARGET,
+                    ref_vals[0],
+                    ref_vals[1],
+                    color=PlotStyle.COLOR_REFERENCE,
                     linestyle="--",
                     linewidth=PlotStyle.LINEWIDTH,
-                    label=f"Target {title}",
+                    label=f"Reference {title}",
                 )
 
             ax.set_ylabel(ylabel, fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -1683,9 +1656,9 @@ class UnifiedVisualizationGenerator:
             ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
             ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        plot_angle(axes[0], "Roll", "Current_Roll", "Target_Roll", "Roll (deg)")
-        plot_angle(axes[1], "Pitch", "Current_Pitch", "Target_Pitch", "Pitch (deg)")
-        plot_angle(axes[2], "Yaw", "Current_Yaw", "Target_Yaw", "Yaw (deg)")
+        plot_angle(axes[0], "Roll", "Current_Roll", "Reference_Roll", "Roll (deg)")
+        plot_angle(axes[1], "Pitch", "Current_Pitch", "Reference_Pitch", "Pitch (deg)")
+        plot_angle(axes[2], "Yaw", "Current_Yaw", "Reference_Yaw", "Yaw (deg)")
         axes[2].set_xlabel("Time (seconds)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
         PlotStyle.save_figure(fig, plot_dir / "angular_tracking.png")
@@ -1702,11 +1675,11 @@ class UnifiedVisualizationGenerator:
         # Get threshold in degrees (config stored in radians)
         # Get angle tolerance from app_config or use default
         if self.app_config and hasattr(self.app_config.mpc, "angle_tolerance"):
-            target_threshold_rad = self.app_config.mpc.angle_tolerance
+            reference_threshold_rad = self.app_config.mpc.angle_tolerance
         else:
             # Use constant from Constants
-            target_threshold_rad = Constants.ANGLE_TOLERANCE
-        target_threshold_deg = np.degrees(target_threshold_rad)
+            reference_threshold_rad = Constants.ANGLE_TOLERANCE
+        reference_threshold_deg = np.degrees(reference_threshold_rad)
 
         ax.plot(
             time,
@@ -1716,12 +1689,12 @@ class UnifiedVisualizationGenerator:
             label="Angular Error",
         )
         ax.axhline(
-            y=target_threshold_deg,
+            y=reference_threshold_deg,
             color=PlotStyle.COLOR_THRESHOLD,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
             alpha=0.8,
-            label=f"Target Threshold ({target_threshold_deg:.1f}°)",
+            label=f"Reference Threshold ({reference_threshold_deg:.1f}°)",
         )
 
         ax.set_xlabel("Time (seconds)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -1751,12 +1724,12 @@ class UnifiedVisualizationGenerator:
         x_pos = self._col("Current_X")
         y_pos = self._col("Current_Y")
         z_pos = self._col("Current_Z")
-        target_x_col = self._col("Target_X")
-        target_y_col = self._col("Target_Y")
-        target_z_col = self._col("Target_Z")
-        target_x = target_x_col[0] if len(target_x_col) > 0 else 0.0
-        target_y = target_y_col[0] if len(target_y_col) > 0 else 0.0
-        target_z = target_z_col[0] if len(target_z_col) > 0 else 0.0
+        reference_x_col = self._col("Reference_X")
+        reference_y_col = self._col("Reference_Y")
+        reference_z_col = self._col("Reference_Z")
+        reference_x = reference_x_col[0] if len(reference_x_col) > 0 else 0.0
+        reference_y = reference_y_col[0] if len(reference_y_col) > 0 else 0.0
+        reference_z = reference_z_col[0] if len(reference_z_col) > 0 else 0.0
 
         # Plot trajectory
         ax_xy = axes[0]
@@ -1785,7 +1758,7 @@ class UnifiedVisualizationGenerator:
                 markersize=PlotStyle.MARKER_SIZE,
                 label="Final Position",
             )
-        ax_xy.plot(target_x, target_y, "r*", markersize=20, label="Target")
+        ax_xy.plot(reference_x, reference_y, "r*", markersize=20, label="Reference")
 
         # Plot DXF Shape if available
         try:
@@ -1850,7 +1823,8 @@ class UnifiedVisualizationGenerator:
                             color="gray",
                             alpha=0.3,
                             label="Obstacle"
-                            if "Obstacle" not in [l.get_label() for l in ax_xy.lines]
+                            if "Obstacle"
+                            not in [line.get_label() for line in ax_xy.lines]
                             else "_nolegend_",
                         )
                         ax_xy.add_patch(circle)
@@ -1889,16 +1863,16 @@ class UnifiedVisualizationGenerator:
                 label="Shape Center",
             )
 
-        # Add target circle
+        # Add reference circle
         circle = Circle(
-            (target_x, target_y),
+            (reference_x, reference_y),
             0.1,
-            color=PlotStyle.COLOR_TARGET,
+            color=PlotStyle.COLOR_REFERENCE,
             fill=False,
             linewidth=PlotStyle.LINEWIDTH,
             linestyle="--",
             alpha=0.7,
-            label="Target Zone (±0.1m)",
+            label="Reference Zone (±0.1m)",
         )
         ax_xy.add_patch(circle)
 
@@ -1937,17 +1911,17 @@ class UnifiedVisualizationGenerator:
                 markersize=PlotStyle.MARKER_SIZE,
                 label="Final Position",
             )
-        ax_xz.plot(target_x, target_z, "r*", markersize=20, label="Target")
+        ax_xz.plot(reference_x, reference_z, "r*", markersize=20, label="Reference")
 
         circle_xz = Circle(
-            (target_x, target_z),
+            (reference_x, reference_z),
             0.1,
-            color=PlotStyle.COLOR_TARGET,
+            color=PlotStyle.COLOR_REFERENCE,
             fill=False,
             linewidth=PlotStyle.LINEWIDTH,
             linestyle="--",
             alpha=0.7,
-            label="Target Zone (±0.1m)",
+            label="Reference Zone (±0.1m)",
         )
         ax_xz.add_patch(circle_xz)
 
@@ -1963,16 +1937,16 @@ class UnifiedVisualizationGenerator:
         # Add distance info
         if len(x_pos) > 0 and len(y_pos) > 0 and len(z_pos) > 0:
             final_distance = np.sqrt(
-                (x_pos[-1] - target_x) ** 2
-                + (y_pos[-1] - target_y) ** 2
-                + (z_pos[-1] - target_z) ** 2
+                (x_pos[-1] - reference_x) ** 2
+                + (y_pos[-1] - reference_y) ** 2
+                + (z_pos[-1] - reference_z) ** 2
             )
         else:
             final_distance = 0.0
         ax_xy.text(
             0.02,
             0.98,
-            f"Final Distance to Target: {final_distance:.3f}m",
+            f"Final Distance to Reference: {final_distance:.3f}m",
             transform=ax_xy.transAxes,
             fontsize=PlotStyle.ANNOTATION_SIZE,
             verticalalignment="top",
@@ -2001,12 +1975,12 @@ class UnifiedVisualizationGenerator:
             print("No trajectory data available for interactive 3D plot.")
             return
 
-        target_x_col = self._col("Target_X")
-        target_y_col = self._col("Target_Y")
-        target_z_col = self._col("Target_Z")
-        target_x = float(target_x_col[0]) if len(target_x_col) > 0 else 0.0
-        target_y = float(target_y_col[0]) if len(target_y_col) > 0 else 0.0
-        target_z = float(target_z_col[0]) if len(target_z_col) > 0 else 0.0
+        reference_x_col = self._col("Reference_X")
+        reference_y_col = self._col("Reference_Y")
+        reference_z_col = self._col("Reference_Z")
+        reference_x = float(reference_x_col[0]) if len(reference_x_col) > 0 else 0.0
+        reference_y = float(reference_y_col[0]) if len(reference_y_col) > 0 else 0.0
+        reference_z = float(reference_z_col[0]) if len(reference_z_col) > 0 else 0.0
 
         fig = go.Figure()
         fig.add_trace(
@@ -2041,12 +2015,12 @@ class UnifiedVisualizationGenerator:
         )
         fig.add_trace(
             go.Scatter3d(
-                x=[target_x],
-                y=[target_y],
-                z=[target_z],
+                x=[reference_x],
+                y=[reference_y],
+                z=[reference_z],
                 mode="markers",
-                marker=dict(size=6, color=PlotStyle.COLOR_TARGET, symbol="x"),
-                name="Target",
+                marker=dict(size=6, color=PlotStyle.COLOR_REFERENCE, symbol="x"),
+                name="Reference",
             )
         )
 
@@ -2511,7 +2485,7 @@ class UnifiedVisualizationGenerator:
 
         time = np.arange(self._get_len()) * float(self.dt)
 
-        def plot_velocity(ax, axis_label, current_col, target_col):
+        def plot_velocity(ax, axis_label, current_col, reference_col):
             current_vals = self._col(current_col)
             min_len = min(len(time), len(current_vals))
             if min_len == 0:
@@ -2523,16 +2497,16 @@ class UnifiedVisualizationGenerator:
                 linewidth=PlotStyle.LINEWIDTH,
                 label=f"Current {axis_label}",
             )
-            target_vals = self._col(target_col)
-            if len(target_vals) > 0:
-                tgt_len = min(len(time), len(target_vals))
+            reference_vals = self._col(reference_col)
+            if len(reference_vals) > 0:
+                ref_len = min(len(time), len(reference_vals))
                 ax.plot(
-                    time[:tgt_len],
-                    target_vals[:tgt_len],
-                    color=PlotStyle.COLOR_TARGET,
+                    time[:ref_len],
+                    reference_vals[:ref_len],
+                    color=PlotStyle.COLOR_REFERENCE,
                     linestyle="--",
                     linewidth=PlotStyle.LINEWIDTH,
-                    label=f"Target {axis_label}",
+                    label=f"Reference {axis_label}",
                 )
             ax.set_ylabel(
                 f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
@@ -2540,9 +2514,9 @@ class UnifiedVisualizationGenerator:
             ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
             ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        plot_velocity(axes[0], "X", "Current_VX", "Target_VX")
-        plot_velocity(axes[1], "Y", "Current_VY", "Target_VY")
-        plot_velocity(axes[2], "Z", "Current_VZ", "Target_VZ")
+        plot_velocity(axes[0], "X", "Current_VX", "Reference_VX")
+        plot_velocity(axes[1], "Y", "Current_VY", "Reference_VY")
+        plot_velocity(axes[2], "Z", "Current_VZ", "Reference_VZ")
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
         PlotStyle.save_figure(fig, plot_dir / "velocity_tracking.png")
@@ -2894,10 +2868,10 @@ class UnifiedVisualizationGenerator:
             else:
                 intervals = self._col("Actual_Time_Interval")
 
-            # Determine target dt
-            target_dt = self.dt
+            # Determine reference dt
+            reference_dt = self.dt
             if df is not None and "CONTROL_DT" in cols:
-                target_dt = float(df["CONTROL_DT"].iloc[0])
+                reference_dt = float(df["CONTROL_DT"].iloc[0])
 
             ax.plot(
                 time,
@@ -2907,11 +2881,11 @@ class UnifiedVisualizationGenerator:
                 label="Actual Intervals",
             )
             ax.axhline(
-                y=target_dt,
+                y=reference_dt,
                 color="r",
                 linestyle="--",
                 alpha=0.7,
-                label=f"Target: {target_dt:.3f}s",
+                label=f"Reference: {reference_dt:.3f}s",
             )
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Time Interval (s)")
@@ -2944,155 +2918,6 @@ class LinearizedVisualizationGenerator(UnifiedVisualizationGenerator):
 
 # Shape utility functions have been moved to shape_utils.py
 # Imported at the top of the file
-
-
-def configure_dxf_overlay_interactive() -> Dict[str, Any]:
-    """Interactive configuration of DXF shape overlay.
-
-    Prompts user for shape selection, center, rotation, and offset,
-    then returns the configuration as a dictionary (v3.0.0).
-
-    Returns:
-        Dictionary with keys: 'dxf_shape_mode_active', 'dxf_base_shape',
-        'dxf_shape_path', 'dxf_shape_center', or empty dict if cancelled.
-        V4.0.0: Returns dict only (no global state mutation).
-    """
-    print("\n" + "=" * 60)
-    print("   DXF SHAPE OVERLAY CONFIGURATION")
-    print("=" * 60)
-
-    # Ask if user wants overlay
-    print("\nAdd DXF shape overlay to animation?")
-    response = (
-        input("Enter 'yes' or 'y' to configure overlay (or press Enter to skip): ")
-        .strip()
-        .lower()
-    )
-    if response not in ["yes", "y"]:
-        print("Skipping DXF overlay.")
-        return {}
-
-    # Shape selection
-    print("\nShape configuration:")
-    shape_points = None
-
-    try:
-        import ezdxf  # noqa: F401
-
-        dxf_available = True
-    except ImportError:
-        dxf_available = False
-        print("  ezdxf library not installed. Using demo shapes only.")
-
-    if dxf_available:
-        print("\nShape source:")
-        print("1. Load from DXF file")
-        print("2. Use demo rectangle")
-        print("3. Use demo triangle")
-        print("4. Use demo hexagon")
-        choice = input("Select option (1-4): ").strip()
-
-        if choice == "1":
-            dxf_path = input("Enter DXF file path: ").strip()
-            try:
-                shape_points = load_dxf_shape(dxf_path)
-                print(f" Loaded shape with {len(shape_points)} points from DXF")
-            except Exception as e:
-                print(f" Failed to load DXF: {e}")
-                print("Falling back to demo rectangle")
-                shape_points = get_demo_shape("rectangle")
-        elif choice == "2":
-            shape_points = get_demo_shape("rectangle")
-        elif choice == "3":
-            shape_points = get_demo_shape("triangle")
-        elif choice == "4":
-            shape_points = get_demo_shape("hexagon")
-        else:
-            print("Invalid choice. Using demo rectangle.")
-            shape_points = get_demo_shape("rectangle")
-    else:
-        print("\nDemo shapes available:")
-        print("1. Rectangle")
-        print("2. Triangle")
-        print("3. Hexagon")
-        choice = input("Select demo shape (1-3): ").strip()
-
-        if choice == "1":
-            shape_points = get_demo_shape("rectangle")
-        elif choice == "2":
-            shape_points = get_demo_shape("triangle")
-        elif choice == "3":
-            shape_points = get_demo_shape("hexagon")
-        else:
-            print("Invalid choice. Using rectangle.")
-            shape_points = get_demo_shape("rectangle")
-
-    # Get shape center
-    try:
-        center_x = float(input("Shape center X position (meters): "))
-        center_y = float(input("Shape center Y position (meters): "))
-        center_z_input = input("Shape center Z position (meters, default 0): ").strip()
-        center_z = float(center_z_input) if center_z_input else 0.0
-        shape_center = (center_x, center_y, center_z)
-    except ValueError:
-        print("Invalid input. Using default center (0.0, 0.0).")
-        shape_center = (0.0, 0.0, 0.0)
-
-    # Get shape rotation
-    try:
-        shape_rotation_input = input(
-            "Shape rotation angle (degrees, default 0): "
-        ).strip()
-        shape_rotation_deg = (
-            float(shape_rotation_input) if shape_rotation_input else 0.0
-        )
-        shape_rotation_rad = np.radians(shape_rotation_deg)
-    except ValueError:
-        print("Invalid input. Using default rotation 0°.")
-        shape_rotation_deg = 0.0
-        shape_rotation_rad = 0.0
-
-    print(
-        f"Shape center: ({shape_center[0]:.2f}, {shape_center[1]:.2f}, "
-        f"{shape_center[2]:.2f}) m"
-    )
-    print(f"Shape rotation: {shape_rotation_deg:.1f}°")
-
-    # Get offset distance
-    try:
-        offset_input = input(
-            "Offset distance from shape (meters, default 0.5): "
-        ).strip()
-        offset_distance = float(offset_input) if offset_input else 0.5
-        if offset_distance < 0.1:
-            print("Minimum offset 0.1m. Using 0.1m.")
-            offset_distance = 0.1
-        elif offset_distance > 2.0:
-            print("Maximum offset 2.0m. Using 2.0m.")
-            offset_distance = 2.0
-    except ValueError:
-        print("Invalid input. Using default 0.5m offset.")
-        offset_distance = 0.5
-
-    print(f"Offset distance: {offset_distance:.2f} m")
-
-    # Transform and compute offset path
-    transformed_shape = transform_shape(shape_points, shape_center, shape_rotation_rad)
-    offset_path = make_offset_path(transformed_shape, offset_distance)
-    print(f" Created offset path with {len(offset_path)} points")
-
-    # Return configuration dictionary (v3.0.0)
-    config = {
-        "dxf_shape_mode_active": True,
-        "dxf_base_shape": transformed_shape,
-        "dxf_shape_path": offset_path,
-        "dxf_shape_center": shape_center,
-    }
-
-    # V4.0.0: SatelliteConfig removed - return dict only (no global state mutation)
-
-    print("\n DXF overlay configured successfully!")
-    return config
 
 
 def select_data_file_interactive() -> tuple:
@@ -3191,11 +3016,6 @@ def main() -> int:
         action="store_true",
         help="Generate only plots, skip animation",
     )
-    parser.add_argument(
-        "--overlay-dxf",
-        action="store_true",
-        help="Overlay DXF shape on trajectory (if available in Config)",
-    )
 
     args = parser.parse_args()
 
@@ -3213,13 +3033,6 @@ def main() -> int:
         if args.mode is None:
             args.mode = mode
 
-        # After file selection, ask about DXF overlay (unless already specified
-        # via CLI)
-        if not args.overlay_dxf:
-            overlay_configured = configure_dxf_overlay_interactive()
-            if overlay_configured:
-                args.overlay_dxf = True
-
     # Set default data directory based on mode if still not set
     if args.data_dir is None:
         if args.mode == "simulation":
@@ -3236,7 +3049,6 @@ def main() -> int:
         viz = UnifiedVisualizationGenerator(
             data_directory=args.data_dir,
             interactive=False,
-            overlay_dxf=args.overlay_dxf,
         )
 
         # Generate plots

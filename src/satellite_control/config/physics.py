@@ -112,32 +112,38 @@ SATELLITE_SIZE = Constants.SATELLITE_SIZE
 # Moment of Inertia for a solid cube: I = (1/6) * m * s^2
 MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 
-# Thruster configuration (6 Thrusters - one centered on each face)
+# Thruster configuration (8 thrusters, planar layout)
 THRUSTER_POSITIONS = {
-    1: (SATELLITE_SIZE / 2, 0.0, 0.0),  # +X Face
-    2: (-SATELLITE_SIZE / 2, 0.0, 0.0),  # -X Face
-    3: (0.0, SATELLITE_SIZE / 2, 0.0),  # +Y Face
-    4: (0.0, -SATELLITE_SIZE / 2, 0.0),  # -Y Face
-    5: (0.0, 0.0, SATELLITE_SIZE / 2),  # +Z Face
-    6: (0.0, 0.0, -SATELLITE_SIZE / 2),  # -Z Face
+    1: (0.145, 0.06, 0.0),
+    2: (0.145, -0.06, 0.0),
+    3: (0.06, -0.145, 0.0),
+    4: (-0.06, -0.145, 0.0),
+    5: (-0.145, -0.06, 0.0),
+    6: (-0.145, 0.06, 0.0),
+    7: (-0.06, 0.145, 0.0),
+    8: (0.06, 0.145, 0.0),
 }
 
 THRUSTER_DIRECTIONS = {
-    1: np.array([-1, 0, 0]),  # Pushes -X (on +X face)
-    2: np.array([1, 0, 0]),  # Pushes +X (on -X face)
-    3: np.array([0, -1, 0]),  # Pushes -Y (on +Y face)
-    4: np.array([0, 1, 0]),  # Pushes +Y (on -Y face)
-    5: np.array([0, 0, -1]),  # Pushes -Z (on +Z face)
-    6: np.array([0, 0, 1]),  # Pushes +Z (on -Z face)
+    1: np.array([-1.0, 0.0, 0.0]),
+    2: np.array([-1.0, 0.0, 0.0]),
+    3: np.array([0.0, 1.0, 0.0]),
+    4: np.array([0.0, 1.0, 0.0]),
+    5: np.array([1.0, 0.0, 0.0]),
+    6: np.array([1.0, 0.0, 0.0]),
+    7: np.array([0.0, -1.0, 0.0]),
+    8: np.array([0.0, -1.0, 0.0]),
 }
 
 THRUSTER_FORCES = {
-    1: 0.441450,
-    2: 0.430659,
-    3: 0.427716,
-    4: 0.438017,
-    5: 0.468918,
-    6: 0.446846,
+    1: 0.441,
+    2: 0.431,
+    3: 0.428,
+    4: 0.438,
+    5: 0.469,
+    6: 0.447,
+    7: 0.467,
+    8: 0.484,
 }
 
 GRAVITY_M_S2 = Constants.GRAVITY_M_S2
@@ -191,14 +197,14 @@ def set_thruster_force(thruster_id: int, force: float) -> None:
     Set individual thruster force for calibration.
 
     Args:
-        thruster_id: Thruster ID (1-6)
+        thruster_id: Thruster ID (1-8)
         force: Force magnitude in Newtons
 
     Raises:
         ValueError: If thruster_id invalid or force non-positive
     """
-    if thruster_id not in range(1, 7):
-        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
+    if thruster_id not in range(1, 9):
+        raise ValueError(f"Thruster ID must be 1-8, got {thruster_id}")
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 

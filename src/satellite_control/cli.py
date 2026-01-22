@@ -56,9 +56,9 @@ def run(
 
     # Prepare simulation parameters
     sim_start_pos: Optional[Tuple[float, float, float]] = None
-    sim_target_pos: Optional[Tuple[float, float, float]] = None
+    sim_end_pos: Optional[Tuple[float, float, float]] = None
     sim_start_angle: Optional[Tuple[float, float, float]] = None
-    sim_target_angle: Optional[Tuple[float, float, float]] = None
+    sim_end_angle: Optional[Tuple[float, float, float]] = None
     config_overrides: Optional[Dict[str, Dict[str, Any]]] = None
 
     # Import SimulationConfig for Pydantic configuration
@@ -71,18 +71,18 @@ def run(
             "[yellow]Running in AUTO mode with default parameters...[/yellow]"
         )
         sim_start_pos = (1.0, 1.0, 0.0)
-        sim_target_pos = (0.0, 0.0, 0.0)
+        sim_end_pos = (0.0, 0.0, 0.0)
         sim_start_angle = (0.0, 0.0, 0.0)
-        sim_target_angle = (0.0, 0.0, 0.0)
+        sim_end_angle = (0.0, 0.0, 0.0)
         # Use default Pydantic config for auto mode
         simulation_config = SimulationConfig.create_default()
-        # Path-only default: straight line from start to target
+        # Path-only default: straight line from start to end
         from src.satellite_control.mission.path_following import (
             build_point_to_point_path,
         )
 
         path = build_point_to_point_path(
-            waypoints=[sim_start_pos, sim_target_pos],
+            waypoints=[sim_start_pos, sim_end_pos],
             obstacles=None,
             step_size=0.1,
         )
@@ -94,15 +94,12 @@ def run(
             path_length += math.sqrt(dx * dx + dy * dy + dz * dz)
 
         mpc_cfg = simulation_config.app_config.mpc
-        mpc_cfg.mode_path_following = True
         ms = simulation_config.mission_state
         ms.mpcc_path_waypoints = path
         ms.dxf_shape_path = path
         ms.dxf_path_length = path_length
-        ms.dxf_target_speed = mpc_cfg.v_target
+        ms.dxf_path_speed = mpc_cfg.path_speed
         ms.trajectory_mode_active = False
-        ms.enable_waypoint_mode = False
-        ms.enable_multi_point_mode = False
 
     elif mission_file:
         from pathlib import Path
@@ -131,15 +128,9 @@ def run(
                 console.print("[red]Path-following mission requires waypoints.[/red]")
                 raise typer.Exit(code=1)
 
-            sim_start_pos = tuple(
-                mission_data.get("start_position", raw_waypoints[0])
-            )
-            sim_target_pos = tuple(
-                mission_data.get("target_position", raw_waypoints[-1])
-            )
-            sim_target_angle = tuple(
-                mission_data.get("target_orientation", [0, 0, 0])
-            )
+            sim_start_pos = tuple(mission_data.get("start_position", raw_waypoints[0]))
+            sim_end_pos = tuple(mission_data.get("end_position", raw_waypoints[-1]))
+            sim_end_angle = tuple(mission_data.get("end_orientation", [0, 0, 0]))
 
             # Obstacles
             obs_data = mission_data.get("obstacles", [])
@@ -156,7 +147,7 @@ def run(
             )
 
             speed = float(
-                path_cfg.get("speed", simulation_config.app_config.mpc.v_target)
+                path_cfg.get("speed", simulation_config.app_config.mpc.path_speed)
             )
             step_size = float(path_cfg.get("step_size", 0.1))
 
@@ -183,20 +174,17 @@ def run(
                 path_length += math.sqrt(dx * dx + dy * dy + dz * dz)
 
             mpc_cfg = simulation_config.app_config.mpc
-            mpc_cfg.mode_path_following = True
-            mpc_cfg.v_target = speed
+            mpc_cfg.path_speed = speed
 
             ms.mpcc_path_waypoints = path
             ms.dxf_shape_path = path
             ms.dxf_path_length = path_length
-            ms.dxf_target_speed = speed
+            ms.dxf_path_speed = speed
             ms.trajectory_hold_end = float(path_cfg.get("hold_end", 0.0) or 0.0)
             ms.trajectory_mode_active = False
             ms.trajectory_type = "path"
             ms.dxf_shape_mode_active = False
             ms.mesh_scan_mode_active = False
-            ms.enable_waypoint_mode = False
-            ms.enable_multi_point_mode = False
 
             console.print(
                 f"[green]Path loaded: {len(path)} points, {path_length:.2f}m[/green]"
@@ -208,8 +196,8 @@ def run(
 
             # Load Mission Control format
             sim_start_pos = tuple(mission_data.get("start_position", [10, 0, 0]))
-            sim_target_pos = tuple(mission_data.get("target_position", [0, 0, 0]))
-            sim_target_angle = tuple(mission_data.get("target_orientation", [0, 0, 0]))
+            sim_end_pos = tuple(mission_data.get("end_position", [0, 0, 0]))
+            sim_end_angle = tuple(mission_data.get("end_orientation", [0, 0, 0]))
 
             # Obstacles
             obs_data = mission_data.get("obstacles", [])
@@ -229,7 +217,9 @@ def run(
 
             try:
                 scan_speed = float(
-                    mesh_scan.get("speed_max", simulation_config.app_config.mpc.v_target)
+                    mesh_scan.get(
+                        "speed_max", simulation_config.app_config.mpc.path_speed
+                    )
                 )
                 path, _, path_length = build_mesh_scan_trajectory(
                     obj_path=mesh_scan.get("obj_path"),
@@ -246,14 +236,13 @@ def run(
                 )
 
                 mpc_cfg = simulation_config.app_config.mpc
-                mpc_cfg.mode_path_following = True
-                mpc_cfg.v_target = scan_speed
+                mpc_cfg.path_speed = scan_speed
 
                 ms.mesh_scan_mode_active = True
                 ms.mesh_scan_obj_path = mesh_scan.get("obj_path")
                 ms.dxf_shape_path = path
                 ms.dxf_path_length = path_length
-                ms.dxf_target_speed = scan_speed
+                ms.dxf_path_speed = scan_speed
                 ms.mpcc_path_waypoints = path
                 ms.trajectory_mode_active = False
                 ms.trajectory_type = "scan"
@@ -289,7 +278,9 @@ def run(
                 positions = [tuple(mission.start_position.tolist())] + [
                     tuple(wp.position.tolist()) for wp in waypoints
                 ]
-                speed = float(mission.max_speed or simulation_config.app_config.mpc.v_target)
+                speed = float(
+                    mission.max_speed or simulation_config.app_config.mpc.path_speed
+                )
                 hold_end = float(waypoints[-1].hold_time) if waypoints else 0.0
                 path = build_point_to_point_path(
                     waypoints=positions,
@@ -304,17 +295,14 @@ def run(
                     path_length += math.sqrt(dx * dx + dy * dy + dz * dz)
 
                 mpc_cfg = simulation_config.app_config.mpc
-                mpc_cfg.mode_path_following = True
-                mpc_cfg.v_target = speed
+                mpc_cfg.path_speed = speed
 
                 ms.mpcc_path_waypoints = path
                 ms.dxf_shape_path = path
                 ms.dxf_path_length = path_length
-                ms.dxf_target_speed = speed
+                ms.dxf_path_speed = speed
                 ms.trajectory_hold_end = hold_end
                 ms.trajectory_mode_active = False
-                ms.enable_waypoint_mode = False
-                ms.enable_multi_point_mode = False
 
     else:
         # Interactive mode (default)
@@ -370,10 +358,10 @@ def run(
                     sim_start_pos = mission_config.get("start_pos")
                 if "start_angle" in mission_config:
                     sim_start_angle = mission_config.get("start_angle")
-                if "target_pos" in mission_config:
-                    sim_target_pos = mission_config.get("target_pos")
-                if "target_angle" in mission_config:
-                    sim_target_angle = mission_config.get("target_angle")
+                if "end_pos" in mission_config:
+                    sim_end_pos = mission_config.get("end_pos")
+                if "end_angle" in mission_config:
+                    sim_end_angle = mission_config.get("end_angle")
         except ImportError as e:
             console.print(
                 f"[red]Interactive mission UI unavailable: {e}. Use --mission to run a path file.[/red]"
@@ -415,9 +403,9 @@ def run(
     try:
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=sim_start_pos,
-            target_pos=sim_target_pos,
+            end_pos=sim_end_pos,
             start_angle=sim_start_angle,
-            target_angle=sim_target_angle,
+            end_angle=sim_end_angle,
             simulation_config=simulation_config,
         )
 

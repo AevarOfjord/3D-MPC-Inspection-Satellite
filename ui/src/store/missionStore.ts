@@ -17,8 +17,8 @@ interface MissionState {
   setTransformSnap: (snap: number | null) => void;
   
   updateStartPos: (index: number, value: number) => void;
-  updateTargetPos: (index: number, value: number) => void;
-  updateTargetOri: (index: number, value: number) => void;
+  updateEndPos: (index: number, value: number) => void;
+  updateEndOri: (index: number, value: number) => void;
   
   addObstacle: () => void;
   removeObstacle: (index: number) => void;
@@ -28,8 +28,8 @@ interface MissionState {
 export const useMissionStore = create<MissionState>((set) => ({
   config: {
     start_position: [10.0, 0.0, 0.0],
-    target_position: [0.0, 0.0, 0.0],
-    target_orientation: [0.0, 0.0, 0.0],
+    end_position: [0.0, 0.0, 0.0],
+    end_orientation: [0.0, 0.0, 0.0],
     obstacles: []
   },
   isEditing: false,
@@ -51,16 +51,16 @@ export const useMissionStore = create<MissionState>((set) => ({
     return { config: { ...state.config, start_position: newPos } };
   }),
 
-  updateTargetPos: (index, value) => set((state) => {
-    const newPos = [...state.config.target_position] as [number, number, number];
+  updateEndPos: (index, value) => set((state) => {
+    const newPos = [...state.config.end_position] as [number, number, number];
     newPos[index] = value;
-    return { config: { ...state.config, target_position: newPos } };
+    return { config: { ...state.config, end_position: newPos } };
   }),
 
-  updateTargetOri: (index, value) => set((state) => {
-    const newOri = [...state.config.target_orientation] as [number, number, number];
+  updateEndOri: (index, value) => set((state) => {
+    const newOri = [...state.config.end_orientation] as [number, number, number];
     newOri[index] = value;
-    return { config: { ...state.config, target_orientation: newOri } };
+    return { config: { ...state.config, end_orientation: newOri } };
   }),
 
   addObstacle: () => set((state) => {

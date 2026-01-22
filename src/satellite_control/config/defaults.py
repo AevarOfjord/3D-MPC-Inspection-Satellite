@@ -60,26 +60,17 @@ def create_default_app_config() -> AppConfig:
         dt=timing.CONTROL_DT,
         solver_time_limit=constants.Constants.MPC_SOLVER_TIME_LIMIT,
         solver_type=constants.Constants.MPC_SOLVER_TYPE,
-        q_position=constants.Constants.Q_POSITION,
-        q_velocity=constants.Constants.Q_VELOCITY,
-        q_angle=constants.Constants.Q_ANGLE,
+        # MPCC Weights
+        Q_contour=constants.Constants.Q_CONTOUR,
+        Q_progress=constants.Constants.Q_PROGRESS,
+        Q_smooth=constants.Constants.Q_SMOOTH,
         q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,
         r_thrust=constants.Constants.R_THRUST,
         r_rw_torque=constants.Constants.R_RW_TORQUE,
-        max_velocity=constants.Constants.MAX_VELOCITY,
-        max_angular_velocity=constants.Constants.MAX_ANGULAR_VELOCITY,
-        position_bounds=constants.Constants.POSITION_BOUNDS,
-        damping_zone=constants.Constants.DAMPING_ZONE,
-        velocity_threshold=constants.Constants.VELOCITY_THRESHOLD,
-        max_velocity_weight=constants.Constants.MAX_VELOCITY_WEIGHT,
         thruster_type=constants.Constants.THRUSTER_TYPE,
-        enable_rw_yaw=True,
-        enable_z_tilt=True,
-        z_tilt_gain=0.35,
-        z_tilt_max_deg=20.0,
         verbose_mpc=False,
-        mode_path_following=True,
-        v_target=timing.DEFAULT_TARGET_SPEED,
+        # Path Following
+        path_speed=timing.DEFAULT_PATH_SPEED,
     )
 
     # Simulation
@@ -91,11 +82,7 @@ def create_default_app_config() -> AppConfig:
         window_height=constants.Constants.WINDOW_HEIGHT,
         use_final_stabilization=timing.USE_FINAL_STABILIZATION_IN_SIMULATION,
         control_dt=timing.CONTROL_DT,
-        target_hold_time=timing.TARGET_HOLD_TIME,
-        waypoint_final_stabilization_time=timing.WAYPOINT_FINAL_STABILIZATION_TIME,
-        shape_final_stabilization_time=timing.SHAPE_FINAL_STABILIZATION_TIME,
-        shape_positioning_stabilization_time=timing.SHAPE_POSITIONING_STABILIZATION_TIME,
-        default_target_speed=timing.DEFAULT_TARGET_SPEED,
+        default_path_speed=timing.DEFAULT_PATH_SPEED,
     )
 
     return AppConfig(physics=phys, mpc=mpc, simulation=sim, input_file_path=None)

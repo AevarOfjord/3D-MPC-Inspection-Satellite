@@ -26,62 +26,15 @@ class SatelliteConfigAdapter:
     def __getattr__(self, name: str) -> Any:
         """Map flat attribute names to nested config structure."""
         # Mission state attributes
-        if name == "DXF_SHAPE_MODE_ACTIVE":
-            return (
-                self.mission_state.dxf_shape_mode_active
-                if self.mission_state
-                else False
-            )
-        if name == "DXF_SHAPE_PHASE":
-            return (
-                getattr(self.mission_state, "dxf_shape_phase", "UNKNOWN")
-                if self.mission_state
-                else "UNKNOWN"
-            )
-        if name == "DXF_SHAPE_CENTER":
-            return self.mission_state.dxf_shape_center if self.mission_state else None
-        if name == "DXF_SHAPE_ROTATION":
-            return (
-                getattr(self.mission_state, "dxf_shape_rotation", 0.0)
-                if self.mission_state
-                else 0.0
-            )
-        if name == "DXF_OFFSET_DISTANCE":
-            return (
-                getattr(self.mission_state, "dxf_offset_distance", 0.0)
-                if self.mission_state
-                else 0.0
-            )
-        if name == "DXF_PATH_LENGTH":
+
+        if name == "PATH_WAYPOINTS":
+            return self.mission_state.mpcc_path_waypoints if self.mission_state else []
+        if name == "PATH_LENGTH":
             return (
                 getattr(self.mission_state, "dxf_path_length", 0.0)
                 if self.mission_state
                 else 0.0
             )
-        if name == "DXF_BASE_SHAPE":
-            return self.mission_state.dxf_base_shape if self.mission_state else []
-        if name == "DXF_SHAPE_PATH":
-            return self.mission_state.dxf_shape_path if self.mission_state else []
-        if name == "DXF_TARGET_SPEED":
-            return (
-                getattr(self.mission_state, "dxf_target_speed", 0.1)
-                if self.mission_state
-                else 0.1
-            )
-        if name == "DXF_ESTIMATED_DURATION":
-            return (
-                getattr(self.mission_state, "dxf_estimated_duration", 0.0)
-                if self.mission_state
-                else 0.0
-            )
-        if name == "ENABLE_WAYPOINT_MODE":
-            return (
-                self.mission_state.enable_waypoint_mode if self.mission_state else False
-            )
-        if name == "WAYPOINT_TARGETS":
-            return self.mission_state.waypoint_targets if self.mission_state else []
-        if name == "WAYPOINT_ANGLES":
-            return self.mission_state.waypoint_angles if self.mission_state else []
         if name == "OBSTACLES_ENABLED":
             return self.mission_state.obstacles_enabled if self.mission_state else False
         if name == "OBSTACLES":
@@ -89,18 +42,6 @@ class SatelliteConfigAdapter:
                 list(self.mission_state.obstacles)
                 if self.mission_state and self.mission_state.obstacles
                 else []
-            )
-        if name == "CURRENT_TARGET_INDEX":
-            return (
-                getattr(self.mission_state, "current_target_index", 0)
-                if self.mission_state
-                else 0
-            )
-        if name == "MULTI_POINT_PHASE":
-            return (
-                getattr(self.mission_state, "multi_point_phase", "")
-                if self.mission_state
-                else ""
             )
 
         # Simulation params
@@ -110,14 +51,6 @@ class SatelliteConfigAdapter:
             return self.app_config.simulation.control_dt
         if name == "MAX_SIMULATION_TIME":
             return self.app_config.simulation.max_duration
-        if name == "TARGET_HOLD_TIME":
-            return self.app_config.simulation.target_hold_time
-        if name == "WAYPOINT_FINAL_STABILIZATION_TIME":
-            return self.app_config.simulation.waypoint_final_stabilization_time
-        if name == "SHAPE_FINAL_STABILIZATION_TIME":
-            return self.app_config.simulation.shape_final_stabilization_time
-        if name == "SHAPE_POSITIONING_STABILIZATION_TIME":
-            return self.app_config.simulation.shape_positioning_stabilization_time
         if name == "USE_FINAL_STABILIZATION_IN_SIMULATION":
             return self.app_config.simulation.use_final_stabilization
         if name == "HEADLESS_MODE":
@@ -132,26 +65,20 @@ class SatelliteConfigAdapter:
             return self.app_config.mpc.solver_time_limit
         if name == "MPC_SOLVER_TYPE":
             return self.app_config.mpc.solver_type
-        if name == "Q_POSITION":
-            return self.app_config.mpc.q_position
-        if name == "Q_VELOCITY":
-            return self.app_config.mpc.q_velocity
-        if name == "Q_ANGLE":
-            return self.app_config.mpc.q_angle
+        if name == "Q_CONTOUR":
+            return self.app_config.mpc.Q_contour
+        if name == "Q_PROGRESS":
+            return self.app_config.mpc.Q_progress
+        if name == "Q_SMOOTH":
+            return self.app_config.mpc.Q_smooth
+        if name == "PATH_SPEED":
+            return self.app_config.mpc.path_speed
         if name == "Q_ANGULAR_VELOCITY":
             return self.app_config.mpc.q_angular_velocity
         if name == "R_THRUST":
             return self.app_config.mpc.r_thrust
-        if name == "MAX_VELOCITY":
-            return self.app_config.mpc.max_velocity
-        if name == "MAX_ANGULAR_VELOCITY":
-            return self.app_config.mpc.max_angular_velocity
-        if name == "POSITION_BOUNDS":
-            return self.app_config.mpc.position_bounds
-        if name == "DAMPING_ZONE":
-            return self.app_config.mpc.damping_zone
-        if name == "VELOCITY_THRESHOLD":
-            return self.app_config.mpc.velocity_threshold
+        if name == "R_RW_TORQUE":
+            return self.app_config.mpc.r_rw_torque
         if name == "POSITION_TOLERANCE":
             return Constants.POSITION_TOLERANCE
         if name == "ANGLE_TOLERANCE":

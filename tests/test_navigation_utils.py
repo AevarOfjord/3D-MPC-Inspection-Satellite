@@ -265,15 +265,15 @@ class TestCalculateSafePathToWaypoint:
     def test_direct_path_no_obstacles(self):
         """Test that direct path is used when no obstacles block the way."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 1.0])
+        end_pos = np.array([1.0, 1.0])
         obstacles: List[Tuple[float, float]] = []
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
-        # Should be direct path: start -> target
+        # Should be direct path: start -> end
         assert len(path) == 2
         assert path[0] == (0.0, 0.0)
         assert path[1] == (1.0, 1.0)
@@ -281,12 +281,12 @@ class TestCalculateSafePathToWaypoint:
     def test_direct_path_with_distant_obstacles(self):
         """Test direct path when obstacles are far from path."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [(0.5, 5.0)]  # Obstacle far above path
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # Should still be direct path
@@ -295,15 +295,15 @@ class TestCalculateSafePathToWaypoint:
     def test_path_with_blocking_obstacle(self):
         """Test that intermediate waypoint is generated when obstacle blocks path."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [(0.5, 0.0)]  # Obstacle directly on path
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
-        # Should have intermediate waypoint: start -> intermediate -> target
+        # Should have intermediate waypoint: start -> intermediate -> end
         assert len(path) == 3
         assert path[0] == (0.0, 0.0)
         assert path[2] == (1.0, 0.0)
@@ -316,14 +316,14 @@ class TestCalculateSafePathToWaypoint:
     def test_path_with_near_miss_obstacle(self):
         """Test when obstacle is just barely within safety radius."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [
             (0.5, 0.15)
         ]  # Just within safety radius of 0.2
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # Should generate intermediate waypoint
@@ -332,7 +332,7 @@ class TestCalculateSafePathToWaypoint:
     def test_path_with_multiple_obstacles(self):
         """Test path generation with multiple obstacles."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [
             (0.3, 0.0),  # First obstacle on path
             (0.7, 0.0),  # Second obstacle on path
@@ -340,37 +340,37 @@ class TestCalculateSafePathToWaypoint:
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # Should generate at least one intermediate waypoint
         # (Current implementation creates waypoint for closest obstacle)
         assert len(path) >= 3
 
-    def test_obstacle_at_target(self):
-        """Test behavior when obstacle is at target location."""
+    def test_obstacle_at_end(self):
+        """Test behavior when obstacle is at end location."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
-        obstacles: List[Tuple[float, float]] = [(1.0, 0.0)]  # Obstacle at target
+        end_pos = np.array([1.0, 0.0])
+        obstacles: List[Tuple[float, float]] = [(1.0, 0.0)]  # Obstacle at end
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # Should still generate a path (though may not be physically feasible)
         assert len(path) >= 2
-        assert path[-1] == (1.0, 0.0)  # Final waypoint should still be target
+        assert path[-1] == (1.0, 0.0)  # Final waypoint should still be end
 
     def test_obstacle_at_start(self):
         """Test behavior when obstacle is at start location."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [(0.0, 0.0)]  # Obstacle at start
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # Should generate intermediate waypoint
@@ -379,12 +379,12 @@ class TestCalculateSafePathToWaypoint:
     def test_waypoint_coordinates_format(self):
         """Test that waypoints are returned as tuples."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 1.0])
+        end_pos = np.array([1.0, 1.0])
         obstacles: List[Tuple[float, float]] = []
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         # All waypoints should be tuples
@@ -395,25 +395,25 @@ class TestCalculateSafePathToWaypoint:
     def test_path_starts_at_start_pos(self):
         """Test that path always starts at start position."""
         start_pos = np.array([0.5, 0.5])
-        target_pos = np.array([1.0, 1.0])
+        end_pos = np.array([1.0, 1.0])
         obstacles: List[Tuple[float, float]] = []
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         assert path[0] == (0.5, 0.5)
 
-    def test_path_ends_at_target_pos(self):
-        """Test that path always ends at target position."""
+    def test_path_ends_at_end_pos(self):
+        """Test that path always ends at end position."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([2.5, 3.7])
+        end_pos = np.array([2.5, 3.7])
         obstacles: List[Tuple[float, float]] = []
         safety_radius = 0.2
 
         path = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, safety_radius
+            start_pos, end_pos, obstacles, safety_radius
         )
 
         assert path[-1] == (2.5, 3.7)
@@ -421,15 +421,15 @@ class TestCalculateSafePathToWaypoint:
     def test_safety_radius_scaling(self):
         """Test that larger safety radius generates waypoints further from obstacles."""
         start_pos = np.array([0.0, 0.0])
-        target_pos = np.array([1.0, 0.0])
+        end_pos = np.array([1.0, 0.0])
         obstacles: List[Tuple[float, float]] = [(0.5, 0.0)]
 
         # Try with different safety radii
         path_small = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, 0.1
+            start_pos, end_pos, obstacles, 0.1
         )
         path_large = calculate_safe_path_to_waypoint(
-            start_pos, target_pos, obstacles, 0.5
+            start_pos, end_pos, obstacles, 0.5
         )
 
         # Both should avoid obstacle

@@ -16,11 +16,11 @@ def test_3d_spline():
 
     # 3D points
     start = np.array([0.0, 0.0, 0.0])
-    target = np.array([2.0, 0.0, 1.0])  # Target at Z=1.0
+    end_pos = np.array([2.0, 0.0, 1.0])  # End at Z=1.0
     obstacle = np.array([1.0, 0.0, 0.0])  # Obstacle on path
     radius = 0.5
 
-    spline = create_obstacle_avoidance_spline(start, target, obstacle, radius)
+    spline = create_obstacle_avoidance_spline(start, end_pos, obstacle, radius)
 
     if spline is None:
         print("FAILED: Spline not generated (returned None)")
@@ -58,7 +58,7 @@ def test_3d_spline():
 
     if len(p_mid) < 3:
         print("ERROR: Mid point is not 3D!")
-    # The control point Z was set to (start_z + target_z) / 2 = 0.5
+    # The control point Z was set to (start_z + end_z) / 2 = 0.5
     # For a quadratic Bezier with P0_z=0, P1_z=0.5, P2_z=1.0:
     # At t=0.5: B(0.5) = 0.25*0 + 0.5*0.5 + 0.25*1.0 = 0.25 + 0.25 = 0.5
     # So midpoint Z should be exactly 0.5 (assuming arc length parameterization matches t=0.5 at midpoint, which is approx true for symmetric spline)

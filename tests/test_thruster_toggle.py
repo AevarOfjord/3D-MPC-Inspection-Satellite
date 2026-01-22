@@ -42,8 +42,8 @@ class TestThrusterToggle(unittest.TestCase):
         )
 
         # Test 37% thrust
-        target_val = 0.37
-        manager.set_thruster_pattern(np.array([target_val, 0.0]), simulation_time=0.0)
+        expected_val = 0.37
+        manager.set_thruster_pattern(np.array([expected_val, 0.0]), simulation_time=0.0)
 
         # At any time, it should output exactly the commanded value
         manager.process_command_queue(
@@ -51,7 +51,7 @@ class TestThrusterToggle(unittest.TestCase):
         )
         output = manager.get_actual_output()
         self.assertAlmostEqual(
-            output[0], target_val, places=5, msg="CON should output exact command"
+            output[0], expected_val, places=5, msg="CON should output exact command"
         )
 
         # Even later in the interval
@@ -59,7 +59,7 @@ class TestThrusterToggle(unittest.TestCase):
             simulation_time=0.6, control_update_interval=1.0, last_control_update=0.0, sim_dt=0.1
         )
         output = manager.get_actual_output()
-        self.assertAlmostEqual(output[0], target_val, places=5, msg="CON should hold exact command")
+        self.assertAlmostEqual(output[0], expected_val, places=5, msg="CON should hold exact command")
 
 
 if __name__ == "__main__":

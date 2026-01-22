@@ -24,34 +24,23 @@ struct MPCParams {
     double dt = 0.05;               ///< Time step [s]
     double solver_time_limit = 0.05;///< Max solver time per step [s]
     
-    // Weights
-    double Q_pos = 10.0;            ///< Position error weight
-    double Q_vel = 1.0;             ///< Velocity error weight
-    double Q_ang = 10.0;            ///< Angle error weight
-    double Q_angvel = 1.0;          ///< Angular velocity error weight
+    // Weights (MPCC)
+    double Q_contour = 1000.0;          ///< Weight for contouring error (stay on path)
+    double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
+    double Q_smooth = 10.0;             ///< Weight for velocity smoothness
+    double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
+
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
     
-    // Constraints (disabled when mode_path_following=true per V4.0.1 MPCC spec)
-    double max_velocity = 1.0;          ///< Max velocity magnitude [m/s] (disabled in MPCC mode)
-    double max_angular_velocity = 1.0;  ///< Max angular velocity [rad/s] (disabled in MPCC mode)
-    double position_bounds = 10.0;      ///< Box constraint for position [m] (disabled in MPCC mode)
-    
-    // Z-tilt
-    bool enable_z_tilt = true;          ///< Enable heuristic Z-tilt correction
-    double z_tilt_gain = 0.35;          ///< Gain for Z-tilt correction
-    double z_tilt_max_rad = 0.35;       ///< Max tilt angle [rad] (~20 deg)
+
     
     // Collision avoidance (V3.0.0)
     bool enable_collision_avoidance = false; ///< Enable obstacle avoidance
     double obstacle_margin = 0.5;            ///< Safety margin for obstacles [m]
 
     // Path Following (V4.0.0) - General Path MPCC
-    bool mode_path_following = false;   ///< If true, use path following (MPCC) formulation
-    double Q_contour = 1000.0;          ///< Weight for contouring error (stay on path)
-    double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
-    double Q_smooth = 10.0;             ///< Weight for velocity smoothness
-    double v_target = 0.1;              ///< Target speed along path [m/s]
+    double path_speed = 0.1;           ///< Path speed along reference [m/s]
 };
 
 /**
@@ -86,22 +75,14 @@ public:
     ~MPCControllerCpp();
 
     /**
-     * @brief Compute the optimal control action for a single target state.
-     * 
-     * @param x_current Current state vector (13x1).
-     * @param x_target Target state vector (13x1).
+     * @brief Compute the optimal control action for the current state.
+     *
+     * Path-following MPCC computes reference values internally from the path.
+     *
+     * @param x_current Current state vector (17x1 if augmented with s).
      * @return ControlResult containing the optimal inputs and solver stats.
      */
-    ControlResult get_control_action(const VectorXd& x_current, const VectorXd& x_target);
-
-    /**
-     * @brief Compute optimal control action for a trajectory of target states.
-     * 
-     * @param x_current Current state vector (13x1).
-     * @param x_target_traj Matrix of target states (Horizon x 13).
-     * @return ControlResult containing the optimal inputs and solver stats.
-     */
-    ControlResult get_control_action_trajectory(const VectorXd& x_current, const MatrixXd& x_target_traj);
+    ControlResult get_control_action(const VectorXd& x_current);
     
     // -- Collision Avoidance --
 
@@ -123,7 +104,7 @@ public:
 
 private:
     // Dimensions
-    int nx_ = 16;  // State dimension (13 base + 3 wheel speeds)
+    int nx_ = 17;  // State dimension (13 base + 3 wheel speeds + 1 path s)
     int nu_;       // Control dimension (RW + thrusters)
     int N_;        // Prediction horizon
     double dt_;
@@ -211,12 +192,10 @@ private:
     
     // -- Runtime Methods --
     void update_dynamics(const VectorXd& x_current);
-    void update_cost(const VectorXd& x_target);
-    void update_cost_trajectory(const MatrixXd& x_target_traj);
+    void update_cost();
     void update_constraints(const VectorXd& x_current);
-    void update_obstacle_constraints(const VectorXd& x_current, const VectorXd& x_target);
+    void update_obstacle_constraints(const VectorXd& x_current);
     void update_path_cost(const VectorXd& x_current); // Path following linearization
-    VectorXd apply_z_tilt(const VectorXd& x_current, const VectorXd& x_target);
     
     // Path following internal state
     std::vector<double> s_guess_; // Guess for path parameter s over horizon

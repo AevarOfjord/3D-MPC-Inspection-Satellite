@@ -324,11 +324,11 @@ class TestAngleOperations:
         assert abs(diff) < 0.01  # Should be near zero
 
 
-class TestTargetReachedChecking:
-    """Test target reached verification."""
+class TestReferenceReachedChecking:
+    """Test reference reached verification."""
 
-    def test_target_reached_all_within_tolerance(self):
-        """Test target reached when all errors within tolerance."""
+    def test_reference_reached_all_within_tolerance(self):
+        """Test reference reached when all errors within tolerance."""
         validator = SimulationStateValidator(
             position_tolerance=0.1,
             angle_tolerance=0.1,
@@ -342,36 +342,36 @@ class TestTargetReachedChecking:
             vel=(0.01, 0.01, 0.0),
             omega=(0.0, 0.0, 0.01),
         )
-        target_state = make_state()
+        reference_state = make_state()
 
-        assert validator.check_target_reached(current_state, target_state)
+        assert validator.check_reference_reached(current_state, reference_state)
 
-    def test_target_not_reached_position_error(self):
-        """Test target not reached due to position error."""
+    def test_reference_not_reached_position_error(self):
+        """Test reference not reached due to position error."""
         validator = SimulationStateValidator(position_tolerance=0.05)
 
         current_state = make_state(pos=(0.1, 0.1, 0.0))
-        target_state = make_state()
+        reference_state = make_state()
 
-        assert not validator.check_target_reached(current_state, target_state)
+        assert not validator.check_reference_reached(current_state, reference_state)
 
-    def test_target_not_reached_angle_error(self):
-        """Test target not reached due to angle error."""
+    def test_reference_not_reached_angle_error(self):
+        """Test reference not reached due to angle error."""
         validator = SimulationStateValidator(angle_tolerance=0.05)
 
         current_state = make_state(euler=(0.0, 0.0, 0.2))
-        target_state = make_state()
+        reference_state = make_state()
 
-        assert not validator.check_target_reached(current_state, target_state)
+        assert not validator.check_reference_reached(current_state, reference_state)
 
-    def test_target_not_reached_velocity_error(self):
-        """Test target not reached due to velocity error."""
+    def test_reference_not_reached_velocity_error(self):
+        """Test reference not reached due to velocity error."""
         validator = SimulationStateValidator(velocity_tolerance=0.01)
 
         current_state = make_state(vel=(0.05, 0.05, 0.0))
-        target_state = make_state()
+        reference_state = make_state()
 
-        assert not validator.check_target_reached(current_state, target_state)
+        assert not validator.check_reference_reached(current_state, reference_state)
 
 
 class TestStateErrorComputation:
@@ -387,9 +387,9 @@ class TestStateErrorComputation:
             vel=(0.1, 0.2, 0.0),
             omega=(0.0, 0.0, 0.05),
         )
-        target_state = make_state()
+        reference_state = make_state()
 
-        errors = validator.compute_state_errors(current_state, target_state)
+        errors = validator.compute_state_errors(current_state, reference_state)
 
         assert "position_error" in errors
         assert "velocity_error" in errors
@@ -416,9 +416,9 @@ class TestStateErrorComputation:
             vel=(0.1, 0.1, 0.0),
             omega=(0.0, 0.0, 0.05),
         )
-        target_state = make_state()
+        reference_state = make_state()
 
-        tolerances = validator.check_within_tolerances(current_state, target_state)
+        tolerances = validator.check_within_tolerances(current_state, reference_state)
 
         assert tolerances["position"]
         assert not tolerances["velocity"]
@@ -649,9 +649,9 @@ class TestEdgeCases:
         )
 
         current_state = make_state(pos=(1e-7, 1e-7, 0.0), euler=(0.0, 0.0, 1e-7))
-        target_state = make_state()
+        reference_state = make_state()
 
-        assert validator.check_target_reached(current_state, target_state)
+        assert validator.check_reference_reached(current_state, reference_state)
 
     def test_large_state_values(self):
         """Test with large state values."""

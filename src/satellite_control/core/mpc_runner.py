@@ -72,9 +72,7 @@ class MPCRunner:
     def compute_control_action(
         self,
         true_state: np.ndarray,
-        target_state: np.ndarray,
         previous_thrusters: np.ndarray,
-        target_trajectory: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any], float, float]:
         """
         Compute the next control action based on current state.
@@ -104,18 +102,12 @@ class MPCRunner:
         try:
             control_action, mpc_info = self.mpc.get_control_action(
                 x_current=measured_state,
-                x_target=target_state,
                 previous_thrusters=previous_thrusters,
-                x_target_trajectory=target_trajectory,
             )
         except TypeError:
-            # Fallback for controllers that don't accept trajectory
-            # yet
-            logger.warning(
-                "Controller does not support trajectory! Falling back to setpoint."
-            )
+            logger.warning("Controller signature mismatch; falling back.")
             control_action, mpc_info = self.mpc.get_control_action(
-                measured_state, target_state, previous_thrusters
+                measured_state, previous_thrusters
             )
 
         end_compute_time = time.time()

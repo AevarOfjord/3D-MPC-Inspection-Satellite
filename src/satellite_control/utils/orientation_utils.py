@@ -35,11 +35,11 @@ def quat_wxyz_to_euler_xyz(quat_wxyz: Iterable[float]) -> np.ndarray:
     return Rotation.from_quat(quat_xyzw).as_euler("xyz", degrees=False)
 
 
-def quat_angle_error(q_target: Iterable[float], q_current: Iterable[float]) -> float:
+def quat_angle_error(q_reference: Iterable[float], q_current: Iterable[float]) -> float:
     """
     Compute the shortest-angle error between two quaternions (radians).
     """
-    q1 = np.array(list(q_target), dtype=float)
+    q1 = np.array(list(q_reference), dtype=float)
     q2 = np.array(list(q_current), dtype=float)
     if q1.shape != (4,) or q2.shape != (4,):
         raise ValueError("Quaternion inputs must be shape (4,)")

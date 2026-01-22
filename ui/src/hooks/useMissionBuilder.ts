@@ -93,8 +93,8 @@ export function useMissionBuilder() {
       if (!name) return;
       const missionPayload = {
           start_position: startPosition,
-          target_position: objectPosition,
-          target_orientation: objectAngle,
+          end_position: objectPosition,
+          end_orientation: objectAngle,
           obstacles: obstacles.map(o => ({ position: o.position, radius: o.radius })),
           mesh_scan: { ...config, level_spacing: levelSpacing },
           // TODO: If isManualMode, we might need a different payload structure or flag

@@ -33,8 +33,8 @@ def clean_missions():
 def test_save_mission(clean_missions):
     config = {
         "start_position": [1.0, 2.0, 3.0],
-        "target_position": [0.0, 0.0, 0.0],
-        "target_orientation": [0.0, 0.0, 0.0],
+        "end_position": [0.0, 0.0, 0.0],
+        "end_orientation": [0.0, 0.0, 0.0],
         "obstacles": [],
     }
 

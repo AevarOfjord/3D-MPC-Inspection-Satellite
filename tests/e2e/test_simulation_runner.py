@@ -37,7 +37,7 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
     # 2. Initialize Simulation
     sim = SatelliteMPCLinearizedSimulation(
         start_pos=(1.0, 1.0, 0.0),
-        target_pos=(0.0, 0.0, 0.0),
+        end_pos=(0.0, 0.0, 0.0),
         simulation_config=simulation_config,
     )
 
@@ -71,9 +71,7 @@ def test_simulation_e2e_pwm_mode(temp_sim_output_dir):
                     noisy_state = sim.get_noisy_state(state)
 
                     optimal_u, mpc_info = sim.mpc_controller.get_control_action(
-                        noisy_state,
-                        sim.target_state,
-                        None,  # trajectory
+                        noisy_state
                     )
                     sim.current_thrusters = optimal_u
                 except Exception as e:

@@ -9,7 +9,7 @@ This module handles all static plot generation (not animation frames).
 
 from pathlib import Path
 from typing import Any, Dict, List
-import sys
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,11 +24,11 @@ from src.satellite_control.visualization.unified_visualizer import PlotStyle
 class PlotGenerator:
     """
     Generates performance analysis plots from simulation data.
-    
+
     This class handles all static plot generation, separating plotting
     logic from data management and animation generation.
     """
-    
+
     def __init__(
         self,
         data_accessor: Any,
@@ -38,7 +38,7 @@ class PlotGenerator:
     ):
         """
         Initialize plot generator.
-        
+
         Args:
             data_accessor: Object with data access methods (_col, _row, _get_len)
             dt: Simulation timestep in seconds
@@ -49,30 +49,30 @@ class PlotGenerator:
         self.dt = dt
         self.system_title = system_title
         self.app_config = app_config
-    
+
     def _col(self, name: str) -> np.ndarray:
         """Get column data from data accessor."""
         return self.data_accessor._col(name)
-    
+
     def _row(self, idx: int) -> Dict[str, Any]:
         """Get row data from data accessor."""
         return self.data_accessor._row(idx)
-    
+
     def _get_len(self) -> int:
         """Get data length from data accessor."""
         return self.data_accessor._get_len()
-    
+
     def generate_all_plots(self, plot_dir: Path) -> None:
         """
         Generate all performance analysis plots.
-        
+
         Args:
             plot_dir: Directory to save plots
         """
         print("Generating performance analysis plots...")
         plot_dir.mkdir(exist_ok=True)
         print(f" Created Plots directory: {plot_dir}")
-        
+
         # Generate specific performance plots
         self.generate_position_tracking_plot(plot_dir)
         self.generate_position_error_plot(plot_dir)
@@ -100,20 +100,20 @@ class PlotGenerator:
         self.generate_waypoint_progress_plot(plot_dir)
         self.generate_timing_intervals_plot(plot_dir)
         # self.generate_interactive_report(plot_dir) # Disabled per user request
-        
+
         print(f"Performance plots saved to: {plot_dir}")
-    
+
     # Plot generation methods will be moved here from UnifiedVisualizationGenerator
     # For now, these are placeholder methods that delegate to the original class
     # They will be fully implemented in subsequent steps
-    
+
     def generate_position_tracking_plot(self, plot_dir: Path) -> None:
         """Generate position tracking over time plot."""
         fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
         fig.suptitle(f"Position Tracking - {self.system_title}")
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
+
         # X position tracking
         axes[0].plot(
             time,
@@ -124,17 +124,17 @@ class PlotGenerator:
         )
         axes[0].plot(
             time,
-            self._col("Target_X"),
+            self._col("Reference_X"),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target X",
+            label="Reference X",
         )
         axes[0].set_ylabel("X Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[0].set_title("X Position Tracking")
-        
+
         # Y position tracking
         axes[1].plot(
             time,
@@ -145,18 +145,18 @@ class PlotGenerator:
         )
         axes[1].plot(
             time,
-            self._col("Target_Y"),
+            self._col("Reference_Y"),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Y",
+            label="Reference Y",
         )
         axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].set_ylabel("Y Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[1].set_title("Y Position Tracking")
-        
+
         # Z position tracking
         axes[2].plot(
             time,
@@ -167,32 +167,32 @@ class PlotGenerator:
         )
         axes[2].plot(
             time,
-            self._col("Target_Z"),
+            self._col("Reference_Z"),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Z",
+            label="Reference Z",
         )
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].set_ylabel("Z Position (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Tracking")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "02_tracking_position.png")
-    
+
     def generate_position_error_plot(self, plot_dir: Path) -> None:
         """Generate position error plot."""
         fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
         fig.suptitle(f"Position Error - {self.system_title}")
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
+
         # Calculate errors
-        error_x = self._col("Current_X") - self._col("Target_X")
-        error_y = self._col("Current_Y") - self._col("Target_Y")
-        error_z = self._col("Current_Z") - self._col("Target_Z")
-        
+        error_x = self._col("Current_X") - self._col("Reference_X")
+        error_y = self._col("Current_Y") - self._col("Reference_Y")
+        error_z = self._col("Current_Z") - self._col("Reference_Z")
+
         # X error
         axes[0].plot(
             time,
@@ -206,7 +206,7 @@ class PlotGenerator:
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[0].set_title("X Position Error")
-        
+
         # Y error
         axes[1].plot(
             time,
@@ -220,7 +220,7 @@ class PlotGenerator:
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[1].set_title("Y Position Error")
-        
+
         # Z error
         axes[2].plot(
             time,
@@ -235,16 +235,16 @@ class PlotGenerator:
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Error")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "02_error_position.png")
-    
+
     def generate_angular_tracking_plot(self, plot_dir: Path) -> None:
         """Generate angular tracking plot."""
         fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
         fig.suptitle(f"Angular Tracking - {self.system_title}")
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
+
         # Roll tracking
         axes[0].plot(
             time,
@@ -255,17 +255,17 @@ class PlotGenerator:
         )
         axes[0].plot(
             time,
-            np.degrees(self._col("Target_Roll")),
+            np.degrees(self._col("Reference_Roll")),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Roll",
+            label="Reference Roll",
         )
         axes[0].set_ylabel("Roll (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[0].set_title("Roll Tracking")
-        
+
         # Pitch tracking
         axes[1].plot(
             time,
@@ -276,17 +276,17 @@ class PlotGenerator:
         )
         axes[1].plot(
             time,
-            np.degrees(self._col("Target_Pitch")),
+            np.degrees(self._col("Reference_Pitch")),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Pitch",
+            label="Reference Pitch",
         )
         axes[1].set_ylabel("Pitch (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[1].set_title("Pitch Tracking")
-        
+
         # Yaw tracking
         axes[2].plot(
             time,
@@ -297,37 +297,37 @@ class PlotGenerator:
         )
         axes[2].plot(
             time,
-            np.degrees(self._col("Target_Yaw")),
+            np.degrees(self._col("Reference_Yaw")),
             color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=PlotStyle.LINEWIDTH,
-            label="Target Yaw",
+            label="Reference Yaw",
         )
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].set_ylabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Tracking")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "02_tracking_attitude.png")
-    
+
     def generate_angular_error_plot(self, plot_dir: Path) -> None:
         """Generate angular error plot."""
         fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
         fig.suptitle(f"Angular Error - {self.system_title}")
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
+
         # Calculate errors
-        error_roll = self._col("Current_Roll") - self._col("Target_Roll")
-        error_pitch = self._col("Current_Pitch") - self._col("Target_Pitch")
-        error_yaw = self._col("Current_Yaw") - self._col("Target_Yaw")
-        
+        error_roll = self._col("Current_Roll") - self._col("Reference_Roll")
+        error_pitch = self._col("Current_Pitch") - self._col("Reference_Pitch")
+        error_yaw = self._col("Current_Yaw") - self._col("Reference_Yaw")
+
         # Normalize angles to [-180, 180] degrees
         error_roll = np.degrees(np.arctan2(np.sin(error_roll), np.cos(error_roll)))
         error_pitch = np.degrees(np.arctan2(np.sin(error_pitch), np.cos(error_pitch)))
         error_yaw = np.degrees(np.arctan2(np.sin(error_yaw), np.cos(error_yaw)))
-        
+
         # Roll error
         axes[0].plot(
             time,
@@ -341,7 +341,7 @@ class PlotGenerator:
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[0].set_title("Roll Error")
-        
+
         # Pitch error
         axes[1].plot(
             time,
@@ -355,7 +355,7 @@ class PlotGenerator:
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[1].set_title("Pitch Error")
-        
+
         # Yaw error
         axes[2].plot(
             time,
@@ -370,7 +370,7 @@ class PlotGenerator:
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Error")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "02_error_attitude.png")
 
     def generate_error_norms_plot(self, plot_dir: Path) -> None:
@@ -420,7 +420,9 @@ class PlotGenerator:
             linewidth=PlotStyle.LINEWIDTH,
             label="Velocity Error Norm",
         )
-        axes[0, 1].set_ylabel("Velocity Error (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0, 1].set_ylabel(
+            "Velocity Error (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+        )
         axes[0, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
@@ -431,7 +433,9 @@ class PlotGenerator:
             linewidth=PlotStyle.LINEWIDTH,
             label="Attitude Error Norm",
         )
-        axes[1, 0].set_ylabel("Attitude Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 0].set_ylabel(
+            "Attitude Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+        )
         axes[1, 0].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1, 0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1, 0].legend(fontsize=PlotStyle.LEGEND_SIZE)
@@ -443,27 +447,29 @@ class PlotGenerator:
             linewidth=PlotStyle.LINEWIDTH,
             label="Angular Rate Error Norm",
         )
-        axes[1, 1].set_ylabel("Angular Rate Error (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1, 1].set_ylabel(
+            "Angular Rate Error (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+        )
         axes[1, 1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
         PlotStyle.save_figure(fig, plot_dir / "02_error_norms.png")
-    
+
     def generate_trajectory_plot(self, plot_dir: Path) -> None:
         """Generate trajectory plot."""
         fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-        
+
         x_pos = self._col("Current_X")
         y_pos = self._col("Current_Y")
         z_pos = self._col("Current_Z")
-        target_x_col = self._col("Target_X")
-        target_y_col = self._col("Target_Y")
-        target_z_col = self._col("Target_Z")
-        target_x = target_x_col[0] if len(target_x_col) > 0 else 0.0
-        target_y = target_y_col[0] if len(target_y_col) > 0 else 0.0
-        target_z = target_z_col[0] if len(target_z_col) > 0 else 0.0
-        
+        reference_x_col = self._col("Reference_X")
+        reference_y_col = self._col("Reference_Y")
+        reference_z_col = self._col("Reference_Z")
+        reference_x = reference_x_col[0] if len(reference_x_col) > 0 else 0.0
+        reference_y = reference_y_col[0] if len(reference_y_col) > 0 else 0.0
+        reference_z = reference_z_col[0] if len(reference_z_col) > 0 else 0.0
+
         # Plot trajectory X-Y
         ax_xy = axes[0]
         ax_xy.plot(
@@ -491,21 +497,21 @@ class PlotGenerator:
                 markersize=PlotStyle.MARKER_SIZE,
                 label="Final Position",
             )
-        ax_xy.plot(target_x, target_y, "r*", markersize=20, label="Target")
-        
-        # Add target circle
+        ax_xy.plot(reference_x, reference_y, "r*", markersize=20, label="Reference")
+
+        # Add reference circle
         circle = Circle(
-            (target_x, target_y),
+            (reference_x, reference_y),
             0.1,
             color=PlotStyle.COLOR_TARGET,
             fill=False,
             linewidth=PlotStyle.LINEWIDTH,
             linestyle="--",
             alpha=0.7,
-            label="Target Zone (±0.1m)",
+            label="Reference Zone (±0.1m)",
         )
         ax_xy.add_patch(circle)
-        
+
         ax_xy.set_xlim(-3, 3)
         ax_xy.set_ylim(-3, 3)
         ax_xy.set_xlabel("X Position (meters)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -514,7 +520,7 @@ class PlotGenerator:
         ax_xy.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax_xy.legend(fontsize=PlotStyle.LEGEND_SIZE)
         ax_xy.set_aspect("equal")
-        
+
         # Plot trajectory X-Z
         ax_xz = axes[1]
         ax_xz.plot(
@@ -542,20 +548,20 @@ class PlotGenerator:
                 markersize=PlotStyle.MARKER_SIZE,
                 label="Final Position",
             )
-        ax_xz.plot(target_x, target_z, "r*", markersize=20, label="Target")
-        
+        ax_xz.plot(reference_x, reference_z, "r*", markersize=20, label="Reference")
+
         circle_xz = Circle(
-            (target_x, target_z),
+            (reference_x, reference_z),
             0.1,
             color=PlotStyle.COLOR_TARGET,
             fill=False,
             linewidth=PlotStyle.LINEWIDTH,
             linestyle="--",
             alpha=0.7,
-            label="Target Zone (±0.1m)",
+            label="Reference Zone (±0.1m)",
         )
         ax_xz.add_patch(circle_xz)
-        
+
         ax_xz.set_xlim(-3, 3)
         ax_xz.set_ylim(-3, 3)
         ax_xz.set_xlabel("X Position (meters)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -564,34 +570,35 @@ class PlotGenerator:
         ax_xz.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax_xz.legend(fontsize=PlotStyle.LEGEND_SIZE)
         ax_xz.set_aspect("equal")
-        
+
         # Add distance info
         if len(x_pos) > 0 and len(y_pos) > 0 and len(z_pos) > 0:
             final_distance = np.sqrt(
-                (x_pos[-1] - target_x) ** 2
-                + (y_pos[-1] - target_y) ** 2
-                + (z_pos[-1] - target_z) ** 2
+                (x_pos[-1] - reference_x) ** 2
+                + (y_pos[-1] - reference_y) ** 2
+                + (z_pos[-1] - reference_z) ** 2
             )
         else:
             final_distance = 0.0
         ax_xy.text(
             0.02,
             0.98,
-            f"Final Distance to Target: {final_distance:.3f}m",
+            f"Final Distance to Reference: {final_distance:.3f}m",
             transform=ax_xy.transAxes,
             fontsize=PlotStyle.ANNOTATION_SIZE,
             verticalalignment="top",
             bbox=PlotStyle.TEXTBOX_STYLE,
         )
-        
+
         PlotStyle.save_figure(fig, plot_dir / "01_trajectory_2d.png")
-    
+
     def generate_trajectory_3d_interactive_plot(self, plot_dir: Path) -> None:
         """Generate interactive 3D trajectory plot (HTML)."""
         try:
             import plotly.graph_objects as go
         except ImportError:
             import sys
+
             print(
                 "Plotly not installed; skipping interactive 3D trajectory plot.",
                 file=sys.stderr,
@@ -605,12 +612,12 @@ class PlotGenerator:
             print("No trajectory data available for interactive 3D plot.")
             return
 
-        target_x_col = self._col("Target_X")
-        target_y_col = self._col("Target_Y")
-        target_z_col = self._col("Target_Z")
-        target_x = float(target_x_col[0]) if len(target_x_col) > 0 else 0.0
-        target_y = float(target_y_col[0]) if len(target_y_col) > 0 else 0.0
-        target_z = float(target_z_col[0]) if len(target_z_col) > 0 else 0.0
+        reference_x_col = self._col("Reference_X")
+        reference_y_col = self._col("Reference_Y")
+        reference_z_col = self._col("Reference_Z")
+        reference_x = float(reference_x_col[0]) if len(reference_x_col) > 0 else 0.0
+        reference_y = float(reference_y_col[0]) if len(reference_y_col) > 0 else 0.0
+        reference_z = float(reference_z_col[0]) if len(reference_z_col) > 0 else 0.0
 
         fig = go.Figure()
         fig.add_trace(
@@ -645,12 +652,12 @@ class PlotGenerator:
         )
         fig.add_trace(
             go.Scatter3d(
-                x=[target_x],
-                y=[target_y],
-                z=[target_z],
+                x=[reference_x],
+                y=[reference_y],
+                z=[reference_z],
                 mode="markers",
                 marker=dict(size=6, color=PlotStyle.COLOR_TARGET, symbol="x"),
-                name="Target",
+                name="Reference",
             )
         )
 
@@ -663,18 +670,20 @@ class PlotGenerator:
                 aspectmode="data",
             ),
             legend=dict(itemsizing="constant"),
-            margin=dict(l=0, r=0, t=60, b=0), # Increase top margin for text
+            margin=dict(l=0, r=0, t=60, b=0),  # Increase top margin for text
         )
 
         # Add instructions annotation
         fig.add_annotation(
             text="Double-click this file to open in browser. Scroll to zoom, drag to rotate.",
-            xref="paper", yref="paper",
-            x=0.5, y=0.98,
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.98,
             showarrow=False,
             font=dict(size=14, color="gray"),
             bgcolor="white",
-            opacity=0.8
+            opacity=0.8,
         )
 
         # Save to parent directory (outside 'Plots')
@@ -682,7 +691,6 @@ class PlotGenerator:
         fig.write_html(output_path, include_plotlyjs="cdn")
         print(f"Interactive 3D plot saved to: {output_path}")
 
-        
         output_path = plot_dir / "00_mission_dashboard.html"
         fig.write_html(output_path, include_plotlyjs="cdn")
         print(f"Interactive mission dashboard saved to: {output_path}")
@@ -695,20 +703,36 @@ class PlotGenerator:
         if len(x_pos) == 0 or len(y_pos) == 0 or len(z_pos) == 0:
             return
 
-        target_x_col = self._col("Target_X")
-        target_y_col = self._col("Target_Y")
-        target_z_col = self._col("Target_Z")
-        target_x = float(target_x_col[0]) if len(target_x_col) > 0 else 0.0
-        target_y = float(target_y_col[0]) if len(target_y_col) > 0 else 0.0
-        target_z = float(target_z_col[0]) if len(target_z_col) > 0 else 0.0
+        reference_x_col = self._col("Reference_X")
+        reference_y_col = self._col("Reference_Y")
+        reference_z_col = self._col("Reference_Z")
+        reference_x = float(reference_x_col[0]) if len(reference_x_col) > 0 else 0.0
+        reference_y = float(reference_y_col[0]) if len(reference_y_col) > 0 else 0.0
+        reference_z = float(reference_z_col[0]) if len(reference_z_col) > 0 else 0.0
 
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection="3d")
 
         ax.plot(x_pos, y_pos, z_pos, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=2)
-        ax.scatter(x_pos[0], y_pos[0], z_pos[0], color=PlotStyle.COLOR_SUCCESS, s=40, label="Start")
-        ax.scatter(x_pos[-1], y_pos[-1], z_pos[-1], color=PlotStyle.COLOR_ERROR, s=40, label="End")
-        ax.scatter(target_x, target_y, target_z, color=PlotStyle.COLOR_TARGET, s=60, marker="*")
+        ax.scatter(
+            x_pos[0],
+            y_pos[0],
+            z_pos[0],
+            color=PlotStyle.COLOR_SUCCESS,
+            s=40,
+            label="Start",
+        )
+        ax.scatter(
+            x_pos[-1],
+            y_pos[-1],
+            z_pos[-1],
+            color=PlotStyle.COLOR_ERROR,
+            s=40,
+            label="End",
+        )
+        ax.scatter(
+            reference_x, reference_y, reference_z, color=PlotStyle.COLOR_TARGET, s=60, marker="*"
+        )
 
         roll = self._col("Current_Roll")
         pitch = self._col("Current_Pitch")
@@ -723,11 +747,16 @@ class PlotGenerator:
             if self.app_config and self.app_config.physics:
                 arrow_len = float(self.app_config.physics.satellite_size) * 0.2
             else:
-                from src.satellite_control.config.simulation_config import SimulationConfig
+                from src.satellite_control.config.simulation_config import (
+                    SimulationConfig,
+                )
 
-                arrow_len = float(
-                    SimulationConfig.create_default().app_config.physics.satellite_size
-                ) * 0.2
+                arrow_len = (
+                    float(
+                        SimulationConfig.create_default().app_config.physics.satellite_size
+                    )
+                    * 0.2
+                )
         except Exception:
             pass
 
@@ -760,7 +789,7 @@ class PlotGenerator:
         ax.legend()
 
         PlotStyle.save_figure(fig, plot_dir / "01_trajectory_3d_orientation.png")
-    
+
     def generate_thruster_usage_plot(self, plot_dir: Path) -> None:
         """Generate thruster usage plot using actual valve states."""
         fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
@@ -793,7 +822,7 @@ class PlotGenerator:
             # Use actual valve states - most accurate for PWM
             data_source = "actual valve"
             for i in range(thruster_count):
-                col_name = f"Thruster_{i+1}_Val"
+                col_name = f"Thruster_{i + 1}_Val"
                 vals = self._col(col_name)
                 try:
                     vals = np.array([float(x) for x in vals])
@@ -839,7 +868,9 @@ class PlotGenerator:
                 va="bottom",
                 fontsize=PlotStyle.ANNOTATION_SIZE,
                 fontfamily=(
-                    PlotStyle.FONT_FAMILY if hasattr(PlotStyle, "FONT_FAMILY") else "serif"
+                    PlotStyle.FONT_FAMILY
+                    if hasattr(PlotStyle, "FONT_FAMILY")
+                    else "serif"
                 ),
             )
 
@@ -866,7 +897,7 @@ class PlotGenerator:
         )
 
         PlotStyle.save_figure(fig, plot_dir / "03_thruster_usage.png")
-    
+
     def generate_thruster_valve_activity_plot(self, plot_dir: Path) -> None:
         """Generate detailed valve activity plot for each thruster (0.0 to 1.0)."""
         # Check if we have valve data
@@ -962,7 +993,9 @@ class PlotGenerator:
             ax_top.set_yticklabels(["OFF", "ON"])
             ax_top.grid(True, alpha=0.3)
             ax_top.set_ylabel("Valve State")
-            ax_top.set_title(f"Thruster {thruster_id} - {self.system_title}", fontsize=12)
+            ax_top.set_title(
+                f"Thruster {thruster_id} - {self.system_title}", fontsize=12
+            )
 
             # Bottom plot: Commanded duty cycle (u value)
             ax_bot.plot(
@@ -1001,7 +1034,7 @@ class PlotGenerator:
             bbox_inches="tight",
         )
         plt.close()
-    
+
     def generate_pwm_quantization_plot(self, plot_dir: Path) -> None:
         """Generate PWM duty cycle plot showing MPC u-values vs time."""
         # Use control_data which has the actual MPC outputs per control step
@@ -1071,7 +1104,9 @@ class PlotGenerator:
                 linewidth=1.5,
                 alpha=0.9,
             )
-            ax.fill_between(time, 0, duty_cycles, step="post", color=colors[i], alpha=0.3)
+            ax.fill_between(
+                time, 0, duty_cycles, step="post", color=colors[i], alpha=0.3
+            )
 
             # Add horizontal lines at key duty cycle levels
             ax.axhline(y=0.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
@@ -1079,7 +1114,9 @@ class PlotGenerator:
             ax.axhline(y=1.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
 
             # Find intermediate values (not 0 or 1)
-            intermediate = [(t, u) for t, u in zip(time, duty_cycles) if 0.01 < u < 0.99]
+            intermediate = [
+                (t, u) for t, u in zip(time, duty_cycles) if 0.01 < u < 0.99
+            ]
             if intermediate:
                 all_intermediate_values.extend([u for _, u in intermediate])
                 # Mark intermediate points with dots
@@ -1155,7 +1192,7 @@ class PlotGenerator:
         """Fallback: Generate PWM plot from physics_data Thruster_X_Cmd columns."""
         # This shows binary valve states, not continuous duty cycles
         pass
-    
+
     def _get_thruster_count(self) -> int:
         """Determine thruster count based on available data or config."""
         cols: list[str] = []
@@ -1163,7 +1200,10 @@ class PlotGenerator:
             hasattr(self.data_accessor, "_data_backend")
             and self.data_accessor._data_backend == "pandas"
         ):
-            if hasattr(self.data_accessor, "data") and self.data_accessor.data is not None:
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
                 cols = list(self.data_accessor.data.columns)
         elif (
             hasattr(self.data_accessor, "_col_data")
@@ -1201,7 +1241,10 @@ class PlotGenerator:
                 return len(self.app_config.physics.thruster_positions)
             else:
                 # V4.0.0: Use default config if app_config not available
-                from src.satellite_control.config.simulation_config import SimulationConfig
+                from src.satellite_control.config.simulation_config import (
+                    SimulationConfig,
+                )
+
                 default_config = SimulationConfig.create_default()
                 return len(default_config.app_config.physics.thruster_positions)
         except Exception:
@@ -1209,10 +1252,10 @@ class PlotGenerator:
 
     def _parse_command_vector(self, command_str: Any) -> np.ndarray:
         """Parse command vector string to numpy array.
-        
+
         Args:
             command_str: String representation of command vector (or any type)
-        
+
         Returns:
             numpy array of thruster commands
         """
@@ -1220,23 +1263,23 @@ class PlotGenerator:
             # Handle None or empty
             if command_str is None or command_str == "":
                 return np.zeros(self._get_thruster_count())
-            
+
             # Convert to string if not already
             command_str = str(command_str)
-            
+
             # Remove brackets and split
             command_str = command_str.strip("[]")
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
             return np.zeros(self._get_thruster_count())
-    
+
     def generate_control_effort_plot(self, plot_dir: Path) -> None:
         """Generate control effort plot."""
         fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
+
         # Parse command vectors
         command_data = []
         for idx in range(self._get_len()):
@@ -1244,7 +1287,7 @@ class PlotGenerator:
             cmd_vec = self._parse_command_vector(row["Command_Vector"])
             command_data.append(cmd_vec)
         command_matrix = np.array(command_data)
-        
+
         total_effort_per_step = np.sum(command_matrix, axis=1)
         ax.plot(
             time,
@@ -1258,7 +1301,7 @@ class PlotGenerator:
         ax.set_title(f"Control Effort Over Time - {self.system_title}")
         ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
-        
+
         PlotStyle.save_figure(fig, plot_dir / "03_control_effort.png")
 
     def generate_reaction_wheel_output_plot(self, plot_dir: Path) -> None:
@@ -1296,7 +1339,9 @@ class PlotGenerator:
             dt_val = df["CONTROL_DT"].iloc[0]
             time = np.arange(len(df)) * float(dt_val)
         else:
-            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(
+                self.dt
+            )
 
         base_len = len(time)
         if base_len == 0:
@@ -1408,7 +1453,9 @@ class PlotGenerator:
             dt_val = df["CONTROL_DT"].iloc[0]
             time = np.arange(len(df)) * float(dt_val)
         else:
-            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(
+                self.dt
+            )
 
         # Thruster command envelope
         command_vectors = []
@@ -1418,8 +1465,12 @@ class PlotGenerator:
         else:
             for idx in range(self._get_len()):
                 row = self._row(idx)
-                command_vectors.append(self._parse_command_vector(row.get("Command_Vector")))
-        command_matrix = np.array(command_vectors) if command_vectors else np.zeros((0, 0))
+                command_vectors.append(
+                    self._parse_command_vector(row.get("Command_Vector"))
+                )
+        command_matrix = (
+            np.array(command_vectors) if command_vectors else np.zeros((0, 0))
+        )
 
         if command_matrix.size > 0:
             max_u = np.max(command_matrix, axis=1)
@@ -1439,7 +1490,9 @@ class PlotGenerator:
                 linewidth=PlotStyle.LINEWIDTH,
                 label="Sum Thruster Command",
             )
-            axes[0].axhline(y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit")
+            axes[0].axhline(
+                y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit"
+            )
             axes[0].set_ylabel("Command (0-1)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
             axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
             axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
@@ -1480,7 +1533,9 @@ class PlotGenerator:
         rw_z = normalize_series(get_series("RW_Torque_Z"))
 
         try:
-            from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
+            from src.satellite_control.config.reaction_wheel_config import (
+                get_reaction_wheel_config,
+            )
 
             max_rw = float(get_reaction_wheel_config().wheel_x.max_torque)
         except Exception:
@@ -1510,7 +1565,13 @@ class PlotGenerator:
             )
             if max_rw > 0:
                 axes[1].axhline(y=max_rw, color="black", linestyle="--", alpha=0.6)
-                axes[1].axhline(y=-max_rw, color="black", linestyle="--", alpha=0.6, label="RW Limit")
+                axes[1].axhline(
+                    y=-max_rw,
+                    color="black",
+                    linestyle="--",
+                    alpha=0.6,
+                    label="RW Limit",
+                )
             axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
             axes[1].set_ylabel("Torque (N*m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
             axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -1536,22 +1597,10 @@ class PlotGenerator:
 
         time = np.arange(self._get_len()) * float(self.dt)
 
-        try:
-            if self.app_config and self.app_config.mpc:
-                pos_bound = float(self.app_config.mpc.position_bounds)
-                max_vel = float(self.app_config.mpc.max_velocity)
-                max_ang_vel = float(self.app_config.mpc.max_angular_velocity)
-            else:
-                from src.satellite_control.config.simulation_config import SimulationConfig
-
-                cfg = SimulationConfig.create_default().app_config.mpc
-                pos_bound = float(cfg.position_bounds)
-                max_vel = float(cfg.max_velocity)
-                max_ang_vel = float(cfg.max_angular_velocity)
-        except Exception:
-            pos_bound = 0.0
-            max_vel = 0.0
-            max_ang_vel = 0.0
+        # V4.0.0: Use defaults as legacy limits are removed from config
+        pos_bound = 5.0
+        max_vel = 1.0
+        max_ang_vel = float(np.pi)
 
         x = self._col("Current_X")
         y = self._col("Current_Y")
@@ -1563,7 +1612,18 @@ class PlotGenerator:
         wy = self._col("Current_WY")
         wz = self._col("Current_WZ")
 
-        min_len = min(len(time), len(x), len(y), len(z), len(vx), len(vy), len(vz), len(wx), len(wy), len(wz))
+        min_len = min(
+            len(time),
+            len(x),
+            len(y),
+            len(z),
+            len(vx),
+            len(vy),
+            len(vz),
+            len(wx),
+            len(wy),
+            len(wz),
+        )
         if min_len == 0:
             for ax in axes:
                 ax.text(
@@ -1579,7 +1639,8 @@ class PlotGenerator:
             return
 
         pos_violation = np.maximum(
-            np.max(np.abs(np.vstack([x[:min_len], y[:min_len], z[:min_len]])), axis=0) - pos_bound,
+            np.max(np.abs(np.vstack([x[:min_len], y[:min_len], z[:min_len]])), axis=0)
+            - pos_bound,
             0.0,
         )
         vel_mag = np.sqrt(vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2)
@@ -1633,9 +1694,9 @@ class PlotGenerator:
         err_z = self._col("Error_Z")
         if len(err_z) == 0:
             current_z = self._col("Current_Z")
-            target_z = self._col("Target_Z")
-            min_len = min(len(current_z), len(target_z))
-            err_z = current_z[:min_len] - target_z[:min_len]
+            reference_z = self._col("Reference_Z")
+            min_len = min(len(current_z), len(reference_z))
+            err_z = current_z[:min_len] - reference_z[:min_len]
 
         roll = np.degrees(self._col("Current_Roll"))
         pitch = np.degrees(self._col("Current_Pitch"))
@@ -1693,7 +1754,9 @@ class PlotGenerator:
             label="VZ",
         )
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[2].set_ylabel("Vertical Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[2].set_ylabel(
+            "Vertical Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+        )
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
@@ -1734,7 +1797,9 @@ class PlotGenerator:
             dt_val = df["CONTROL_DT"].iloc[0]
             time = np.arange(len(df)) * float(dt_val)
         else:
-            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(
+                self.dt
+            )
 
         thruster_forces = {}
         thruster_dirs = {}
@@ -1743,7 +1808,9 @@ class PlotGenerator:
                 thruster_forces = self.app_config.physics.thruster_forces
                 thruster_dirs = self.app_config.physics.thruster_directions
             else:
-                from src.satellite_control.config.simulation_config import SimulationConfig
+                from src.satellite_control.config.simulation_config import (
+                    SimulationConfig,
+                )
 
                 cfg = SimulationConfig.create_default().app_config.physics
                 thruster_forces = cfg.thruster_forces
@@ -1779,7 +1846,9 @@ class PlotGenerator:
         else:
             for idx in range(self._get_len()):
                 row = self._row(idx)
-                command_vectors.append(self._parse_command_vector(row.get("Command_Vector")))
+                command_vectors.append(
+                    self._parse_command_vector(row.get("Command_Vector"))
+                )
         if not command_vectors:
             axes[0].text(
                 0.5,
@@ -1812,7 +1881,11 @@ class PlotGenerator:
 
         dt_steps = np.diff(time[:min_len], prepend=time[0])
         if min_len > 1:
-            fallback_dt = float(np.median(dt_steps[1:])) if np.any(dt_steps[1:]) else float(self.dt)
+            fallback_dt = (
+                float(np.median(dt_steps[1:]))
+                if np.any(dt_steps[1:])
+                else float(self.dt)
+            )
         else:
             fallback_dt = float(self.dt)
         if dt_steps[0] == 0:
@@ -1879,17 +1952,23 @@ class PlotGenerator:
         vy = self._col("Current_VY")
         vz = self._col("Current_VZ")
 
-        axes[0].plot(x, vx, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[0].plot(
+            x, vx, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[0].set_xlabel("X (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].set_ylabel("VX (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        axes[1].plot(y, vy, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[1].plot(
+            y, vy, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[1].set_xlabel("Y (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].set_ylabel("VY (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        axes[2].plot(z, vz, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH)
+        axes[2].plot(
+            z, vz, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[2].set_xlabel("Z (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].set_ylabel("VZ (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -1908,17 +1987,23 @@ class PlotGenerator:
         wy = np.degrees(self._col("Current_WY"))
         wz = np.degrees(self._col("Current_WZ"))
 
-        axes[0].plot(roll, wx, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[0].plot(
+            roll, wx, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[0].set_xlabel("Roll (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].set_ylabel("WX (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        axes[1].plot(pitch, wy, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[1].plot(
+            pitch, wy, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[1].set_xlabel("Pitch (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].set_ylabel("WY (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-        axes[2].plot(yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+        axes[2].plot(
+            yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        )
         axes[2].set_xlabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -2057,7 +2142,9 @@ class PlotGenerator:
             dt_val = df["CONTROL_DT"].iloc[0]
             time = np.arange(len(df)) * float(dt_val)
         else:
-            time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
+            time = np.arange(len(df) if df is not None else self._get_len()) * float(
+                self.dt
+            )
 
         if df is not None and "Waypoint_Number" in cols:
             waypoint_vals = df["Waypoint_Number"].values
@@ -2088,7 +2175,9 @@ class PlotGenerator:
         waypoint_vals = waypoint_vals[:min_len]
         phase_vals = phase_vals[:min_len]
 
-        axes[0].step(time, waypoint_vals, where="post", color=PlotStyle.COLOR_SIGNAL_POS)
+        axes[0].step(
+            time, waypoint_vals, where="post", color=PlotStyle.COLOR_SIGNAL_POS
+        )
         axes[0].set_ylabel("Waypoint #", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
@@ -2108,15 +2197,15 @@ class PlotGenerator:
         axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
         PlotStyle.save_figure(fig, plot_dir / "01_waypoint_progress.png")
-    
+
     def generate_velocity_tracking_plot(self, plot_dir: Path) -> None:
         """Generate velocity tracking over time plot."""
         fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
         fig.suptitle(f"Velocity Tracking - {self.system_title}")
-        
+
         time = np.arange(self._get_len()) * float(self.dt)
-        
-        def plot_velocity(ax, axis_label, current_col, target_col):
+
+        def plot_velocity(ax, axis_label, current_col, reference_col):
             current_vals = self._col(current_col)
             min_len = min(len(time), len(current_vals))
             if min_len == 0:
@@ -2128,32 +2217,34 @@ class PlotGenerator:
                 linewidth=PlotStyle.LINEWIDTH,
                 label=f"Current {axis_label}",
             )
-            target_vals = self._col(target_col)
-            if len(target_vals) > 0:
-                tgt_len = min(len(time), len(target_vals))
+            reference_vals = self._col(reference_col)
+            if len(reference_vals) > 0:
+                tgt_len = min(len(time), len(reference_vals))
                 ax.plot(
                     time[:tgt_len],
-                    target_vals[:tgt_len],
+                    reference_vals[:tgt_len],
                     color=PlotStyle.COLOR_TARGET,
                     linestyle="--",
                     linewidth=PlotStyle.LINEWIDTH,
-                    label=f"Target {axis_label}",
+                    label=f"Reference {axis_label}",
                 )
-            ax.set_ylabel(f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            ax.set_ylabel(
+                f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+            )
             ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
             ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
-        
-        plot_velocity(axes[0], "X", "Current_VX", "Target_VX")
-        plot_velocity(axes[1], "Y", "Current_VY", "Target_VY")
-        plot_velocity(axes[2], "Z", "Current_VZ", "Target_VZ")
+
+        plot_velocity(axes[0], "X", "Current_VX", "Reference_VX")
+        plot_velocity(axes[1], "Y", "Current_VY", "Reference_VY")
+        plot_velocity(axes[2], "Z", "Current_VZ", "Reference_VZ")
         axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        
+
         PlotStyle.save_figure(fig, plot_dir / "02_tracking_velocity.png")
-    
+
     def generate_velocity_magnitude_plot(self, plot_dir: Path) -> None:
         """Generate velocity magnitude over time plot (speed vs time)."""
         fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
-        
+
         n = self._get_len()
         if n < 2:
             ax.text(
@@ -2166,22 +2257,22 @@ class PlotGenerator:
             )
             PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
             return
-        
+
         time = np.arange(n) * float(self.dt)
-        
+
         # Calculate velocity magnitude
         vx = self._col("Current_VX")
         vy = self._col("Current_VY")
         vz = self._col("Current_VZ")
-        
+
         min_len = min(len(time), len(vx), len(vy), len(vz))
         if min_len == 0:
             return
-        
+
         velocity_magnitude = np.sqrt(
             vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2
         )
-        
+
         ax.plot(
             time[:min_len],
             velocity_magnitude,
@@ -2194,17 +2285,17 @@ class PlotGenerator:
         ax.set_title(f"Velocity Magnitude Over Time - {self.system_title}")
         ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
-        
+
         PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
-    
+
     def generate_mpc_performance_plot(self, plot_dir: Path) -> None:
         """Generate MPC performance plot."""
         fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
-        
+
         # Determine data source
         df = None
         cols = []
-        
+
         # Check for sibling control data first (dual-log mode)
         if (
             hasattr(self.data_accessor, "control_data")
@@ -2227,7 +2318,7 @@ class PlotGenerator:
             and self.data_accessor._col_data is not None
         ):
             cols = list(self.data_accessor._col_data.keys())
-        
+
         if "MPC_Computation_Time" in cols or "MPC_Solve_Time" in cols:
             # Determine time axis
             if df is not None and "Control_Time" in cols:
@@ -2236,8 +2327,10 @@ class PlotGenerator:
                 dt_val = df["CONTROL_DT"].iloc[0]
                 time = np.arange(len(df)) * float(dt_val)
             else:
-                time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
-            
+                time = np.arange(
+                    len(df) if df is not None else self._get_len()
+                ) * float(self.dt)
+
             # Get computation times
             if df is not None:
                 raw_comp_times = df.get(
@@ -2249,7 +2342,7 @@ class PlotGenerator:
                     if "MPC_Solve_Time" in cols
                     else self._col("MPC_Computation_Time")
                 )
-            
+
             comp_times = []
             for val in raw_comp_times:
                 try:
@@ -2257,7 +2350,7 @@ class PlotGenerator:
                 except (ValueError, TypeError):
                     comp_times.append(0.0)
             comp_times = np.array(comp_times)
-            
+
             # Optional: solver time limit per step
             limit_ms = None
             if "MPC_Solver_Time_Limit" in cols:
@@ -2272,7 +2365,7 @@ class PlotGenerator:
                     except (ValueError, TypeError):
                         limits.append(0.0)
                 limit_ms = np.array(limits)
-            
+
             ax.plot(
                 time,
                 comp_times,
@@ -2307,7 +2400,9 @@ class PlotGenerator:
                         label="Time Limit",
                     )
                 else:
-                    limit_val = float(limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms)
+                    limit_val = float(
+                        limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms
+                    )
                     if limit_val > 0:
                         ax.axhline(
                             y=limit_val,
@@ -2322,7 +2417,9 @@ class PlotGenerator:
                     exceeded_idx = []
                     for i, val in enumerate(exceeded_vals):
                         try:
-                            if bool(val) or (isinstance(val, str) and val.lower() == "true"):
+                            if bool(val) or (
+                                isinstance(val, str) and val.lower() == "true"
+                            ):
                                 exceeded_idx.append(i)
                         except Exception:
                             pass
@@ -2352,13 +2449,13 @@ class PlotGenerator:
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
             ax.set_title(f"MPC Computation Time - {self.system_title}")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "06_mpc_performance.png")
-    
+
     def generate_timing_intervals_plot(self, plot_dir: Path) -> None:
         """Generate timing intervals plot."""
         fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
-        
+
         # Check for sibling control data first (dual-log mode)
         df = None
         cols = []
@@ -2383,7 +2480,7 @@ class PlotGenerator:
             and self.data_accessor._col_data is not None
         ):
             cols = list(self.data_accessor._col_data.keys())
-        
+
         if "Actual_Time_Interval" in cols:
             # Determine time axis
             if df is not None and "Control_Time" in cols:
@@ -2392,19 +2489,21 @@ class PlotGenerator:
                 dt_val = df["CONTROL_DT"].iloc[0]
                 time = np.arange(len(df)) * float(dt_val)
             else:
-                time = np.arange(len(df) if df is not None else self._get_len()) * float(self.dt)
-            
+                time = np.arange(
+                    len(df) if df is not None else self._get_len()
+                ) * float(self.dt)
+
             # Get intervals
             if df is not None:
                 intervals = df["Actual_Time_Interval"].values
             else:
                 intervals = self._col("Actual_Time_Interval")
-            
-            # Determine target dt
-            target_dt = self.dt
+
+            # Determine reference dt
+            reference_dt = self.dt
             if df is not None and "CONTROL_DT" in cols:
-                target_dt = float(df["CONTROL_DT"].iloc[0])
-            
+                reference_dt = float(df["CONTROL_DT"].iloc[0])
+
             ax.plot(
                 time,
                 intervals,
@@ -2413,11 +2512,11 @@ class PlotGenerator:
                 label="Actual Intervals",
             )
             ax.axhline(
-                y=target_dt,
+                y=reference_dt,
                 color="r",
                 linestyle="--",
                 alpha=0.7,
-                label=f"Target: {target_dt:.3f}s",
+                label=f"Reference: {reference_dt:.3f}s",
             )
             ax.set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
             ax.set_ylabel("Time Interval (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
@@ -2435,5 +2534,5 @@ class PlotGenerator:
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
             ax.set_title(f"Timing Intervals - {self.system_title}")
-        
+
         PlotStyle.save_figure(fig, plot_dir / "06_timing_intervals.png")

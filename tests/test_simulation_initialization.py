@@ -89,9 +89,9 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
         )
 
         # Verify satellite was created
@@ -108,7 +108,7 @@ class TestSimulationInitializerInitialize:
     @patch("src.satellite_control.core.simulation_context.SimulationContext")
     @patch("src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer")
     @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
-    def test_initialize_target_state(
+    def test_initialize_reference_state(
         self,
         mock_satellite,
         mock_visualizer,
@@ -121,7 +121,7 @@ class TestSimulationInitializerInitialize:
         mock_simulation,
         simulation_config,
     ):
-        """Test that target state is initialized correctly."""
+        """Test that reference state is initialized correctly."""
         # Setup mocks
         mock_sat_instance = MagicMock()
         mock_sat_instance.dt = 0.005
@@ -135,23 +135,23 @@ class TestSimulationInitializerInitialize:
             simulation_config=simulation_config,
         )
 
-        target_pos = (2.0, 3.0)
-        target_angle = (0.1, 0.2, 0.3)
+        end_pos = (2.0, 3.0)
+        end_angle = (0.1, 0.2, 0.3)
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=target_pos,
+            end_pos=end_pos,
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=target_angle,
+            end_angle=end_angle,
         )
 
-        # Verify target state was set
-        assert hasattr(mock_simulation, "target_state")
-        assert mock_simulation.target_state.shape == (13,)
+        # Verify reference state was set
+        assert hasattr(mock_simulation, "reference_state")
+        assert mock_simulation.reference_state.shape == (13,)
         # Path-following uses the start position as the initial reference
-        assert np.allclose(mock_simulation.target_state[0:3], [1.0, 2.0, 0.0])
+        assert np.allclose(mock_simulation.reference_state[0:3], [1.0, 2.0, 0.0])
         # Check quaternion (should be non-zero for non-zero angle)
-        assert np.any(mock_simulation.target_state[3:7] != 0)
+        assert np.any(mock_simulation.reference_state[3:7] != 0)
 
 
     @patch("src.satellite_control.core.simulation_initialization.MPCController")
@@ -191,9 +191,9 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
         )
 
         # Verify timing attributes
@@ -242,9 +242,9 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
         )
 
         # Verify thruster manager was created
@@ -289,9 +289,9 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
         )
 
         # Verify MPC controller was created
@@ -337,9 +337,9 @@ class TestSimulationInitializerInitialize:
         # Initialize with None values (should use defaults)
         initializer.initialize(
             start_pos=None,
-            target_pos=None,
+            end_pos=None,
             start_angle=None,
-            target_angle=None,
+            end_angle=None,
         )
 
         # Verify initialization completed (satellite was created)
@@ -384,9 +384,9 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
             start_vx=0.1,
             start_vy=0.2,
             start_vz=0.05,
@@ -435,14 +435,14 @@ class TestSimulationInitializerInitialize:
 
         initializer.initialize(
             start_pos=(1.0, 2.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
         )
 
         # Verify all components were initialized
         assert hasattr(mock_simulation, "satellite")
-        assert hasattr(mock_simulation, "target_state")
+        assert hasattr(mock_simulation, "reference_state")
         assert hasattr(mock_simulation, "thruster_manager")
         assert hasattr(mock_simulation, "mpc_controller")
         assert hasattr(mock_simulation, "mission_state")

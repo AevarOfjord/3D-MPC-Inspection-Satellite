@@ -29,9 +29,9 @@ class TestSimulationContextInitialization:
         """Test that state arrays are initialized correctly."""
         context = SimulationContext()
         assert context.current_state.shape == (13,)
-        assert context.target_state.shape == (13,)
+        assert context.reference_state.shape == (13,)
         assert np.all(context.current_state == 0)
-        assert np.all(context.target_state == 0)
+        assert np.all(context.reference_state == 0)
 
     def test_context_lists(self):
         """Test that list fields are initialized correctly."""
@@ -43,14 +43,14 @@ class TestSimulationContextInitialization:
     def test_context_custom_values(self):
         """Test that SimulationContext can be created with custom values."""
         current_state = np.ones(13)
-        target_state = np.ones(13) * 2
+        reference_state = np.ones(13) * 2
         context = SimulationContext(
             simulation_time=1.5,
             dt=0.01,
             control_dt=0.2,
             step_number=10,
             current_state=current_state,
-            target_state=target_state,
+            reference_state=reference_state,
             mission_phase="APPROACHING",
             waypoint_number=2,
             last_control_update_time=1.4,
@@ -64,7 +64,7 @@ class TestSimulationContextInitialization:
         assert context.control_dt == 0.2
         assert context.step_number == 10
         assert np.all(context.current_state == current_state)
-        assert np.all(context.target_state == target_state)
+        assert np.all(context.reference_state == reference_state)
         assert context.mission_phase == "APPROACHING"
         assert context.waypoint_number == 2
         assert context.last_control_update_time == 1.4
@@ -81,13 +81,13 @@ class TestSimulationContextUpdateState:
         context = SimulationContext()
         new_time = 1.0
         new_state = np.ones(13)
-        new_target = np.ones(13) * 2
+        new_reference = np.ones(13) * 2
 
-        context.update_state(new_time, new_state, new_target)
+        context.update_state(new_time, new_state, new_reference)
 
         assert context.simulation_time == new_time
         assert np.all(context.current_state == new_state)
-        assert np.all(context.target_state == new_target)
+        assert np.all(context.reference_state == new_reference)
 
     def test_update_state_preserves_other_fields(self):
         """Test that update_state doesn't modify other fields."""

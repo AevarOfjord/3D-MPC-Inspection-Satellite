@@ -24,10 +24,10 @@ def mock_data_accessor():
             "Current_Y": 2.0,
             "Current_Z": 0.5,
             "Current_Yaw": 0.1,
-            "Target_X": 0.0,
-            "Target_Y": 0.0,
-            "Target_Z": 0.0,
-            "Target_Yaw": 0.0,
+            "Reference_X": 0.0,
+            "Reference_Y": 0.0,
+            "Reference_Z": 0.0,
+            "Reference_Yaw": 0.0,
             "Command_Vector": "",
             "Error_X": 0.0,
             "Error_Y": 0.0,
@@ -76,11 +76,11 @@ class TestVideoRendererInitialization:
             fps=30.0,
             output_dir=tmp_path / "output",
             satellite_color="red",
-            target_color="blue",
+            reference_color="blue",
             trajectory_color="green",
         )
         assert renderer.satellite_color == "red"
-        assert renderer.target_color == "blue"
+        assert renderer.reference_color == "blue"
         assert renderer.trajectory_color == "green"
 
     def test_video_renderer_with_thrusters(self, mock_data_accessor, tmp_path):
@@ -139,8 +139,8 @@ class TestVideoRendererDrawing:
         assert video_renderer.ax_xz is not None
 
     @patch("matplotlib.pyplot.subplots")
-    def test_draw_target(self, mock_subplots, video_renderer):
-        """Test drawing target."""
+    def test_draw_reference(self, mock_subplots, video_renderer):
+        """Test drawing reference."""
         mock_fig = MagicMock()
         mock_ax_xy = MagicMock()
         mock_ax_xz = MagicMock()
@@ -149,7 +149,9 @@ class TestVideoRendererDrawing:
         mock_subplots.return_value = (mock_fig, (mock_ax_xy, mock_ax_xz))
         video_renderer.setup_plot()
 
-        video_renderer.draw_target(target_x=0.0, target_y=0.0, target_z=0.0, target_yaw=0.0)
+        video_renderer.draw_reference(
+            reference_x=0.0, reference_y=0.0, reference_z=0.0, reference_yaw=0.0
+        )
 
         # Verify drawing methods were called
         assert video_renderer.ax_xy is not None

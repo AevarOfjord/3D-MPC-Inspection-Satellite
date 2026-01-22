@@ -22,7 +22,7 @@ function FinalStateMarker() {
   return (
     <TargetMarker 
       position={finalState.position} 
-      orientation={finalState.target_orientation} 
+      orientation={finalState.reference_orientation} 
       quaternion={finalState.quaternion}
       color="#4ade80" 
     />
@@ -32,23 +32,23 @@ function FinalStateMarker() {
 function Obstacles() {
   const [params, setParams] = useState<{
     obstacles: TelemetryData['obstacles'], 
-    targetPos: TelemetryData['target_position'],
-    targetOri: TelemetryData['target_orientation'],
-    targetQuat?: TelemetryData['target_quaternion'],
+    referencePos: TelemetryData['reference_position'],
+    referenceOri: TelemetryData['reference_orientation'],
+    referenceQuat?: TelemetryData['reference_quaternion'],
     scanObject?: TelemetryData['scan_object']
   } | null>(null);
 
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
-       if (!d || !d.target_position) return;
+       if (!d || !d.reference_position) return;
        // Check NaNs
-       if (d.target_position.some(v => !Number.isFinite(v))) return;
+       if (d.reference_position.some(v => !Number.isFinite(v))) return;
        
        setParams({ 
          obstacles: d.obstacles || [], 
-         targetPos: d.target_position,
-         targetOri: d.target_orientation || [0,0,0],
-         targetQuat: d.target_quaternion,
+         referencePos: d.reference_position,
+         referenceOri: d.reference_orientation || [0,0,0],
+         referenceQuat: d.reference_quaternion,
          scanObject: d.scan_object
        });
     });
@@ -60,9 +60,9 @@ function Obstacles() {
   return (
     <group>
       <TargetMarker
-        position={params.targetPos}
-        orientation={params.targetOri}
-        quaternion={params.targetQuat}
+        position={params.referencePos}
+        orientation={params.referenceOri}
+        quaternion={params.referenceQuat}
       />
       {params.scanObject && params.scanObject.type === 'cylinder' && (
         <group

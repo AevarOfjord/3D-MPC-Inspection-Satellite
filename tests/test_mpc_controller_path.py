@@ -1,10 +1,3 @@
-"""
-Unit tests for unified MPCController.
-
-Tests the MPCController class which provides Model Predictive Control
-for satellite thruster systems using linearized dynamics and OSQP.
-"""
-
 import numpy as np
 import pytest
 
@@ -45,6 +38,8 @@ def create_default_app_config(path_speed=0.1) -> AppConfig:
             r_thrust=0.1,
             r_rw_torque=0.1,
             path_speed=path_speed,
+            enable_collision_avoidance=False,
+            obstacle_margin=0.5,
         ),
         simulation=SimulationParams(
             dt=0.01,
@@ -57,63 +52,56 @@ def create_default_app_config(path_speed=0.1) -> AppConfig:
     )
 
 
-class TestMPCControllerInitialization:
-    """Test MPC controller initialization."""
+class TestMPCPathFollowing:
+    """Test MPC Path Following capabilities."""
 
-    def test_app_config_initialization(self):
-        """Test initialization with AppConfig (New Standard)."""
+    def test_path_following_initialization(self):
+        """Test initialization with Path Following Mode enabled."""
         cfg = create_default_app_config()
-        mpc = MPCController(cfg)
-
-        # Check key attributes
-        assert mpc.total_mass == 10.0
-        assert mpc.moment_of_inertia[0] == 0.1
-        assert mpc.prediction_horizon == 10
-        assert mpc.dt == 0.1
-        assert mpc.nx == 17
-        assert mpc.nu == 6  # 6 thrusters, 0 RWs by default in this helper
-
-
-
-    def test_thruster_precomputation(self):
-        """Test that thruster forces and torques are precomputed."""
-        cfg = create_default_app_config()
-
-        # Modify specific thruster for test
-        # T1 at (0.1, 0, 0) pointing (0, 1, 0)
-        # Torque = r x F = (0.1, 0, 0) x (0, 1, 0) = (0, 0, 0.1)
-        cfg.physics.thruster_positions[1] = (0.1, 0.0, 0.0)
-        cfg.physics.thruster_directions[1] = (0.0, 1.0, 0.0)
-        cfg.physics.thruster_forces[1] = 1.0
+        # mode_path_following is now enforced internally
 
         mpc = MPCController(cfg)
 
-        f1 = mpc.body_frame_forces[0]
-        assert f1[1] == pytest.approx(1.0)
+        assert mpc.mode_path_following is True
+        assert mpc.nx == 17  # 16 + 1 (s)
+        # nu might be 6 or augmented depending on C++ exposure, but python wrapper keeps it 6+RW
+        assert mpc.nu == 6
 
-        t1 = mpc.body_frame_torques[0]
-        assert t1[2] == pytest.approx(0.1)
-
-
-class TestControlAction:
-    """Test control action computation."""
-
-    def test_get_control_action_runs(self):
-        """Test that get_control_action calls OSQP solver and returns result."""
+    def test_set_path(self):
+        """Test setting path data."""
         cfg = create_default_app_config()
         mpc = MPCController(cfg)
 
+        # Define a simple path
+        path = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+
+        mpc.set_path(path)
+
+        # Check path length calculation
+        # distance is 2.0
+        assert mpc._path_length == pytest.approx(2.0)
+        assert mpc.s == 0.0
+        assert mpc._path_set is True
+
+    def test_get_control_action_mpcc(self):
+        """Test control action generation in MPCC mode."""
+        cfg = create_default_app_config()
+        mpc = MPCController(cfg)
+
+        # Set a path
+        path = [(0, 0, 0), (10, 0, 0)]
+        mpc.set_path(path)
+
+        # Current state: at start
         x_curr = np.zeros(16)
-        x_curr[3] = 1.0  # Valid quaternion
-
-        mpc.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)])
+        x_curr[3] = 1.0  # quat
 
         u, info = mpc.get_control_action(x_curr)
 
         assert u is not None
+        # Should return physical controls + extras
+        # Python wrapper strips v_s from return u
         assert len(u) == mpc.nu
+        assert "path_s" in info
+        assert "path_v_s" in info
         assert "solve_time" in info
-        assert info["status"] in [1, -1, -2]  # OSQP status codes
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

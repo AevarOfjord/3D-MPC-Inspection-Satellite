@@ -43,8 +43,8 @@ class TestLoadPreset:
 
         assert isinstance(config, dict)
         assert "mpc" in config
-        assert config["mpc"]["q_position"] == 2000.0
-        assert config["mpc"]["max_velocity"] == 0.8
+        assert config["mpc"]["Q_contour"] == 500.0
+        assert config["mpc"]["path_speed"] == 0.5
 
     def test_load_balanced_preset(self):
         """load_preset should load BALANCED preset."""
@@ -59,8 +59,8 @@ class TestLoadPreset:
 
         assert isinstance(config, dict)
         assert "mpc" in config
-        assert config["mpc"]["q_velocity"] == 15000.0
-        assert config["mpc"]["max_velocity"] == 0.3
+        assert config["mpc"]["Q_contour"] == 2000.0
+        assert config["mpc"]["path_speed"] == 0.05
 
     def test_load_precision_preset(self):
         """load_preset should load PRECISION preset."""
@@ -68,8 +68,8 @@ class TestLoadPreset:
 
         assert isinstance(config, dict)
         assert "mpc" in config
-        assert config["mpc"]["q_position"] == 5000.0
-        assert config["mpc"]["max_velocity"] == 0.2
+        assert config["mpc"]["Q_contour"] == 5000.0
+        assert config["mpc"]["path_speed"] == 0.02
 
     def test_invalid_preset(self):
         """load_preset should raise ValueError for invalid preset."""
@@ -142,32 +142,23 @@ class TestPresetCharacteristics:
         """FAST preset should have aggressive characteristics."""
         config = load_preset(ConfigPreset.FAST)
 
-        # Higher position weights
-        assert config["mpc"]["q_position"] >= 2000.0
-        # Lower velocity weights (allows faster movement)
-        assert config["mpc"]["q_velocity"] <= 5000.0
-        # Higher max velocities
-        assert config["mpc"]["max_velocity"] >= 0.8
+        # Higher progress weight and faster path speed
+        assert config["mpc"]["Q_progress"] >= 500.0
+        assert config["mpc"]["path_speed"] >= 0.5
 
     def test_stable_preset_characteristics(self):
         """STABLE preset should have conservative characteristics."""
         config = load_preset(ConfigPreset.STABLE)
 
-        # Higher velocity weights (smoother)
-        assert config["mpc"]["q_velocity"] >= 15000.0
-        # Lower max velocities
-        assert config["mpc"]["max_velocity"] <= 0.3
-        # Larger damping zone
-        assert config["mpc"]["damping_zone"] >= 0.4
+        # Higher contour and smoothness weights
+        assert config["mpc"]["Q_contour"] >= 2000.0
+        assert config["mpc"]["Q_smooth"] >= 50.0
+        assert config["mpc"]["path_speed"] <= 0.05
 
     def test_precision_preset_characteristics(self):
         """PRECISION preset should have very conservative characteristics."""
         config = load_preset(ConfigPreset.PRECISION)
 
-        # Very high weights
-        assert config["mpc"]["q_position"] >= 5000.0
-        assert config["mpc"]["q_velocity"] >= 20000.0
-        # Very low max velocities
-        assert config["mpc"]["max_velocity"] <= 0.2
-        # Very large damping zone
-        assert config["mpc"]["damping_zone"] >= 0.5
+        # Very high contour weight and very low path speed
+        assert config["mpc"]["Q_contour"] >= 5000.0
+        assert config["mpc"]["path_speed"] <= 0.02

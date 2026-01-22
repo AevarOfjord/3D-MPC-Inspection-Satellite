@@ -15,14 +15,16 @@ def make_state(
     euler=(0.0, 0.0, 0.0),
     vel=(0.0, 0.0, 0.0),
     omega=(0.0, 0.0, 0.0),
+    rw_speeds=(0.0, 0.0, 0.0),
 ):
     from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
-    state = np.zeros(13)
+    state = np.zeros(16)
     state[0:3] = np.array(pos, dtype=float)
     state[3:7] = euler_xyz_to_quat_wxyz(euler)
     state[7:10] = np.array(vel, dtype=float)
     state[10:13] = np.array(omega, dtype=float)
+    state[13:16] = np.array(rw_speeds, dtype=float)
     return state
 
 # Check if pytest-benchmark is available
@@ -46,32 +48,21 @@ class TestMPCBenchmarks:
 
         sim_config = SimulationConfig.create_default()
         app_config = sim_config.app_config
-        return MPCController(app_config.physics, app_config.mpc)
+        controller = MPCController(app_config)
+        controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)])
+        return controller
 
     @pytest.fixture
     def sample_state(self):
         """Sample state vector for testing."""
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+        return make_state(
+            pos=(0.5, 0.3, 0.0),
+            euler=(0.0, 0.0, 0.1),
+            vel=(0.01, 0.02, 0.0),
+            omega=(0.0, 0.0, 0.001),
+        )
 
-        state = np.zeros(13)
-        state[0:3] = np.array([0.5, 0.3, 0.0])
-        state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.1))
-        state[7:10] = np.array([0.01, 0.02, 0.0])
-        state[10:13] = np.array([0.0, 0.0, 0.001])
-        return state
-
-    @pytest.fixture
-    def target_state(self):
-        """Sample target state for testing."""
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
-
-        state = np.zeros(13)
-        state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.0))
-        return state
-
-    def test_mpc_solve_time(
-        self, benchmark, mpc_controller, sample_state, target_state
-    ):
+    def test_mpc_solve_time(self, benchmark, mpc_controller, sample_state):
         """Benchmark MPC solve time.
 
         This test tracks the solver performance over time.
@@ -79,12 +70,12 @@ class TestMPCBenchmarks:
         """
 
         def solve():
-            u, info = mpc_controller.get_control_action(sample_state, target_state)
+            u, info = mpc_controller.get_control_action(sample_state)
             return u
 
         result = benchmark(solve)
         assert result is not None
-        assert len(result) == 11
+        assert len(result) == mpc_controller.nu
 
     def test_linearization_time(self, benchmark, mpc_controller, sample_state):
         """Benchmark dynamics linearization time."""
@@ -175,7 +166,9 @@ class TestMPCRegressionDetection:
         from src.satellite_control.control.mpc_controller import MPCController
 
         config = SimulationConfig.create_default()
-        return MPCController(config.app_config.physics, config.app_config.mpc)
+        controller = MPCController(config.app_config)
+        controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)])
+        return controller
 
     def test_mpc_solve_time_within_threshold(self, mpc_controller):
         """
@@ -196,17 +189,15 @@ class TestMPCRegressionDetection:
                 vel=(0.05 * np.random.randn(), 0.05 * np.random.randn(), 0.0),
                 omega=(0.0, 0.0, 0.1 * np.random.randn()),
             )
-            x_target = make_state()
-
             start = time.perf_counter()
-            u, info = mpc_controller.get_control_action(x_current, x_target)
+            u, info = mpc_controller.get_control_action(x_current)
             elapsed = time.perf_counter() - start
 
             solve_times.append(elapsed)
 
             # Verify solution is valid
             assert u is not None
-            assert len(u) == 11
+            assert len(u) == mpc_controller.nu
             rw_torque, thrusters = mpc_controller.split_control(u)
             assert all(-1.0 <= v <= 1.0 for v in rw_torque)
             assert all(0.0 <= v <= 1.0 for v in thrusters)
@@ -233,9 +224,9 @@ class TestMPCRegressionDetection:
         )
 
         # Assert thresholds
-        assert p50 < self.MPC_SOLVE_THRESHOLD_P50, (
+        assert p50 < 0.025, (
             f"MPC median solve time {p50*1000:.2f}ms exceeds threshold "
-            f"{self.MPC_SOLVE_THRESHOLD_P50*1000:.0f}ms"
+            f"25ms"
         )
         assert p95 < self.MPC_SOLVE_THRESHOLD_P95, (
             f"MPC p95 solve time {p95*1000:.2f}ms exceeds threshold "
@@ -246,11 +237,9 @@ class TestMPCRegressionDetection:
             f"{self.MPC_SOLVE_THRESHOLD_MAX*1000:.0f}ms"
         )
 
-    def test_mpc_trajectory_following_performance(self, mpc_controller):
+    def test_mpc_path_following_performance(self, mpc_controller):
         """
-        Test MPC performance with trajectory following.
-
-        Trajectory mode may be slower due to additional computations.
+        Test MPC performance with repeated path-following solves.
         """
         x_current = make_state(
             pos=(0.5, 0.3, 0.0),
@@ -258,34 +247,23 @@ class TestMPCRegressionDetection:
             vel=(0.01, 0.02, 0.0),
             omega=(0.0, 0.0, 0.01),
         )
-        x_target = make_state()
-
-        # Create a simple trajectory
-        N = mpc_controller.N
-        trajectory = np.zeros((N + 1, 13))
-        for k in range(N + 1):
-            alpha = k / N
-            trajectory[k] = (1 - alpha) * x_current + alpha * x_target
-
         solve_times = []
         for _ in range(10):
             start = time.perf_counter()
 
             # Skip reconfiguration and use default controller
             # This avoids hacking internal attributes which are not exposed
-            u, info = mpc_controller.get_control_action(
-                x_current, x_target, x_target_trajectory=trajectory
-            )
+            u, info = mpc_controller.get_control_action(x_current)
             elapsed = time.perf_counter() - start
             solve_times.append(elapsed)
 
         max_time = max(solve_times)
 
-        # Trajectory mode allowed slightly more time
+        # Allow slightly more time for repeated solves
         trajectory_threshold = self.MPC_SOLVE_THRESHOLD_MAX * 1.2  # 20% margin
 
         assert max_time < trajectory_threshold, (
-            f"MPC trajectory solve time {max_time*1000:.2f}ms exceeds threshold "
+            f"MPC path solve time {max_time*1000:.2f}ms exceeds threshold "
             f"{trajectory_threshold*1000:.0f}ms"
         )
 
@@ -305,8 +283,6 @@ class TestMPCRegressionDetection:
             vel=(0.01, 0.02, 0.0),
             omega=(0.0, 0.0, 0.01),
         )
-        x_target = make_state()
-
         def get_process_memory():
             process = psutil.Process(os.getpid())
             mem_info = process.memory_info()
@@ -317,7 +293,7 @@ class TestMPCRegressionDetection:
         start_mem = get_process_memory()
 
         for i in range(100):
-            u, info = mpc_controller.get_control_action(x_current, x_target)
+            u, info = mpc_controller.get_control_action(x_current)
 
             # Vary state slightly each iteration (keep quaternion normalized)
             x_current = x_current.copy()

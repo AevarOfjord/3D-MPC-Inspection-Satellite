@@ -81,15 +81,14 @@ def mpc_params():
         "prediction_horizon": 15,
         "control_horizon": 12,
         "dt": 0.06,
-        "q_position": 1000.0,
-        "q_velocity": 1750.0,
-        "q_angle": 1000.0,
+        "q_contour": 50.0,
+        "q_progress": 10.0,
+        "q_smooth": 1.0,
         "q_angular_velocity": 1500.0,
+        "path_speed": 0.1,
         "r_thrust": 1.0,
         "r_switch": 0.0,
-        "max_velocity": 0.15,
-        "max_angular_velocity": np.pi / 2,
-        "position_bounds": 3.0,
+        "r_rw_torque": 0.1,
         "solver_time_limit": 0.05,
     }
 
@@ -123,8 +122,8 @@ def sample_state():
 
 
 @pytest.fixture
-def target_state():
-    """Provide a typical target state."""
+def reference_state():
+    """Provide a typical reference state."""
     from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     state = np.zeros(13)
@@ -194,9 +193,9 @@ def sample_csv_data(temp_data_dir):
         "Current_X": [0.0, 0.1, 0.2],
         "Current_Y": [0.0, 0.05, 0.1],
         "Current_Yaw": [0.0, 0.1, 0.2],
-        "Target_X": [1.0, 1.0, 1.0],
-        "Target_Y": [1.0, 1.0, 1.0],
-        "Target_Yaw": [0.0, 0.0, 0.0],
+        "Reference_X": [1.0, 1.0, 1.0],
+        "Reference_Y": [1.0, 1.0, 1.0],
+        "Reference_Yaw": [0.0, 0.0, 0.0],
         "Command_Vector": ["[0,0,0,0,0,0,0,0]"] * 3,
     }
 

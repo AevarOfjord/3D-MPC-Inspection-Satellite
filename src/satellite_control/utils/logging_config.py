@@ -166,7 +166,7 @@ def temporary_log_level(logger_name: str, level: int):
     Usage:
         with temporary_log_level("src.satellite_control.core.mpc_controller", logging.DEBUG):
             # Debug logging enabled here
-            mpc_controller.solve(state, target)
+            mpc_controller.get_control_action(state)
         # Original log level restored
     
     Args:

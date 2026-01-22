@@ -43,40 +43,33 @@ def _create_fast_mpc() -> MPCParams:
     Create FAST preset MPC parameters.
 
     Characteristics:
-    - Higher position/angle weights for aggressive tracking
-    - Lower velocity weights to allow faster movement
-    - Lower thrust penalty to allow more aggressive control
-    - Higher max velocities
+    - High progress weight (speed)
+    - Lower contouring weight (can cut corners slightly)
+    - Lower smoothness weight (aggressive control)
+    - Higher path speed
     """
     return MPCParams(
-        prediction_horizon=40,  # Slightly shorter for speed
+        prediction_horizon=40,
         control_horizon=40,
         dt=timing.CONTROL_DT,
         solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
         solver_type=Constants.MPC_SOLVER_TYPE,
-        q_position=2000.0,  # Higher position weight
-        q_velocity=5000.0,  # Lower velocity weight (allows faster movement)
-        q_angle=2000.0,  # Higher angle weight
-        q_angular_velocity=1000.0,  # Lower angular velocity weight
-        r_thrust=0.5,  # Lower thrust penalty (more aggressive)
-        max_velocity=0.8,  # Higher max velocity
-        max_angular_velocity=2.0,  # Higher max angular velocity
-        position_bounds=Constants.POSITION_BOUNDS,
-        damping_zone=0.15,  # Smaller damping zone
-        velocity_threshold=0.05,
-        max_velocity_weight=500.0,  # Lower velocity weight near target
+        # MPCC Weights
+        Q_contour=500.0,
+        Q_progress=500.0,
+        Q_smooth=1.0,
+        q_angular_velocity=100.0,
+        r_thrust=0.01,
         thruster_type=Constants.THRUSTER_TYPE,
+        path_speed=0.5,
+        enable_collision_avoidance=False,
+        obstacle_margin=0.5,
     )
 
 
 def _create_balanced_mpc() -> MPCParams:
     """
     Create BALANCED preset MPC parameters (default).
-
-    Characteristics:
-    - Balanced weights for good performance
-    - Moderate velocities
-    - Standard settings
     """
     return MPCParams(
         prediction_horizon=Constants.MPC_PREDICTION_HORIZON,
@@ -84,80 +77,65 @@ def _create_balanced_mpc() -> MPCParams:
         dt=timing.CONTROL_DT,
         solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
         solver_type=Constants.MPC_SOLVER_TYPE,
-        q_position=Constants.Q_POSITION,
-        q_velocity=Constants.Q_VELOCITY,
-        q_angle=Constants.Q_ANGLE,
+        # MPCC Weights
+        Q_contour=1000.0,
+        Q_progress=100.0,
+        Q_smooth=10.0,
         q_angular_velocity=Constants.Q_ANGULAR_VELOCITY,
         r_thrust=Constants.R_THRUST,
-        max_velocity=Constants.MAX_VELOCITY,
-        max_angular_velocity=Constants.MAX_ANGULAR_VELOCITY,
-        position_bounds=Constants.POSITION_BOUNDS,
-        damping_zone=Constants.DAMPING_ZONE,
-        velocity_threshold=Constants.VELOCITY_THRESHOLD,
-        max_velocity_weight=Constants.MAX_VELOCITY_WEIGHT,
+        r_rw_torque=Constants.R_RW_TORQUE,
         thruster_type=Constants.THRUSTER_TYPE,
+        path_speed=timing.DEFAULT_PATH_SPEED,
+        enable_collision_avoidance=False,
+        obstacle_margin=0.5,
     )
 
 
 def _create_stable_mpc() -> MPCParams:
     """
     Create STABLE preset MPC parameters.
-
-    Characteristics:
-    - Higher velocity weights for smoother movement
-    - Higher thrust penalty to reduce aggressive control
-    - Lower max velocities for stability
-    - Larger damping zone for smoother approach
     """
     return MPCParams(
-        prediction_horizon=50,  # Longer horizon for stability
+        prediction_horizon=50,
         control_horizon=50,
         dt=timing.CONTROL_DT,
         solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
         solver_type=Constants.MPC_SOLVER_TYPE,
-        q_position=1000.0,  # Standard position weight
-        q_velocity=15000.0,  # Higher velocity weight (smoother)
-        q_angle=1000.0,  # Standard angle weight
-        q_angular_velocity=2000.0,  # Higher angular velocity weight
-        r_thrust=2.0,  # Higher thrust penalty (less aggressive)
-        max_velocity=0.3,  # Lower max velocity
-        max_angular_velocity=1.0,  # Lower max angular velocity
-        position_bounds=Constants.POSITION_BOUNDS,
-        damping_zone=0.4,  # Larger damping zone
-        velocity_threshold=0.02,
-        max_velocity_weight=2000.0,  # Higher velocity weight near target
+        # MPCC Weights
+        Q_contour=2000.0,
+        Q_progress=50.0,
+        Q_smooth=50.0,
+        q_angular_velocity=2000.0,
+        r_thrust=1.0,
+        r_rw_torque=2.0,
         thruster_type=Constants.THRUSTER_TYPE,
+        path_speed=0.05,
+        enable_collision_avoidance=False,
+        obstacle_margin=0.5,
     )
 
 
 def _create_precision_mpc() -> MPCParams:
     """
     Create PRECISION preset MPC parameters.
-
-    Characteristics:
-    - Very high position/angle weights for precision
-    - Very high velocity weights for smooth movement
-    - Very low max velocities for precise control
-    - Large damping zone for smooth approach
     """
     return MPCParams(
-        prediction_horizon=60,  # Longer horizon for precision
+        prediction_horizon=60,
         control_horizon=60,
         dt=timing.CONTROL_DT,
         solver_time_limit=Constants.MPC_SOLVER_TIME_LIMIT,
         solver_type=Constants.MPC_SOLVER_TYPE,
-        q_position=5000.0,  # Very high position weight
-        q_velocity=20000.0,  # Very high velocity weight
-        q_angle=5000.0,  # Very high angle weight
-        q_angular_velocity=3000.0,  # Very high angular velocity weight
-        r_thrust=3.0,  # High thrust penalty (conservative)
-        max_velocity=0.2,  # Very low max velocity
-        max_angular_velocity=0.5,  # Very low max angular velocity
-        position_bounds=Constants.POSITION_BOUNDS,
-        damping_zone=0.5,  # Very large damping zone
-        velocity_threshold=0.01,
-        max_velocity_weight=5000.0,  # Very high velocity weight near target
+        # MPCC Weights
+        Q_contour=5000.0,
+        Q_progress=10.0,
+        Q_smooth=100.0,
+        q_angular_velocity=5000.0,
+        r_thrust=5.0,
+        r_rw_torque=5.0,
         thruster_type=Constants.THRUSTER_TYPE,
+        path_speed=0.02,
+        enable_collision_avoidance=False,
+        obstacle_margin=0.5,
     )
 
 
@@ -199,16 +177,13 @@ def load_preset(preset_name: str) -> Dict[str, Any]:
         "mpc": {
             "prediction_horizon": mpc.prediction_horizon,
             "control_horizon": mpc.control_horizon,
-            "q_position": mpc.q_position,
-            "q_velocity": mpc.q_velocity,
-            "q_angle": mpc.q_angle,
+            "Q_contour": mpc.Q_contour,
+            "Q_progress": mpc.Q_progress,
+            "Q_smooth": mpc.Q_smooth,
             "q_angular_velocity": mpc.q_angular_velocity,
             "r_thrust": mpc.r_thrust,
-            "max_velocity": mpc.max_velocity,
-            "max_angular_velocity": mpc.max_angular_velocity,
-            "damping_zone": mpc.damping_zone,
-            "velocity_threshold": mpc.velocity_threshold,
-            "max_velocity_weight": mpc.max_velocity_weight,
+            "r_rw_torque": mpc.r_rw_torque,
+            "path_speed": mpc.path_speed,
         }
     }
 
@@ -226,8 +201,8 @@ def get_preset_description(preset_name: str) -> str:
     descriptions = {
         ConfigPreset.FAST: (
             "Fast preset: Aggressive control for rapid movement. "
-            "Higher position/angle weights, lower velocity weights, "
-            "higher max velocities. Less stable but faster."
+            "Higher contour/progress weights, lower smoothness weight, "
+            "higher path speed. Less stable but faster."
         ),
         ConfigPreset.BALANCED: (
             "Balanced preset: Default configuration with good balance "
@@ -235,12 +210,12 @@ def get_preset_description(preset_name: str) -> str:
         ),
         ConfigPreset.STABLE: (
             "Stable preset: Conservative control for smooth, stable movement. "
-            "Higher velocity weights, lower max velocities, larger damping zone. "
+            "Higher contour/smoothness weights, lower path speed. "
             "Slower but more stable."
         ),
         ConfigPreset.PRECISION: (
             "Precision preset: High precision control for precise positioning. "
-            "Very high weights, very low max velocities, large damping zone. "
+            "Very high contour weight, very low path speed. "
             "Slowest but most precise and stable."
         ),
     }

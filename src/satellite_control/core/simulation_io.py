@@ -98,20 +98,15 @@ class SimulationIO:
         self.sim.report_generator.generate_report(
             output_path=summary_path,
             state_history=history_for_report_list,
-            target_state=self.sim.target_state,
+            reference_state=self.sim.reference_state,
             control_time=self.sim.simulation_time,
             mpc_solve_times=solve_times,
             control_history=control_history_for_report,
-            target_reached_time=self.sim.target_reached_time,
-            target_maintenance_time=self.sim.target_maintenance_time,
-            times_lost_target=self.sim.times_lost_target,
-            maintenance_position_errors=self.sim.maintenance_position_errors,
-            maintenance_angle_errors=self.sim.maintenance_angle_errors,
+            path_complete_time=self.sim.trajectory_endpoint_reached_time,
             position_tolerance=self.sim.position_tolerance,
             angle_tolerance=self.sim.angle_tolerance,
             control_update_interval=self.sim.control_update_interval,
-            angle_difference_func=self.sim.angle_difference,
-            check_target_reached_func=self.sim.check_target_reached,
+            check_path_complete_func=self.sim.check_path_complete,
             test_mode="SIMULATION",
         )
         self._save_mission_metadata()

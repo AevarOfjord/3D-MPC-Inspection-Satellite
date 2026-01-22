@@ -42,7 +42,7 @@ class SimulationLogger:
 
         # Unwrap context
         current_state = context.current_state  # 13 elements
-        target_state = context.target_state  # 13 elements
+        reference_state = context.reference_state  # 13 elements
         simulation_time = context.simulation_time
         control_update_interval = context.control_dt
         step_number = context.step_number
@@ -53,10 +53,12 @@ class SimulationLogger:
         # Extract 3D State
         # Pos
         curr_x, curr_y, curr_z = current_state[0:3]
-        targ_x, targ_y, targ_z = target_state[0:3]
+        ref_x, ref_y, ref_z = reference_state[0:3]
 
         # Quat -> Yaw
-        q = current_state[3:7]
+        q = np.array(current_state[3:7], dtype=float)
+        if np.linalg.norm(q) == 0:
+            q = np.array([1.0, 0.0, 0.0, 0.0])
         # Quat -> Euler (scipy)
         from scipy.spatial.transform import Rotation
 
@@ -64,31 +66,33 @@ class SimulationLogger:
         curr_euler = Rotation.from_quat(q_scipy).as_euler("xyz", degrees=False)
         curr_roll, curr_pitch, curr_yaw = curr_euler
 
-        q_t = target_state[3:7]
-        q_t_scipy = [q_t[1], q_t[2], q_t[3], q_t[0]]
-        targ_euler = Rotation.from_quat(q_t_scipy).as_euler("xyz", degrees=False)
-        targ_roll, targ_pitch, targ_yaw = targ_euler
+        q_ref = np.array(reference_state[3:7], dtype=float)
+        if np.linalg.norm(q_ref) == 0:
+            q_ref = np.array([1.0, 0.0, 0.0, 0.0])
+        q_ref_scipy = [q_ref[1], q_ref[2], q_ref[3], q_ref[0]]
+        ref_euler = Rotation.from_quat(q_ref_scipy).as_euler("xyz", degrees=False)
+        ref_roll, ref_pitch, ref_yaw = ref_euler
 
         # Vel
         curr_vx, curr_vy, curr_vz = current_state[7:10]
-        targ_vx, targ_vy, targ_vz = target_state[7:10]
+        ref_vx, ref_vy, ref_vz = reference_state[7:10]
 
         # Ang Vel (X, Y, Z)
         curr_wx, curr_wy, curr_wz = current_state[10:13]
-        targ_wx, targ_wy, targ_wz = target_state[10:13]
+        ref_wx, ref_wy, ref_wz = reference_state[10:13]
 
         # Calculate errors
-        error_x = curr_x - targ_x
-        error_y = curr_y - targ_y
-        error_z = curr_z - targ_z
+        error_x = curr_x - ref_x
+        error_y = curr_y - ref_y
+        error_z = curr_z - ref_z
 
         # Angle difference (wrap to [-pi, pi])
         def wrap_angle(angle: float) -> float:
             return (angle + np.pi) % (2 * np.pi) - np.pi
 
-        error_roll = wrap_angle(targ_roll - curr_roll)
-        error_pitch = wrap_angle(targ_pitch - curr_pitch)
-        error_yaw = wrap_angle(targ_yaw - curr_yaw)
+        error_roll = wrap_angle(ref_roll - curr_roll)
+        error_pitch = wrap_angle(ref_pitch - curr_pitch)
+        error_yaw = wrap_angle(ref_yaw - curr_yaw)
 
         # Command strings
         command_vector_binary = (thruster_action > 0.5).astype(int)
@@ -117,12 +121,12 @@ class SimulationLogger:
         path_v_s = mpc_info.get("path_v_s") if mpc_info else None
 
         # Velocity errors
-        error_vx = targ_vx - curr_vx
-        error_vy = targ_vy - curr_vy
-        error_vz = targ_vz - curr_vz
-        error_wx = targ_wx - curr_wx
-        error_wy = targ_wy - curr_wy
-        error_wz = targ_wz - curr_wz
+        error_vx = ref_vx - curr_vx
+        error_vy = ref_vy - curr_vy
+        error_vz = ref_vz - curr_vz
+        error_wx = ref_wx - curr_wx
+        error_wy = ref_wy - curr_wy
+        error_wz = ref_wz - curr_wz
 
         # Active Thrusters
         total_active_thrusters = int(np.sum(thruster_action > 0.01))
@@ -166,18 +170,18 @@ class SimulationLogger:
             "Current_WX": curr_wx,
             "Current_WY": curr_wy,
             "Current_WZ": curr_wz,
-            "Target_X": targ_x,
-            "Target_Y": targ_y,
-            "Target_Z": targ_z,
-            "Target_Yaw": targ_yaw,
-            "Target_Roll": targ_roll,
-            "Target_Pitch": targ_pitch,
-            "Target_VX": targ_vx,
-            "Target_VY": targ_vy,
-            "Target_VZ": targ_vz,
-            "Target_WX": targ_wx,
-            "Target_WY": targ_wy,
-            "Target_WZ": targ_wz,
+            "Reference_X": ref_x,
+            "Reference_Y": ref_y,
+            "Reference_Z": ref_z,
+            "Reference_Yaw": ref_yaw,
+            "Reference_Roll": ref_roll,
+            "Reference_Pitch": ref_pitch,
+            "Reference_VX": ref_vx,
+            "Reference_VY": ref_vy,
+            "Reference_VZ": ref_vz,
+            "Reference_WX": ref_wx,
+            "Reference_WY": ref_wy,
+            "Reference_WZ": ref_wz,
             "Error_X": error_x,
             "Error_Y": error_y,
             "Error_Z": error_z,
@@ -222,7 +226,7 @@ class SimulationLogger:
         self,
         simulation_time: float,
         current_state: np.ndarray,
-        target_state: np.ndarray,
+        reference_state: np.ndarray,
         thruster_actual_output: np.ndarray,
         thruster_last_command: np.ndarray,
         normalize_angle_func: Optional[Any] = None,
@@ -236,30 +240,34 @@ class SimulationLogger:
 
         from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
-        q = current_state[3:7]
+        q = np.array(current_state[3:7], dtype=float)
+        if np.linalg.norm(q) == 0:
+            q = np.array([1.0, 0.0, 0.0, 0.0])
         curr_roll, curr_pitch, curr_yaw = quat_wxyz_to_euler_xyz(q)
 
         curr_vx, curr_vy, curr_vz = current_state[7:10]
         curr_wx, curr_wy, curr_wz = current_state[10:13]
 
-        targ_x, targ_y, targ_z = target_state[0:3]
+        ref_x, ref_y, ref_z = reference_state[0:3]
 
-        q_t = target_state[3:7]
-        targ_roll, targ_pitch, targ_yaw = quat_wxyz_to_euler_xyz(q_t)
+        q_ref = np.array(reference_state[3:7], dtype=float)
+        if np.linalg.norm(q_ref) == 0:
+            q_ref = np.array([1.0, 0.0, 0.0, 0.0])
+        ref_roll, ref_pitch, ref_yaw = quat_wxyz_to_euler_xyz(q_ref)
 
         # Calculate errors
-        error_x = targ_x - curr_x
-        error_y = targ_y - curr_y
-        error_z = targ_z - curr_z
+        error_x = ref_x - curr_x
+        error_y = ref_y - curr_y
+        error_z = ref_z - curr_z
 
         def wrap_angle(angle: float) -> float:
             if normalize_angle_func:
                 return normalize_angle_func(angle)
             return (angle + np.pi) % (2 * np.pi) - np.pi
 
-        error_roll = wrap_angle(targ_roll - curr_roll)
-        error_pitch = wrap_angle(targ_pitch - curr_pitch)
-        error_yaw = wrap_angle(targ_yaw - curr_yaw)
+        error_roll = wrap_angle(ref_roll - curr_roll)
+        error_pitch = wrap_angle(ref_pitch - curr_pitch)
+        error_yaw = wrap_angle(ref_yaw - curr_yaw)
 
         # Format Command Vector string
         cmd_vec_str = (
@@ -280,12 +288,12 @@ class SimulationLogger:
             "Current_WX": f"{curr_wx:.5f}",
             "Current_WY": f"{curr_wy:.5f}",
             "Current_WZ": f"{curr_wz:.5f}",
-            "Target_X": f"{targ_x:.5f}",
-            "Target_Y": f"{targ_y:.5f}",
-            "Target_Z": f"{targ_z:.5f}",
-            "Target_Roll": f"{targ_roll:.5f}",
-            "Target_Pitch": f"{targ_pitch:.5f}",
-            "Target_Yaw": f"{targ_yaw:.5f}",
+            "Reference_X": f"{ref_x:.5f}",
+            "Reference_Y": f"{ref_y:.5f}",
+            "Reference_Z": f"{ref_z:.5f}",
+            "Reference_Roll": f"{ref_roll:.5f}",
+            "Reference_Pitch": f"{ref_pitch:.5f}",
+            "Reference_Yaw": f"{ref_yaw:.5f}",
             "Error_X": f"{error_x:.5f}",
             "Error_Y": f"{error_y:.5f}",
             "Error_Z": f"{error_z:.5f}",

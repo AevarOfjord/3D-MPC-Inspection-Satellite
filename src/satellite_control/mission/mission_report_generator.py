@@ -8,7 +8,7 @@ Provides formatted text reports for documentation and performance review.
 Report sections:
 - Mission configuration and parameters
 - Performance metrics and analysis
-- Target tracking results with error statistics
+- Path tracking results with error statistics
 - Control system performance (thruster usage, control effort)
 - MPC timing statistics and computational performance
 - Collision avoidance and safety events
@@ -27,7 +27,7 @@ from typing import Any, Callable, List, Optional
 import numpy as np
 
 from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config.models import AppConfig
+
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
@@ -44,7 +44,7 @@ class MissionReportGenerator:
     - Physical parameters
     - Performance metrics (position, orientation, control effort)
     - MPC timing analysis
-    - Target maintenance statistics
+    - Path completion statistics
     """
 
     def __init__(self, config: SimulationConfig):
@@ -67,20 +67,15 @@ class MissionReportGenerator:
         self,
         output_path: Path,
         state_history: List[np.ndarray],
-        target_state: np.ndarray,
+        reference_state: np.ndarray,
         control_time: float,
         mpc_solve_times: List[float],
         control_history: List[np.ndarray],
-        target_reached_time: Optional[float],
-        target_maintenance_time: float,
-        times_lost_target: int,
-        maintenance_position_errors: List[float],
-        maintenance_angle_errors: List[float],
+        path_complete_time: Optional[float],
         position_tolerance: float,
         angle_tolerance: float,
         control_update_interval: float,
-        angle_difference_func: Callable[..., Any],
-        check_target_reached_func: Callable[..., Any],
+        check_path_complete_func: Callable[..., Any],
         test_mode: str = "SIMULATION",
     ) -> None:
         """
@@ -89,20 +84,15 @@ class MissionReportGenerator:
         Args:
             output_path: Path to save the report
             state_history: List of state vectors [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
-            target_state: Target state vector
+            reference_state: Path reference state vector
             control_time: Total mission duration in seconds
             mpc_solve_times: List of MPC solve times
             control_history: List of control vectors (thruster commands)
-            target_reached_time: Time when target was first reached (None if never)
-            target_maintenance_time: Time spent maintaining target
-            times_lost_target: Number of times target was lost
-            maintenance_position_errors: Position errors during maintenance
-            maintenance_angle_errors: Angle errors during maintenance
+            path_complete_time: Time when path was first completed (None if never)
             position_tolerance: Position tolerance threshold
             angle_tolerance: Angle tolerance threshold
             control_update_interval: Control loop update interval
-            angle_difference_func: Function to calculate angle difference
-            check_target_reached_func: Function to check if target was reached
+            check_path_complete_func: Function to check if path was completed
             test_mode: Test mode description
         """
         if state_history is None or len(state_history) == 0:
@@ -117,7 +107,7 @@ class MissionReportGenerator:
                 self._write_header(f, output_path, test_mode)
 
                 # Mission Configuration
-                self._write_mission_configuration(f, state_history, target_state)
+                self._write_mission_configuration(f, state_history, reference_state)
 
                 # Controller Configuration
                 self._write_controller_configuration(f)
@@ -132,20 +122,15 @@ class MissionReportGenerator:
                 self._write_performance_results(
                     f,
                     state_history,
-                    target_state,
+                    reference_state,
                     control_time,
                     mpc_solve_times,
                     control_history,
-                    target_reached_time,
-                    target_maintenance_time,
-                    times_lost_target,
-                    maintenance_position_errors,
-                    maintenance_angle_errors,
+                    path_complete_time,
                     position_tolerance,
                     angle_tolerance,
                     control_update_interval,
-                    angle_difference_func,
-                    check_target_reached_func,
+                    check_path_complete_func,
                 )
 
                 # Footer
@@ -170,7 +155,7 @@ class MissionReportGenerator:
         f.write("=" * 80 + "\n\n")
 
     def _write_mission_configuration(
-        self, f, state_history: List[np.ndarray], target_state: np.ndarray
+        self, f, state_history: List[np.ndarray], reference_state: np.ndarray
     ) -> None:
         """Write mission configuration section."""
         f.write("=" * 80 + "\n")
@@ -181,115 +166,19 @@ class MissionReportGenerator:
         )
 
         initial_state = state_history[0]
-
-        # Determine mission type
-        # Determine mission type
-        if self.mission_state.dxf_shape_mode_active:
-            self._write_profile_following_config(f, initial_state)
-        elif self.mission_state.enable_waypoint_mode:
-            self._write_waypoint_config(f, initial_state)
-        else:
-            self._write_point_to_point_config(f, initial_state, target_state)
+        self._write_path_config(f, initial_state, reference_state)
 
         # Obstacle configuration
         self._write_obstacle_configuration(f)
 
-    def _write_profile_following_config(self, f, initial_state: np.ndarray) -> None:
-        """Write profile following (Mode 3) configuration."""
-        f.write("MISSION TYPE: PROFILE FOLLOWING (MODE 3)\n")
-        f.write("-" * 50 + "\n")
-        f.write(
-            "Description: Satellite follows a moving target along a custom path profile\n"
-        )
-        f.write("Mission Phases:\n")
-        f.write(
-            "  Phase 1: Move to closest point on profile and stabilize (3 seconds)\n"
-        )
-        f.write("  Phase 2: Track moving target along the path profile\n")
-        f.write("  Phase 3: Stabilize at completion point (5 seconds)\n\n")
-
-        f.write("STARTING CONFIGURATION:\n")
-        f.write(f"  Starting X position:     {initial_state[0]:.3f} m\n")
-        f.write(f"  Starting Y position:     {initial_state[1]:.3f} m\n")
-        f.write(f"  Starting Z position:     {initial_state[2]:.3f} m\n")
-
-        q = initial_state[3:7]
-        f.write(
-            f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
-        )
-
-        f.write("SHAPE CONFIGURATION:\n")
-        if self.mission_state.dxf_shape_center:
-            center = self.mission_state.dxf_shape_center
-            f.write(f"  Shape Center X:          {center[0]:.3f} m\n")
-            f.write(f"  Shape Center Y:          {center[1]:.3f} m\n")
-            if len(center) > 2:
-                f.write(f"  Shape Center Z:          {center[2]:.3f} m\n")
-        if self.mission_state.dxf_shape_rotation:
-            f.write(
-                f"  Shape Rotation:          {np.degrees(self.mission_state.dxf_shape_rotation):.1f}°\n"
-            )
-        f.write(
-            f"  Offset Distance:         {self.mission_state.dxf_offset_distance:.3f} m\n"
-        )
-        f.write(
-            f"  Path Length:             {self.mission_state.dxf_path_length:.3f} m\n"
-        )
-        if self.mission_state.dxf_base_shape:
-            path_len = len(self.mission_state.dxf_shape_path)
-            f.write(f"  Number of Path Points:   {path_len}\n\n")
-
-        f.write("MOVING TARGET CONFIGURATION:\n")
-        f.write(
-            f"  Target Speed:            {self.mission_state.dxf_target_speed:.3f} m/s\n"
-        )
-        f.write(
-            f"  Estimated Duration:      {self.mission_state.dxf_estimated_duration:.1f} s\n\n"
-        )
-
-    def _write_waypoint_config(self, f, initial_state: np.ndarray) -> None:
-        """Write waypoint (Mode 1) configuration."""
-        f.write("MISSION TYPE: WAYPOINT NAVIGATION (MODE 1)\n")
-        f.write("-" * 50 + "\n")
-        f.write("Description: Satellite visits multiple waypoints in sequence\n\n")
-
-        f.write("STARTING CONFIGURATION:\n")
-        f.write(f"  Starting X position:     {initial_state[0]:.3f} m\n")
-        f.write(f"  Starting Y position:     {initial_state[1]:.3f} m\n")
-        f.write(f"  Starting Z position:     {initial_state[2]:.3f} m\n")
-
-        q = initial_state[3:7]
-        f.write(
-            f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
-        )
-
-        f.write("WAYPOINTS:\n")
-        f.write(
-            f"  Number of Waypoints:     {len(self.mission_state.waypoint_targets)}\n"
-        )
-        for i, (target, angle) in enumerate(
-            zip(
-                self.mission_state.waypoint_targets, self.mission_state.waypoint_angles
-            ),
-            1,
-        ):
-            tx, ty, tz = target
-            f.write(
-                f"  Waypoint {i}:              ({tx:.3f}, {ty:.3f}, {tz:.3f}) m, "
-                f"{self._format_euler_deg(angle)}\n"
-            )
-        f.write(
-            f"\n  Hold Time per Waypoint:  {self.app_config.simulation.target_hold_time:.1f} s\n\n"
-        )
-
-    def _write_point_to_point_config(
-        self, f, initial_state: np.ndarray, target_state: np.ndarray
+    def _write_path_config(
+        self, f, initial_state: np.ndarray, reference_state: np.ndarray
     ) -> None:
-        """Write point-to-point (Mode 1) configuration."""
-        f.write("MISSION TYPE: POINT-TO-POINT (MODE 1)\n")
+        """Write path-following configuration."""
+        f.write("MISSION TYPE: PATH FOLLOWING (MPCC)\n")
         f.write("-" * 50 + "\n")
         f.write(
-            "Description: Satellite navigates to target position and orientation\n\n"
+            "Description: Satellite follows a generated path between endpoints\n\n"
         )
 
         f.write("STARTING CONFIGURATION:\n")
@@ -302,16 +191,46 @@ class MissionReportGenerator:
             f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
         )
 
-        target_pos = target_state[:3]
-        qt = target_state[3:7]
-        target_euler = quat_wxyz_to_euler_xyz(qt)
-        f.write("TARGET CONFIGURATION:\n")
-        f.write(f"  Target X position:       {target_pos[0]:.3f} m\n")
-        f.write(f"  Target Y position:       {target_pos[1]:.3f} m\n")
-        f.write(f"  Target Z position:       {target_pos[2]:.3f} m\n")
-        f.write(
-            f"  Target orientation:      {self._format_euler_deg(target_euler)}\n\n"
+        path = (
+            self.mission_state.mpcc_path_waypoints
+            or getattr(self.mission_state, "dxf_shape_path", [])
         )
+        if path:
+            start_pt = path[0]
+            end_pt = path[-1]
+        else:
+            start_pt = initial_state[:3]
+            end_pt = reference_state[:3]
+
+        path_length = float(
+            getattr(self.mission_state, "mpcc_path_length", 0.0)
+            or getattr(self.mission_state, "dxf_path_length", 0.0)
+            or 0.0
+        )
+        if path_length <= 0.0 and path and len(path) > 1:
+            path_arr = np.array(path, dtype=float)
+            path_length = float(
+                np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1))
+            )
+
+        path_speed = float(
+            getattr(self.mission_state, "dxf_path_speed", 0.0)
+            or self.app_config.mpc.path_speed
+        )
+        hold_end = float(getattr(self.mission_state, "trajectory_hold_end", 0.0) or 0.0)
+
+        f.write("PATH CONFIGURATION:\n")
+        f.write(
+            f"  Path Start:              ({start_pt[0]:.3f}, {start_pt[1]:.3f}, {start_pt[2]:.3f}) m\n"
+        )
+        f.write(
+            f"  Path End:                ({end_pt[0]:.3f}, {end_pt[1]:.3f}, {end_pt[2]:.3f}) m\n"
+        )
+        f.write(f"  Path Length:             {path_length:.3f} m\n")
+        f.write(f"  Path Speed:              {path_speed:.3f} m/s\n")
+        if hold_end > 0.0:
+            f.write(f"  End Hold Time:           {hold_end:.1f} s\n")
+        f.write("\n")
 
     def _write_obstacle_configuration(self, f) -> None:
         """Write obstacle configuration."""
@@ -320,7 +239,7 @@ class MissionReportGenerator:
             f.write("  Obstacle Avoidance:      ENABLED\n")
             f.write(f"  Number of Obstacles:     {len(self.mission_state.obstacles)}\n")
             for i, obs in enumerate(self.mission_state.obstacles, 1):
-                if hasattr(obs, 'position'):
+                if hasattr(obs, "position"):
                     ox, oy, oz = obs.position
                     orad = obs.radius
                 else:
@@ -340,9 +259,9 @@ class MissionReportGenerator:
         f.write("=" * 80 + "\n")
         f.write("These parameters affect mission performance and control behavior.\n\n")
 
-        f.write("MPC CONTROLLER PARAMETERS:\n")
+        f.write("MPC CONTROLLER PARAMETERS (MPCC):\n")
         f.write("-" * 50 + "\n")
-        f.write("  Controller Type:         Linearized MPC (A*x[k] + B*u[k])\n")
+        f.write("  Controller Type:         Linearized MPCC (Path Following)\n")
         f.write(f"  Solver:                  {self.app_config.mpc.solver_type}\n")
         f.write(
             f"  Prediction Horizon:      {self.app_config.mpc.prediction_horizon} steps\n"
@@ -360,35 +279,20 @@ class MissionReportGenerator:
 
         f.write("COST FUNCTION WEIGHTS:\n")
         f.write("-" * 50 + "\n")
-        f.write(f"  Position Weight (Q):     {self.app_config.mpc.q_position:.1f}\n")
-        f.write(f"  Velocity Weight (Q):     {self.app_config.mpc.q_velocity:.1f}\n")
-        f.write(f"  Angle Weight (Q):        {self.app_config.mpc.q_angle:.1f}\n")
+        f.write(f"  Contour Weight (Q):      {self.app_config.mpc.Q_contour:.1f}\n")
+        f.write(f"  Progress Weight (Q):     {self.app_config.mpc.Q_progress:.1f}\n")
+        f.write(f"  Smooth Weight (Q):       {self.app_config.mpc.Q_smooth:.1f}\n")
         f.write(
             f"  Angular Vel Weight (Q):  {self.app_config.mpc.q_angular_velocity:.1f}\n"
         )
-        f.write(f"  Thrust Penalty (R):      {self.app_config.mpc.r_thrust:.3f}\n\n")
+        f.write(f"  Thrust Penalty (R):      {self.app_config.mpc.r_thrust:.3f}\n")
+        f.write(f"  RW Torque Penalty (R):   {self.app_config.mpc.r_rw_torque:.3f}\n\n")
 
-        f.write("CONTROL CONSTRAINTS:\n")
+        f.write("PATH FOLLOWING SETTINGS:\n")
         f.write("-" * 50 + "\n")
-        f.write(
-            f"  Max Velocity:            {self.app_config.mpc.max_velocity:.3f} m/s\n"
-        )
-        f.write(
-            f"  Max Angular Velocity:    {np.degrees(self.app_config.mpc.max_angular_velocity):.1f}°/s\n"
-        )
-        f.write(
-            f"  Position Bounds:         ±{self.app_config.mpc.position_bounds:.1f} m\n\n"
-        )
+        f.write(f"  Path Speed (m/s):        {self.app_config.mpc.path_speed:.3f} m/s\n")
 
-        f.write("TOLERANCE THRESHOLDS:\n")
-        f.write("-" * 50 + "\n")
-        f.write(f"  Position Tolerance:      {Constants.POSITION_TOLERANCE:.3f} m\n")
-        f.write(
-            f"  Angle Tolerance:         <{np.degrees(Constants.ANGLE_TOLERANCE):.1f}°\n"
-        )
-        f.write(f"  Velocity Tolerance:      {Constants.VELOCITY_TOLERANCE:.3f} m/s\n")
-        ang_vel_tol = np.degrees(Constants.ANGULAR_VELOCITY_TOLERANCE)
-        f.write(f"  Angular Vel Tolerance:   <{ang_vel_tol:.1f}°/s\n\n")
+        f.write("\n")
 
     def _write_physical_parameters(self, f) -> None:
         """Write physical parameters section."""
@@ -442,32 +346,25 @@ class MissionReportGenerator:
         )
         f.write(f"  MPC_SOLVER_TYPE:               {self.app_config.mpc.solver_type}\n")
         f.write(
-            f"  Q_POSITION:                    {self.app_config.mpc.q_position:.1f}\n"
+            f"  Q_CONTOUR:                     {self.app_config.mpc.Q_contour:.1f}\n"
         )
         f.write(
-            f"  Q_VELOCITY:                    {self.app_config.mpc.q_velocity:.1f}\n"
+            f"  Q_PROGRESS:                    {self.app_config.mpc.Q_progress:.1f}\n"
         )
-        f.write(f"  Q_ANGLE:                       {self.app_config.mpc.q_angle:.1f}\n")
+        f.write(
+            f"  Q_SMOOTH:                      {self.app_config.mpc.Q_smooth:.1f}\n"
+        )
         f.write(
             f"  Q_ANGULAR_VELOCITY:            {self.app_config.mpc.q_angular_velocity:.1f}\n"
         )
         f.write(
             f"  R_THRUST:                      {self.app_config.mpc.r_thrust:.3f}\n"
         )
-
         f.write(
-            f"  MAX_VELOCITY:                  {self.app_config.mpc.max_velocity:.3f} m/s\n"
-        )
-        max_ang_vel = np.degrees(self.app_config.mpc.max_angular_velocity)
-        f.write(f"  MAX_ANGULAR_VELOCITY:          {max_ang_vel:.1f}°/s\n")
-        f.write(
-            f"  POSITION_BOUNDS:               ±{self.app_config.mpc.position_bounds:.1f} m\n"
+            f"  R_RW_TORQUE:                   {self.app_config.mpc.r_rw_torque:.3f}\n"
         )
         f.write(
-            f"  DAMPING_ZONE:                  {self.app_config.mpc.damping_zone:.3f} m\n"
-        )
-        f.write(
-            f"  VELOCITY_THRESHOLD:            {self.app_config.mpc.velocity_threshold:.3f} m/s\n"
+            f"  PATH_SPEED:                   {self.app_config.mpc.path_speed:.3f} m/s\n"
         )
 
         f.write(
@@ -491,34 +388,10 @@ class MissionReportGenerator:
         f.write(
             f"  MAX_SIMULATION_TIME:           {self.app_config.simulation.max_duration:.1f} s\n"
         )
-        f.write(
-            f"  TARGET_HOLD_TIME:              {self.app_config.simulation.target_hold_time:.1f} s\n"
+        path_hold_end = float(
+            getattr(self.mission_state, "trajectory_hold_end", 0.0) or 0.0
         )
-        # Use WAYPOINT_FINAL_STABILIZATION_TIME as fallback for
-        # mission-specific stabilization times
-        waypoint_final_stab = (
-            self.app_config.simulation.waypoint_final_stabilization_time
-        )
-        f.write(f"  WAYPOINT_FINAL_STABILIZATION_TIME: {waypoint_final_stab:.1f} s\n")
-
-        # Access optional config values using defaults if not present
-        # These might be in app_config.simulation or just locals
-        p2p_stab = getattr(
-            self.app_config.simulation,
-            "point_to_point_final_stabilization_time",
-            waypoint_final_stab,
-        )
-        f.write(f"  POINT_TO_POINT_FINAL_STAB:    {p2p_stab:.1f} s\n")
-
-        mp_stab = getattr(
-            self.app_config.simulation,
-            "multi_point_final_stabilization_time",
-            waypoint_final_stab,
-        )
-        f.write(f"  MULTI_POINT_FINAL_STAB:       {mp_stab:.1f} s\n")
-
-        dxf_stab = self.app_config.simulation.shape_final_stabilization_time
-        f.write(f"  DXF_FINAL_STAB:                {dxf_stab:.1f} s\n\n")
+        f.write(f"  PATH_HOLD_END:                {path_hold_end:.1f} s\n")
 
         # Physics Parameters
         f.write("PHYSICS PARAMETERS:\n")
@@ -587,20 +460,15 @@ class MissionReportGenerator:
         self,
         f,
         state_history: List[np.ndarray],
-        target_state: np.ndarray,
+        reference_state: np.ndarray,
         control_time: float,
         mpc_solve_times: List[float],
         control_history: List[np.ndarray],
-        target_reached_time: Optional[float],
-        target_maintenance_time: float,
-        times_lost_target: int,
-        maintenance_position_errors: List[float],
-        maintenance_angle_errors: List[float],
+        path_complete_time: Optional[float],
         position_tolerance: float,
         angle_tolerance: float,
         control_update_interval: float,
-        angle_difference_func: Callable[..., Any],
-        check_target_reached_func: Callable[..., Any],
+        check_path_complete_func: Callable[..., Any],
     ) -> None:
         """Write performance results section."""
         f.write("=" * 80 + "\n")
@@ -612,10 +480,17 @@ class MissionReportGenerator:
         final_state = state_history[-1]
         initial_pos = initial_state[:3]
         final_pos = final_state[:3]
-        target_pos = target_state[:3]
+        path = (
+            self.mission_state.mpcc_path_waypoints
+            or getattr(self.mission_state, "dxf_shape_path", [])
+        )
+        if path:
+            path_end = np.array(path[-1], dtype=float)
+        else:
+            path_end = np.array(reference_state[:3], dtype=float)
 
-        pos_error_initial = np.linalg.norm(initial_pos - target_pos)
-        pos_error_final = np.linalg.norm(final_pos - target_pos)
+        pos_error_initial = np.linalg.norm(initial_pos - path_end)
+        pos_error_final = np.linalg.norm(final_pos - path_end)
 
         # 3D Angle Errors (Quaternion)
         def get_ang_err(s1, s2):
@@ -624,8 +499,8 @@ class MissionReportGenerator:
             dot = min(1.0, max(-1.0, dot))
             return 2.0 * np.arccos(dot)
 
-        ang_error_initial = get_ang_err(initial_state, target_state)
-        ang_error_final = get_ang_err(final_state, target_state)
+        ang_error_initial = get_ang_err(initial_state, reference_state)
+        ang_error_final = get_ang_err(final_state, reference_state)
 
         trajectory_distance = sum(
             np.linalg.norm(state_history[i][:3] - state_history[i - 1][:3])
@@ -662,7 +537,7 @@ class MissionReportGenerator:
                     )
                 switching_events += np.sum(np.abs(curr_control - prev_control))
 
-        success = check_target_reached_func()
+        success = check_path_complete_func()
         vel_magnitude_final = np.linalg.norm(final_state[7:10])
 
         # Position & Trajectory Analysis
@@ -677,8 +552,8 @@ class MissionReportGenerator:
             f"{final_pos[2]:.3f}) m\n"
         )
         f.write(
-            f"Target Position:           ({target_pos[0]:.3f}, {target_pos[1]:.3f}, "
-            f"{target_pos[2]:.3f}) m\n"
+            f"Path End Position:         ({path_end[0]:.3f}, {path_end[1]:.3f}, "
+            f"{path_end[2]:.3f}) m\n"
         )
         f.write(f"Initial Position Error:    {pos_error_initial:.4f} m\n")
         f.write(f"Final Position Error:      {pos_error_final:.4f} m\n")
@@ -687,7 +562,7 @@ class MissionReportGenerator:
             f.write(f"Position Improvement:      {pos_improv:.1f}%\n")
         f.write(f"Total Distance Traveled:   {trajectory_distance:.3f} m\n")
         if trajectory_distance > 0:
-            direct_dist = np.linalg.norm(target_pos - initial_pos)
+            direct_dist = np.linalg.norm(path_end - initial_pos)
             traj_eff = direct_dist / trajectory_distance * 100
             f.write(f"Trajectory Efficiency:     {traj_eff:.1f}%\n")
         f.write("\n")
@@ -700,7 +575,7 @@ class MissionReportGenerator:
         tol_deg = np.degrees(angle_tolerance)
         f.write(
             f"Final Angle Error:         {final_ang_deg:.2f}° "
-            f"(target: <{tol_deg:.1f}°)\n"
+            f"(threshold: <{tol_deg:.1f}°)\n"
         )
         if ang_error_initial > 0:
             ang_improv = (ang_error_initial - ang_error_final) / ang_error_initial * 100
@@ -767,14 +642,14 @@ class MissionReportGenerator:
             f.write("\n")
 
         # Mission Success Analysis
-        f.write("MISSION SUCCESS & TARGET MAINTENANCE ANALYSIS\n")
+        f.write("MISSION SUCCESS & PATH COMPLETION ANALYSIS\n")
         f.write("-" * 50 + "\n")
         f.write(f"Position Tolerance:        <{position_tolerance:.3f} m\n")
         f.write(f"Angle Tolerance:           <{np.degrees(angle_tolerance):.1f}°\n")
         pos_met = "YES" if pos_error_final < position_tolerance else "NO"
-        f.write(f"Position Target Met:       {pos_met}\n")
+        f.write(f"Position Threshold Met:    {pos_met}\n")
         f.write(
-            f"Angle Target Met:          {'YES' if ang_error_final < angle_tolerance else 'NO'}\n"
+            f"Angle Threshold Met:       {'YES' if ang_error_final < angle_tolerance else 'NO'}\n"
         )
         f.write(
             f"Overall Mission Status:    {'SUCCESS' if success else 'INCOMPLETE'}\n\n"
@@ -789,49 +664,19 @@ class MissionReportGenerator:
             over_pct = (precision_ratio - 1) * 100
             f.write(
                 f"Precision Ratio:           {precision_ratio:.2f} "
-                f"(FAILED - {over_pct:.1f}% over target)\n"
+                f"(FAILED - {over_pct:.1f}% over threshold)\n"
             )
         f.write("\n")
 
-        # Target Maintenance Analysis
-        if target_reached_time is not None:
-            f.write("TARGET MAINTENANCE ANALYSIS\n")
+        # Path Completion Analysis
+        if path_complete_time is not None:
+            f.write("PATH COMPLETION STATUS\n")
             f.write("-" * 50 + "\n")
-            f.write(f"Target First Reached:      {target_reached_time:.1f} s\n")
-            maint_pct = target_maintenance_time / control_time * 100
-            f.write(
-                f"Target Maintenance Time:   {target_maintenance_time:.1f} s "
-                f"({maint_pct:.1f}% of total)\n"
-            )
-            f.write(f"Times Lost Target:         {times_lost_target}\n")
-
-            if maintenance_position_errors:
-                avg_maintenance_pos_err = np.mean(maintenance_position_errors)
-                max_maintenance_pos_err = np.max(maintenance_position_errors)
-                avg_maintenance_ang_err = np.mean(maintenance_angle_errors)
-                max_maintenance_ang_err = np.max(maintenance_angle_errors)
-
-                f.write(f"Avg Maintenance Pos Error: {avg_maintenance_pos_err:.4f} m\n")
-                f.write(f"Max Maintenance Pos Error: {max_maintenance_pos_err:.4f} m\n")
-                f.write(
-                    f"Avg Maintenance Ang Error: {np.degrees(avg_maintenance_ang_err):.2f}°\n"
-                )
-                f.write(
-                    f"Max Maintenance Ang Error: {np.degrees(max_maintenance_ang_err):.2f}°\n"
-                )
-
-                pos_stability = 100 * (1 - avg_maintenance_pos_err / position_tolerance)
-                ang_stability = 100 * (1 - avg_maintenance_ang_err / angle_tolerance)
-                f.write(
-                    f"Position Stability:        {pos_stability:.1f}% (within tolerance)\n"
-                )
-                f.write(
-                    f"Angle Stability:           {ang_stability:.1f}% (within tolerance)\n"
-                )
+            f.write(f"Path First Completed:      {path_complete_time:.1f} s\n")
         else:
-            f.write("TARGET STATUS\n")
+            f.write("PATH COMPLETION STATUS\n")
             f.write("-" * 50 + "\n")
-            f.write("Target Never Reached:      Mission incomplete\n")
+            f.write("Path Not Completed:        Mission incomplete\n")
             remaining_pos_error = max(0.0, float(pos_error_final - position_tolerance))
             remaining_ang_error = max(0.0, float(ang_error_final - angle_tolerance))
             f.write(f"Remaining Position Error:  {remaining_pos_error:.4f} m\n")

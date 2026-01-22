@@ -45,9 +45,9 @@ def mock_simulation():
     sim.update_mpc_control = MagicMock()
     sim.process_command_queue = MagicMock()
     sim.log_physics_step = MagicMock()
-    sim.check_target_reached = MagicMock(return_value=False)
-    sim.target_reached_time = None
-    sim.target_state = np.zeros(13)
+    sim.check_path_complete = MagicMock(return_value=False)
+    sim.trajectory_endpoint_reached_time = None
+    sim.reference_state = np.zeros(13)
     sim.draw_simulation = MagicMock()
     sim.update_mpc_info_panel = MagicMock()
     sim.performance_monitor = MagicMock()
@@ -140,8 +140,8 @@ class TestSimulationLoopUpdateStep:
         assert result == []
         mock_simulation.update_mpc_control.assert_not_called()
 
-    def test_update_step_updates_target_state(self, mock_simulation):
-        """Test that update_step updates target state."""
+    def test_update_step_updates_reference_state(self, mock_simulation):
+        """Test that update_step updates reference state."""
         loop = SimulationLoop(mock_simulation)
         mock_simulation.is_running = True
 
@@ -213,7 +213,7 @@ class TestSimulationLoopTermination:
         assert result is True
         assert mock_simulation.is_running is False
 
-    def test_termination_on_target_reached(self, mock_simulation):
+    def test_termination_on_path_complete(self, mock_simulation):
         """Test termination when path progress reaches the end."""
         loop = SimulationLoop(mock_simulation)
         mock_simulation.is_running = True
@@ -233,8 +233,8 @@ class TestSimulationLoopTermination:
         mock_simulation.is_running = True
         mock_simulation.simulation_time = 5.0
         mock_simulation.max_simulation_time = 10.0
-        mock_simulation.check_target_reached = MagicMock(return_value=False)
-        mock_simulation.target_reached_time = None
+        mock_simulation.check_path_complete = MagicMock(return_value=False)
+        mock_simulation.trajectory_endpoint_reached_time = None
 
         result = loop._check_termination_conditions()
 

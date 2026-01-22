@@ -74,9 +74,9 @@ def simple_simulation():
 
     sim = SatelliteMPCLinearizedSimulation(
         start_pos=(0.5, 0.5, 0.0),
-        target_pos=(0.0, 0.0, 0.0),
+        end_pos=(0.0, 0.0, 0.0),
         start_angle=(0.0, 0.0, 0.0),
-        target_angle=(0.0, 0.0, 0.0),
+        end_angle=(0.0, 0.0, 0.0),
         config_overrides=config_overrides,
     )
 
@@ -95,8 +95,8 @@ class TestPointToPointMission:
         assert sim.satellite.position[1] == pytest.approx(0.5, abs=0.01)
 
         # Path-following starts with reference at the start position
-        assert sim.target_state[0] == pytest.approx(0.5, abs=0.01)
-        assert sim.target_state[1] == pytest.approx(0.5, abs=0.01)
+        assert sim.reference_state[0] == pytest.approx(0.5, abs=0.01)
+        assert sim.reference_state[1] == pytest.approx(0.5, abs=0.01)
 
     def test_point_to_point_state_format(self, simple_simulation):
         """Test that state format is correct for point-to-point."""
@@ -109,18 +109,18 @@ class TestPointToPointMission:
         assert current_state[0] == pytest.approx(0.5, abs=0.01)  # x
         assert current_state[1] == pytest.approx(0.5, abs=0.01)  # y
 
-    def test_point_to_point_target_reached_check(self, simple_simulation):
-        """Test target reached checking logic."""
+    def test_point_to_point_path_complete_check(self, simple_simulation):
+        """Test path completion checking logic."""
         sim = simple_simulation
 
-        # Initially not at target
+        # Initially not at path end
         sim.mpc_controller._path_length = 1.0
         sim.mpc_controller.s = 0.0
-        assert not sim.check_target_reached()
+        assert not sim.check_path_complete()
 
         # Mark path progress complete
         sim.mpc_controller.s = 1.0
-        assert sim.check_target_reached()
+        assert sim.check_path_complete()
 
     def test_point_to_point_mpc_control_update(self, simple_simulation):
         """Test MPC control update in point-to-point mode."""
@@ -175,44 +175,20 @@ class TestPointToPointMission:
         # Position may change due to initial velocity or physics
 
 
-class TestMultiPointMission:
-    """Test multi-point navigation mission."""
+class TestPathMission:
+    """Test path-following mission state."""
 
-    def test_multi_point_initialization(self):
-        """Test waypoint mission initialization (V4.0.0: uses MissionState)."""
-        # V4.0.0: Waypoint mode is configured via MissionState, not SatelliteConfig
-        # This test verifies the concept is testable with the new config system
+    def test_path_initialization(self):
+        """Path-following mission should be active when path is set."""
         from src.satellite_control.config.mission_state import MissionState
-        
-        mission_state = MissionState()
-        mission_state.enable_waypoint_mode = True
-        mission_state.waypoint_targets = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
-        mission_state.waypoint_angles = [(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)]
-        mission_state.current_target_index = 0
-        
-        assert mission_state.enable_waypoint_mode is True
-        assert len(mission_state.waypoint_targets) == 2
-        assert mission_state.current_target_index == 0
 
-    def test_multi_point_target_advancement(self):
-        """Test advancing to next target in waypoint mode (V4.0.0: uses MissionState)."""
-        # Legacy waypoint advancement updates current_target_index directly.
-        from src.satellite_control.config.mission_state import MissionState
-        
         mission_state = MissionState()
-        mission_state.enable_waypoint_mode = True
-        mission_state.waypoint_targets = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
-        mission_state.waypoint_angles = [(0.0, 0.0, 0.0), (0.0, 0.0, np.pi / 2)]
-        mission_state.current_target_index = 0
-        
-        # Verify initial state
-        assert mission_state.current_target_index == 0
-        assert mission_state.waypoint_targets[0] == (1.0, 0.0, 0.0)
-        
-        # Simulate advancement by updating current_target_index.
-        mission_state.current_target_index = 1
-        assert mission_state.current_target_index == 1
-        assert mission_state.waypoint_targets[1] == (0.0, 1.0, 0.0)
+        mission_state.mpcc_path_waypoints = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+        mission_state.mpcc_path_length = 1.0
+        mission_state.mpcc_path_speed = 0.2
+
+        assert mission_state.get_current_mission_type() == "PATH_FOLLOWING"
+        assert mission_state.mpcc_path_speed == pytest.approx(0.2)
 
 
 class TestMPCSimulationIntegration:
@@ -225,7 +201,7 @@ class TestMPCSimulationIntegration:
         # Capture the state passed to MPC
         captured_state = None
 
-        def capture_state(x_current, x_target, prev_thrusters=None):
+        def capture_state(x_current, prev_thrusters=None):
             nonlocal captured_state
             captured_state = x_current
             return np.zeros(sim.mpc_controller.num_thrusters), {
@@ -294,8 +270,8 @@ class TestStateValidation:
         current_state = sim.get_current_state()
         assert len(current_state) == 16
 
-        target_state = sim.target_state
-        assert len(target_state) == 13
+        reference_state = sim.reference_state
+        assert len(reference_state) == 13
 
     def test_angle_normalization(self, simple_simulation):
         """Test angle normalization in simulation."""
@@ -320,28 +296,6 @@ class TestStateValidation:
         diff = sim.angle_difference(np.pi, -np.pi)
         assert abs(diff) < 0.01  # Should be near zero
 
-    def test_position_bounds_validation(self, simple_simulation):
-        """Test that positions stay within bounds during simulation."""
-        sim = simple_simulation
-
-        # Position should be within bounds initially
-        pos = sim.satellite.position
-        bounds = sim.simulation_config.app_config.mpc.position_bounds
-
-        assert abs(pos[0]) <= bounds
-        assert abs(pos[1]) <= bounds
-
-    def test_velocity_bounds_validation(self, simple_simulation):
-        """Test velocity bounds."""
-        sim = simple_simulation
-
-        vel = sim.satellite.velocity
-        max_vel = sim.simulation_config.app_config.mpc.max_velocity
-
-        # Initial velocity should be reasonable
-        vel_mag = np.linalg.norm(vel)
-        assert vel_mag <= max_vel * 2  # Allow some margin for initial conditions
-
 
 class TestRealisticPhysics:
     """Test realistic physics simulation features."""
@@ -358,7 +312,7 @@ class TestRealisticPhysics:
 
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=(0.0, 0.0),
-            target_pos=(1.0, 1.0),
+            end_pos=(1.0, 1.0),
             config_overrides=config_overrides,
         )
 
@@ -402,7 +356,7 @@ class TestRealisticPhysics:
 
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=(0.0, 0.0),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
             start_vx=0.1,  # Start with some velocity
             config_overrides=config_overrides,
         )
@@ -536,40 +490,23 @@ class TestDataLogging:
             assert np.array_equal(sim.control_history[-1], thrusters)
 
 
-class TestMissionCompletion:
-    """Test mission completion criteria."""
+class TestPathCompletion:
+    """Test path completion criteria."""
 
     def test_point_to_point_completion(self, simple_simulation):
-        """Test point-to-point mission completion."""
+        """Test point-to-point path completion."""
+        from src.satellite_control.core.simulation_loop import SimulationLoop
+
         sim = simple_simulation
+        sim.simulation_config.mission_state.dxf_path_length = 1.0
+        sim.simulation_config.mission_state.trajectory_hold_end = 0.0
+        sim.mpc_controller.s = 1.0
+        sim.simulation_time = 1.0
 
-        # Move satellite to target
-        sim.satellite.position = np.array([0.0, 0.0, 0.0])
-        sim.satellite.velocity = np.array([0.0, 0.0, 0.0])
-        sim.satellite.angle = (0.0, 0.0, 0.0)
-        sim.satellite.angular_velocity = 0.0
+        loop = SimulationLoop(sim)
 
-        # Set target reached
-        sim.target_reached_time = sim.simulation_time
-
-        # V4.0.0: Advance time past stabilization (path-following mode)
-        # waypoint_final_stabilization_time is in app_config.simulation
-        sim.simulation_time = sim.target_reached_time + 1.0
-
-            # Check if mission should complete
-            # (This is handled in update_simulation)
-
-    def test_target_maintenance_tracking(self, simple_simulation):
-        """Test that target maintenance is tracked."""
-        sim = simple_simulation
-
-        # Set target reached
-        sim.target_reached_time = 5.0
-        sim.simulation_time = 8.0
-
-        # Maintenance time should be calculated
-        maintenance_time = sim.simulation_time - sim.target_reached_time
-        assert maintenance_time == pytest.approx(3.0)
+        assert loop._check_path_following_completion() is True
+        assert sim.trajectory_endpoint_reached_time == pytest.approx(1.0)
 
 
 if __name__ == "__main__":

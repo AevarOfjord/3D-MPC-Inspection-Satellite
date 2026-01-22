@@ -94,7 +94,7 @@ export function Editor() {
   const warnings = useMemo(() => {
     const issues: string[] = [];
     const start = config.start_position;
-    const target = config.target_position;
+    const target = config.end_position;
 
     config.obstacles.forEach((obs, i) => {
       if (obs.radius <= 0) {
@@ -166,8 +166,8 @@ export function Editor() {
     const nextConfig: MissionConfig = {
       ...config,
       start_position: [...latest.position] as [number, number, number],
-      target_position: [...next.position],
-      target_orientation: next.orientationDeg.map(degToRad) as [number, number, number],
+      end_position: [...next.position],
+      end_orientation: next.orientationDeg.map(degToRad) as [number, number, number],
     };
 
     advancingRef.current = true;
@@ -285,8 +285,8 @@ export function Editor() {
     const nextConfig: MissionConfig = {
       ...config,
       start_position: [...start.position],
-      target_position: [...target.position],
-      target_orientation: target.orientationDeg.map(degToRad) as [number, number, number],
+      end_position: [...target.position],
+      end_orientation: target.orientationDeg.map(degToRad) as [number, number, number],
     };
     setConfig(nextConfig);
     setSelectedMissionOption(optionId);
@@ -440,7 +440,7 @@ export function Editor() {
                        <input 
                          type="number" 
                          step="0.1"
-                         value={config.target_position[i]}
+                         value={config.end_position[i]}
                          onChange={(e) => updateTargetPos(i, parseFloat(e.target.value) || 0)}
                          className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
                        />
@@ -459,7 +459,7 @@ export function Editor() {
                        <input 
                          type="number" 
                          step="1"
-                         value={Math.round(config.target_orientation[i] * (180/Math.PI))}
+                         value={Math.round(config.end_orientation[i] * (180/Math.PI))}
                          onChange={(e) => {
                              const deg = parseFloat(e.target.value) || 0;
                              updateTargetOri(i, deg * (Math.PI/180));

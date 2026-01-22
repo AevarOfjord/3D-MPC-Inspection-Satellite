@@ -40,24 +40,24 @@ def normalize_angle(angle: float) -> float:
     return angle
 
 
-def angle_difference(target_angle: float, current_angle: float) -> float:
+def angle_difference(reference_angle: float, current_angle: float) -> float:
     """
-    Calculate the shortest angular difference between target and current angles.
+    Calculate the shortest angular difference between reference and current angles.
     This prevents the 270° transition issue by always taking the shortest path.
 
     Args:
-        target_angle: Target orientation in radians
+        reference_angle: Reference orientation in radians
         current_angle: Current orientation in radians
 
     Returns:
         Angle difference in [-pi, pi] range, positive = CCW rotation needed
     """
     # Normalize both angles first
-    target = normalize_angle(target_angle)
+    reference = normalize_angle(reference_angle)
     current = normalize_angle(current_angle)
 
     # Calculate raw difference
-    diff = target - current
+    diff = reference - current
 
     # Ensure we take the shortest path around the circle
     if diff > np.pi:
@@ -102,34 +102,37 @@ def point_to_line_distance(
 
 def calculate_safe_path_to_waypoint(
     start_pos: np.ndarray,
-    target_pos: np.ndarray,
+    end_pos: np.ndarray,
     all_obstacles: List[Tuple[float, ...]],
     safety_radius: float,
 ) -> List[Tuple[float, float, float]]:
     """
-    Calculate a safe path from start to target that avoids spherical obstacles.
+    Calculate a safe path from start to end that avoids spherical obstacles.
 
     Uses a simple single-waypoint strategy: if the direct path crosses an obstacle,
     generates an intermediate waypoint that goes around it.
 
     Args:
         start_pos: Starting position as [x, y, z] (z optional)
-        target_pos: Target position as [x, y, z] (z optional)
+        end_pos: End position as [x, y, z] (z optional)
         all_obstacles: List of obstacles as (x, y, z, r) tuples
         safety_radius: Minimum distance to maintain from obstacle centers
 
     Returns:
-        List of waypoints [(x, y, z), ...] from start to target
+        List of waypoints [(x, y, z), ...] from start to end
     """
     # Simple approach: If direct path crosses obstacles, generate intermediate waypoint.
     start = np.array(start_pos, dtype=float)
-    target = np.array(target_pos, dtype=float)
+    end = np.array(end_pos, dtype=float)
+    output_dim = 2 if max(start.shape[0], end.shape[0]) < 3 else 3
     if start.shape[0] < 3:
         start = np.pad(start, (0, 3 - start.shape[0]), "constant")
-    if target.shape[0] < 3:
-        target = np.pad(target, (0, 3 - target.shape[0]), "constant")
+    if end.shape[0] < 3:
+        end = np.pad(end, (0, 3 - end.shape[0]), "constant")
 
-    waypoints = [tuple(start)]
+    waypoints = [
+        tuple(start[:output_dim]),
+    ]
 
     blocking_obstacles = []
     for obstacle in all_obstacles:
@@ -138,10 +141,14 @@ def calculate_safe_path_to_waypoint(
         elif len(obstacle) == 3:
             obs_x, obs_y, obs_radius = obstacle
             obs_z = 0.0
+        elif len(obstacle) == 2:
+            obs_x, obs_y = obstacle
+            obs_z = 0.0
+            obs_radius = 0.0
         else:
             continue
         obstacle_center = np.array([obs_x, obs_y, obs_z], dtype=float)
-        distance_to_path = point_to_line_distance(obstacle_center, start, target)
+        distance_to_path = point_to_line_distance(obstacle_center, start, end)
         if distance_to_path < (safety_radius + obs_radius):
             blocking_obstacles.append((obstacle_center, obs_radius))
 
@@ -153,10 +160,10 @@ def calculate_safe_path_to_waypoint(
             key=lambda obs: float(np.linalg.norm(obs[0] - start)),
         )
 
-        path_vec = target - start
+        path_vec = end - start
         path_len = np.linalg.norm(path_vec)
         if path_len < 1e-10:
-            waypoints.append(tuple(target))
+            waypoints.append(tuple(end))
             return waypoints
 
         path_dir = path_vec / path_len
@@ -185,12 +192,12 @@ def calculate_safe_path_to_waypoint(
         )
         intermediate_waypoint = closest_obstacle + offset_dir * clearance
 
-        waypoints.append(tuple(intermediate_waypoint))
+        waypoints.append(tuple(intermediate_waypoint[:output_dim]))
         wp_x, wp_y, wp_z = intermediate_waypoint
         print(
             f" Generated intermediate waypoint to avoid obstacle: "
             f"({wp_x:.3f}, {wp_y:.3f}, {wp_z:.3f})"
         )
 
-    waypoints.append(tuple(target))
+    waypoints.append(tuple(end[:output_dim]))
     return waypoints

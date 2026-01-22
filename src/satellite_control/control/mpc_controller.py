@@ -32,7 +32,7 @@ class MPCController(Controller):
     """
     Satellite Model Predictive Controller (C++ Backend).
 
-    State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz] (16 elements).
+    State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz, s] (17 elements).
     Control: [τ_rw_x, τ_rw_y, τ_rw_z, u1, ..., uN] (RW torques + thrusters).
     """
 
@@ -78,23 +78,18 @@ class MPCController(Controller):
         mpc_params.prediction_horizon = self.N
         mpc_params.dt = self._dt
         mpc_params.solver_time_limit = self.solver_time_limit
-        mpc_params.Q_pos = self.Q_pos
-        mpc_params.Q_vel = self.Q_vel
-        mpc_params.Q_ang = self.Q_ang
-        mpc_params.Q_angvel = self.Q_angvel
-        mpc_params.R_thrust = self.R_thrust
-        mpc_params.R_rw_torque = self.R_rw_torque
-        mpc_params.enable_z_tilt = self.enable_z_tilt
-        mpc_params.z_tilt_gain = self.z_tilt_gain
-        mpc_params.z_tilt_max_rad = self.z_tilt_max_rad
 
-        # Create C++ controller
-        # Path Following (V4.0.1) - General Path MPCC
-        mpc_params.mode_path_following = self.mode_path_following
         mpc_params.Q_contour = self.Q_contour
         mpc_params.Q_progress = self.Q_progress
         mpc_params.Q_smooth = self.Q_smooth
-        mpc_params.v_target = self.v_target
+        mpc_params.Q_angvel = self.Q_angvel
+        mpc_params.R_thrust = self.R_thrust
+        mpc_params.R_rw_torque = self.R_rw_torque
+        mpc_params.path_speed = self.path_speed
+
+        # Collision Avoidance
+        mpc_params.enable_collision_avoidance = cfg.mpc.enable_collision_avoidance
+        mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
@@ -106,30 +101,31 @@ class MPCController(Controller):
         self._path_data: list[list[float]] = []  # [(s, x, y, z), ...]
         self._path_set = False
 
-        # Dimensions for external use
-        self.nx = 17 if self.mode_path_following else 16
+        # Dimensions (Fixed for MPCC)
+        self.nx = 17
         self.nu = self.num_rw_axes + self.num_thrusters
 
-        logger.info(f"MPC Controller initialized (C++ backend). Thrusters: {self.num_thrusters}, RW: {self.num_rw_axes}")
-        logger.info(f"MPC Path Following Mode: {self.mode_path_following}")
-        logger.info(f"MPC Params Mode sent to C++: {mpc_params.mode_path_following}")
-    
+        logger.info(
+            f"MPC Controller initialized (C++ backend). Thrusters: {self.num_thrusters}, RW: {self.num_rw_axes}"
+        )
+        logger.info("MPC Path Following Mode (MPCC) Enabled.")
+
     def set_path(self, path_points: list[tuple[float, float, float]]) -> None:
         """
         Set the path for path-following mode.
-        
+
         Args:
             path_points: List of (x, y, z) waypoints. Arc-length is computed automatically.
         """
         if not path_points or len(path_points) < 2:
             logger.warning("Path must have at least 2 points")
             return
-        
+
         # Build arc-length parameterized path
         self._path_data = []
         s = 0.0
         prev_pt = None
-        
+
         for pt in path_points:
             if prev_pt is not None:
                 # Compute segment length
@@ -137,10 +133,10 @@ class MPCController(Controller):
                 dy = pt[1] - prev_pt[1]
                 dz = pt[2] - prev_pt[2]
                 s += (dx**2 + dy**2 + dz**2) ** 0.5
-            
+
             self._path_data.append([s, pt[0], pt[1], pt[2]])
             prev_pt = pt
-        
+
         # Store total length for clamping
         self._path_length = s
 
@@ -148,7 +144,7 @@ class MPCController(Controller):
         self._cpp_controller.set_path_data(self._path_data)
         self._path_set = True
         self.s = 0.0  # Reset path parameter
-        
+
         logger.info(f"Path set with {len(path_points)} points, total length: {s:.3f}m")
 
     def get_path_reference(
@@ -242,24 +238,16 @@ class MPCController(Controller):
         self._dt = mpc.dt
         self.solver_time_limit = mpc.solver_time_limit
 
-        self.Q_pos = mpc.q_position
-        self.Q_vel = mpc.q_velocity
-        self.Q_ang = mpc.q_angle
         self.Q_angvel = mpc.q_angular_velocity
         self.R_thrust = mpc.r_thrust
         self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
 
-        # Z-tilt (legacy support, might not be in MPCParams yet or defaults)
-        self.enable_z_tilt = True  # Default
-        self.z_tilt_gain = 0.35
-        self.z_tilt_max_rad = np.deg2rad(20.0)
-
         # Path Following (V4.0.1) - General Path MPCC
-        self.mode_path_following = mpc.mode_path_following
+        self.mode_path_following = True  # Always True now
         self.Q_contour = mpc.Q_contour
         self.Q_progress = mpc.Q_progress
         self.Q_smooth = mpc.Q_smooth
-        self.v_target = mpc.v_target
+        self.path_speed = mpc.path_speed
 
     @property
     def dt(self) -> float:
@@ -319,65 +307,44 @@ class MPCController(Controller):
     def get_control_action(
         self,
         x_current: np.ndarray,
-        x_target: np.ndarray,
         previous_thrusters: Optional[np.ndarray] = None,
-        x_target_trajectory: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Compute optimal control action via C++ backend."""
         # Handle Path Following State Augmentation
-        if self.mode_path_following:
-            # Append current path parameter s to state
-            # Ensure x_current is basic 16-dim state before appending
-            if len(x_current) == 16:
-                x_input = np.append(x_current, self.s)
-            else:
-                x_input = x_current  # Assuming already augmented or custom
+        # Append current path parameter s to state
+        # Ensure x_current is basic 16-dim state before appending
+        if len(x_current) == 16:
+            x_input = np.append(x_current, self.s)
         else:
-            x_input = x_current
+            x_input = x_current  # Assuming already augmented or custom
 
-        use_traj = x_target_trajectory is not None
-        if use_traj:
-            traj = np.asarray(x_target_trajectory, dtype=float)
-            if traj.ndim == 2 and traj.shape[1] == self.nx and traj.shape[0] > 0:
-                result = self._cpp_controller.get_control_action_trajectory(
-                    x_input, traj
-                )
-            else:
-                result = self._cpp_controller.get_control_action(x_input, x_target)
-        else:
-            result = self._cpp_controller.get_control_action(x_input, x_target)
+        result = self._cpp_controller.get_control_action(x_input)
 
         self.solve_times.append(result.solve_time)
 
         # Process output controls
         u_out = np.array(result.u)
 
-        if self.mode_path_following:
-            # Extract virtual control v_s (last element)
-            v_s = u_out[-1]
-            
-            # Update internal path state s only if solved successfully
-            if result.status == 1:
-                self.s += v_s * self.dt
-                # Clamp s to valid range [0, L]
-                if self._path_set and hasattr(self, "_path_length"):
-                     self.s = max(0.0, min(self.s, self._path_length))
-            
-            # Strip virtual control from output so simulation gets only physical actuators
-            u_phys = u_out[:-1]
+        # Extract virtual control v_s (last element)
+        v_s = u_out[-1]
 
-            extras = {
-                "status": result.status,
-                "solve_time": result.solve_time,
-                "path_s": self.s,
-                "path_v_s": v_s,
-            }
-            return u_phys, extras
+        # Update internal path state s only if solved successfully
+        if result.status == 1:
+            self.s += v_s * self.dt
+            # Clamp s to valid range [0, L]
+            if self._path_set and hasattr(self, "_path_length"):
+                self.s = max(0.0, min(self.s, self._path_length))
 
-        return u_out, {
+        # Strip virtual control from output so simulation gets only physical actuators
+        u_phys = u_out[:-1]
+
+        extras = {
             "status": result.status,
             "solve_time": result.solve_time,
+            "path_s": self.s,
+            "path_v_s": v_s,
         }
+        return u_phys, extras
 
     def set_obstacles(self, mission_obstacles: list) -> None:
         """

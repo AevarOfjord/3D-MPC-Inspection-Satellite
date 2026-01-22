@@ -5,6 +5,7 @@ Type-safe configuration models with validation, range checks,
 and descriptive error messages.
 """
 
+import logging
 from typing import Any, Dict, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -247,33 +248,33 @@ class MPCParams(BaseModel):
         description="Optimization solver type",
     )
 
-    # Weights (Q - State, R - Control)
-    q_position: float = Field(
-        ...,
-        ge=0,
-        le=1e6,
-        description="Position tracking weight",
+    # Weights (MPCC)
+    Q_contour: float = Field(
+        1000.0,
+        ge=0.0,
+        le=100000.0,
+        description="Contouring weight - penalizes distance from path [unitless]",
     )
-    q_velocity: float = Field(
-        ...,
-        ge=0,
-        le=1e6,
-        description="Velocity tracking weight",
+    Q_progress: float = Field(
+        100.0,
+        ge=0.0,
+        le=10000.0,
+        description="Progress weight - penalizes deviation from path speed [unitless]",
     )
-    q_angle: float = Field(
-        ...,
-        ge=0,
-        le=1e6,
-        description="Angle tracking weight",
+    Q_smooth: float = Field(
+        10.0,
+        ge=0.0,
+        le=1000.0,
+        description="Smoothness weight - penalizes velocity changes [unitless]",
     )
     q_angular_velocity: float = Field(
-        ...,
+        1.0,
         ge=0,
         le=1e6,
-        description="Angular velocity tracking weight",
+        description="Angular velocity tracking weight (stabilization)",
     )
     r_thrust: float = Field(
-        ...,
+        0.1,
         ge=0,
         le=1e6,
         description="Thrust usage penalty weight",
@@ -284,69 +285,13 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Reaction wheel torque penalty weight",
     )
-    # Constraints
-    max_velocity: float = Field(
-        ...,
-        gt=0,
-        le=10.0,
-        description="Maximum linear velocity in m/s",
-    )
-    max_angular_velocity: float = Field(
-        ...,
-        gt=0,
-        le=20.0,
-        description="Maximum angular velocity in rad/s",
-    )
-    position_bounds: float = Field(
-        ...,
-        gt=0,
-        le=100.0,
-        description="Position bounds ±meters from origin",
-    )
 
     # Adaptive control
-    damping_zone: float = Field(
-        0.25,
-        ge=0,
-        le=5.0,
-        description="Distance threshold for damping zone in meters",
-    )
-    velocity_threshold: float = Field(
-        0.03,
-        ge=0,
-        le=1.0,
-        description="Velocity threshold for fine control in m/s",
-    )
-    max_velocity_weight: float = Field(
-        1000.0,
-        ge=0,
-        le=1e6,
-        description="Maximum adaptive velocity weight",
-    )
     thruster_type: str = Field(
         "PWM",
         description="Thruster actuation type: 'PWM' (Binary) or 'CON' (Continuous)",
     )
-    enable_rw_yaw: bool = Field(
-        False,
-        description="Enable reaction wheel torque about yaw axis",
-    )
-    enable_z_tilt: bool = Field(
-        True,
-        description="Enable tilt-based Z translation using pitch/roll",
-    )
-    z_tilt_gain: float = Field(
-        0.35,
-        ge=0.0,
-        le=2.0,
-        description="Tilt gain (rad per meter of Z error)",
-    )
-    z_tilt_max_deg: float = Field(
-        20.0,
-        ge=0.0,
-        le=60.0,
-        description="Maximum tilt magnitude in degrees for Z translation",
-    )
+
     verbose_mpc: bool = Field(
         False,
         description="Enable verbose MPC solver output",
@@ -365,33 +310,11 @@ class MPCParams(BaseModel):
     )
 
     # Path Following (V4.0.1) - General Path MPCC
-    mode_path_following: bool = Field(
-        False,
-        description="Enable path following (MPCC) mode",
-    )
-    Q_contour: float = Field(
-        1000.0,
-        ge=0.0,
-        le=100000.0,
-        description="Contouring weight - penalizes distance from path [unitless]",
-    )
-    Q_progress: float = Field(
-        100.0,
-        ge=0.0,
-        le=10000.0,
-        description="Progress weight - penalizes deviation from target speed [unitless]",
-    )
-    Q_smooth: float = Field(
-        10.0,
-        ge=0.0,
-        le=1000.0,
-        description="Smoothness weight - penalizes velocity changes [unitless]",
-    )
-    v_target: float = Field(
+    path_speed: float = Field(
         0.1,
         gt=0.0,
         le=1.0,
-        description="Target speed along path [m/s]",
+        description="Path speed along reference curve [m/s]",
     )
 
     @field_validator("thruster_type")
@@ -428,12 +351,12 @@ class MPCParams(BaseModel):
     def validate_weight_balance(self) -> "MPCParams":
         """Check that weights are reasonably balanced."""
         total_q = (
-            self.q_position + self.q_velocity + self.q_angle + self.q_angular_velocity
+            self.Q_contour + self.Q_progress + self.Q_smooth + self.q_angular_velocity
         )
         if total_q == 0 and self.r_thrust > 0:
             raise ValueError(
                 "All Q weights are zero but R_thrust is nonzero - "
-                "controller will only minimize thrust, not track targets"
+                "controller will only minimize thrust, not track references"
             )
         return self
 
@@ -483,35 +406,11 @@ class SimulationParams(BaseModel):
         le=1.0,
         description="MPC control update interval in seconds (must be >= dt)",
     )
-    target_hold_time: float = Field(
-        5.0,
-        gt=0,
-        le=300.0,
-        description="Time to hold at intermediate waypoints in seconds",
-    )
-    waypoint_final_stabilization_time: float = Field(
-        10.0,
-        gt=0,
-        le=300.0,
-        description="Final stabilization time for waypoint missions in seconds",
-    )
-    shape_final_stabilization_time: float = Field(
-        15.0,
-        gt=0,
-        le=300.0,
-        description="Final stabilization time for shape following missions in seconds",
-    )
-    shape_positioning_stabilization_time: float = Field(
-        5.0,
-        gt=0,
-        le=300.0,
-        description="Positioning phase stabilization time for shape missions in seconds",
-    )
-    default_target_speed: float = Field(
+    default_path_speed: float = Field(
         0.1,
         gt=0,
         le=1.0,
-        description="Default target speed for shape following missions in m/s",
+        description="Default path speed for shape following missions in m/s",
     )
 
 
@@ -536,9 +435,11 @@ class AppConfig(BaseModel):
         """Ensure timing parameters are consistent across subsystems."""
         # MPC dt should match simulation control_dt
         if abs(self.mpc.dt - self.simulation.control_dt) > 0.001:
-            raise ValueError(
-                f"MPC dt ({self.mpc.dt}s) should match simulation control_dt "
-                f"({self.simulation.control_dt}s)"
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "MPC dt (%.3fs) does not match simulation control_dt (%.3fs).",
+                self.mpc.dt,
+                self.simulation.control_dt,
             )
         # Control dt should be >= simulation dt
         if self.simulation.control_dt < self.simulation.dt:

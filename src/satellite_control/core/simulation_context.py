@@ -25,7 +25,7 @@ class SimulationContext:
     step_number: int = 0
     # State [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
     current_state: np.ndarray = field(default_factory=lambda: np.zeros(13))
-    target_state: np.ndarray = field(default_factory=lambda: np.zeros(13))
+    reference_state: np.ndarray = field(default_factory=lambda: np.zeros(13))
     # Mission
     mission_phase: str = "IDLE"
     waypoint_number: int = 0
@@ -37,8 +37,8 @@ class SimulationContext:
     # Performance / Internals
     computation_time_last_step: float = 0.0
 
-    def update_state(self, time: float, state: np.ndarray, target: np.ndarray):
+    def update_state(self, time: float, state: np.ndarray, reference_state: np.ndarray):
         """Update dynamic state variables."""
         self.simulation_time = time
         self.current_state = state
-        self.target_state = target
+        self.reference_state = reference_state

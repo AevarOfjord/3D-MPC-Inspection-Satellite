@@ -13,6 +13,8 @@ FetchContent_Declare(
   Eigen3
   URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  # Fix for hanging git ls-remote on local directory during configure
+  PATCH_COMMAND sed -i.bak "s/execute_process(COMMAND git ls-remote/# execute_process(COMMAND git ls-remote/" CMakeLists.txt
 )
 FetchContent_MakeAvailable(Eigen3)
 

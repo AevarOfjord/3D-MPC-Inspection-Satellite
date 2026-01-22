@@ -1,0 +1,102 @@
+Obtaining file:///Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: numpy>=1.21.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.4.1)
+Requirement already satisfied: scipy>=1.7.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (1.17.0)
+Requirement already satisfied: pydantic>=2.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.12.5)
+Requirement already satisfied: pyyaml>=6.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (6.0.3)
+Requirement already satisfied: typer>=0.9.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.21.1)
+Requirement already satisfied: click>=8.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (8.3.1)
+Requirement already satisfied: rich>=10.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (14.2.0)
+Requirement already satisfied: questionary>=2.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.1.1)
+Requirement already satisfied: pandas>=1.3.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.3.3)
+Requirement already satisfied: matplotlib>=3.4.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (3.10.8)
+Requirement already satisfied: seaborn>=0.11.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.13.2)
+Requirement already satisfied: plotly>=5.0.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (6.5.2)
+Requirement already satisfied: streamlit>=1.25.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (1.53.0)
+Requirement already satisfied: imageio>=2.30.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.37.2)
+Requirement already satisfied: imageio-ffmpeg>=0.4.9 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.6.0)
+Requirement already satisfied: ezdxf>=0.17.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (1.4.3)
+Requirement already satisfied: shapely>=1.8.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (2.1.2)
+Requirement already satisfied: osqp>=0.6.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (1.0.5)
+Requirement already satisfied: uvicorn>=0.20.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.40.0)
+Requirement already satisfied: fastapi>=0.100.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.128.0)
+Requirement already satisfied: watchfiles>=0.19.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (1.1.1)
+Requirement already satisfied: httpx>=0.24.0 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.28.1)
+Requirement already satisfied: python-multipart>=0.0.6 in ./.venv311/lib/python3.11/site-packages (from satellite_control==1.0.0) (0.0.21)
+Collecting aiofiles>=23.0.0 (from satellite_control==1.0.0)
+  Downloading aiofiles-25.1.0-py3-none-any.whl.metadata (6.3 kB)
+Requirement already satisfied: pyparsing>=2.0.1 in ./.venv311/lib/python3.11/site-packages (from ezdxf>=0.17.0->satellite_control==1.0.0) (3.3.1)
+Requirement already satisfied: typing_extensions>=4.6.0 in ./.venv311/lib/python3.11/site-packages (from ezdxf>=0.17.0->satellite_control==1.0.0) (4.15.0)
+Requirement already satisfied: fonttools in ./.venv311/lib/python3.11/site-packages (from ezdxf>=0.17.0->satellite_control==1.0.0) (4.61.1)
+Requirement already satisfied: starlette<0.51.0,>=0.40.0 in ./.venv311/lib/python3.11/site-packages (from fastapi>=0.100.0->satellite_control==1.0.0) (0.50.0)
+Requirement already satisfied: annotated-doc>=0.0.2 in ./.venv311/lib/python3.11/site-packages (from fastapi>=0.100.0->satellite_control==1.0.0) (0.0.4)
+Requirement already satisfied: anyio<5,>=3.6.2 in ./.venv311/lib/python3.11/site-packages (from starlette<0.51.0,>=0.40.0->fastapi>=0.100.0->satellite_control==1.0.0) (4.12.1)
+Requirement already satisfied: idna>=2.8 in ./.venv311/lib/python3.11/site-packages (from anyio<5,>=3.6.2->starlette<0.51.0,>=0.40.0->fastapi>=0.100.0->satellite_control==1.0.0) (3.11)
+Requirement already satisfied: certifi in ./.venv311/lib/python3.11/site-packages (from httpx>=0.24.0->satellite_control==1.0.0) (2026.1.4)
+Requirement already satisfied: httpcore==1.* in ./.venv311/lib/python3.11/site-packages (from httpx>=0.24.0->satellite_control==1.0.0) (1.0.9)
+Requirement already satisfied: h11>=0.16 in ./.venv311/lib/python3.11/site-packages (from httpcore==1.*->httpx>=0.24.0->satellite_control==1.0.0) (0.16.0)
+Requirement already satisfied: pillow>=8.3.2 in ./.venv311/lib/python3.11/site-packages (from imageio>=2.30.0->satellite_control==1.0.0) (12.1.0)
+Requirement already satisfied: contourpy>=1.0.1 in ./.venv311/lib/python3.11/site-packages (from matplotlib>=3.4.0->satellite_control==1.0.0) (1.3.3)
+Requirement already satisfied: cycler>=0.10 in ./.venv311/lib/python3.11/site-packages (from matplotlib>=3.4.0->satellite_control==1.0.0) (0.12.1)
+Requirement already satisfied: kiwisolver>=1.3.1 in ./.venv311/lib/python3.11/site-packages (from matplotlib>=3.4.0->satellite_control==1.0.0) (1.4.9)
+Requirement already satisfied: packaging>=20.0 in ./.venv311/lib/python3.11/site-packages (from matplotlib>=3.4.0->satellite_control==1.0.0) (25.0)
+Requirement already satisfied: python-dateutil>=2.7 in ./.venv311/lib/python3.11/site-packages (from matplotlib>=3.4.0->satellite_control==1.0.0) (2.9.0.post0)
+Requirement already satisfied: jinja2 in ./.venv311/lib/python3.11/site-packages (from osqp>=0.6.0->satellite_control==1.0.0) (3.1.6)
+Requirement already satisfied: setuptools in ./.venv311/lib/python3.11/site-packages (from osqp>=0.6.0->satellite_control==1.0.0) (80.9.0)
+Requirement already satisfied: joblib in ./.venv311/lib/python3.11/site-packages (from osqp>=0.6.0->satellite_control==1.0.0) (1.5.3)
+Requirement already satisfied: pytz>=2020.1 in ./.venv311/lib/python3.11/site-packages (from pandas>=1.3.0->satellite_control==1.0.0) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./.venv311/lib/python3.11/site-packages (from pandas>=1.3.0->satellite_control==1.0.0) (2025.3)
+Requirement already satisfied: narwhals>=1.15.1 in ./.venv311/lib/python3.11/site-packages (from plotly>=5.0.0->satellite_control==1.0.0) (2.15.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./.venv311/lib/python3.11/site-packages (from pydantic>=2.0.0->satellite_control==1.0.0) (0.7.0)
+Requirement already satisfied: pydantic-core==2.41.5 in ./.venv311/lib/python3.11/site-packages (from pydantic>=2.0.0->satellite_control==1.0.0) (2.41.5)
+Requirement already satisfied: typing-inspection>=0.4.2 in ./.venv311/lib/python3.11/site-packages (from pydantic>=2.0.0->satellite_control==1.0.0) (0.4.2)
+Requirement already satisfied: six>=1.5 in ./.venv311/lib/python3.11/site-packages (from python-dateutil>=2.7->matplotlib>=3.4.0->satellite_control==1.0.0) (1.17.0)
+Requirement already satisfied: prompt_toolkit<4.0,>=2.0 in ./.venv311/lib/python3.11/site-packages (from questionary>=2.0.0->satellite_control==1.0.0) (3.0.52)
+Requirement already satisfied: wcwidth in ./.venv311/lib/python3.11/site-packages (from prompt_toolkit<4.0,>=2.0->questionary>=2.0.0->satellite_control==1.0.0) (0.2.14)
+Requirement already satisfied: markdown-it-py>=2.2.0 in ./.venv311/lib/python3.11/site-packages (from rich>=10.0.0->satellite_control==1.0.0) (4.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in ./.venv311/lib/python3.11/site-packages (from rich>=10.0.0->satellite_control==1.0.0) (2.19.2)
+Requirement already satisfied: mdurl~=0.1 in ./.venv311/lib/python3.11/site-packages (from markdown-it-py>=2.2.0->rich>=10.0.0->satellite_control==1.0.0) (0.1.2)
+Requirement already satisfied: altair!=5.4.0,!=5.4.1,<7,>=4.0 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (6.0.0)
+Requirement already satisfied: blinker<2,>=1.5.0 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (1.9.0)
+Requirement already satisfied: cachetools<7,>=5.5 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (6.2.4)
+Requirement already satisfied: protobuf<7,>=3.20 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (6.33.4)
+Requirement already satisfied: pyarrow>=7.0 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (23.0.0)
+Requirement already satisfied: requests<3,>=2.27 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (2.32.5)
+Requirement already satisfied: tenacity<10,>=8.1.0 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (9.1.2)
+Requirement already satisfied: toml<2,>=0.10.1 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (0.10.2)
+Requirement already satisfied: gitpython!=3.1.19,<4,>=3.0.7 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (3.1.46)
+Requirement already satisfied: pydeck<1,>=0.8.0b4 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (0.9.1)
+Requirement already satisfied: tornado!=6.5.0,<7,>=6.0.3 in ./.venv311/lib/python3.11/site-packages (from streamlit>=1.25.0->satellite_control==1.0.0) (6.5.4)
+Requirement already satisfied: jsonschema>=3.0 in ./.venv311/lib/python3.11/site-packages (from altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit>=1.25.0->satellite_control==1.0.0) (4.26.0)
+Requirement already satisfied: gitdb<5,>=4.0.1 in ./.venv311/lib/python3.11/site-packages (from gitpython!=3.1.19,<4,>=3.0.7->streamlit>=1.25.0->satellite_control==1.0.0) (4.0.12)
+Requirement already satisfied: smmap<6,>=3.0.1 in ./.venv311/lib/python3.11/site-packages (from gitdb<5,>=4.0.1->gitpython!=3.1.19,<4,>=3.0.7->streamlit>=1.25.0->satellite_control==1.0.0) (5.0.2)
+Requirement already satisfied: charset_normalizer<4,>=2 in ./.venv311/lib/python3.11/site-packages (from requests<3,>=2.27->streamlit>=1.25.0->satellite_control==1.0.0) (3.4.4)
+Requirement already satisfied: urllib3<3,>=1.21.1 in ./.venv311/lib/python3.11/site-packages (from requests<3,>=2.27->streamlit>=1.25.0->satellite_control==1.0.0) (2.6.3)
+Requirement already satisfied: MarkupSafe>=2.0 in ./.venv311/lib/python3.11/site-packages (from jinja2->osqp>=0.6.0->satellite_control==1.0.0) (3.0.3)
+Requirement already satisfied: attrs>=22.2.0 in ./.venv311/lib/python3.11/site-packages (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit>=1.25.0->satellite_control==1.0.0) (25.4.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in ./.venv311/lib/python3.11/site-packages (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit>=1.25.0->satellite_control==1.0.0) (2025.9.1)
+Requirement already satisfied: referencing>=0.28.4 in ./.venv311/lib/python3.11/site-packages (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit>=1.25.0->satellite_control==1.0.0) (0.37.0)
+Requirement already satisfied: rpds-py>=0.25.0 in ./.venv311/lib/python3.11/site-packages (from jsonschema>=3.0->altair!=5.4.0,!=5.4.1,<7,>=4.0->streamlit>=1.25.0->satellite_control==1.0.0) (0.30.0)
+Requirement already satisfied: shellingham>=1.3.0 in ./.venv311/lib/python3.11/site-packages (from typer>=0.9.0->satellite_control==1.0.0) (1.5.4)
+Downloading aiofiles-25.1.0-py3-none-any.whl (14 kB)
+Building wheels for collected packages: satellite_control
+  Building editable for satellite_control (pyproject.toml): started
+  Building editable for satellite_control (pyproject.toml): still running...
+  Building editable for satellite_control (pyproject.toml): finished with status 'done'
+  Created wheel for satellite_control: filename=satellite_control-1.0.0-cp311-cp311-macosx_26_0_arm64.whl size=2352151 sha256=34724e8d038ba6620f86aa37fc60581aa6ab6a3e356a50c0c53a3965188ed181
+  Stored in directory: /private/var/folders/c8/ydy_7n0j59z4cq37r8d9ngx80000gn/T/pip-ephem-wheel-cache-xqe_nwun/wheels/24/25/63/db7762712e7baa4cdefd4e9d860801ec216afaef9ce947f30f
+Successfully built satellite_control
+Installing collected packages: aiofiles, satellite_control
+  Attempting uninstall: satellite_control
+    Found existing installation: satellite_control 1.0.0
+    Uninstalling satellite_control-1.0.0:
+      Successfully uninstalled satellite_control-1.0.0
+
+Successfully installed aiofiles-25.1.0 satellite_control-1.0.0

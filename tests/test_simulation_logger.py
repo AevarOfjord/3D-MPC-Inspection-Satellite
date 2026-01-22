@@ -51,12 +51,12 @@ def sample_context():
     context.current_state[7:10] = [0.1, 0.2, 0.05]
     context.current_state[10:13] = [0.0, 0.0, 0.1]
 
-    # Set target state
-    context.target_state = np.zeros(13)
-    context.target_state[0:3] = [0.0, 0.0, 0.0]
-    context.target_state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.0))
-    context.target_state[7:10] = [0.0, 0.0, 0.0]
-    context.target_state[10:13] = [0.0, 0.0, 0.0]
+    # Set reference state
+    context.reference_state = np.zeros(13)
+    context.reference_state[0:3] = [0.0, 0.0, 0.0]
+    context.reference_state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.0))
+    context.reference_state[7:10] = [0.0, 0.0, 0.0]
+    context.reference_state[10:13] = [0.0, 0.0, 0.0]
 
     return context
 
@@ -97,8 +97,8 @@ class TestSimulationLoggerLogStep:
         assert "Control_Time" in call_args
         assert "Current_X" in call_args
         assert "Current_Y" in call_args
-        assert "Target_X" in call_args
-        assert "Target_Y" in call_args
+        assert "Reference_X" in call_args
+        assert "Reference_Y" in call_args
 
     def test_log_step_with_none_mpc_info(
         self, simulation_logger, sample_context, mock_data_logger
@@ -138,10 +138,10 @@ class TestSimulationLoggerLogStep:
         assert call_args["Current_Y"] == pytest.approx(2.0)
         assert call_args["Current_Z"] == pytest.approx(0.5)
 
-        # Verify target position
-        assert call_args["Target_X"] == pytest.approx(0.0)
-        assert call_args["Target_Y"] == pytest.approx(0.0)
-        assert call_args["Target_Z"] == pytest.approx(0.0)
+        # Verify reference position
+        assert call_args["Reference_X"] == pytest.approx(0.0)
+        assert call_args["Reference_Y"] == pytest.approx(0.0)
+        assert call_args["Reference_Z"] == pytest.approx(0.0)
 
     def test_log_step_calculates_errors(
         self, simulation_logger, sample_context, mock_data_logger
@@ -174,14 +174,14 @@ class TestSimulationLoggerLogPhysicsStep:
         """Test that log_physics_step logs physics data."""
         current_state = np.zeros(13)
         current_state[0:3] = [1.0, 2.0, 0.5]
-        target_state = np.zeros(13)
+        reference_state = np.zeros(13)
         thruster_actual = np.array([0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0])
         thruster_command = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
 
         simulation_logger.log_physics_step(
             simulation_time=1.0,
             current_state=current_state,
-            target_state=target_state,
+            reference_state=reference_state,
             thruster_actual_output=thruster_actual,
             thruster_last_command=thruster_command,
         )
@@ -201,7 +201,7 @@ class TestSimulationLoggerLogPhysicsStep:
     ):
         """Test that log_physics_step uses normalize_angle function if provided."""
         current_state = np.zeros(13)
-        target_state = np.zeros(13)
+        reference_state = np.zeros(13)
 
         def normalize_angle(angle):
             return (angle + np.pi) % (2 * np.pi) - np.pi
@@ -209,7 +209,7 @@ class TestSimulationLoggerLogPhysicsStep:
         simulation_logger.log_physics_step(
             simulation_time=1.0,
             current_state=current_state,
-            target_state=target_state,
+            reference_state=reference_state,
             thruster_actual_output=np.zeros(8),
             thruster_last_command=np.zeros(8),
             normalize_angle_func=normalize_angle,

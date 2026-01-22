@@ -53,51 +53,6 @@ class TestStateConverterProperties:
 
 
 # ============================================================================
-# MPC Constraint Property Tests
-# ============================================================================
-
-
-@pytest.mark.unit
-class TestMPCConstraintProperties:
-    """Property-based tests for MPC constraints."""
-
-    @given(
-        pos_x=st.floats(-2.0, 2.0, allow_nan=False),
-        pos_y=st.floats(-2.0, 2.0, allow_nan=False),
-    )
-    @settings(max_examples=50)
-    def test_position_bounds_symmetric(self, pos_x, pos_y):
-        """Position bounds should be symmetric around origin."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
-
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
-        config = SimulationConfig.create_default()
-        bounds = config.app_config.mpc.position_bounds
-
-        # If position is within bounds, -position should also be valid
-        if abs(pos_x) <= bounds and abs(pos_y) <= bounds:
-            assert abs(-pos_x) <= bounds
-            assert abs(-pos_y) <= bounds
-
-    @given(
-        velocity=st.floats(0.0, 2.0, allow_nan=False),
-    )
-    @settings(max_examples=50)
-    def test_velocity_limit_positive(self, velocity):
-        """Velocity limits should be positive symmetric."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
-
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
-        config = SimulationConfig.create_default()
-        max_v = config.app_config.mpc.max_velocity
-
-        assert max_v > 0
-        # If v is within limit, -v should also be within limit
-        if velocity <= max_v:
-            assert -velocity >= -max_v
-
-
-# ============================================================================
 # Thruster Configuration Property Tests
 # ============================================================================
 

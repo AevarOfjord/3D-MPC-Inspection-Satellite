@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Simple Point-to-Point Motion Test
+Simple Path Motion Test
 
-Tests basic MPC functionality by moving from (0,0,0) to (1,0,0).
+Tests basic MPC functionality by moving from (0,0,0) to (1,0,0) along a path.
 
 Usage:
     ./.venv311/bin/python3 scripts/run_simple_motion_test.py
@@ -24,11 +24,8 @@ def run_simple_motion_test():
     print("SIMPLE MOTION TEST: (0,0,0) -> (1,0,0)")
     print("=" * 60)
 
-    # Create default config (no path following)
+    # Create default config (path-only)
     app_config = create_default_app_config()
-
-    # Disable path following for this test
-    app_config.mpc.mode_path_following = False
 
     # Simulation settings
     app_config.simulation.max_duration = 30.0  # 30 seconds
@@ -36,18 +33,17 @@ def run_simple_motion_test():
 
     print(f"\nConfiguration:")
     print(f"  Start: (0, 0, 0) m")
-    print(f"  Target: (1, 0, 0) m")
+    print(f"  End: (1, 0, 0) m")
     print(f"  Duration: {app_config.simulation.max_duration} s")
-    print(f"  Path Following: {app_config.mpc.mode_path_following}")
 
     # Create simulation config
     sim_config = SimulationConfig(
         app_config=app_config, mission_state=create_mission_state()
     )
 
-    # Starting and target positions
+    # Starting and end positions
     start_pos = (0.0, 0.0, 0.0)
-    target_pos = (1.0, 0.0, 0.0)
+    end_pos = (1.0, 0.0, 0.0)
 
     print(f"\nInitializing simulation...")
 
@@ -56,9 +52,9 @@ def run_simple_motion_test():
             cfg=app_config,
             simulation_config=sim_config,
             start_pos=start_pos,
-            target_pos=target_pos,
+            end_pos=end_pos,
             start_angle=(0, 0, 0),
-            target_angle=(0, 0, 0),
+            end_angle=(0, 0, 0),
         )
 
         print("Running simulation...")
@@ -92,14 +88,14 @@ def run_simple_motion_test():
 
                 # Print progress
                 pos = state[:3]
-                dist_to_target = np.linalg.norm(pos - np.array(target_pos))
+                dist_to_end = np.linalg.norm(pos - np.array(end_pos))
                 print(
-                    f"  t={sim.simulation_time:.1f}s: pos=({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}), dist={dist_to_target:.3f}m"
+                    f"  t={sim.simulation_time:.1f}s: pos=({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}), dist={dist_to_end:.3f}m"
                 )
 
-                # Early exit if reached target
-                if dist_to_target < 0.05:
-                    print(f"\n✅ TARGET REACHED at t={sim.simulation_time:.1f}s!")
+                # Early exit if reached end
+                if dist_to_end < 0.05:
+                    print(f"\n✅ END REACHED at t={sim.simulation_time:.1f}s!")
                     break
 
         print(f"\nSimulation completed at t={sim.simulation_time:.2f}s")
@@ -107,7 +103,7 @@ def run_simple_motion_test():
         # Final state
         final_state = sim.get_current_state()
         final_pos = final_state[:3]
-        final_dist = np.linalg.norm(final_pos - np.array(target_pos))
+        final_dist = np.linalg.norm(final_pos - np.array(end_pos))
 
         print(f"\n" + "=" * 40)
         print("RESULTS")
@@ -115,15 +111,15 @@ def run_simple_motion_test():
         print(
             f"Final Position: ({final_pos[0]:.4f}, {final_pos[1]:.4f}, {final_pos[2]:.4f}) m"
         )
-        print(f"Target Position: {target_pos}")
-        print(f"Distance to Target: {final_dist:.4f} m")
+        print(f"End Position: {end_pos}")
+        print(f"Distance to End: {final_dist:.4f} m")
 
         if final_dist < 0.1:
-            print("\n✅ TEST PASSED - Satellite reached target!")
+            print("\n✅ TEST PASSED - Satellite reached end!")
             success = True
         else:
             print(
-                "\n⚠️ TEST INCOMPLETE - Satellite did not reach target within time limit"
+                "\n⚠️ TEST INCOMPLETE - Satellite did not reach end within time limit"
             )
             success = False
 

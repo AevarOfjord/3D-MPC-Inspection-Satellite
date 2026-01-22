@@ -40,12 +40,12 @@ class TrialConfig:
     initial_wx: float
     initial_wy: float
     initial_wz: float
-    target_x: float = 0.0
-    target_y: float = 0.0
-    target_z: float = 0.0
-    target_roll: float = 0.0
-    target_pitch: float = 0.0
-    target_yaw: float = 0.0
+    end_x: float = 0.0
+    end_y: float = 0.0
+    end_z: float = 0.0
+    end_roll: float = 0.0
+    end_pitch: float = 0.0
+    end_yaw: float = 0.0
 
 
 @dataclass
@@ -56,7 +56,7 @@ class TrialResult:
     success: bool
     final_position_error: float
     final_angle_error: float
-    time_to_target: float
+    time_to_end: float
     total_fuel_usage: float
     mean_solve_time: float
     max_solve_time: float
@@ -86,15 +86,15 @@ class MonteCarloConfig:
     # Angular velocity variation (rad/s)
     omega_std: float = 0.01
 
-    # Target position
-    target_x: float = 0.0
-    target_y: float = 0.0
-    target_z: float = 0.0
+    # End position
+    end_x: float = 0.0
+    end_y: float = 0.0
+    end_z: float = 0.0
 
-    # Target orientation
-    target_roll: float = 0.0
-    target_pitch: float = 0.0
-    target_yaw: float = 0.0
+    # End orientation
+    end_roll: float = 0.0
+    end_pitch: float = 0.0
+    end_yaw: float = 0.0
 
     # Success criteria
     position_tolerance: float = 0.05  # meters
@@ -167,12 +167,12 @@ class MonteCarloRunner:
                     initial_wx=wx,
                     initial_wy=wy,
                     initial_wz=wz,
-                    target_x=self.config.target_x,
-                    target_y=self.config.target_y,
-                    target_z=self.config.target_z,
-                    target_roll=self.config.target_roll,
-                    target_pitch=self.config.target_pitch,
-                    target_yaw=self.config.target_yaw,
+                    end_x=self.config.end_x,
+                    end_y=self.config.end_y,
+                    end_z=self.config.end_z,
+                    end_roll=self.config.end_roll,
+                    end_pitch=self.config.end_pitch,
+                    end_yaw=self.config.end_yaw,
                 )
             )
 
@@ -200,16 +200,16 @@ class MonteCarloRunner:
                     trial_config.initial_y,
                     trial_config.initial_z,
                 ),
-                target_pos=(trial_config.target_x, trial_config.target_y, trial_config.target_z),
+                end_pos=(trial_config.end_x, trial_config.end_y, trial_config.end_z),
                 start_angle=(
                     trial_config.initial_roll,
                     trial_config.initial_pitch,
                     trial_config.initial_yaw,
                 ),
-                target_angle=(
-                    trial_config.target_roll,
-                    trial_config.target_pitch,
-                    trial_config.target_yaw,
+                end_angle=(
+                    trial_config.end_roll,
+                    trial_config.end_pitch,
+                    trial_config.end_yaw,
                 ),
                 start_vx=trial_config.initial_vx,
                 start_vy=trial_config.initial_vy,
@@ -238,19 +238,19 @@ class MonteCarloRunner:
             # Extract final results
             final_state = sim.get_current_state()
             pos_error = np.sqrt(
-                (final_state[0] - trial_config.target_x) ** 2
-                + (final_state[1] - trial_config.target_y) ** 2
-                + (final_state[2] - trial_config.target_z) ** 2
+                (final_state[0] - trial_config.end_x) ** 2
+                + (final_state[1] - trial_config.end_y) ** 2
+                + (final_state[2] - trial_config.end_z) ** 2
             )
             from src.satellite_control.utils.orientation_utils import (
                 euler_xyz_to_quat_wxyz,
                 quat_angle_error,
             )
 
-            target_quat = euler_xyz_to_quat_wxyz(
-                (trial_config.target_roll, trial_config.target_pitch, trial_config.target_yaw)
+            end_quat = euler_xyz_to_quat_wxyz(
+                (trial_config.end_roll, trial_config.end_pitch, trial_config.end_yaw)
             )
-            angle_error = quat_angle_error(target_quat, final_state[3:7])
+            angle_error = quat_angle_error(end_quat, final_state[3:7])
 
             # Check success
             success = (
@@ -277,7 +277,7 @@ class MonteCarloRunner:
                 success=success,
                 final_position_error=pos_error,
                 final_angle_error=angle_error,
-                time_to_target=sim_time,
+                time_to_end=sim_time,
                 total_fuel_usage=fuel_usage,
                 mean_solve_time=mean_solve,
                 max_solve_time=max_solve,
@@ -292,7 +292,7 @@ class MonteCarloRunner:
                 success=False,
                 final_position_error=float("inf"),
                 final_angle_error=float("inf"),
-                time_to_target=float("inf"),
+                time_to_end=float("inf"),
                 total_fuel_usage=0.0,
                 mean_solve_time=0.0,
                 max_solve_time=0.0,
@@ -351,7 +351,7 @@ class MonteCarloRunner:
 
         pos_errors = [r.final_position_error for r in self.results if r.success]
         angle_errors = [r.final_angle_error for r in self.results if r.success]
-        times = [r.time_to_target for r in self.results if r.success]
+        times = [r.time_to_end for r in self.results if r.success]
         fuels = [r.total_fuel_usage for r in self.results if r.success]
         solve_times = [r.mean_solve_time for r in self.results if r.success]
 
@@ -370,7 +370,7 @@ class MonteCarloRunner:
                 "mean": np.mean(angle_errors) if angle_errors else 0,
                 "std": np.std(angle_errors) if angle_errors else 0,
             },
-            "time_to_target": {
+            "time_to_end": {
                 "mean": np.mean(times) if times else 0,
                 "std": np.std(times) if times else 0,
             },
@@ -404,8 +404,8 @@ class MonteCarloRunner:
         print(f"  Mean: {pe['mean']:.4f} ± {pe['std']:.4f}")
         print(f"  Range: [{pe['min']:.4f}, {pe['max']:.4f}]\n")
 
-        print("Time to Target (s):")
-        tt = analysis["time_to_target"]
+        print("Time to End (s):")
+        tt = analysis["time_to_end"]
         print(f"  Mean: {tt['mean']:.2f} ± {tt['std']:.2f}\n")
 
         print("Fuel Usage (thruster-seconds):")
@@ -496,7 +496,7 @@ class MonteCarloRunner:
                     marker=marker,
                     alpha=0.6,
                 )
-        ax.scatter(0, 0, c="blue", marker="*", s=200, label="Target")
+        ax.scatter(0, 0, c="blue", marker="*", s=200, label="End")
         ax.set_xlabel("Initial X (m)")
         ax.set_ylabel("Initial Y (m)")
         ax.set_title("Initial Positions (Green=Success, Red=Failure)")

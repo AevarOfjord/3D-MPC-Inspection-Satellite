@@ -236,19 +236,19 @@ class ConfigIO:
         """Convert dictionary to MissionState, handling both flat(legacy) and nested structures."""
         from .mission_state import (
             MissionState,
-            WaypointState,
-            ShapeFollowingState,
+            PathFollowingState,
             ScanState,
             TrajectoryState,
             ObstacleState,
         )
 
         # 1. Attempt to load as new nested structure first
-        if "waypoint" in mission_state_dict or "shape" in mission_state_dict:
-            # Looks like new structure
+        if any(
+            key in mission_state_dict
+            for key in ("path", "scan", "trajectory", "obstacle_state")
+        ):
             return MissionState(
-                waypoint=WaypointState(**mission_state_dict.get("waypoint", {})),
-                shape=ShapeFollowingState(**mission_state_dict.get("shape", {})),
+                path=PathFollowingState(**mission_state_dict.get("path", {})),
                 scan=ScanState(**mission_state_dict.get("scan", {})),
                 trajectory=TrajectoryState(**mission_state_dict.get("trajectory", {})),
                 obstacle_state=ObstacleState(
@@ -259,46 +259,19 @@ class ConfigIO:
         # 2. Fallback: Map legacy flat keys to new structure
         ms = MissionState()
 
-        # Waypoint
-        ms.waypoint.enabled = mission_state_dict.get(
-            "enable_waypoint_mode", False
-        ) or mission_state_dict.get("enable_multi_point_mode", False)
-        ms.waypoint.targets = mission_state_dict.get(
-            "waypoint_targets", []
-        ) or mission_state_dict.get("multi_point_targets", [])
-        ms.waypoint.angles = mission_state_dict.get(
-            "waypoint_angles", []
-        ) or mission_state_dict.get("multi_point_angles", [])
-        ms.waypoint.current_target_index = mission_state_dict.get(
-            "current_target_index", 0
+        # Path Following (path-only)
+        path_points = mission_state_dict.get("mpcc_path_waypoints", []) or mission_state_dict.get(
+            "path_waypoints", []
         )
-        ms.waypoint.start_time = mission_state_dict.get(
-            "target_stabilization_start_time"
+        if path_points:
+            ms.path.waypoints = path_points
+        ms.path.path_speed = mission_state_dict.get(
+            "mpcc_path_speed", mission_state_dict.get("path_speed", ms.path.path_speed)
         )
-        ms.waypoint.phase = mission_state_dict.get(
-            "waypoint_phase"
-        ) or mission_state_dict.get("multi_point_phase")
-
-        # Shape
-        ms.shape.active = mission_state_dict.get("dxf_shape_mode_active", False)
-        ms.shape.center = mission_state_dict.get("dxf_shape_center")
-        ms.shape.path = mission_state_dict.get("dxf_shape_path", [])
-        ms.shape.base_shape = mission_state_dict.get("dxf_base_shape", [])
-        ms.shape.target_speed = mission_state_dict.get("dxf_target_speed", 0.1)
-        ms.shape.estimated_duration = mission_state_dict.get(
-            "dxf_estimated_duration", 60.0
+        ms.path.path_length = mission_state_dict.get(
+            "mpcc_path_length", mission_state_dict.get("path_length", ms.path.path_length)
         )
-        ms.shape.phase = mission_state_dict.get("dxf_shape_phase", "POSITIONING")
-        ms.shape.path_length = mission_state_dict.get("dxf_path_length", 0.0)
-        ms.shape.closest_point_index = mission_state_dict.get(
-            "dxf_closest_point_index", 0
-        )
-        ms.shape.current_target_position = mission_state_dict.get(
-            "dxf_current_target_position"
-        )
-        ms.shape.tracking_start_time = mission_state_dict.get("dxf_tracking_start_time")
-        ms.shape.offset_distance = mission_state_dict.get("dxf_offset_distance", 0.5)
-        # Map other shape fields as needed...
+        ms.path.active = mission_state_dict.get("path_following_active", ms.path.active)
 
         # Scan
         ms.scan.active = mission_state_dict.get("mesh_scan_mode_active", False)
@@ -359,16 +332,9 @@ class ConfigIO:
             # Add timing parameters if not present (use defaults)
             if "control_dt" not in simulation:
                 simulation["control_dt"] = 0.050
-            if "target_hold_time" not in simulation:
-                simulation["target_hold_time"] = 5.0
-            if "waypoint_final_stabilization_time" not in simulation:
-                simulation["waypoint_final_stabilization_time"] = 10.0
-            if "shape_final_stabilization_time" not in simulation:
-                simulation["shape_final_stabilization_time"] = 15.0
-            if "shape_positioning_stabilization_time" not in simulation:
-                simulation["shape_positioning_stabilization_time"] = 5.0
-            if "default_target_speed" not in simulation:
-                simulation["default_target_speed"] = 0.1
+
+            if "default_path_speed" not in simulation:
+                simulation["default_path_speed"] = 0.1
 
             app_config["simulation"] = simulation
             current_dict["app_config"] = app_config

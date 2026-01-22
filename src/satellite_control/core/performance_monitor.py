@@ -18,6 +18,7 @@ Usage:
 
 import json
 import time
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -38,6 +39,7 @@ class PerformanceMetrics:
     mpc_solve_times: List[float] = field(default_factory=list)
     mpc_solve_count: int = 0
     mpc_timeout_count: int = 0
+    mpc_failure_count: int = 0
 
     # Physics Performance
     physics_step_times: List[float] = field(default_factory=list)
@@ -48,6 +50,17 @@ class PerformanceMetrics:
     control_loop_count: int = 0
     timing_violations: int = 0
 
+    # Compatibility metrics (seconds, computed via calculate_metrics)
+    mpc_mean_solve_time: float = 0.0
+    mpc_p50_solve_time: float = 0.0
+    mpc_p95_solve_time: float = 0.0
+    mpc_p99_solve_time: float = 0.0
+    mpc_max_solve_time: float = 0.0
+    mpc_min_solve_time: float = 0.0
+    physics_avg_step_time: float = 0.0
+    physics_max_step_time: float = 0.0
+    control_loop_avg_time: float = 0.0
+
     # Simulation Overall
     total_simulation_time: float = 0.0
     total_steps: int = 0
@@ -57,12 +70,16 @@ class PerformanceMetrics:
     # Memory (if available)
     peak_memory_mb: Optional[float] = None
 
-    def record_mpc_solve(self, solve_time: float, timeout: bool = False) -> None:
+    def record_mpc_solve(
+        self, solve_time: float, timeout: bool = False, failed: bool = False
+    ) -> None:
         """Record an MPC solve time."""
         self.mpc_solve_times.append(solve_time)
         self.mpc_solve_count += 1
         if timeout:
             self.mpc_timeout_count += 1
+        if failed:
+            self.mpc_failure_count += 1
 
     def record_physics_step(self, step_time: float) -> None:
         """Record a physics step time."""
@@ -75,6 +92,50 @@ class PerformanceMetrics:
         self.control_loop_count += 1
         if timing_violation:
             self.timing_violations += 1
+
+    @property
+    def mpc_solve_timeouts(self) -> int:
+        """Compatibility alias for timeout count."""
+        return self.mpc_timeout_count
+
+    @property
+    def mpc_solve_failures(self) -> int:
+        """Compatibility alias for failure count."""
+        return self.mpc_failure_count
+
+    @property
+    def control_timing_violations(self) -> int:
+        """Compatibility alias for timing violations."""
+        return self.timing_violations
+
+    def calculate_metrics(self) -> None:
+        """Compute summary metrics (compatibility with legacy tests)."""
+        if self.mpc_solve_times:
+            self.mpc_mean_solve_time = float(np.mean(self.mpc_solve_times))
+            self.mpc_p50_solve_time = float(np.percentile(self.mpc_solve_times, 50))
+            self.mpc_p95_solve_time = float(np.percentile(self.mpc_solve_times, 95))
+            self.mpc_p99_solve_time = float(np.percentile(self.mpc_solve_times, 99))
+            self.mpc_max_solve_time = float(np.max(self.mpc_solve_times))
+            self.mpc_min_solve_time = float(np.min(self.mpc_solve_times))
+        else:
+            self.mpc_mean_solve_time = 0.0
+            self.mpc_p50_solve_time = 0.0
+            self.mpc_p95_solve_time = 0.0
+            self.mpc_p99_solve_time = 0.0
+            self.mpc_max_solve_time = 0.0
+            self.mpc_min_solve_time = 0.0
+
+        if self.physics_step_times:
+            self.physics_avg_step_time = float(np.mean(self.physics_step_times))
+            self.physics_max_step_time = float(np.max(self.physics_step_times))
+        else:
+            self.physics_avg_step_time = 0.0
+            self.physics_max_step_time = 0.0
+
+        if self.control_loop_times:
+            self.control_loop_avg_time = float(np.mean(self.control_loop_times))
+        else:
+            self.control_loop_avg_time = 0.0
 
     def start_simulation(self) -> None:
         """Mark simulation start."""
@@ -165,6 +226,17 @@ class PerformanceMetrics:
     def to_dict(self) -> Dict[str, Any]:
         """Convert metrics to dictionary for JSON export."""
         return {
+            "total_simulation_time_s": self.total_simulation_time,
+            "total_steps": self.total_steps,
+            "mpc_mean_solve_time_ms": self.mpc_mean_solve_time * 1000.0,
+            "mpc_p50_solve_time_ms": self.mpc_p50_solve_time * 1000.0,
+            "mpc_p95_solve_time_ms": self.mpc_p95_solve_time * 1000.0,
+            "mpc_p99_solve_time_ms": self.mpc_p99_solve_time * 1000.0,
+            "mpc_max_solve_time_ms": self.mpc_max_solve_time * 1000.0,
+            "mpc_min_solve_time_ms": self.mpc_min_solve_time * 1000.0,
+            "physics_avg_step_time_ms": self.physics_avg_step_time * 1000.0,
+            "physics_max_step_time_ms": self.physics_max_step_time * 1000.0,
+            "control_loop_avg_time_ms": self.control_loop_avg_time * 1000.0,
             "mpc": {
                 "solve_count": self.mpc_solve_count,
                 "timeout_count": self.mpc_timeout_count,
@@ -199,6 +271,12 @@ class PerformanceMetrics:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
+
+    def print_summary(self) -> None:
+        """Log a human-readable performance summary."""
+        self.calculate_metrics()
+        logger = logging.getLogger(__name__)
+        logger.warning(self.get_summary_string())
 
     def get_summary_string(self) -> str:
         """Get human-readable performance summary."""
@@ -282,9 +360,11 @@ class PerformanceMonitor:
         self.metrics = PerformanceMetrics()
         self.metrics.start_simulation()
 
-    def record_mpc_solve(self, solve_time: float, timeout: bool = False) -> None:
+    def record_mpc_solve(
+        self, solve_time: float, timeout: bool = False, failed: bool = False
+    ) -> None:
         """Record MPC solve time."""
-        self.metrics.record_mpc_solve(solve_time, timeout)
+        self.metrics.record_mpc_solve(solve_time, timeout=timeout, failed=failed)
 
     def record_physics_step(self, step_time: float) -> None:
         """Record physics step time."""
@@ -317,6 +397,61 @@ class PerformanceMonitor:
         self.metrics.end_simulation()
         print(self.metrics.get_summary_string())
 
-    def check_thresholds(self, **kwargs) -> List[str]:
+    def get_summary(self) -> Dict[str, Any]:
+        """Return a compatibility summary dictionary."""
+        self.metrics.calculate_metrics()
+        return {
+            "mpc_solves": self.metrics.mpc_solve_count,
+            "mpc_mean_ms": self.metrics.mpc_mean_ms,
+            "mpc_max_ms": self.metrics.mpc_max_ms,
+            "physics_avg_ms": self.metrics.physics_avg_ms,
+            "control_loop_avg_ms": self.metrics.control_loop_avg_ms,
+            "timing_violations": self.metrics.control_timing_violations,
+        }
+
+    def check_thresholds(
+        self,
+        mpc_solve_time_threshold: Optional[float] = None,
+        physics_step_time_threshold: Optional[float] = None,
+        control_loop_time_threshold: Optional[float] = None,
+        **kwargs: Any,
+    ) -> List[str]:
         """Check performance thresholds and return warnings."""
-        return self.metrics.check_performance_thresholds(**kwargs)
+        if (
+            mpc_solve_time_threshold is None
+            and physics_step_time_threshold is None
+            and control_loop_time_threshold is None
+        ):
+            return self.metrics.check_performance_thresholds(**kwargs)
+
+        warnings: List[str] = []
+        if mpc_solve_time_threshold is not None and self.metrics.mpc_solve_times:
+            max_mpc = float(np.max(self.metrics.mpc_solve_times))
+            if max_mpc > mpc_solve_time_threshold:
+                warnings.append(
+                    f"MPC solve time ({max_mpc:.3f}s) exceeds threshold "
+                    f"({mpc_solve_time_threshold:.3f}s)"
+                )
+
+        if physics_step_time_threshold is not None and self.metrics.physics_step_times:
+            max_phys = float(np.max(self.metrics.physics_step_times))
+            if max_phys > physics_step_time_threshold:
+                warnings.append(
+                    f"Physics step time ({max_phys:.6f}s) exceeds threshold "
+                    f"({physics_step_time_threshold:.6f}s)"
+                )
+
+        if control_loop_time_threshold is not None and self.metrics.control_loop_times:
+            max_loop = float(np.max(self.metrics.control_loop_times))
+            if max_loop > control_loop_time_threshold:
+                warnings.append(
+                    f"Control loop time ({max_loop:.6f}s) exceeds threshold "
+                    f"({control_loop_time_threshold:.6f}s)"
+                )
+
+        return warnings
+
+    def reset(self) -> None:
+        """Reset all metrics."""
+        self.metrics = PerformanceMetrics()
+        self.metrics.start_simulation()

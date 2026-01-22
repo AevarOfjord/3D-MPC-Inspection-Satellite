@@ -36,16 +36,16 @@ export function Overlay() {
     pos_error = 0,
     ang_error = 0,
     angular_velocity = [0, 0, 0],
-    target_position = [0, 0, 0],
+    reference_position = [0, 0, 0],
   } = data;
 
   const speed = Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2);
   const distance = Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2);
   const angErrorDeg = ang_error * (180 / Math.PI);
   const delta = [
-    target_position[0] - position[0],
-    target_position[1] - position[1],
-    target_position[2] - position[2],
+    reference_position[0] - position[0],
+    reference_position[1] - position[1],
+    reference_position[2] - position[2],
   ];
 
   return (

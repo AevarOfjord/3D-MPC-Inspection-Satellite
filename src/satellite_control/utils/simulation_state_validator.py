@@ -33,6 +33,10 @@ import numpy as np
 from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.constants import Constants
 from src.satellite_control.config.simulation_config import SimulationConfig
+from src.satellite_control.utils.navigation_utils import (
+    angle_difference as _angle_difference,
+    normalize_angle as _normalize_angle,
+)
 
 
 class SimulationStateValidator:
@@ -73,44 +77,19 @@ class SimulationStateValidator:
         self.app_config = app_config
 
         # V4.0.0: Load bounds from app_config (required, no fallback)
-        if (
-            position_bounds is None
-            or max_velocity is None
-            or max_angular_velocity is None
-        ):
-            if app_config and app_config.mpc:
-                mpc_params_dict = {
-                    "position_bounds": app_config.mpc.position_bounds,
-                    "max_velocity": app_config.mpc.max_velocity,
-                    "max_angular_velocity": app_config.mpc.max_angular_velocity,
-                }
-            else:
-                # V4.0.0: Use default config if not provided
-                default_config = SimulationConfig.create_default()
-                mpc_params_dict = {
-                    "position_bounds": default_config.app_config.mpc.position_bounds,
-                    "max_velocity": default_config.app_config.mpc.max_velocity,
-                    "max_angular_velocity": default_config.app_config.mpc.max_angular_velocity,
-                }
-
-            self.position_bounds = (
-                position_bounds
-                if position_bounds is not None
-                else mpc_params_dict.get("position_bounds", 3.0)
-            )
-            self.max_velocity = (
-                max_velocity
-                if max_velocity is not None
-                else mpc_params_dict.get("max_velocity", 0.15)
-            )
-            self.max_angular_velocity = (
-                max_angular_velocity
-                if max_angular_velocity is not None
-                else mpc_params_dict.get("max_angular_velocity", np.pi / 2)
-            )
+        if position_bounds is None:
+            self.position_bounds = 5.0
         else:
             self.position_bounds = position_bounds
+
+        if max_velocity is None:
+            self.max_velocity = 1.0
+        else:
             self.max_velocity = max_velocity
+
+        if max_angular_velocity is None:
+            self.max_angular_velocity = np.pi
+        else:
             self.max_angular_velocity = max_angular_velocity
 
     def validate_state_format(self, state: np.ndarray) -> bool:
@@ -240,32 +219,40 @@ class SimulationStateValidator:
 
         return len(errors) == 0, errors
 
-    def check_target_reached(
-        self, current_state: np.ndarray, target_state: np.ndarray
+    def normalize_angle(self, angle: float) -> float:
+        """Normalize angle to [-pi, pi] range."""
+        return _normalize_angle(angle)
+
+    def angle_difference(self, reference_angle: float, current_angle: float) -> float:
+        """Compute shortest angular difference between reference and current."""
+        return _angle_difference(reference_angle, current_angle)
+
+    def check_reference_reached(
+        self, current_state: np.ndarray, reference_state: np.ndarray
     ) -> bool:
         """
-        Check if satellite has reached target within tolerances.
+        Check if satellite has reached the reference within tolerances.
 
         Args:
             current_state: Current state [pos(3), quat(4), vel(3), w(3)]
-            target_state: Target state [pos(3), quat(4), vel(3), w(3)]
+            reference_state: Reference state [pos(3), quat(4), vel(3), w(3)]
 
         Returns:
-            True if target reached within all tolerances
+            True if reference reached within all tolerances
         """
         # Position error (3D)
-        pos_error = np.linalg.norm(current_state[:3] - target_state[:3])
+        pos_error = np.linalg.norm(current_state[:3] - reference_state[:3])
         if pos_error >= self.position_tolerance:
             return False
 
         # Velocity error (3D)
-        vel_error = np.linalg.norm(current_state[7:10] - target_state[7:10])
+        vel_error = np.linalg.norm(current_state[7:10] - reference_state[7:10])
         if vel_error >= self.velocity_tolerance:
             return False
 
         # Angle error (Quaternion dot prod)
         q1 = current_state[3:7]
-        q2 = target_state[3:7]
+        q2 = reference_state[3:7]
         dot = np.abs(np.dot(q1, q2))
         dot = min(1.0, max(-1.0, dot))
         ang_error = 2.0 * np.arccos(dot)
@@ -274,61 +261,61 @@ class SimulationStateValidator:
             return False
 
         # Angular velocity error (3D)
-        angvel_error = np.linalg.norm(current_state[10:13] - target_state[10:13])
+        angvel_error = np.linalg.norm(current_state[10:13] - reference_state[10:13])
         if angvel_error >= self.angular_velocity_tolerance:
             return False
 
         return True
 
     def compute_state_errors(
-        self, current_state: np.ndarray, target_state: np.ndarray
+        self, current_state: np.ndarray, reference_state: np.ndarray
     ) -> Dict[str, float]:
         """
         Compute all state errors.
 
         Args:
             current_state: Current state [pos(3), quat(4), vel(3), w(3)]
-            target_state: Target state [pos(3), quat(4), vel(3), w(3)]
+            reference_state: Reference state [pos(3), quat(4), vel(3), w(3)]
 
         Returns:
             Dictionary with error values
         """
-        pos_error = np.linalg.norm(current_state[:3] - target_state[:3])
-        vel_error = np.linalg.norm(current_state[7:10] - target_state[7:10])
+        pos_error = np.linalg.norm(current_state[:3] - reference_state[:3])
+        vel_error = np.linalg.norm(current_state[7:10] - reference_state[7:10])
 
         q1 = current_state[3:7]
-        q2 = target_state[3:7]
+        q2 = reference_state[3:7]
         # dot product ensures shortest path
         dot = np.abs(np.dot(q1, q2))
         dot = min(1.0, max(-1.0, dot))
         ang_error = 2.0 * np.arccos(dot)
 
-        angvel_error = np.linalg.norm(current_state[10:13] - target_state[10:13])
+        angvel_error = np.linalg.norm(current_state[10:13] - reference_state[10:13])
 
         return {
             "position_error": float(pos_error),
             "velocity_error": float(vel_error),
             "angle_error": float(ang_error),
             "angular_velocity_error": float(angvel_error),
-            "position_error_x": float(current_state[0] - target_state[0]),
-            "position_error_y": float(current_state[1] - target_state[1]),
-            "position_error_z": float(current_state[2] - target_state[2]),
+            "position_error_x": float(current_state[0] - reference_state[0]),
+            "position_error_y": float(current_state[1] - reference_state[1]),
+            "position_error_z": float(current_state[2] - reference_state[2]),
         }
 
     def check_within_tolerances(
-        self, current_state: np.ndarray, target_state: np.ndarray
+        self, current_state: np.ndarray, reference_state: np.ndarray
     ) -> Dict[str, bool]:
         """
         Check which state components are within tolerance.
 
         Args:
             current_state: Current state [pos(3), quat(4), vel(3), w(3)]
-            target_state: Target state [pos(3), quat(4), vel(3), w(3)]
+            reference_state: Reference state [pos(3), quat(4), vel(3), w(3)]
 
         Returns:
             Dictionary indicating which components are within tolerance
         """
-        errors = self.compute_state_errors(current_state, target_state)
+        errors = self.compute_state_errors(current_state, reference_state)
 
         return {
             "position": errors["position_error"] < self.position_tolerance,
@@ -579,28 +566,9 @@ def create_state_validator_from_config(
         )
 
     # V4.0.0: Get bounds from app_config (required, no fallback)
-    if app_config and app_config.mpc:
-        mpc_params_dict = {
-            "position_bounds": app_config.mpc.position_bounds,
-            "max_velocity": app_config.mpc.max_velocity,
-            "max_angular_velocity": app_config.mpc.max_angular_velocity,
-        }
-    else:
-        # V4.0.0: Use default config if not provided
-        default_config = SimulationConfig.create_default()
-        mpc_params_dict = {
-            "position_bounds": default_config.app_config.mpc.position_bounds,
-            "max_velocity": default_config.app_config.mpc.max_velocity,
-            "max_angular_velocity": default_config.app_config.mpc.max_angular_velocity,
-        }
-
-    position_bounds = config.get(
-        "position_bounds", mpc_params_dict.get("position_bounds")
-    )
-    max_velocity = config.get("max_velocity", mpc_params_dict.get("max_velocity"))
-    max_angular_velocity = config.get(
-        "max_angular_velocity", mpc_params_dict.get("max_angular_velocity")
-    )
+    position_bounds = config.get("position_bounds", 5.0)
+    max_velocity = config.get("max_velocity", 1.0)
+    max_angular_velocity = config.get("max_angular_velocity", np.pi)
 
     return SimulationStateValidator(
         position_tolerance=position_tolerance,
@@ -631,20 +599,20 @@ if __name__ == "__main__":
     test_state[3:7] = np.array([1.0, 0.0, 0.0, 0.0])
     test_state[7:10] = np.array([0.1, 0.1, 0.0])
     test_state[10:13] = np.array([0.0, 0.0, 0.05])
-    target_state = np.zeros(13)
-    target_state[3:7] = np.array([1.0, 0.0, 0.0, 0.0])
+    reference_state = np.zeros(13)
+    reference_state[3:7] = np.array([1.0, 0.0, 0.0, 0.0])
 
     print("\nTest State Validation:")
     print(f"  State: {test_state}")
     print(f"  Format valid: {validator.validate_state_format(test_state)}")
 
-    errors = validator.compute_state_errors(test_state, target_state)
+    errors = validator.compute_state_errors(test_state, reference_state)
     print(f"\n  Errors: {errors}")
 
-    tolerances = validator.check_within_tolerances(test_state, target_state)
+    tolerances = validator.check_within_tolerances(test_state, reference_state)
     print(f"  Within tolerances: {tolerances}")
 
-    reached = validator.check_target_reached(test_state, target_state)
-    print(f"  Target reached: {reached}")
+    reached = validator.check_reference_reached(test_state, reference_state)
+    print(f"  Reference reached: {reached}")
 
     print("\n" + "=" * 70)

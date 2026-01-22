@@ -20,6 +20,7 @@ import numpy as np
 
 # V4.0.0: SatelliteConfig removed - using SimulationConfig and Constants
 from src.satellite_control.config.constants import Constants
+from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.core.simulation_io import SimulationIO
@@ -62,9 +63,9 @@ class SimulationInitializer:
     def initialize(
         self,
         start_pos: Optional[Tuple[float, ...]],
-        target_pos: Optional[Tuple[float, ...]],
+        end_pos: Optional[Tuple[float, ...]],
         start_angle: Optional[Tuple[float, float, float]],
-        target_angle: Optional[Tuple[float, float, float]],
+        end_angle: Optional[Tuple[float, float, float]],
         start_vx: float = 0.0,
         start_vy: float = 0.0,
         start_vz: float = 0.0,
@@ -75,9 +76,9 @@ class SimulationInitializer:
 
         Args:
             start_pos: Starting position (x, y, z)
-            target_pos: Target position (x, y, z)
+            end_pos: End position (x, y, z)
             start_angle: Starting orientation
-            target_angle: Target orientation
+            end_angle: End orientation
             start_vx: Initial X velocity
             start_vy: Initial Y velocity
             start_vz: Initial Z velocity
@@ -90,31 +91,31 @@ class SimulationInitializer:
             )
         app_config = self.simulation_config.app_config
 
-        # Path-only mode: enforce MPCC path-following
-        app_config.mpc.mode_path_following = True
+        # Path-only mode logic is now handled by defaults or explicit config
+        # hardcoded override removed to respect app_config settings
 
         # Use Constants for default positions (these are not mutable)
         if start_pos is None:
             start_pos = Constants.DEFAULT_START_POS
-        if target_pos is None:
-            target_pos = Constants.DEFAULT_TARGET_POS
+        if end_pos is None:
+            end_pos = Constants.DEFAULT_END_POS
         if start_angle is None:
             start_angle = Constants.DEFAULT_START_ANGLE
-        if target_angle is None:
-            target_angle = Constants.DEFAULT_TARGET_ANGLE
+        if end_angle is None:
+            end_angle = Constants.DEFAULT_END_ANGLE
 
-        path_target_pos = target_pos
-        if app_config.mpc.mode_path_following:
-            target_pos = start_pos
-            target_angle = start_angle
+        path_end_pos = end_pos
+        # MPCC Mode always active: set initial reference to start_pos
+        reference_pos = start_pos
+        reference_angle = start_angle
 
         # Initialize satellite physics
         self._initialize_satellite_physics(
             start_pos, start_angle, start_vx, start_vy, start_vz, start_omega
         )
 
-        # Initialize target state
-        self._initialize_target_state(target_pos, target_angle)
+        # Initialize reference state
+        self._initialize_reference_state(reference_pos, reference_angle)
 
         # Initialize simulation timing
         self._initialize_simulation_timing(app_config)
@@ -148,20 +149,19 @@ class SimulationInitializer:
         ):
             logger.info("Configuring MPC Controller with obstacles...")
             self.simulation.mpc_controller.set_obstacles(mission_state.obstacles)
-        
-        # Configure Path for Path-Following Mode (V4.0.1)
+
+        # Configure Path for Path-Following Mode (Always Active)
         if (
-            app_config.mpc.mode_path_following
-            and not getattr(mission_state, "mpcc_path_waypoints", None)
+            not getattr(mission_state, "mpcc_path_waypoints", None)
             and start_pos is not None
-            and path_target_pos is not None
+            and path_end_pos is not None
         ):
             from src.satellite_control.mission.path_following import (
                 build_point_to_point_path,
             )
 
             path = build_point_to_point_path(
-                waypoints=[tuple(start_pos), tuple(path_target_pos)],
+                waypoints=[tuple(start_pos), tuple(path_end_pos)],
                 obstacles=None,
                 step_size=0.1,
             )
@@ -177,21 +177,20 @@ class SimulationInitializer:
             mission_state.mpcc_path_waypoints = path
             mission_state.dxf_shape_path = path
             mission_state.dxf_path_length = path_length
-            mission_state.dxf_target_speed = float(app_config.mpc.v_target)
+            mission_state.dxf_path_speed = float(app_config.mpc.path_speed)
 
-        if app_config.mpc.mode_path_following:
-            mission_state.enable_waypoint_mode = False
-            mission_state.enable_multi_point_mode = False
-            mission_state.trajectory_mode_active = False
-            mission_state.dxf_shape_mode_active = False
+        # Disable non-path modes
+        mission_state.trajectory_mode_active = False
+        mission_state.dxf_shape_mode_active = False
 
         if (
-            app_config.mpc.mode_path_following
-            and hasattr(self.simulation.mpc_controller, "set_path")
+            hasattr(self.simulation.mpc_controller, "set_path")
             and hasattr(mission_state, "mpcc_path_waypoints")
             and mission_state.mpcc_path_waypoints
         ):
-            logger.info("Configuring MPC Controller with path data for path-following...")
+            logger.info(
+                "Configuring MPC Controller with path data for path-following..."
+            )
             self.simulation.mpc_controller.set_path(mission_state.mpcc_path_waypoints)
             self.simulation.planned_path = list(mission_state.mpcc_path_waypoints)
 
@@ -207,7 +206,7 @@ class SimulationInitializer:
         # Log initialization summary
         # Log initialization summary
         self._log_initialization_summary(
-            start_pos, target_pos, start_angle, target_angle, app_config
+            start_pos, end_pos, start_angle, end_angle, app_config
         )
 
         # Initialize visualization attributes (colors, etc)
@@ -288,29 +287,29 @@ class SimulationInitializer:
         self.simulation.initial_start_pos = sp.copy()
         self.simulation.initial_start_angle = start_angle
 
-    def _initialize_target_state(
+    def _initialize_reference_state(
         self,
-        target_pos: Tuple[float, ...],
-        target_angle: Tuple[float, float, float],
+        reference_pos: Tuple[float, ...],
+        reference_angle: Tuple[float, float, float],
     ) -> None:
-        """Initialize target state vector."""
-        # Point-to-point mode (3D State: [p(3), q(4), v(3), w(3)])
-        # Target State
-        self.simulation.target_state = np.zeros(13)
+        """Initialize reference state vector."""
+        # Reference state (3D State: [p(3), q(4), v(3), w(3)])
+        self.simulation.reference_state = np.zeros(13)
 
-        # Robust 3D target assignment
-        tp = np.array(target_pos, dtype=np.float64)
-        if tp.shape == (2,):
-            tp = np.pad(tp, (0, 1), "constant")
-        self.simulation.target_state[0:3] = tp
+        # Robust 3D reference assignment
+        ref_pos = np.array(reference_pos, dtype=np.float64)
+        if ref_pos.shape == (2,):
+            ref_pos = np.pad(ref_pos, (0, 1), "constant")
+        self.simulation.reference_state[0:3] = ref_pos
 
-        # Target Orientation (3D Euler -> Quaternion)
-        target_quat = euler_xyz_to_quat_wxyz(target_angle)
-        self.simulation.target_state[3:7] = target_quat
+        # Reference Orientation (3D Euler -> Quaternion)
+        reference_quat = euler_xyz_to_quat_wxyz(reference_angle)
+        self.simulation.reference_state[3:7] = reference_quat
         # Velocities = 0
 
         logger.info(
-            f"INFO: Initial reference state set to ({tp[0]:.2f}, {tp[1]:.2f}, {tp[2]:.2f})"
+            "INFO: Initial reference state set to "
+            f"({ref_pos[0]:.2f}, {ref_pos[1]:.2f}, {ref_pos[2]:.2f})"
         )
 
     def _initialize_simulation_timing(self, app_config: Any) -> None:
@@ -350,21 +349,16 @@ class SimulationInitializer:
         )
 
     def _initialize_tracking_variables(self) -> None:
-        """Initialize target maintenance and tracking variables."""
-        # Target maintenance tracking
-        self.simulation.target_reached_time: Optional[float] = None
+        """Initialize reference tracking variables."""
+        # Path/reference tracking
         self.simulation.approach_phase_start_time = 0.0
-        self.simulation.target_maintenance_time = 0.0
-        self.simulation.times_lost_target = 0
-        self.simulation.maintenance_position_errors: List[float] = []
-        self.simulation.maintenance_angle_errors: List[float] = []
         self.simulation.trajectory_endpoint_reached_time: Optional[float] = None
 
         # Data logging
         self.simulation.state_history: List[np.ndarray] = []
         self.simulation.command_history: List[List[int]] = []  # For visual replay
         self.simulation.control_history: List[np.ndarray] = []
-        self.simulation.target_history: List[np.ndarray] = []
+        self.simulation.reference_history: List[np.ndarray] = []
         self.simulation.mpc_solve_times: List[float] = []
         self.simulation.mpc_info_history: List[dict] = []
 
@@ -420,12 +414,14 @@ class SimulationInitializer:
 
         # V4.1.0: Refactored to use AppConfig directly
         # If we have an override cfg (legacy/manual), use it
-        if hasattr(self.simulation, "cfg") and self.simulation.cfg is not None:
-            self.simulation.mpc_controller = MPCController(cfg=self.simulation.cfg)
-        else:
-            # Preferred: Pass AppConfig directly
-            # This avoids the complex round-trip to Hydra OmegaConf
-            self.simulation.mpc_controller = MPCController(cfg=app_config)
+        cfg_override = getattr(self.simulation, "cfg", None)
+        if isinstance(cfg_override, AppConfig):
+            self.simulation.mpc_controller = MPCController(cfg=cfg_override)
+            return
+
+        # Preferred: Pass AppConfig directly
+        # This avoids the complex round-trip to Hydra OmegaConf
+        self.simulation.mpc_controller = MPCController(cfg=app_config)
 
     def _initialize_state_validator(self) -> None:
         """Initialize state validator."""
@@ -436,7 +432,9 @@ class SimulationInitializer:
                 "velocity_tolerance": self.simulation.velocity_tolerance,
                 "angular_velocity_tolerance": self.simulation.angular_velocity_tolerance,
             },
-            app_config=self.simulation_config.app_config if self.simulation_config else None,
+            app_config=self.simulation_config.app_config
+            if self.simulation_config
+            else None,
         )
 
     def _initialize_io_helper(self) -> None:
@@ -454,9 +452,9 @@ class SimulationInitializer:
     def _log_initialization_summary(
         self,
         start_pos: Tuple[float, ...],
-        target_pos: Tuple[float, ...],
+        end_pos: Tuple[float, ...],
         start_angle: Tuple[float, float, float],
-        target_angle: Tuple[float, float, float],
+        end_angle: Tuple[float, float, float],
         app_config: Any,
     ) -> None:
         """Log initialization summary."""
@@ -468,10 +466,10 @@ class SimulationInitializer:
             return f"roll={roll:.1f}°, pitch={pitch:.1f}°, yaw={yaw:.1f}°"
 
         s_ang_str = _format_euler_deg(start_angle)
-        t_ang_str = _format_euler_deg(target_angle)
+        end_ang_str = _format_euler_deg(end_angle)
 
         logger.info(f"INFO: Start: {start_pos} m, {s_ang_str}")
-        logger.info(f"INFO: Target: {target_pos} m, {t_ang_str}")
+        logger.info(f"INFO: End: {end_pos} m, {end_ang_str}")
         logger.info(
             f"INFO: Control update rate: "
             f"{1 / self.simulation.control_update_interval:.1f} Hz"

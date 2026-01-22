@@ -6,7 +6,7 @@ Provides real-time drawing and high-quality MP4 animation generation.
 
 Visualization components:
 - Satellite body with thruster indicators
-- Target positions and waypoints
+- Reference positions and waypoints
 - Trajectory paths with color-coded segments
 - Circular obstacles with safety margins
 - Thruster activation indicators
@@ -101,7 +101,7 @@ class SimulationVisualizationManager:
 
     Handles:
     - Real-time matplotlib drawing
-    - Satellite, target, and trajectory rendering
+    - Satellite, reference, and trajectory rendering
     - Animation export to MP4
     - Post-test visualization generation
     """
@@ -116,7 +116,7 @@ class SimulationVisualizationManager:
         self.controller = controller
         # Convenient aliases to controller attributes
         self.satellite = controller.satellite
-        self.target_state = None  # Will be updated via controller
+        self.reference_state = None  # Will be updated via controller
         self.position_tolerance = None
         self.simulation_time = None
         self.state_history = None
@@ -142,7 +142,7 @@ class SimulationVisualizationManager:
     def sync_from_controller(self):
         """Sync attributes from controller before each draw operation."""
         c = self.controller
-        self.target_state = c.target_state
+        self.reference_state = c.reference_state
         self.position_tolerance = c.position_tolerance
         self.simulation_time = c.simulation_time
         self.state_history = c.state_history
@@ -154,23 +154,19 @@ class SimulationVisualizationManager:
         self.mpc_info_history = c.mpc_info_history
         self.angle_tolerance = c.angle_tolerance
         self.control_update_interval = c.control_update_interval
-        self.target_reached_time = c.target_reached_time
-        self.target_maintenance_time = c.target_maintenance_time
-        self.maintenance_position_errors = c.maintenance_position_errors
-        self.maintenance_angle_errors = c.maintenance_angle_errors
-        self.times_lost_target = c.times_lost_target
+        self.path_complete_time = c.trajectory_endpoint_reached_time
 
-    def angle_difference(self, target_angle, current_angle):
+    def angle_difference(self, reference_angle, current_angle):
         """Delegate to controller's angle_difference method."""
-        return self.controller.angle_difference(target_angle, current_angle)
+        return self.controller.angle_difference(reference_angle, current_angle)
 
     def get_current_state(self):
         """Delegate to controller's get_current_state method."""
         return self.controller.get_current_state()
 
-    def check_target_reached(self):
-        """Delegate to controller's check_target_reached method."""
-        return self.controller.check_target_reached()
+    def check_path_complete(self):
+        """Delegate to controller's check_path_complete method."""
+        return self.controller.check_path_complete()
 
     def save_animation_mp4(self, fig, ani):
         """Save the animation as MP4 file."""
@@ -199,7 +195,7 @@ class SimulationVisualizationManager:
             )
 
     def draw_simulation(self):
-        """Draw the simulation including satellite, target, and trajectory."""
+        """Draw the simulation including satellite, reference, and trajectory."""
         # Store current axis limits to restore them after clearing
         xlim = self.satellite.ax_main.get_xlim()
         ylim = self.satellite.ax_main.get_ylim()
@@ -219,37 +215,37 @@ class SimulationVisualizationManager:
             "Y Position (m)", fontsize=12, fontweight="bold"
         )
 
-        # Draw target elements FIRST with highest z-order
-        if self.target_state is not None:
-            # Extract 2D components from 3D target
-            target_x = self.target_state[0]
-            target_y = self.target_state[1]
+        # Draw reference elements FIRST with highest z-order
+        if self.reference_state is not None:
+            # Extract 2D components from 3D reference
+            reference_x = self.reference_state[0]
+            reference_y = self.reference_state[1]
             # Yaw from Quat [w, x, y, z] -> [3:7]
-            q_t = self.target_state[3:7]
-            target_angle = np.arctan2(
+            q_t = self.reference_state[3:7]
+            reference_angle = np.arctan2(
                 2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
                 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
             )
         else:
-            target_x, target_y, target_angle = 0.0, 0.0, 0.0
+            reference_x, reference_y, reference_angle = 0.0, 0.0, 0.0
 
-        # Target orientation arrow
-        target_arrow_length = 0.2
-        target_arrow_end = np.array(
-            [target_x, target_y]
-        ) + target_arrow_length * np.array([np.cos(target_angle), np.sin(target_angle)])
+        # Reference orientation arrow
+        reference_arrow_length = 0.2
+        reference_arrow_end = np.array(
+            [reference_x, reference_y]
+        ) + reference_arrow_length * np.array([np.cos(reference_angle), np.sin(reference_angle)])
         arrow = self.satellite.ax_main.annotate(
             "",
-            xy=target_arrow_end,
-            xytext=[target_x, target_y],
+            xy=reference_arrow_end,
+            xytext=[reference_x, reference_y],
             arrowprops=dict(arrowstyle="->", lw=3, color="darkgreen", alpha=0.8),
         )
         arrow.set_zorder(21)
 
-        # Target position marker
+        # Reference position marker
         self.satellite.ax_main.plot(
-            target_x,
-            target_y,
+            reference_x,
+            reference_y,
             "ro",
             markersize=12,
             markerfacecolor="red",
@@ -269,11 +265,11 @@ class SimulationVisualizationManager:
             2 * (q_c[0] * q_c[3] + q_c[1] * q_c[2]), 1 - 2 * (q_c[2] ** 2 + q_c[3] ** 2)
         )
 
-        if self.target_state is not None:
-            pos_error = float(np.linalg.norm(current_state[:3] - self.target_state[:3]))
+        if self.reference_state is not None:
+            pos_error = float(np.linalg.norm(current_state[:3] - self.reference_state[:3]))
 
-            # Recalculate target angle for error
-            q_t = self.target_state[3:7]
+            # Recalculate reference angle for error
+            q_t = self.reference_state[3:7]
             targ_yaw = np.arctan2(
                 2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
                 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
@@ -533,9 +529,9 @@ class SimulationVisualizationManager:
         pitch = np.arcsin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
 
         # Calculate Errors
-        if self.target_state is not None:
-            target_pos = self.target_state[0:3]
-            pos_err = pos - target_pos
+        if self.reference_state is not None:
+            reference_pos = self.reference_state[0:3]
+            pos_err = pos - reference_pos
             pos_err_norm = np.linalg.norm(pos_err)
 
             # Approx angular error (last_ang_error is computed in simulation loop)
@@ -972,13 +968,13 @@ class SimulationVisualizationManager:
 
         command_vectors = df.get("Command_Vector", pd.Series(["[]"] * len(df))).values
 
-        # Get target position (final)
-        target_x = get_col("Target_X")[-1]
-        target_y = get_col("Target_Y")[-1]
-        target_z = get_col("Target_Z")[-1]
+        # Get reference position (final)
+        reference_x = get_col("Reference_X")[-1]
+        reference_y = get_col("Reference_Y")[-1]
+        reference_z = get_col("Reference_Z")[-1]
 
         # Calculate axis range - use same range for both axes (square)
-        all_vals = np.concatenate([x, y, z, [target_x], [target_y], [target_z]])
+        all_vals = np.concatenate([x, y, z, [reference_x], [reference_y], [reference_z]])
         data_range = max(all_vals) - min(all_vals)
         padding = max(0.3, data_range * 0.2)
 
@@ -990,9 +986,9 @@ class SimulationVisualizationManager:
                 max(x) - min(x),
                 max(y) - min(y),
                 max(z) - min(z),
-                abs(target_x - center_x) * 2,
-                abs(target_y - center_y) * 2,
-                abs(target_z - center_z) * 2,
+                abs(reference_x - center_x) * 2,
+                abs(reference_y - center_y) * 2,
+                abs(reference_z - center_z) * 2,
             )
             / 2
             + padding
@@ -1045,9 +1041,9 @@ class SimulationVisualizationManager:
 
         # Initial Plotting
         ax_3d.plot(
-            [target_x],
-            [target_y],
-            [target_z],
+            [reference_x],
+            [reference_y],
+            [reference_z],
             "o",
             color=COLOR_TARGET,
             markersize=10,
@@ -1211,8 +1207,8 @@ class SimulationVisualizationManager:
                 ax_info.text(0.95, y, unit, color=C_LBL, ha="right", fontsize=7)
 
             c_pos = np.array([x[i], y[i], z[i]])
-            c_target = np.array([target_x, target_y, target_z])
-            c_err = c_pos - c_target
+            c_reference = np.array([reference_x, reference_y, reference_z])
+            c_err = c_pos - c_reference
 
             row("POS", x[i], y[i], z[i], "m", y_cur)
             y_cur -= 0.04
@@ -1455,9 +1451,9 @@ class SimulationVisualizationManager:
 
         # Print brief success message
         final_state = self.get_current_state()
-        if self.target_state is not None:
+        if self.reference_state is not None:
             pos_error_final = float(
-                np.linalg.norm(final_state[:2] - self.target_state[:2])
+                np.linalg.norm(final_state[:2] - self.reference_state[:2])
             )
 
             q_c = final_state[3:7]
@@ -1466,7 +1462,7 @@ class SimulationVisualizationManager:
                 1 - 2 * (q_c[2] ** 2 + q_c[3] ** 2),
             )
 
-            q_t = self.target_state[3:7]
+            q_t = self.reference_state[3:7]
             targ_yaw = np.arctan2(
                 2 * (q_t[0] * q_t[3] + q_t[1] * q_t[2]),
                 1 - 2 * (q_t[2] ** 2 + q_t[3] ** 2),
@@ -1476,19 +1472,19 @@ class SimulationVisualizationManager:
         else:
             pos_error_final = 0.0
             ang_error_final = 0.0
-        success = self.check_target_reached()
+        success = self.check_path_complete()
 
         print(f"\n{'=' * 60}")
         print(" MISSION COMPLETE!")
         print(f"{'=' * 60}")
         print(f"Status:            {' SUCCESS' if success else '  INCOMPLETE'}")
         print(
-            f"Final Pos Error:   {pos_error_final:.4f} m (target: <{self.position_tolerance:.3f} m)"
+            f"Final Pos Error:   {pos_error_final:.4f} m (tolerance: <{self.position_tolerance:.3f} m)"
         )
         ang_tol_deg = np.degrees(self.angle_tolerance)
         print(
             f"Final Ang Error:   {np.degrees(ang_error_final):.2f}° "
-            f"(target: <{ang_tol_deg:.1f}°)"
+            f"(tolerance: <{ang_tol_deg:.1f}°)"
         )
         print(f"Duration:          {self.simulation_time:.1f} s")
         print(f"{'=' * 60}\n")
@@ -1508,20 +1504,16 @@ class SimulationVisualizationManager:
         self.is_running = True
         self.last_control_update = 0.0
 
-        # Reset target tracking
-        self.target_reached_time = None
-        self.target_maintenance_time = 0.0
-        self.times_lost_target = 0
-        self.maintenance_position_errors.clear()
-        self.maintenance_angle_errors.clear()
+        # Reset reference tracking
+        self.path_complete_time = None
 
         # Reset data logging
         if self.state_history:
             self.state_history.clear()
         self.control_history.clear()
-        target_history = getattr(self, "target_history", None)
-        if target_history:
-            target_history.clear()
+        reference_history = getattr(self, "reference_history", None)
+        if reference_history:
+            reference_history.clear()
         if self.mpc_solve_times:
             self.mpc_solve_times.clear()
         self.mpc_info_history.clear()

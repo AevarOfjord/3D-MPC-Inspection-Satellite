@@ -111,7 +111,12 @@ class TestThrusterManagerUpdatePhysics:
         pattern = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
         manager.set_thruster_pattern(pattern, simulation_time=0.0)
 
-        manager.update_physics(simulation_time=0.1, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.1,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
 
         # With idealized physics, output should match command immediately
         assert np.allclose(manager.thruster_actual_output, pattern)
@@ -128,16 +133,31 @@ class TestThrusterManagerUpdatePhysics:
         manager.set_thruster_pattern(pattern, simulation_time=0.0)
 
         # Update before valve delay - should still be 0
-        manager.update_physics(simulation_time=0.03, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.03,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         assert manager.thruster_actual_output[0] == 0.0
 
         # Update after valve delay but before ramp-up complete
-        manager.update_physics(simulation_time=0.06, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.06,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         # Should be ramping up (between 0 and 1)
         assert 0.0 <= manager.thruster_actual_output[0] <= 1.0
 
         # Update after ramp-up complete
-        manager.update_physics(simulation_time=0.08, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.08,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         # Should be at full thrust
         assert manager.thruster_actual_output[0] == pytest.approx(1.0, abs=0.1)
 
@@ -151,19 +171,34 @@ class TestThrusterManagerUpdatePhysics:
         # Turn on
         pattern_on = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         manager.set_thruster_pattern(pattern_on, simulation_time=0.0)
-        manager.update_physics(simulation_time=0.1, dt=0.005)  # After delay
+        manager.process_command_queue(
+            simulation_time=0.1,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )  # After delay
 
         # Turn off
         pattern_off = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         manager.set_thruster_pattern(pattern_off, simulation_time=0.1)
 
         # Update before close delay
-        manager.update_physics(simulation_time=0.12, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.12,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         # Should still be on
         assert manager.thruster_actual_output[0] > 0.0
 
         # Update after close delay
-        manager.update_physics(simulation_time=0.16, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.16,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         # Should be off
         assert manager.thruster_actual_output[0] == 0.0
 
@@ -203,7 +238,14 @@ class TestThrusterManagerPWM:
 
         # Over multiple control intervals, average should approach 0.5
         # (exact behavior depends on implementation)
-        manager.update_physics(simulation_time=0.1, dt=0.005)
+        # Over multiple control intervals, average should approach 0.5
+        # (exact behavior depends on implementation)
+        manager.process_command_queue(
+            simulation_time=0.1,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
         assert 0.0 <= manager.thruster_actual_output[0] <= 1.0
 
 
@@ -220,7 +262,12 @@ class TestThrusterManagerContinuous:
 
         pattern = np.array([0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         manager.set_thruster_pattern(pattern, simulation_time=0.0)
-        manager.update_physics(simulation_time=0.1, dt=0.005)
+        manager.process_command_queue(
+            simulation_time=0.1,
+            control_update_interval=0.1,
+            last_control_update=0.0,
+            sim_dt=0.005
+        )
 
         # Continuous mode should directly use the command value
         assert manager.thruster_actual_output[0] == pytest.approx(0.7, abs=0.01)

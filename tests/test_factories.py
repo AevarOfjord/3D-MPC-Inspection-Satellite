@@ -26,7 +26,7 @@ class TestSimulationFactory:
         # Create simulation with custom config
         sim = factory.create_simulation(
             start_pos=(0.5, 0.5),
-            target_pos=(0.0, 0.0),
+            end_pos=(0.0, 0.0),
         )
     """
 
@@ -58,9 +58,9 @@ class TestSimulationFactory:
     def create_simulation(
         self,
         start_pos: Tuple[float, float] = (0.5, 0.5),
-        target_pos: Tuple[float, float] = (0.0, 0.0),
+        end_pos: Tuple[float, float] = (0.0, 0.0),
         start_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-        target_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+        end_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         config_overrides: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -68,9 +68,9 @@ class TestSimulationFactory:
 
         Args:
             start_pos: Starting position (x, y) in meters
-            target_pos: Target position (x, y) in meters
+            end_pos: End position (x, y) in meters
             start_angle: Starting orientation (roll, pitch, yaw) in radians
-            target_angle: Target orientation (roll, pitch, yaw) in radians
+            end_angle: End orientation (roll, pitch, yaw) in radians
             config_overrides: Additional config overrides
 
         Returns:
@@ -89,16 +89,16 @@ class TestSimulationFactory:
 
         return SatelliteMPCLinearizedSimulation(
             start_pos=start_pos,
-            target_pos=target_pos,
+            end_pos=end_pos,
             start_angle=start_angle,
-            target_angle=target_angle,
+            end_angle=end_angle,
             config_overrides=merged_config,
         )
 
     def create_headless_simulation(
         self,
         start_pos: Tuple[float, float] = (0.5, 0.5),
-        target_pos: Tuple[float, float] = (0.0, 0.0),
+        end_pos: Tuple[float, float] = (0.0, 0.0),
         **kwargs,
     ):
         """
@@ -106,7 +106,7 @@ class TestSimulationFactory:
 
         Args:
             start_pos: Starting position
-            target_pos: Target position
+            end_pos: End position
             **kwargs: Additional arguments passed to create_simulation
 
         Returns:
@@ -114,7 +114,7 @@ class TestSimulationFactory:
         """
         return self.create_simulation(
             start_pos=start_pos,
-            target_pos=target_pos,
+            end_pos=end_pos,
             **kwargs,
         )
 
@@ -145,9 +145,6 @@ class TestSimulationFactory:
         mock_mpc.get_control_action.return_value = (action, default_info)
         mock_mpc.N = 10
         mock_mpc.dt = 0.05
-        mock_mpc.max_velocity = 0.5
-        mock_mpc.max_angular_velocity = 1.0
-        mock_mpc.position_bounds = 2.0
 
         return mock_mpc
 

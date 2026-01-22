@@ -195,15 +195,12 @@ def cache_with_stats(maxsize: int = 128) -> Callable[[F], F]:
 
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            result = cached_func(*args, **kwargs)
             cache_info = cached_func.cache_info()
             stats.size = cache_info.currsize
-            
-            if cache_info.hits > stats.hits:
-                stats.hits = cache_info.hits
-            if cache_info.misses > stats.misses:
-                stats.misses = cache_info.misses
-            
-            return cached_func(*args, **kwargs)
+            stats.hits = cache_info.hits
+            stats.misses = cache_info.misses
+            return result
 
         wrapper.cache_stats = stats  # type: ignore
         wrapper.cache_clear = cached_func.cache_clear  # type: ignore

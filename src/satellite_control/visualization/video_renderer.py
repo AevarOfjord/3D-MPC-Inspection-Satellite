@@ -48,13 +48,9 @@ class VideoRenderer:
         speedup_factor: float = 1.0,
         satellite_size: float = 0.2,
         satellite_color: str = "blue",
-        target_color: str = "red",
+        reference_color: str = "red",
         trajectory_color: str = "green",
         thrusters: Optional[Dict[int, List[float]]] = None,
-        dxf_base_shape: Optional[List] = None,
-        dxf_offset_path: Optional[List] = None,
-        dxf_center: Optional[List] = None,
-        overlay_dxf: bool = False,
         frame_title_template: str = "Frame {frame}",
         app_config: Optional[AppConfig] = None,
         mission_state: Optional[MissionState] = None,
@@ -71,7 +67,7 @@ class VideoRenderer:
             speedup_factor: Animation speedup factor
             satellite_size: Size of satellite visualization
             satellite_color: Color of satellite
-            target_color: Color of target
+            reference_color: Color of reference
             trajectory_color: Color of trajectory
             thrusters: Dictionary of thruster positions
             dxf_base_shape: DXF base shape for overlay
@@ -90,13 +86,10 @@ class VideoRenderer:
         self.speedup_factor = speedup_factor
         self.satellite_size = satellite_size
         self.satellite_color = satellite_color
-        self.target_color = target_color
+        self.reference_color = reference_color
         self.trajectory_color = trajectory_color
         self.thrusters = thrusters or {}
-        self.dxf_base_shape = dxf_base_shape
-        self.dxf_offset_path = dxf_offset_path
-        self.dxf_center = dxf_center
-        self.overlay_dxf = overlay_dxf
+
         self.frame_title_template = frame_title_template
 
         # Store config references (v3.0.0)
@@ -232,67 +225,71 @@ class VideoRenderer:
         arrow_end_y = y + arrow_length * sin_yaw
 
         self.ax_xy.plot([x, arrow_end_x], [y, arrow_end_y], color="green", linewidth=2)
-        self.ax_xz.plot([x, x + arrow_length], [z, z], color="green", linewidth=2, alpha=0.7)
+        self.ax_xz.plot(
+            [x, x + arrow_length], [z, z], color="green", linewidth=2, alpha=0.7
+        )
 
-    def draw_target(
-        self, target_x: float, target_y: float, target_z: float, target_yaw: float
+    def draw_reference(
+        self, reference_x: float, reference_y: float, reference_z: float, reference_yaw: float
     ) -> None:
-        """Draw target position and orientation (XY + XZ)."""
+        """Draw reference position and orientation (XY + XZ)."""
         assert self.ax_xy is not None, "ax_xy must be initialized"
         assert self.ax_xz is not None, "ax_xz must be initialized"
 
         self.ax_xy.scatter(
-            target_x,
-            target_y,
-            c=self.target_color,
+            reference_x,
+            reference_y,
+            c=self.reference_color,
             s=200,
             marker="x",
             linewidth=4,
-            label="Target",
+            label="Reference",
         )
         self.ax_xz.scatter(
-            target_x,
-            target_z,
-            c=self.target_color,
+            reference_x,
+            reference_z,
+            c=self.reference_color,
             s=200,
             marker="x",
             linewidth=4,
         )
 
-        target_radius = 0.1
-        target_xy = Circle(
-            (target_x, target_y),
-            target_radius,
+        reference_radius = 0.1
+        reference_xy = Circle(
+            (reference_x, reference_y),
+            reference_radius,
             fill=False,
-            color=self.target_color,
+            color=self.reference_color,
             alpha=0.5,
             linestyle="--",
             linewidth=1.5,
         )
-        target_xz = Circle(
-            (target_x, target_z),
-            target_radius,
+        reference_xz = Circle(
+            (reference_x, reference_z),
+            reference_radius,
             fill=False,
-            color=self.target_color,
+            color=self.reference_color,
             alpha=0.5,
             linestyle="--",
             linewidth=1.5,
         )
-        self.ax_xy.add_patch(target_xy)
-        self.ax_xz.add_patch(target_xz)
+        self.ax_xy.add_patch(reference_xy)
+        self.ax_xz.add_patch(reference_xz)
 
         arrow_length = self.satellite_size * 0.6
-        arrow_end_x = target_x + arrow_length * np.cos(target_yaw)
-        arrow_end_y = target_y + arrow_length * np.sin(target_yaw)
+        arrow_end_x = reference_x + arrow_length * np.cos(reference_yaw)
+        arrow_end_y = reference_y + arrow_length * np.sin(reference_yaw)
         self.ax_xy.plot(
-            [target_x, arrow_end_x],
-            [target_y, arrow_end_y],
-            color=self.target_color,
+            [reference_x, arrow_end_x],
+            [reference_y, arrow_end_y],
+            color=self.reference_color,
             alpha=0.8,
             linewidth=2,
         )
 
-    def draw_trajectory(self, trajectory_x: list, trajectory_y: list, trajectory_z: list) -> None:
+    def draw_trajectory(
+        self, trajectory_x: list, trajectory_y: list, trajectory_z: list
+    ) -> None:
         """Draw satellite trajectory (XY + XZ)."""
         assert self.ax_xy is not None, "ax_xy must be initialized"
         assert self.ax_xz is not None, "ax_xz must be initialized"
@@ -319,7 +316,7 @@ class VideoRenderer:
 
     def draw_obstacles(self, mission_state: Optional[MissionState] = None) -> None:
         """Draw obstacles if they are configured.
-        
+
         Supports new V3.0.0 Obstacle objects (Sphere, Cylinder, Box).
         """
         assert self.ax_xy is not None, "ax_xy must be initialized"
@@ -327,9 +324,13 @@ class VideoRenderer:
 
         obstacles = []
         # Try retrieving obstacles from data_accessor if available (usually UnifiedVisualizer)
-        if hasattr(self.data_accessor, "mission_state") and self.data_accessor.mission_state and getattr(self.data_accessor.mission_state, "obstacles", None):
-             obstacles = self.data_accessor.mission_state.obstacles
-        
+        if (
+            hasattr(self.data_accessor, "mission_state")
+            and self.data_accessor.mission_state
+            and getattr(self.data_accessor.mission_state, "obstacles", None)
+        ):
+            obstacles = self.data_accessor.mission_state.obstacles
+
         # Also check local mission_state arg or member
         state_to_use = mission_state or getattr(self, "mission_state", None)
         if state_to_use and getattr(state_to_use, "obstacles", None):
@@ -344,39 +345,106 @@ class VideoRenderer:
                 pos = obs.position
                 obs_type = getattr(obs.type, "value", obs.type)
                 name = getattr(obs, "name", f"O{i}")
-                
+
                 # XY Projection
                 if obs_type == "sphere":
                     radius = getattr(obs, "radius", 0.5)
-                    self.ax_xy.add_patch(Circle((pos[0], pos[1]), radius, color="red", alpha=0.3, zorder=15))
-                    self.ax_xz.add_patch(Circle((pos[0], pos[2]), radius, color="red", alpha=0.3, zorder=15))
-                
+                    self.ax_xy.add_patch(
+                        Circle(
+                            (pos[0], pos[1]), radius, color="red", alpha=0.3, zorder=15
+                        )
+                    )
+                    self.ax_xz.add_patch(
+                        Circle(
+                            (pos[0], pos[2]), radius, color="red", alpha=0.3, zorder=15
+                        )
+                    )
+
                 elif obs_type == "cylinder":
                     # Assume Z-axis aligned for now
                     radius = getattr(obs, "radius", 0.5)
-                    self.ax_xy.add_patch(Circle((pos[0], pos[1]), radius, color="orange", alpha=0.3, zorder=15))
-                    # In XZ it looks like a rectangle (infinite or finite?) 
+                    self.ax_xy.add_patch(
+                        Circle(
+                            (pos[0], pos[1]),
+                            radius,
+                            color="orange",
+                            alpha=0.3,
+                            zorder=15,
+                        )
+                    )
+                    # In XZ it looks like a rectangle (infinite or finite?)
                     # If finite, we need height. Assuming infinite for visualization or huge
-                    self.ax_xz.add_patch(Rectangle((pos[0]-radius, -10), 2*radius, 20, color="orange", alpha=0.3, zorder=15))
-                
+                    self.ax_xz.add_patch(
+                        Rectangle(
+                            (pos[0] - radius, -10),
+                            2 * radius,
+                            20,
+                            color="orange",
+                            alpha=0.3,
+                            zorder=15,
+                        )
+                    )
+
                 elif obs_type == "box":
                     size = getattr(obs, "size", [1, 1, 1])
                     # XY: Rectangle centered at pos[0], pos[1] with size[0]*2, size[1]*2
-                    self.ax_xy.add_patch(Rectangle((pos[0]-size[0], pos[1]-size[1]), size[0]*2, size[1]*2, color="magenta", alpha=0.3, zorder=15))
+                    self.ax_xy.add_patch(
+                        Rectangle(
+                            (pos[0] - size[0], pos[1] - size[1]),
+                            size[0] * 2,
+                            size[1] * 2,
+                            color="magenta",
+                            alpha=0.3,
+                            zorder=15,
+                        )
+                    )
                     # XZ: Rectangle centered at pos[0], pos[2] with size[0]*2, size[2]*2
-                    self.ax_xz.add_patch(Rectangle((pos[0]-size[0], pos[2]-size[2]), size[0]*2, size[2]*2, color="magenta", alpha=0.3, zorder=15))
-                
+                    self.ax_xz.add_patch(
+                        Rectangle(
+                            (pos[0] - size[0], pos[2] - size[2]),
+                            size[0] * 2,
+                            size[2] * 2,
+                            color="magenta",
+                            alpha=0.3,
+                            zorder=15,
+                        )
+                    )
+
             # 2. Legacy tuple format (x, y, z, r)
             elif isinstance(obs, (tuple, list)) and len(obs) >= 4:
                 obs_x, obs_y, obs_z, obs_radius = obs[:4]
-                self.ax_xy.add_patch(Circle((obs_x, obs_y), obs_radius, color="red", alpha=0.3, zorder=15))
-                self.ax_xz.add_patch(Circle((obs_x, obs_z), obs_radius, color="red", alpha=0.3, zorder=15))
-                
-            # Add labels if possible (on XY)
-            label_x = pos[0] if 'pos' in locals() else (obs[0] if isinstance(obs, (tuple, list)) else 0)
-            label_y = pos[1] if 'pos' in locals() else (obs[1] if isinstance(obs, (tuple, list)) else 0)
-            self.ax_xy.text(label_x, label_y, f"O{i}", fontsize=8, color="black", ha="center", va="center", zorder=16)
+                self.ax_xy.add_patch(
+                    Circle(
+                        (obs_x, obs_y), obs_radius, color="red", alpha=0.3, zorder=15
+                    )
+                )
+                self.ax_xz.add_patch(
+                    Circle(
+                        (obs_x, obs_z), obs_radius, color="red", alpha=0.3, zorder=15
+                    )
+                )
 
+            # Add labels if possible (on XY)
+            label_x = (
+                pos[0]
+                if "pos" in locals()
+                else (obs[0] if isinstance(obs, (tuple, list)) else 0)
+            )
+            label_y = (
+                pos[1]
+                if "pos" in locals()
+                else (obs[1] if isinstance(obs, (tuple, list)) else 0)
+            )
+            self.ax_xy.text(
+                label_x,
+                label_y,
+                f"O{i}",
+                fontsize=8,
+                color="black",
+                ha="center",
+                va="center",
+                zorder=16,
+            )
 
     def update_info_panel(self, step: int, current_data: Any) -> None:
         """Update information panel with current data using professional styling."""
@@ -404,7 +472,10 @@ class VideoRenderer:
         mission_phase = ""
         mpc_solve_time = 0.0
         accumulated_usage_s = 0.0
-        if hasattr(self.data_accessor, "control_data") and self.data_accessor.control_data is not None:
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
             import pandas as pd
 
             # Find closest control timestamp
@@ -413,7 +484,12 @@ class VideoRenderer:
                 and "Mission_Phase" in self.data_accessor.control_data.columns
             ):
                 # Ensure sorted
-                idx = self.data_accessor.control_data["Control_Time"].searchsorted(time, side="right") - 1
+                idx = (
+                    self.data_accessor.control_data["Control_Time"].searchsorted(
+                        time, side="right"
+                    )
+                    - 1
+                )
                 idx = max(0, min(idx, len(self.data_accessor.control_data) - 1))
                 row = self.data_accessor.control_data.iloc[idx]
 
@@ -426,7 +502,9 @@ class VideoRenderer:
                 if "MPC_Solve_Time" in row and pd.notna(row["MPC_Solve_Time"]):
                     mpc_solve_time = float(row["MPC_Solve_Time"]) * 1000.0
                 elif "MPC_Computation_Time" in row:
-                    mpc_solve_time = float(row["MPC_Computation_Time"]) * 1000.0  # to ms
+                    mpc_solve_time = (
+                        float(row["MPC_Computation_Time"]) * 1000.0
+                    )  # to ms
 
                 # Accumulated Thruster Usage
                 if "Accumulated_Usage_S" in row:
@@ -493,7 +571,9 @@ class VideoRenderer:
 
         for lines, color, bold_idx in groups:
             for i, line in enumerate(lines):
-                weight = "bold" if (bold_idx is not None and i == bold_idx) else "normal"
+                weight = (
+                    "bold" if (bold_idx is not None and i == bold_idx) else "normal"
+                )
                 size = 11 if weight == "bold" else 10
 
                 self.ax_info.text(
@@ -543,12 +623,12 @@ class VideoRenderer:
         active_thrusters = self.get_active_thrusters(command_vector)
 
         # Type-safe extraction
-        target_x = float(current_data.get("Target_X", 0.0) or 0.0)
-        target_y = float(current_data.get("Target_Y", 0.0) or 0.0)
-        target_z = float(current_data.get("Target_Z", 0.0) or 0.0)
-        target_yaw = float(current_data.get("Target_Yaw", 0.0) or 0.0)
+        reference_x = float(current_data.get("Reference_X", 0.0) or 0.0)
+        reference_y = float(current_data.get("Reference_Y", 0.0) or 0.0)
+        reference_z = float(current_data.get("Reference_Z", 0.0) or 0.0)
+        reference_yaw = float(current_data.get("Reference_Yaw", 0.0) or 0.0)
 
-        self.draw_target(target_x, target_y, target_z, target_yaw)
+        self.draw_reference(reference_x, reference_y, reference_z, reference_yaw)
 
         # Draw trajectory
         traj_x = self._col("Current_X")[: step + 1].tolist()
@@ -587,7 +667,7 @@ class VideoRenderer:
     def generate_animation(self, output_filename: Optional[str] = None) -> None:
         """Generate and save the MP4 animation using parallel rendering + imageio."""
         if output_filename is None:
-            output_filename = f"animation.mp4"
+            output_filename = "animation.mp4"
 
         print(f"\n{'=' * 60}")
         print(f"GENERATING {self.system_title.upper()} ANIMATION (PARALLEL)")
@@ -610,9 +690,18 @@ class VideoRenderer:
             hasattr(self.data_accessor, "_data_backend")
             and self.data_accessor._data_backend == "pandas"
         ):
-            if hasattr(self.data_accessor, "data") and self.data_accessor.data is not None:
-                data_dict = {col: self.data_accessor.data[col].values for col in self.data_accessor.data.columns}
-        elif hasattr(self.data_accessor, "_col_data") and self.data_accessor._col_data is not None:
+            if (
+                hasattr(self.data_accessor, "data")
+                and self.data_accessor.data is not None
+            ):
+                data_dict = {
+                    col: self.data_accessor.data[col].values
+                    for col in self.data_accessor.data.columns
+                }
+        elif (
+            hasattr(self.data_accessor, "_col_data")
+            and self.data_accessor._col_data is not None
+        ):
             data_dict = self.data_accessor._col_data
         else:
             raise ValueError("No data available for animation")
@@ -626,33 +715,32 @@ class VideoRenderer:
             "frame_title_template": self.frame_title_template,
             "satellite_size": self.satellite_size,
             "satellite_color": self.satellite_color,
-            "target_color": self.target_color,
+            "reference_color": self.reference_color,
             "trajectory_color": self.trajectory_color,
             "thrusters": self.thrusters,
-            "dxf_base_shape": self.dxf_base_shape,
-            "dxf_offset_path": self.dxf_offset_path,
-            "dxf_center": self.dxf_center,
-            "dxf_mode_active": (
-                self.mission_state.dxf_shape_mode_active
-                if self.mission_state and hasattr(self.mission_state, "dxf_shape_mode_active")
-                else False  # V4.0.0: No fallback
-            ),
-            "overlay_dxf": self.overlay_dxf,
             "obstacles_enabled": (
                 self.mission_state.obstacles_enabled
                 if self.mission_state
                 else False  # V4.0.0: No fallback
             ),
             "obstacles_list": (
-                list(self.mission_state.obstacles) if self.mission_state and self.mission_state.obstacles
+                list(self.mission_state.obstacles)
+                if self.mission_state and self.mission_state.obstacles
                 else []  # V4.0.0: No fallback
             ),
-            "data_directory": str(getattr(self.data_accessor, "data_directory", Path("."))),
+            "data_directory": str(
+                getattr(self.data_accessor, "data_directory", Path("."))
+            ),
         }
 
         # Pass sibling control data if available
-        if hasattr(self.data_accessor, "control_data") and self.data_accessor.control_data is not None:
-            config["control_data_dict"] = self.data_accessor.control_data.to_dict(orient="list")
+        if (
+            hasattr(self.data_accessor, "control_data")
+            and self.data_accessor.control_data is not None
+        ):
+            config["control_data_dict"] = self.data_accessor.control_data.to_dict(
+                orient="list"
+            )
         else:
             config["control_data_dict"] = None
 
@@ -699,7 +787,9 @@ class VideoRenderer:
                     for i, res in enumerate(results_iterator):
                         futures.append(res)
                         if i % 10 == 0 or i == total_frames - 1:
-                            sys.stdout.write(f"\rProcessed {i+1}/{total_frames} frames")
+                            sys.stdout.write(
+                                f"\rProcessed {i + 1}/{total_frames} frames"
+                            )
                             sys.stdout.flush()
                     print()
 
@@ -723,7 +813,9 @@ class VideoRenderer:
                     quality=8,
                 ) as writer:
                     for frame_idx in range(total_frames):
-                        frame_path = os.path.join(temp_dir, f"frame_{frame_idx:05d}.png")
+                        frame_path = os.path.join(
+                            temp_dir, f"frame_{frame_idx:05d}.png"
+                        )
                         if os.path.exists(frame_path):
                             frame = imageio.imread(frame_path)
                             writer.append_data(frame)  # type: ignore[attr-defined]
@@ -778,7 +870,9 @@ class VideoRenderer:
                     try:
                         import pandas as pd
 
-                        data_accessor.control_data = pd.DataFrame(config["control_data_dict"])
+                        data_accessor.control_data = pd.DataFrame(
+                            config["control_data_dict"]
+                        )
                     except ImportError:
                         pass
 
@@ -792,13 +886,9 @@ class VideoRenderer:
                     speedup_factor=config["speedup_factor"],
                     satellite_size=config["satellite_size"],
                     satellite_color=config["satellite_color"],
-                    target_color=config["target_color"],
+                    reference_color=config["reference_color"],
                     trajectory_color=config["trajectory_color"],
                     thrusters=config["thrusters"],
-                    dxf_base_shape=config["dxf_base_shape"],
-                    dxf_offset_path=config["dxf_offset_path"],
-                    dxf_center=config["dxf_center"],
-                    overlay_dxf=config["overlay_dxf"],
                     frame_title_template=config["frame_title_template"],
                 )
 

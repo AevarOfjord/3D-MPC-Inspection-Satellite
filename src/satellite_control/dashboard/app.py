@@ -65,8 +65,8 @@ class MeshScanConfigModel(BaseModel):
 
 class MissionConfigModel(BaseModel):
     start_position: List[float] = Field(default_factory=lambda: [10.0, 0.0, 0.0])
-    target_position: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
-    target_orientation: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    end_position: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    end_orientation: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     obstacles: List[ObstacleModel] = Field(default_factory=list)
     mesh_scan: Optional[MeshScanConfigModel] = None
 
@@ -221,14 +221,14 @@ class SimulationManager:
     def _initialize_simulation(self):
         """Initialize the simulation instance based on current config."""
         start_pos = (10.0, 0.0, 0.0)
-        target_pos = (0.0, 0.0, 0.0)
-        target_angle = (0.0, 0.0, 0.0)
+        end_pos = (0.0, 0.0, 0.0)
+        end_angle = (0.0, 0.0, 0.0)
         obstacles_data = []
 
         if self.current_mission_config:
             start_pos = tuple(self.current_mission_config.start_position)
-            target_pos = tuple(self.current_mission_config.target_position)
-            target_angle = tuple(self.current_mission_config.target_orientation)
+            end_pos = tuple(self.current_mission_config.end_position)
+            end_angle = tuple(self.current_mission_config.end_orientation)
             obstacles_data = [
                 (o.position[0], o.position[1], o.position[2], o.radius)
                 for o in self.current_mission_config.obstacles
@@ -247,17 +247,17 @@ class SimulationManager:
         # Configure Mesh Scan (if applicable)
         if self.current_mission_config and self.current_mission_config.mesh_scan:
             self._configure_mesh_scan(sim_config, self.current_mission_config.mesh_scan)
-            # Update target_pos if mesh scan set a path start
+            # Update end_pos if mesh scan set a path start
             if sim_config.mission_state.dxf_shape_path:
-                target_pos = tuple(sim_config.mission_state.dxf_shape_path[0])
+                end_pos = tuple(sim_config.mission_state.dxf_shape_path[0])
 
         # Initialize Instance
         self.sim_instance = SatelliteMPCLinearizedSimulation(
             simulation_config=sim_config,
             start_pos=start_pos,
-            target_pos=target_pos,
+            end_pos=end_pos,
             start_angle=(0.0, 0.0, 0.0),
-            target_angle=target_angle,
+            end_angle=end_angle,
         )
 
     def _configure_mesh_scan(
@@ -287,9 +287,9 @@ class SimulationManager:
         if not path:
             return
 
+        # MPCC is now the only mode
+        sim_config.app_config.mpc.path_speed = mesh_scan.speed_max
         ms = sim_config.mission_state
-        sim_config.app_config.mpc.mode_path_following = True
-        sim_config.app_config.mpc.v_target = mesh_scan.speed_max
         ms.mesh_scan_mode_active = True
         ms.mesh_scan_obj_path = mesh_scan.obj_path
         ms.mesh_scan_standoff = mesh_scan.standoff
@@ -303,7 +303,7 @@ class SimulationManager:
         ms.dxf_shape_mode_active = False
         ms.dxf_shape_path = path
         ms.dxf_path_length = path_length
-        ms.dxf_target_speed = mesh_scan.speed_max
+        ms.dxf_path_speed = mesh_scan.speed_max
         ms.mpcc_path_waypoints = path
         ms.trajectory_mode_active = False
 
@@ -315,21 +315,21 @@ class SimulationManager:
         state = self.sim_instance.get_current_state()
 
         # Fallback values if sim_instance properties aren't ready
-        tgt_state = getattr(self.sim_instance, "target_state", None)
-        tgt_pos = (0.0, 0.0, 0.0)
-        tgt_quat = None
-        tgt_ori = (0.0, 0.0, 0.0)
+        ref_state = getattr(self.sim_instance, "reference_state", None)
+        ref_pos = (0.0, 0.0, 0.0)
+        ref_quat = None
+        ref_ori = (0.0, 0.0, 0.0)
 
-        if tgt_state is not None and len(tgt_state) >= 7:
-            tgt_pos = tuple(float(v) for v in tgt_state[0:3])
-            tgt_quat = tuple(float(v) for v in tgt_state[3:7])
+        if ref_state is not None and len(ref_state) >= 7:
+            ref_pos = tuple(float(v) for v in ref_state[0:3])
+            ref_quat = tuple(float(v) for v in ref_state[3:7])
             try:
-                tgt_ori = tuple(quat_wxyz_to_euler_xyz(tgt_quat).tolist())
+                ref_ori = tuple(quat_wxyz_to_euler_xyz(ref_quat).tolist())
             except Exception:
-                tgt_ori = (0.0, 0.0, 0.0)
+                ref_ori = (0.0, 0.0, 0.0)
         elif self.current_mission_config:
-            tgt_pos = tuple(self.current_mission_config.target_position)
-            tgt_ori = tuple(self.current_mission_config.target_orientation)
+            ref_pos = tuple(self.current_mission_config.end_position)
+            ref_ori = tuple(self.current_mission_config.end_orientation)
 
         num_thrusters = getattr(self.sim_instance.mpc_controller, "num_thrusters", 12)
         last_output = getattr(
@@ -353,9 +353,9 @@ class SimulationManager:
             "quaternion": state[3:7],
             "velocity": state[7:10],
             "angular_velocity": state[10:13],
-            "target_position": tgt_pos,
-            "target_orientation": tgt_ori,
-            "target_quaternion": tgt_quat,
+            "reference_position": ref_pos,
+            "reference_orientation": ref_ori,
+            "reference_quaternion": ref_quat,
             "thrusters": last_output[:num_thrusters],
             "rw_torque": last_output[num_thrusters:],
             "obstacles": obstacles,
@@ -392,15 +392,15 @@ class SimulationManager:
                         )
                     continue
 
-                # 2. Dynamic Target Updates (Live Interaction)
+                # 2. Dynamic Reference Updates (Live Interaction)
                 if self.sim_instance and self.current_mission_config:
-                    # Sync target from config if changed (though update_mission re-inits usually)
+                    # Sync reference from config if changed (though update_mission re-inits usually)
                     # But the endpoint 'mission' re-inits.
-                    # Original code had logic to sync target every frame from 'current_mission_config'.
+                    # Original code had logic to sync reference every frame from 'current_mission_config'.
                     # This allows changing config object in memory?
                     # The update_mission endpoint replaces the entire object.
-                    # So we don't need to poll unless we have a separate 'update_target' endpoint.
-                    # Original code L226-247 syncs target.
+                    # So we don't need to poll unless we have a separate 'update_reference' endpoint.
+                    # Original code L226-247 syncs reference.
                     # It seems redundant if update_mission always re-inits.
                     # BUT, maybe there was an intention for live updates without reset?
                     # For safety, I'll keep the re-planning check.
@@ -576,11 +576,11 @@ async def get_simulation_telemetry(
                 yaw = to_float(row.get("Current_Yaw"))
                 quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
 
-                target_roll = to_float(row.get("Target_Roll"))
-                target_pitch = to_float(row.get("Target_Pitch"))
-                target_yaw = to_float(row.get("Target_Yaw"))
-                target_quat = euler_xyz_to_quat_wxyz(
-                    (target_roll, target_pitch, target_yaw)
+                reference_roll = to_float(row.get("Reference_Roll"))
+                reference_pitch = to_float(row.get("Reference_Pitch"))
+                reference_yaw = to_float(row.get("Reference_Yaw"))
+                reference_quat = euler_xyz_to_quat_wxyz(
+                    (reference_roll, reference_pitch, reference_yaw)
                 )
 
                 err_x = to_float(row.get("Error_X"))
@@ -609,13 +609,17 @@ async def get_simulation_telemetry(
                             to_float(row.get("Current_WY")),
                             to_float(row.get("Current_WZ")),
                         ],
-                        "target_position": [
-                            to_float(row.get("Target_X")),
-                            to_float(row.get("Target_Y")),
-                            to_float(row.get("Target_Z")),
+                        "reference_position": [
+                            to_float(row.get("Reference_X")),
+                            to_float(row.get("Reference_Y")),
+                            to_float(row.get("Reference_Z")),
                         ],
-                        "target_orientation": [target_roll, target_pitch, target_yaw],
-                        "target_quaternion": list(target_quat),
+                        "reference_orientation": [
+                            reference_roll,
+                            reference_pitch,
+                            reference_yaw,
+                        ],
+                        "reference_quaternion": list(reference_quat),
                         "scan_object": scan_object,
                         "thrusters": [to_float(row.get(col)) for col in thruster_cols],
                         "rw_torque": [0.0, 0.0, 0.0],
@@ -709,7 +713,10 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/upload_object")
 async def upload_object(file: bytes = File(...), filename: str = Form(...)):
     """Upload an OBJ file to the server."""
-    import aiofiles
+    try:
+        import aiofiles
+    except Exception:
+        aiofiles = None
 
     upload_dir = Path("OBJ_files/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -718,8 +725,12 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
     safe_name = Path(filename).name
     file_path = upload_dir / safe_name
 
-    async with aiofiles.open(file_path, "wb") as out_file:
-        await out_file.write(file)
+    if aiofiles is None:
+        with open(file_path, "wb") as out_file:
+            out_file.write(file)
+    else:
+        async with aiofiles.open(file_path, "wb") as out_file:
+            await out_file.write(file)
 
     return {"status": "success", "path": str(file_path), "filename": safe_name}
 

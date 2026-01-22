@@ -119,6 +119,34 @@ class ObstacleAvoidanceSpline:
         point = self._quadratic_bezier(t)
         return tuple(float(x) for x in point)
 
+    def sample_at_arc_length(self, arc_length: float) -> np.ndarray:
+        """
+        Sample the spline at a specific arc length.
+
+        Args:
+            arc_length: Distance along curve from start
+
+        Returns:
+            Numpy array position on curve
+        """
+        return np.array(self.evaluate(arc_length), dtype=float)
+
+    def sample_uniform(self, num_points: int) -> list:
+        """
+        Sample uniformly along the spline by arc length.
+
+        Args:
+            num_points: Number of points to sample
+
+        Returns:
+            List of numpy array points along the spline
+        """
+        if num_points <= 1:
+            return [np.array(self.start, dtype=float)]
+
+        lengths = np.linspace(0.0, self._total_length, num_points)
+        return [self.sample_at_arc_length(s) for s in lengths]
+
     def tangent(self, arc_length: float) -> Tuple[float, ...]:
         """
         Get normalized tangent direction at given arc length.
@@ -159,7 +187,7 @@ class ObstacleAvoidanceSpline:
 
 def create_obstacle_avoidance_spline(
     start_pos: np.ndarray,
-    target_pos: np.ndarray,
+    end_pos: np.ndarray,
     obstacle_center: np.ndarray,
     obstacle_radius: float,
     safety_margin: float = 0.1,
@@ -169,7 +197,7 @@ def create_obstacle_avoidance_spline(
 
         Args:
         start_pos: Starting position [x, y, z] (z optional)
-        target_pos: Target position [x, y, z] (z optional)
+        end_pos: End position [x, y, z] (z optional)
         obstacle_center: Obstacle center [x, y, z] (z optional)
         obstacle_radius: Obstacle radius in meters
         safety_margin: Extra clearance in meters
@@ -178,17 +206,17 @@ def create_obstacle_avoidance_spline(
         ObstacleAvoidanceSpline or None if no obstacle in path
     """
     start = np.array(start_pos, dtype=float)
-    target = np.array(target_pos, dtype=float)
+    end = np.array(end_pos, dtype=float)
     obstacle = np.array(obstacle_center, dtype=float)
 
     if start.shape[0] < 3:
         start = np.pad(start, (0, 3 - start.shape[0]), "constant")
-    if target.shape[0] < 3:
-        target = np.pad(target, (0, 3 - target.shape[0]), "constant")
+    if end.shape[0] < 3:
+        end = np.pad(end, (0, 3 - end.shape[0]), "constant")
     if obstacle.shape[0] < 3:
         obstacle = np.pad(obstacle, (0, 3 - obstacle.shape[0]), "constant")
 
-    path_vec = target - start
+    path_vec = end - start
     path_length = np.linalg.norm(path_vec)
     if path_length < 1e-6:
         return None
@@ -225,5 +253,5 @@ def create_obstacle_avoidance_spline(
     return ObstacleAvoidanceSpline(
         start=tuple(start),
         control=tuple(control_point),
-        end=tuple(target),
+        end=tuple(end),
     )

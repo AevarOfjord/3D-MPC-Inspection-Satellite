@@ -60,11 +60,12 @@ class TestSatelliteConfigValidation:
         config = SimulationConfig.create_default()
         mpc = config.app_config.mpc
 
-        assert mpc.q_position >= 0
-        assert mpc.q_velocity >= 0
-        assert mpc.q_angle >= 0
+        assert mpc.Q_contour >= 0
+        assert mpc.Q_progress >= 0
+        assert mpc.Q_smooth >= 0
         assert mpc.q_angular_velocity >= 0
         assert mpc.r_thrust >= 0
+        assert mpc.r_rw_torque >= 0
         # Note: r_switch is not in MPCParams (was in old config)
 
 
@@ -104,20 +105,12 @@ class TestSatelliteConfigConstants:
         control_dt = config.app_config.simulation.control_dt
         assert solver_time_limit < control_dt
 
-    def test_workspace_bounds_are_positive(self):
-        """Test that workspace boundaries are positive."""
+    def test_path_speed_is_reasonable(self):
+        """Test that path speed is within expected bounds."""
         # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
-        position_bounds = config.app_config.mpc.position_bounds
-        assert position_bounds > 0
-
-    def test_velocity_limits_are_positive(self):
-        """Test that velocity limits are positive."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
-        config = SimulationConfig.create_default()
-        mpc = config.app_config.mpc
-        assert mpc.max_velocity > 0
-        assert mpc.max_angular_velocity > 0
+        path_speed = config.app_config.mpc.path_speed
+        assert 0.0 < path_speed <= 1.0
 
 
 class TestSatelliteConfigThrusterGeometry:
@@ -163,7 +156,7 @@ class TestSatelliteConfigThrusterGeometry:
         direction_ids = set(physics.thruster_directions.keys())
 
         assert force_ids == position_ids == direction_ids
-        assert len(force_ids) == 6
+        assert len(force_ids) == 8
 
 
 class TestSatelliteConfigIntegration:
@@ -238,17 +231,13 @@ class TestConfigValidator:
                     dt=0.06,
                     solver_time_limit=0.05,
                     solver_type="OSQP",
-                    q_position=1000.0,
-                    q_velocity=1750.0,
-                    q_angle=1000.0,
+                    Q_contour=1000.0,
+                    Q_progress=100.0,
+                    Q_smooth=10.0,
                     q_angular_velocity=1500.0,
                     r_thrust=1.0,
-                    max_velocity=0.15,
-                    max_angular_velocity=1.57,
-                    position_bounds=3.0,
-                    damping_zone=0.1,
-                    velocity_threshold=0.03,
-                    max_velocity_weight=100.0,
+                    r_rw_torque=0.1,
+                    path_speed=0.15,
                     thruster_type="PWM",
                 ),
                 simulation=SimulationParams(

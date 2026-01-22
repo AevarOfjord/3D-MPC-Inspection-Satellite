@@ -115,14 +115,14 @@ class ThrusterManager:
             new_command = thruster_pattern[i]
             old_command = self.thruster_last_command[i]
 
-            if new_command != old_command:
-                # Command state changed
-                if new_command > 0.01:  # ON command (PWM/Throttle > 1%)
+            if new_command > 0.01:  # ON command (PWM/Throttle > 1%)
+                if old_command <= 0.01:
                     self.thruster_open_command_time[i] = simulation_time
-                else:  # OFF command
-                    self.thruster_close_command_time[i] = simulation_time
+            else:  # OFF command
+                # Always update close time for off commands to match legacy behavior
+                self.thruster_close_command_time[i] = simulation_time
 
-                self.thruster_last_command[i] = new_command
+            self.thruster_last_command[i] = new_command
 
     def process_command_queue(
         self,
@@ -151,16 +151,27 @@ class ThrusterManager:
 
                 # Determine instantaneous command based on PWM Duty Cycle
                 thrust_cmd_binary = 0.0
+                duty_cycle = max(0.0, min(1.0, current_command))
 
                 # Calculate position in control interval for PWM
-                if control_update_interval > 0:
+                if duty_cycle >= 0.999:
+                    thrust_cmd_binary = 1.0
+                    if self.thruster_internal_binary_command[i] != 1.0:
+                        self.thruster_internal_binary_command[i] = 1.0
+                        if self.thruster_open_command_time[i] < -999.0:
+                            self.thruster_open_command_time[i] = simulation_time
+                elif duty_cycle <= 0.0:
+                    thrust_cmd_binary = 0.0
+                    if self.thruster_internal_binary_command[i] != 0.0:
+                        self.thruster_internal_binary_command[i] = 0.0
+                        if self.thruster_close_command_time[i] < -999.0:
+                            self.thruster_close_command_time[i] = simulation_time
+                elif control_update_interval > 0:
                     time_since_update = simulation_time - last_control_update
                     if time_since_update < 0:
                         time_since_update = 0
 
                     # Duty Cycle Logic
-                    duty_cycle = max(0.0, min(1.0, current_command))
-
                     # Calculate raw pulse duration
                     raw_pulse_duration = duty_cycle * control_update_interval
 
@@ -180,13 +191,14 @@ class ThrusterManager:
                     # Fallback if no interval defined
                     thrust_cmd_binary = 1 if current_command > 0.5 else 0
 
-                # Detect PWM Switch Event
-                if thrust_cmd_binary != self.thruster_internal_binary_command[i]:
-                    self.thruster_internal_binary_command[i] = thrust_cmd_binary
-                    if thrust_cmd_binary == 1:
-                        self.thruster_open_command_time[i] = simulation_time
-                    else:
-                        self.thruster_close_command_time[i] = simulation_time
+                # Detect PWM Switch Event (for pulsed duty cycles)
+                if duty_cycle > 0.0 and duty_cycle < 0.999:
+                    if thrust_cmd_binary != self.thruster_internal_binary_command[i]:
+                        self.thruster_internal_binary_command[i] = thrust_cmd_binary
+                        if thrust_cmd_binary == 1:
+                            self.thruster_open_command_time[i] = simulation_time
+                        else:
+                            self.thruster_close_command_time[i] = simulation_time
 
                 # Get timing values
                 open_cmd_time = self.thruster_open_command_time[i]
@@ -217,19 +229,19 @@ class ThrusterManager:
                 else:  # Currently commanded OFF
                     # Check if valve has had time to close
                     valve_close_time = close_cmd_time + self.VALVE_DELAY
+                    valve_open_time = open_cmd_time + self.VALVE_DELAY
 
                     if simulation_time >= valve_close_time:
                         # Valve is closed
                         self.thruster_actual_output[i] = 0.0
+                    elif simulation_time < valve_open_time:
+                        # Never opened
+                        self.thruster_actual_output[i] = 0.0
                     else:
-                        # Valve hasn't closed yet
-                        valve_open_time = open_cmd_time + self.VALVE_DELAY
-                        if simulation_time < valve_open_time:
-                            # Never opened
-                            self.thruster_actual_output[i] = 0.0
-                        else:
-                            # Was open, now closing
-                            self.thruster_actual_output[i] = 0.0
+                        # Was open, now closing: hold last output until closed
+                        self.thruster_actual_output[i] = max(
+                            self.thruster_actual_output[i], 0.0
+                        )
 
         elif self.thruster_type == "CON":
             # --- CONTINUOUS MODE ---

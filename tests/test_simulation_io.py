@@ -22,7 +22,7 @@ def mock_simulation():
     sim.data_save_path = None
     sim.state_history = []
     sim.control_history = []
-    sim.target_state = np.zeros(13)
+    sim.reference_state = np.zeros(13)
     sim.report_generator = MagicMock()
     return sim
 
@@ -56,8 +56,7 @@ class TestSimulationIODirectories:
             # Mock Path to return our tmp_path
             mock_base = MagicMock()
             mock_sim = MagicMock()
-            mock_timestamped = tmp_path / "test_dir"
-            mock_timestamped.mkdir = MagicMock()
+            mock_timestamped = MagicMock()
             mock_sim.__truediv__ = MagicMock(return_value=mock_timestamped)
             mock_base.__truediv__ = MagicMock(return_value=mock_sim)
             mock_path.return_value = mock_base

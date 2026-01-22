@@ -136,23 +136,23 @@ def create_3d_trajectory_plot(df: pd.DataFrame) -> go.Figure:
                 )
             )
 
-        # Add target positions if available
-        if "Target_X" in df.columns:
-            target_x = df["Target_X"].values
-            target_y = df["Target_Y"].values
-            target_z = (
-                df["Target_Z"].values
-                if "Target_Z" in df.columns
-                else np.zeros_like(target_x)
+        # Add reference positions if available
+        if "Reference_X" in df.columns:
+            reference_x = df["Reference_X"].values
+            reference_y = df["Reference_Y"].values
+            reference_z = (
+                df["Reference_Z"].values
+                if "Reference_Z" in df.columns
+                else np.zeros_like(reference_x)
             )
 
             fig.add_trace(
                 go.Scatter3d(
-                    x=target_x,
-                    y=target_y,
-                    z=target_z,
+                    x=reference_x,
+                    y=reference_y,
+                    z=reference_z,
                     mode="markers",
-                    name="Target",
+                    name="Reference",
                     marker=dict(size=5, color="orange", symbol="diamond"),
                 )
             )
@@ -722,15 +722,9 @@ def main():
                 )
 
             with col2:
-                target_hold_time = st.number_input(
-                    "Target Hold Time (s)",
-                    value=sim.get("target_hold_time", 5.0),
-                    min_value=0.0,
-                    step=0.1,
-                )
-                default_target_speed = st.number_input(
-                    "Default Target Speed (m/s)",
-                    value=sim.get("default_target_speed", 0.1),
+                default_path_speed = st.number_input(
+                    "Default Path Speed (m/s)",
+                    value=sim.get("default_path_speed", 0.1),
                     min_value=0.01,
                     step=0.01,
                 )
@@ -772,8 +766,7 @@ def main():
                         "control_dt": control_dt,
                         "dt": dt,
                         "max_time": max_time,
-                        "target_hold_time": target_hold_time,
-                        "default_target_speed": default_target_speed,
+                        "default_path_speed": default_path_speed,
                     },
                 }
 
@@ -1357,10 +1350,10 @@ def main():
             start_z = st.number_input("Start Z (m)", value=0.0, step=0.1)
 
         with col2:
-            st.subheader("Target Position")
-            target_x = st.number_input("Target X (m)", value=0.0, step=0.1)
-            target_y = st.number_input("Target Y (m)", value=0.0, step=0.1)
-            target_z = st.number_input("Target Z (m)", value=0.0, step=0.1)
+            st.subheader("End Position")
+            end_x = st.number_input("End X (m)", value=0.0, step=0.1)
+            end_y = st.number_input("End Y (m)", value=0.0, step=0.1)
+            end_z = st.number_input("End Z (m)", value=0.0, step=0.1)
 
         # Simulation parameters
         st.subheader("Simulation Parameters")
@@ -1428,9 +1421,9 @@ def main():
                     # Create simulation
                     sim = SatelliteMPCLinearizedSimulation(
                         start_pos=(start_x, start_y, start_z),
-                        target_pos=(target_x, target_y, target_z),
+                        end_pos=(end_x, end_y, end_z),
                         start_angle=(0.0, 0.0, 0.0),
-                        target_angle=(0.0, 0.0, 0.0),
+                        end_angle=(0.0, 0.0, 0.0),
                         simulation_config=config,
                     )
 

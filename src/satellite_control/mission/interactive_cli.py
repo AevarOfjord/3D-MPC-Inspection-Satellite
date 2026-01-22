@@ -204,7 +204,7 @@ class InteractiveMissionCLI:
                 "name": "Simple Navigation",
                 "start_pos": (0.0, 0.0, 0.0),
                 "start_angle": (0.0, 0.0, 0.0),
-                "targets": [
+                "waypoints": [
                     ((1.0, 1.0, 1.0), (np.radians(45), np.radians(45), np.radians(45)))
                 ],
                 "obstacles": [],
@@ -213,14 +213,14 @@ class InteractiveMissionCLI:
                 "name": "Obstacle Avoidance",
                 "start_pos": (1.0, 1.0, 1.0),
                 "start_angle": (0.0, 0.0, np.radians(45)),
-                "targets": [((-1.0, -1.0, 0.0), (0.0, 0.0, np.radians(-135)))],
+                "waypoints": [((-1.0, -1.0, 0.0), (0.0, 0.0, np.radians(-135)))],
                 "obstacles": [(0.0, 0.0, 0.0, 0.3)],
             },
             "square": {
                 "name": "Square Pattern",
                 "start_pos": (0.0, 0.0, 0.5),
                 "start_angle": (0.0, 0.0, 0.0),
-                "targets": [
+                "waypoints": [
                     ((1.0, 0.0, 1.0), (0.0, 0.0, 0.0)),
                     ((1.0, 1.0, 0.5), (0.0, 0.0, np.radians(90))),
                     ((0.0, 1.0, 0.0), (0.0, 0.0, np.radians(180))),
@@ -232,14 +232,14 @@ class InteractiveMissionCLI:
                 "name": "Corridor Navigation",
                 "start_pos": (1.0, 0.0, 1.0),
                 "start_angle": (0.0, 0.0, np.radians(180)),
-                "targets": [((-1.0, 0.0, 0.5), (0.0, 0.0, np.radians(180)))],
+                "waypoints": [((-1.0, 0.0, 0.5), (0.0, 0.0, np.radians(180)))],
                 "obstacles": [(0.0, 0.5, 0.0, 0.3), (0.0, -0.5, 0.0, 0.3)],
             },
             "zigzag": {
                 "name": "Zig Zag (RW Test)",
                 "start_pos": (-2.0, -2.0, -2.0),
                 "start_angle": (0.0, 0.0, 0.0),
-                "targets": [
+                "waypoints": [
                     (
                         (-1.0, 2.0, 2.0),
                         (np.radians(45), np.radians(45), np.radians(45)),
@@ -270,7 +270,7 @@ class InteractiveMissionCLI:
         if not self._confirm_mission(preset["name"]):
             return {}
 
-        # Return full preset dict (includes obstacles, targets, etc.)
+        # Return full preset dict (includes obstacles, waypoints, etc.)
         # This allows _apply_preset to work correctly
         preset["mission_type"] = "path_following"
         preset["mode"] = "path_following"
@@ -296,10 +296,10 @@ class InteractiveMissionCLI:
         ms = simulation_config.mission_state
 
         # Hydrate MissionState from data (MissionConfigModel structure)
-        # start_position, target_position, target_orientation, obstacles
+        # start_position, end_position, end_orientation, obstacles
         start_pos = tuple(data.get("start_position", [10, 0, 0]))
-        target_pos = tuple(data.get("target_position", [0, 0, 0]))
-        target_ori = tuple(data.get("target_orientation", [0, 0, 0]))
+        end_pos = tuple(data.get("end_position", [0, 0, 0]))
+        end_angle = tuple(data.get("end_orientation", [0, 0, 0]))
 
         # Obstacles
         obs_data = data.get("obstacles", [])
@@ -336,14 +336,10 @@ class InteractiveMissionCLI:
                     build_trajectory=False,
                 )
 
-                simulation_config.app_config.mpc.mode_path_following = True
-                simulation_config.app_config.mpc.v_target = speed_max
+                simulation_config.app_config.mpc.path_speed = speed_max
 
                 ms.mesh_scan_mode_active = True
                 ms.mesh_scan_obj_path = mesh_scan.get("obj_path")
-                ms.dxf_shape_path = path
-                ms.dxf_path_length = path_length
-                ms.dxf_target_speed = speed_max
                 ms.trajectory_mode_active = False
                 ms.mpcc_path_waypoints = path
             except Exception as e:
@@ -360,8 +356,8 @@ class InteractiveMissionCLI:
                 0,
                 0,
             ),  # Assuming start orientation is 0 unless specified?
-            "target_pos": target_pos,
-            "target_angle": target_ori,
+            "end_pos": end_pos,
+            "end_angle": end_angle,
             "simulation_config": simulation_config,
             "preset_name": Path(path_str).stem,
         }
@@ -389,7 +385,7 @@ class InteractiveMissionCLI:
         table.add_row("Start Angle", sa)
 
         # Waypoints
-        for i, (pos, angle) in enumerate(preset["targets"], 1):
+        for i, (pos, angle) in enumerate(preset["waypoints"], 1):
             a_deg = self._format_euler_deg(angle)
             if len(pos) == 3:
                 table.add_row(
@@ -444,36 +440,21 @@ class InteractiveMissionCLI:
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = len(obstacles) > 0
 
-        targets = preset.get("targets", [])
+        waypoints = preset.get("waypoints", [])
         start_pos = preset.get("start_pos")
-        if start_pos and targets:
+        if start_pos and waypoints:
             from src.satellite_control.mission.path_following import (
                 build_point_to_point_path,
             )
 
-            positions = [start_pos] + [t[0] for t in targets]
+            positions = [start_pos] + [t[0] for t in waypoints]
             path = build_point_to_point_path(
                 waypoints=positions,
                 obstacles=None,
                 step_size=0.1,
             )
-            path_length = float(
-                np.sum(
-                    np.linalg.norm(
-                        np.array(path[1:], dtype=float)
-                        - np.array(path[:-1], dtype=float),
-                        axis=1,
-                    )
-                )
-            )
+            # path_length calculation removed as it is unused
             mission_state.mpcc_path_waypoints = path
-            mission_state.dxf_shape_path = path
-            mission_state.dxf_path_length = path_length
-
-        mission_state.enable_waypoint_mode = False
-        mission_state.enable_multi_point_mode = False
-        mission_state.current_target_index = 0
-        mission_state.target_stabilization_start_time = None
 
     def get_position_interactive(
         self,
@@ -594,7 +575,7 @@ class InteractiveMissionCLI:
 
         simulation_config = SimulationConfig.create_default()
         mission_state = simulation_config.mission_state
-        
+
         console.print()
         console.print(Panel("Mission 1: Point-to-Point Path", style="green"))
 
@@ -648,31 +629,18 @@ class InteractiveMissionCLI:
             obstacles=None,
             step_size=0.1,
         )
-        path_length = float(
-            np.sum(
-                np.linalg.norm(
-                    np.array(path[1:], dtype=float) - np.array(path[:-1], dtype=float),
-                    axis=1,
-                )
-            )
-        )
 
         mission_state.trajectory_mode_active = False
         mission_state.trajectory_type = "path"
         mission_state.trajectory_hold_end = 5.0
-        mission_state.dxf_target_speed = speed
-        mission_state.dxf_shape_path = path
-        mission_state.dxf_path_length = path_length
-        mission_state.dxf_shape_mode_active = False
+        mission_state.trajectory_mode_active = False
+        mission_state.trajectory_type = "path"
+        mission_state.trajectory_hold_end = 5.0
         mission_state.mesh_scan_mode_active = False
-        mission_state.enable_waypoint_mode = False
-        mission_state.enable_multi_point_mode = False
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
 
-        # Enable path-following MPC mode
-        simulation_config.app_config.mpc.mode_path_following = True
-        simulation_config.app_config.mpc.v_target = speed
+        simulation_config.app_config.mpc.path_speed = speed
         # Store path waypoints for MPC initialization
         mission_state.mpcc_path_waypoints = path  # Pass to simulation for set_path()
 
@@ -789,13 +757,11 @@ class InteractiveMissionCLI:
             )
             mission_state.mesh_scan_obj_path = selection
 
-        simulation_config.app_config.mpc.mode_path_following = True
-        simulation_config.app_config.mpc.v_target = speed
+        simulation_config.app_config.mpc.path_speed = speed
         mission_state.trajectory_mode_active = False
         mission_state.trajectory_type = "scan"
         mission_state.mesh_scan_mode_active = True
-        mission_state.dxf_target_speed = speed
-        mission_state.dxf_path_length = path_length
+
         mission_state.mesh_scan_object_pose = (
             obj_pose[0],
             obj_pose[1],
@@ -808,10 +774,7 @@ class InteractiveMissionCLI:
         mission_state.mesh_scan_fov_deg = 60.0
         mission_state.mesh_scan_overlap = 0.85
         mission_state.mesh_scan_ring_shape = "circle"
-        mission_state.dxf_shape_path = path
-        mission_state.dxf_shape_mode_active = False
-        mission_state.enable_waypoint_mode = False
-        mission_state.enable_multi_point_mode = False
+        mission_state.mesh_scan_ring_shape = "circle"
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
         mission_state.trajectory_hold_end = 5.0
@@ -825,7 +788,7 @@ class InteractiveMissionCLI:
         }
 
     def run_starlink_orbit_mission(self) -> Dict[str, Any]:
-        """Mission 3: Circle Starlink Satellite with camera facing target."""
+        """Mission 3: Circle Starlink Satellite with camera facing object."""
         from pathlib import Path
 
         from src.satellite_control.config.simulation_config import SimulationConfig
@@ -907,20 +870,18 @@ class InteractiveMissionCLI:
         obstacles, obstacles_enabled = self.configure_sphere_obstacles_interactive()
 
         try:
-            path, _, path_length, _ = (
-                build_starlink_orbit_trajectory(
-                    obj_path=str(obj_path),
-                    center=starlink_pos,
-                    rotation_xyz=starlink_angle,
-                    standoff=standoff,
-                    z_step=z_step,
-                    points_per_ring=36,
-                    v_max=speed,
-                    v_min=0.05,
-                    lateral_accel=0.05,
-                    camera_face="-Y",
-                    build_trajectory=False,
-                )
+            path, _, path_length, _ = build_starlink_orbit_trajectory(
+                obj_path=str(obj_path),
+                center=starlink_pos,
+                rotation_xyz=starlink_angle,
+                standoff=standoff,
+                z_step=z_step,
+                points_per_ring=36,
+                v_max=speed,
+                v_min=0.05,
+                lateral_accel=0.05,
+                camera_face="-Y",
+                build_trajectory=False,
             )
         except Exception as e:
             console.print(f"[red]Error generating orbit trajectory: {e}[/red]")
@@ -936,17 +897,11 @@ class InteractiveMissionCLI:
         mission_state.mesh_scan_mode_active = True
         mission_state.mesh_scan_obj_path = str(obj_path)
         mission_state.dxf_shape_path = path
-        mission_state.dxf_path_length = path_length
-        mission_state.dxf_target_speed = speed
-        mission_state.dxf_shape_mode_active = False
-        mission_state.enable_waypoint_mode = False
-        mission_state.enable_multi_point_mode = False
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
         mission_state.mpcc_path_waypoints = path
 
-        simulation_config.app_config.mpc.mode_path_following = True
-        simulation_config.app_config.mpc.v_target = speed
+        simulation_config.app_config.mpc.path_speed = speed
 
         return {
             "mission_type": "starlink_orbit",
@@ -1090,9 +1045,11 @@ class InteractiveMissionCLI:
             wp_num = len(waypoints) + 1
             console.print(f"\n[cyan]Waypoint {wp_num}[/cyan]")
 
-            pos = self.get_position_interactive(f"Target {wp_num}", (0.0, 0.0, 0.0))
+            pos = self.get_position_interactive(
+                f"Waypoint {wp_num}", (0.0, 0.0, 0.0)
+            )
             angle = self.get_angle_interactive(
-                f"Target {wp_num} angle", (0.0, 0.0, 0.0)
+                f"Waypoint {wp_num} angle", (0.0, 0.0, 0.0)
             )
 
             waypoints.append((pos, angle))
@@ -1127,23 +1084,9 @@ class InteractiveMissionCLI:
             obstacles=None,
             step_size=0.1,
         )
-        path_length = float(
-            np.sum(
-                np.linalg.norm(
-                    np.array(path[1:], dtype=float) - np.array(path[:-1], dtype=float),
-                    axis=1,
-                )
-            )
-        )
 
         # Update MissionState (path-following)
         mission_state.mpcc_path_waypoints = path
-        mission_state.dxf_shape_path = path
-        mission_state.dxf_path_length = path_length
-        mission_state.enable_waypoint_mode = False
-        mission_state.enable_multi_point_mode = False
-        mission_state.current_target_index = 0
-        mission_state.target_stabilization_start_time = None
 
         return {
             "mission_type": "path_following",
@@ -1214,433 +1157,3 @@ class InteractiveMissionCLI:
             return float(value) > 0
         except ValueError:
             return False
-
-    # =========================================================================
-    # Shape Following Mission
-    # =========================================================================
-
-    def run_shape_following_mission(self) -> Dict[str, Any]:
-        """Run interactive shape following mission configuration."""
-        from src.satellite_control.config import timing
-
-        console.print()
-        console.print(Panel("◇ Shape Following Mission", style="blue"))
-        console.print("[dim]Track a moving target along a shape path[/dim]\n")
-
-        # Get start position
-        start_pos = self.get_position_interactive(
-            "Starting Position", default=(1.0, 1.0, 0.0)
-        )
-        start_angle = self.get_angle_interactive("Starting Angle", (0.0, 0.0, 90.0))
-
-        # Select shape type
-        console.print()
-        shape_type = self._select_shape_type()
-        if shape_type is None:
-            return {}
-
-        # Get shape parameters
-        shape_center = self.get_position_interactive(
-            "Shape Center", default=(0.0, 0.0, 0.0)
-        )
-
-        rotation_deg = float(
-            questionary.text(
-                "Shape rotation (degrees) [0]:",
-                default="0",
-                validate=lambda x: self._validate_float(x),
-                style=MISSION_STYLE,
-                qmark=QMARK,
-            ).ask()
-            or "0"
-        )
-
-        offset = float(
-            questionary.text(
-                "Offset distance (meters) [0.5]:",
-                default="0.5",
-                validate=lambda x: self._validate_positive_float(x),
-                style=MISSION_STYLE,
-                qmark=QMARK,
-            ).ask()
-            or "0.5"
-        )
-        offset = max(0.1, min(2.0, offset))  # Clamp to valid range
-
-        # Get target speed
-        default_speed = timing.DEFAULT_TARGET_SPEED
-        target_speed = float(
-            questionary.text(
-                f"Target speed (m/s) [{default_speed}]:",
-                default=str(default_speed),
-                validate=lambda x: self._validate_positive_float(x),
-                style=MISSION_STYLE,
-                qmark=QMARK,
-            ).ask()
-            or str(default_speed)
-        )
-        target_speed = max(0.01, min(0.5, target_speed))
-
-        # Return position option
-        has_return = questionary.confirm(
-            "Return to start position after shape?",
-            default=False,
-            style=MISSION_STYLE,
-            qmark=QMARK,
-        ).ask()
-
-        return_pos = start_pos if has_return else None
-        return_angle = start_angle if has_return else None
-
-        # Create SimulationConfig for v2.0.0 pattern
-        simulation_config = SimulationConfig.create_default()
-        mission_state = simulation_config.mission_state
-
-        # Configure obstacles
-        self.configure_obstacles_interactive(mission_state)
-
-        # Generate shape and show preview
-        if shape_type == "custom_dxf" and hasattr(self, "_custom_dxf_points"):
-            shape_points = self._custom_dxf_points
-        else:
-            shape_points = self.logic.generate_demo_shape(shape_type)
-
-        rotation_rad = np.radians(rotation_deg)
-        transformed = self.logic.transform_shape(
-            shape_points, shape_center, rotation_rad
-        )
-        upscaled_path = self.logic.upscale_shape(transformed, offset)
-        path_length = self.logic.calculate_path_length(upscaled_path)
-
-        # Improved duration estimation
-        TRANSIT_SPEED = 0.15  # m/s average speed during point-to-point transit
-        STABILIZATION_TIME = 5.0  # seconds to stabilize at each waypoint
-
-        # 1. Time from start to first path point
-        first_path_point = upscaled_path[0]
-        dist_to_start = np.sqrt(
-            (start_pos[0] - first_path_point[0]) ** 2
-            + (start_pos[1] - first_path_point[1]) ** 2
-        )
-        transit_to_path = dist_to_start / TRANSIT_SPEED
-
-        # 2. Time to traverse path at target speed
-        path_traverse_time = path_length / target_speed
-
-        # 3. Final stabilization
-        final_stabilization = 10.0  # seconds
-
-        # 4. Return transit (if enabled)
-        return_transit = 0.0
-        if has_return and return_pos is not None:
-            last_path_point = upscaled_path[-1]
-            dist_return = np.sqrt(
-                (return_pos[0] - last_path_point[0]) ** 2
-                + (return_pos[1] - last_path_point[1]) ** 2
-            )
-            return_transit = dist_return / TRANSIT_SPEED + STABILIZATION_TIME
-
-        estimated_duration = (
-            transit_to_path
-            + STABILIZATION_TIME
-            + path_traverse_time
-            + final_stabilization
-            + return_transit
-        )
-
-        # Show summary
-        self._show_shape_mission_summary(
-            start_pos=start_pos,
-            start_angle=start_angle,
-            shape_type=shape_type,
-            shape_center=shape_center,
-            rotation_deg=rotation_deg,
-            offset=offset,
-            target_speed=target_speed,
-            path_length=path_length,
-            path_points=len(upscaled_path),
-            estimated_duration=estimated_duration,
-            has_return=has_return,
-        )
-
-        if not self._confirm_mission("Shape Following Mission"):
-            return {}
-
-        # Apply configuration to MissionState (V3.0.0)
-        self._apply_shape_config(
-            start_pos=start_pos,
-            start_angle=start_angle,
-            shape_center=shape_center,
-            rotation_rad=rotation_rad,
-            transformed_shape=transformed,
-            upscaled_path=upscaled_path,
-            target_speed=target_speed,
-            path_length=path_length,
-            estimated_duration=estimated_duration,
-            has_return=has_return,
-            return_pos=return_pos,
-            return_angle=return_angle,
-            mission_state=mission_state,
-        )
-
-        return {
-            "mission_type": "shape_following",
-            "start_pos": start_pos,
-            "start_angle": start_angle,
-            "shape_type": shape_type,
-            "simulation_config": simulation_config,
-        }
-
-    def _select_shape_type(self) -> Optional[str]:
-        """Select shape type with visual menu."""
-        # Check if ezdxf is available
-        try:
-            import ezdxf  # noqa: F401
-
-            dxf_available = True
-        except ImportError:
-            dxf_available = False
-
-        choices = [
-            questionary.Choice(title="○  Circle", value="circle"),
-            questionary.Choice(title="□  Rectangle", value="rectangle"),
-            questionary.Choice(title="△  Triangle", value="triangle"),
-            questionary.Choice(title="⬡  Hexagon", value="hexagon"),
-        ]
-
-        if dxf_available:
-            choices.insert(0, questionary.Separator("─── Demo Shapes ───"))
-            choices.insert(
-                0,
-                questionary.Choice(
-                    title="▢  Load from DXF file",
-                    value="dxf",
-                ),
-            )
-
-        result = questionary.select(
-            "Select shape type:",
-            choices=choices,
-            style=MISSION_STYLE,
-            qmark=QMARK,
-        ).ask()
-
-        if result == "dxf":
-            loaded = self._load_dxf_shape()
-            return str(loaded) if loaded else "circle"
-
-        return str(result) if result else None
-
-    def _load_dxf_shape(self) -> Optional[str]:
-        """Load custom shape from DXF file picker."""
-        from pathlib import Path
-
-        # Find DXF files in the DXF folder
-        # Try new location first: models/meshes/DXF_Files relative to project root
-        project_root = Path(__file__).parents[3]
-        dxf_folder = project_root / "models" / "meshes" / "DXF_Files"
-
-        if not dxf_folder.exists():
-            # Try relative path from CWD
-            dxf_folder = Path("models/meshes/DXF_Files")
-
-        if not dxf_folder.exists():
-            # Try legacy locations
-            dxf_folder = Path("DXF/DXF_Files")
-            if not dxf_folder.exists():
-                dxf_folder = project_root / "DXF" / "DXF_Files"
-
-        dxf_files = []
-        if dxf_folder.exists():
-            dxf_files = sorted([f for f in dxf_folder.glob("*.dxf")])
-
-        if not dxf_files:
-            console.print(f"[yellow]No DXF files found in {dxf_folder}[/yellow]")
-            console.print("[yellow]Using Circle instead.[/yellow]")
-            return "circle"
-
-        # Build choices from available DXF files
-        choices = [
-            questionary.Choice(
-                title=f"▫  {f.name}",
-                value=str(f),
-            )
-            for f in dxf_files
-        ]
-        choices.append(questionary.Separator())
-        choices.append(
-            questionary.Choice(
-                title="▢  Enter custom path...",
-                value="_custom_path",
-            )
-        )
-
-        console.print()
-        console.print(f"[dim]Found {len(dxf_files)} DXF files in {dxf_folder}[/dim]")
-
-        result = questionary.select(
-            "Select DXF file:",
-            choices=choices,
-            style=MISSION_STYLE,
-            qmark=QMARK,
-        ).ask()
-
-        if result is None:
-            return "circle"
-
-        # Handle custom path option
-        if result == "_custom_path":
-            dxf_path = questionary.path(
-                "Enter DXF file path:",
-                style=MISSION_STYLE,
-            ).ask()
-            if not dxf_path:
-                console.print("[yellow]No file selected, using Circle.[/yellow]")
-                return "circle"
-            result = dxf_path
-
-        try:
-            # Load DXF using MissionLogic
-            shape_points = self.logic.load_dxf_shape(result)
-            console.print(
-                f"[green]+ Loaded {len(shape_points)} points from DXF[/green]"
-            )
-            # Store the loaded points for later use
-            self._custom_dxf_points = shape_points
-            return "custom_dxf"
-        except Exception as e:
-            console.print(f"[red]Failed to load DXF: {e}[/red]")
-            console.print("[yellow]Falling back to Circle.[/yellow]")
-            return "circle"
-
-    def _show_shape_mission_summary(
-        self,
-        start_pos: Tuple[float, ...],
-        start_angle: Tuple[float, float, float],
-        shape_type: str,
-        shape_center: Tuple[float, ...],
-        rotation_deg: float,
-        offset: float,
-        target_speed: float,
-        path_length: float,
-        path_points: int,
-        estimated_duration: float,
-        has_return: bool,
-    ) -> None:
-        """Show shape following mission summary."""
-        table = Table(title="◇ Shape Following Summary", style="blue")
-        table.add_column("Parameter", style="bold")
-        table.add_column("Value", style="cyan")
-
-        sa = self._format_euler_deg(start_angle)
-        if len(start_pos) == 3:
-            table.add_row(
-                "Start",
-                f"({start_pos[0]:.1f}, {start_pos[1]:.1f}, {start_pos[2]:.1f}) @ {sa}",
-            )
-        else:
-            table.add_row("Start", f"({start_pos[0]:.1f}, {start_pos[1]:.1f}) @ {sa}")
-        table.add_row("Shape", shape_type.title())
-        if len(shape_center) == 3:
-            table.add_row(
-                "Center",
-                f"({shape_center[0]:.1f}, {shape_center[1]:.1f}, {shape_center[2]:.1f})",
-            )
-        else:
-            table.add_row("Center", f"({shape_center[0]:.1f}, {shape_center[1]:.1f})")
-        table.add_row("Rotation", f"{rotation_deg:.0f}°")
-        table.add_row("Offset", f"{offset:.2f} m")
-        table.add_row("Speed", f"{target_speed:.2f} m/s")
-        table.add_row("Path Length", f"{path_length:.1f} m ({path_points} points)")
-        table.add_row("Est. Duration", f"~{estimated_duration:.0f}s")
-        table.add_row("Return", "Yes" if has_return else "No")
-
-        console.print()
-        console.print(table)
-        console.print()
-
-    def _apply_shape_config(
-        self,
-        start_pos: Tuple[float, ...],
-        start_angle: Tuple[float, float, float],
-        shape_center: Tuple[float, ...],
-        rotation_rad: float,
-        transformed_shape: List[Tuple[float, ...]],
-        upscaled_path: List[Tuple[float, ...]],
-        target_speed: float,
-        path_length: float,
-        estimated_duration: float,
-        has_return: bool,
-        return_pos: Optional[Tuple[float, ...]],
-        return_angle: Optional[Tuple[float, float, float]],
-        mission_state,
-    ) -> None:
-        """Apply shape following configuration to MissionState.
-
-        Args:
-            start_pos: Starting position (x, y, z)
-            start_angle: Starting angle (roll, pitch, yaw)
-            shape_center: Shape center position (x, y, z)
-            rotation_rad: Shape rotation in radians
-            transformed_shape: Transformed shape points
-            upscaled_path: Upscaled path points
-            target_speed: Target speed in m/s
-            path_length: Path length in meters
-            estimated_duration: Estimated duration in seconds
-            has_return: Whether to return to start
-            return_pos: Return position (x, y, z) if has_return
-            return_angle: Return angle if has_return
-            mission_state: MissionState to update (required in V3.0.0).
-        """
-        # V3.0.0: Always require mission_state (no legacy fallback)
-        if mission_state is None:
-            raise ValueError(
-                "mission_state is required (V3.0.0: no SatelliteConfig fallback)"
-            )
-
-        # Convert 2D to 3D for mission_state (add z=0.0)
-        start_pos_3d = (
-            (start_pos[0], start_pos[1], 0.0) if len(start_pos) == 2 else start_pos
-        )
-        shape_center_3d = (
-            (shape_center[0], shape_center[1], 0.0)
-            if len(shape_center) == 2
-            else shape_center
-        )
-        upscaled_path_3d = [
-            (p[0], p[1], 0.0) if len(p) == 2 else p for p in upscaled_path
-        ]
-        transformed_shape_3d = [
-            (p[0], p[1], 0.0) if len(p) == 2 else p for p in transformed_shape
-        ]
-        return_pos_3d = (
-            (return_pos[0], return_pos[1], 0.0)
-            if return_pos and len(return_pos) == 2
-            else return_pos
-        )
-
-        # Update MissionState
-        mission_state.dxf_shape_mode_active = True
-        mission_state.dxf_shape_center = shape_center_3d
-        mission_state.dxf_base_shape = transformed_shape_3d
-        mission_state.dxf_shape_path = upscaled_path_3d
-        mission_state.dxf_target_speed = target_speed
-        mission_state.dxf_estimated_duration = estimated_duration
-        mission_state.dxf_mission_start_time = None
-        mission_state.dxf_shape_phase = "POSITIONING"
-        mission_state.dxf_path_length = path_length
-        mission_state.dxf_has_return = has_return
-        mission_state.dxf_return_position = return_pos_3d
-        if isinstance(return_angle, (tuple, list)) and len(return_angle) == 3:
-            mission_state.dxf_return_angle = tuple(return_angle)
-        elif return_angle is not None:
-            mission_state.dxf_return_angle = (0.0, 0.0, float(return_angle))
-        else:
-            mission_state.dxf_return_angle = None
-
-        # Clear transient state
-        mission_state.dxf_tracking_start_time = None
-        mission_state.dxf_target_start_distance = 0.0
-        mission_state.dxf_stabilization_start_time = None
-        mission_state.dxf_final_position = None
-        mission_state.dxf_return_start_time = None

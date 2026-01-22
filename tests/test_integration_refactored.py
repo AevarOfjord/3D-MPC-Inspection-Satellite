@@ -50,14 +50,14 @@ class TestRefactoredComponentsIntegration:
 
             initializer.initialize(
                 start_pos=(1.0, 2.0),
-                target_pos=(0.0, 0.0),
+                end_pos=(0.0, 0.0),
                 start_angle=(0.0, 0.0, 0.0),
-                target_angle=(0.0, 0.0, 0.0),
+                end_angle=(0.0, 0.0, 0.0),
             )
 
         # Verify initialization completed
         assert hasattr(sim, "satellite")
-        assert hasattr(sim, "target_state")
+        assert hasattr(sim, "reference_state")
         assert hasattr(sim, "mpc_controller")
 
         # Create loop and verify it can use the initialized simulation
@@ -119,18 +119,18 @@ class TestInitializerLoopDataFlow:
 
             initializer.initialize(
                 start_pos=(1.0, 2.0),
-                target_pos=(0.0, 0.0),
+                end_pos=(0.0, 0.0),
                 start_angle=(0.0, 0.0, 0.0),
-                target_angle=(0.0, 0.0, 0.0),
+                end_angle=(0.0, 0.0, 0.0),
             )
 
         # Verify state was set
-        assert hasattr(sim, "target_state")
-        assert sim.target_state.shape == (13,)
+        assert hasattr(sim, "reference_state")
+        assert sim.reference_state.shape == (13,)
 
         # Loop should be able to access this state
         loop = SimulationLoop(sim)
-        assert loop.simulation.target_state.shape == (13,)
+        assert loop.simulation.reference_state.shape == (13,)
 
 
 @pytest.mark.integration
@@ -191,9 +191,9 @@ class TestErrorRecovery:
             try:
                 initializer.initialize(
                     start_pos=(1.0, 2.0),
-                    target_pos=(0.0, 0.0),
+                    end_pos=(0.0, 0.0),
                     start_angle=(0.0, 0.0, 0.0),
-                    target_angle=(0.0, 0.0, 0.0),
+                    end_angle=(0.0, 0.0, 0.0),
                 )
             except Exception:
                 # Some exceptions are expected with full mocking

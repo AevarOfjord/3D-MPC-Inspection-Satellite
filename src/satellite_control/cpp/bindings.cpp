@@ -38,26 +38,18 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("prediction_horizon", &MPCParams::prediction_horizon)
         .def_readwrite("dt", &MPCParams::dt)
         .def_readwrite("solver_time_limit", &MPCParams::solver_time_limit)
-        .def_readwrite("Q_pos", &MPCParams::Q_pos)
-        .def_readwrite("Q_vel", &MPCParams::Q_vel)
-        .def_readwrite("Q_ang", &MPCParams::Q_ang)
         .def_readwrite("Q_angvel", &MPCParams::Q_angvel)
         .def_readwrite("R_thrust", &MPCParams::R_thrust)
         .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
-        .def_readwrite("max_velocity", &MPCParams::max_velocity)
-        .def_readwrite("max_angular_velocity", &MPCParams::max_angular_velocity)
-        .def_readwrite("enable_z_tilt", &MPCParams::enable_z_tilt)
-        .def_readwrite("z_tilt_gain", &MPCParams::z_tilt_gain)
-        .def_readwrite("z_tilt_max_rad", &MPCParams::z_tilt_max_rad)
+
         // Collision avoidance (V3.0.0)
         .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
         .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin)
         // Path Following (V4.0.1) - General Path MPCC
-        .def_readwrite("mode_path_following", &MPCParams::mode_path_following)
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
         .def_readwrite("Q_smooth", &MPCParams::Q_smooth)
-        .def_readwrite("v_target", &MPCParams::v_target);
+        .def_readwrite("path_speed", &MPCParams::path_speed);
 
     // Control Result
     py::class_<ControlResult>(m, "ControlResult")
@@ -93,11 +85,8 @@ PYBIND11_MODULE(_cpp_mpc, m) {
     py::class_<MPCControllerCpp>(m, "MPCControllerCpp")
         .def(py::init<const SatelliteParams&, const MPCParams&>())
         .def("get_control_action", &MPCControllerCpp::get_control_action,
-             py::arg("x_current"), py::arg("x_target"),
+             py::arg("x_current"),
              "Compute optimal control action")
-        .def("get_control_action_trajectory", &MPCControllerCpp::get_control_action_trajectory,
-             py::arg("x_current"), py::arg("x_target_traj"),
-             "Compute optimal control action using a trajectory reference")
         .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
         .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
         .def("set_path_data", &MPCControllerCpp::set_path_data,

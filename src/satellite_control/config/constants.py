@@ -46,7 +46,7 @@ class Constants:
     ARROW_Y_OFFSET = 0.08  # Arrow Y position offset (from center)
     ARROW_WIDTH = 0.05  # Arrow width for heading display
 
-    SLEEP_TARGET_DT = 0.9  # Sleep multiplier for target dt
+    SLEEP_CONTROL_DT = 0.9  # Sleep multiplier for control dt
 
     # Headless mode (no GUI windows)
     HEADLESS_MODE = True
@@ -96,9 +96,9 @@ class Constants:
     # ========================================================================
 
     DEFAULT_START_POS = (-1.0, -1.0, 0.0)
-    DEFAULT_TARGET_POS = (0.0, 0.0, 0.0)
+    DEFAULT_END_POS = (0.0, 0.0, 0.0)
     DEFAULT_START_ANGLE = (0.0, 0.0, np.deg2rad(90))  # Roll, Pitch, Yaw
-    DEFAULT_TARGET_ANGLE = (0.0, 0.0, np.deg2rad(90))  # Roll, Pitch, Yaw
+    DEFAULT_END_ANGLE = (0.0, 0.0, np.deg2rad(90))  # Roll, Pitch, Yaw
 
     # ========================================================================
     # TOLERANCES
@@ -130,21 +130,16 @@ class Constants:
     MPC_SOLVER_TIME_LIMIT = 0.04  # Default solver limit (50ms - 10ms margin)
     MPC_SOLVER_TYPE = "OSQP"
 
-    Q_POSITION = 10000.0
-    Q_VELOCITY = 100.0
-    Q_ANGLE = 1000.0
+    Q_CONTOUR = 1000.0
+    Q_PROGRESS = 100.0
+    Q_SMOOTH = 10.0
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1
     R_RW_TORQUE = 0.1
 
-    MAX_VELOCITY = 0.2
-    MAX_ANGULAR_VELOCITY = np.pi / 2
-    POSITION_BOUNDS = 3.0
-    DAMPING_ZONE = 0.25
-    VELOCITY_THRESHOLD = 0.03
-    MAX_VELOCITY_WEIGHT = 1000.0
-
     THRUSTER_TYPE = "CON"
+
+    # MPCC Toggles & Gains
 
     # ========================================================================
     # PHYSICS CONSTANTS

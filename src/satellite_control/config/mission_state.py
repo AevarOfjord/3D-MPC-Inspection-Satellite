@@ -5,10 +5,9 @@ Runtime mission state tracking for waypoint navigation and shape following.
 Maintains mutable state variables for mission execution and phase transitions.
 
 Mission types supported:
-1. Waypoint Navigation: Single or multiple sequential waypoints
-2. Shape Following: Geometric paths (circle, rectangle, triangle, hexagon, DXF)
-3. Trajectory Tracking: Generic path following
-4. Mesh Scanning: OBJ mesh inspection
+1. Path Following: MPCC path tracking with 3D waypoints
+2. Trajectory Tracking: Generic path following
+3. Mesh Scanning: OBJ mesh inspection
 
 State tracking is split into component dataclasses for better organization.
 
@@ -24,49 +23,13 @@ from typing import List, Optional, Tuple, Any
 
 
 @dataclass
-class WaypointState:
-    """State for waypoint navigation missions."""
-
-    enabled: bool = False
-    targets: List[Tuple[float, float, float]] = field(default_factory=list)
-    angles: List[Tuple[float, float, float]] = field(default_factory=list)
-    current_target_index: int = 0
-    start_time: Optional[float] = None  # Stabilization start time
-    phase: Optional[str] = None
-
-    # Legacy Multi-point support
-    multi_point_phase: Optional[str] = None
-
-
-@dataclass
-class ShapeFollowingState:
-    """State for shape following missions."""
+class PathFollowingState:
+    """State for MPCC path-following missions."""
 
     active: bool = False
-    center: Optional[Tuple[float, float, float]] = None
-    path: List[Tuple[float, float, float]] = field(default_factory=list)
-    base_shape: List[Tuple[float, float, float]] = field(default_factory=list)
-    target_speed: float = 0.1
-    estimated_duration: float = 60.0
-    phase: str = "POSITIONING"
+    waypoints: List[Tuple[float, float, float]] = field(default_factory=list)
+    path_speed: float = 0.1
     path_length: float = 0.0
-    closest_point_index: int = 0
-    current_target_position: Optional[Tuple[float, float, float]] = None
-    tracking_start_time: Optional[float] = None
-    target_start_distance: float = 0.0
-    mission_start_time: Optional[float] = None
-    stabilization_start_time: Optional[float] = None
-    final_position: Optional[Tuple[float, float, float]] = None
-    rotation: float = 0.0
-    offset_distance: float = 0.5
-    has_return: bool = False
-    return_position: Optional[Tuple[float, float, float]] = None
-    return_angle: Optional[Tuple[float, float, float]] = None
-    return_start_time: Optional[float] = None
-    trajectory: List[Tuple[float, float, float, float, float, float, float]] = field(
-        default_factory=list
-    )
-    trajectory_dt: float = 0.05
 
 
 @dataclass
@@ -127,8 +90,7 @@ class MissionState:
     MAINTAINS FULL BACKWARD COMPATIBILITY via properties.
     """
 
-    waypoint: WaypointState = field(default_factory=WaypointState)
-    shape: ShapeFollowingState = field(default_factory=ShapeFollowingState)
+    path: PathFollowingState = field(default_factory=PathFollowingState)
     scan: ScanState = field(default_factory=ScanState)
     trajectory: TrajectoryState = field(default_factory=TrajectoryState)
     obstacle_state: ObstacleState = field(default_factory=ObstacleState)
@@ -139,290 +101,62 @@ class MissionState:
     # accessing state as flat attributes.
     # =========================================================================
 
-    # --- Waypoint Navigation ---
-    @property
-    def enable_waypoint_mode(self) -> bool:
-        return self.waypoint.enabled
-
-    @enable_waypoint_mode.setter
-    def enable_waypoint_mode(self, value: bool):
-        self.waypoint.enabled = value
-
-    @property
-    def waypoint_targets(self) -> List[Tuple[float, float, float]]:
-        return self.waypoint.targets
-
-    @waypoint_targets.setter
-    def waypoint_targets(self, value: List[Tuple[float, float, float]]):
-        self.waypoint.targets = value
-
-    @property
-    def waypoint_angles(self) -> List[Tuple[float, float, float]]:
-        return self.waypoint.angles
-
-    @waypoint_angles.setter
-    def waypoint_angles(self, value: List[Tuple[float, float, float]]):
-        self.waypoint.angles = value
-
-    @property
-    def current_target_index(self) -> int:
-        return self.waypoint.current_target_index
-
-    @current_target_index.setter
-    def current_target_index(self, value: int):
-        self.waypoint.current_target_index = value
-
-    @property
-    def target_stabilization_start_time(self) -> Optional[float]:
-        return self.waypoint.start_time
-
-    @target_stabilization_start_time.setter
-    def target_stabilization_start_time(self, value: Optional[float]):
-        self.waypoint.start_time = value
-
-    @property
-    def waypoint_phase(self) -> Optional[str]:
-        return self.waypoint.phase
-
-    @waypoint_phase.setter
-    def waypoint_phase(self, value: Optional[str]):
-        self.waypoint.phase = value
-
-    # --- Multi-Point (Merged) ---
-    @property
-    def enable_multi_point_mode(self) -> bool:
-        return self.waypoint.enabled
-
-    @enable_multi_point_mode.setter
-    def enable_multi_point_mode(self, value: bool):
-        # Only set if True to likely avoid conflict, though they map to same
-        if value:
-            self.waypoint.enabled = True
-
-    @property
-    def multi_point_targets(self) -> List[Tuple[float, float, float]]:
-        return self.waypoint.targets
-
-    @multi_point_targets.setter
-    def multi_point_targets(self, value: List[Tuple[float, float, float]]):
-        # Avoid clearing if already set via waypoint_targets, unless new value is not empty
-        if value or not self.waypoint.targets:
-            self.waypoint.targets = value
-
-    @property
-    def multi_point_angles(self) -> List[Tuple[float, float, float]]:
-        return self.waypoint.angles
-
-    @multi_point_angles.setter
-    def multi_point_angles(self, value: List[Tuple[float, float, float]]):
-        if value or not self.waypoint.angles:
-            self.waypoint.angles = value
-
-    @property
-    def multi_point_phase(self) -> Optional[str]:
-        return self.waypoint.multi_point_phase
-
-    @multi_point_phase.setter
-    def multi_point_phase(self, value: Optional[str]):
-        self.waypoint.multi_point_phase = value
-
-    # --- Shape Following ---
-    @property
-    def dxf_shape_mode_active(self) -> bool:
-        return self.shape.active
-
-    @dxf_shape_mode_active.setter
-    def dxf_shape_mode_active(self, value: bool):
-        self.shape.active = value
-
-    @property
-    def dxf_shape_center(self) -> Optional[Tuple[float, float, float]]:
-        return self.shape.center
-
-    @dxf_shape_center.setter
-    def dxf_shape_center(self, value: Optional[Tuple[float, float, float]]):
-        self.shape.center = value
-
-    @property
-    def dxf_shape_path(self) -> List[Tuple[float, float, float]]:
-        return self.shape.path
-
-    @dxf_shape_path.setter
-    def dxf_shape_path(self, value: List[Tuple[float, float, float]]):
-        self.shape.path = value
-
-    # --- Path Following (MPCC) ---
+    # --- Path Following ---
     @property
     def mpcc_path_waypoints(self) -> List[Tuple[float, float, float]]:
-        return self.shape.path
+        return self.path.waypoints
 
     @mpcc_path_waypoints.setter
     def mpcc_path_waypoints(self, value: List[Tuple[float, float, float]]):
-        self.shape.path = value
+        self.path.waypoints = value
 
     @property
-    def dxf_base_shape(self) -> List[Tuple[float, float, float]]:
-        return self.shape.base_shape
+    def mpcc_path_length(self) -> float:
+        return self.path.path_length
 
-    @dxf_base_shape.setter
-    def dxf_base_shape(self, value: List[Tuple[float, float, float]]):
-        self.shape.base_shape = value
-
-    @property
-    def dxf_target_speed(self) -> float:
-        return self.shape.target_speed
-
-    @dxf_target_speed.setter
-    def dxf_target_speed(self, value: float):
-        self.shape.target_speed = value
+    @mpcc_path_length.setter
+    def mpcc_path_length(self, value: float):
+        self.path.path_length = value
 
     @property
-    def dxf_estimated_duration(self) -> float:
-        return self.shape.estimated_duration
+    def mpcc_path_speed(self) -> float:
+        return self.path.path_speed
 
-    @dxf_estimated_duration.setter
-    def dxf_estimated_duration(self, value: float):
-        self.shape.estimated_duration = value
-
-    @property
-    def dxf_shape_phase(self) -> str:
-        return self.shape.phase
-
-    @dxf_shape_phase.setter
-    def dxf_shape_phase(self, value: str):
-        self.shape.phase = value
+    @mpcc_path_speed.setter
+    def mpcc_path_speed(self, value: float):
+        self.path.path_speed = value
 
     @property
-    def dxf_path_length(self) -> float:
-        return self.shape.path_length
+    def path_following_active(self) -> bool:
+        return self.path.active
 
-    @dxf_path_length.setter
-    def dxf_path_length(self, value: float):
-        self.shape.path_length = value
-
-    @property
-    def dxf_closest_point_index(self) -> int:
-        return self.shape.closest_point_index
-
-    @dxf_closest_point_index.setter
-    def dxf_closest_point_index(self, value: int):
-        self.shape.closest_point_index = value
+    @path_following_active.setter
+    def path_following_active(self, value: bool):
+        self.path.active = value
 
     @property
-    def dxf_current_target_position(self) -> Optional[Tuple[float, float, float]]:
-        return self.shape.current_target_position
+    def path_waypoints(self) -> List[Tuple[float, float, float]]:
+        return self.path.waypoints
 
-    @dxf_current_target_position.setter
-    def dxf_current_target_position(self, value: Optional[Tuple[float, float, float]]):
-        self.shape.current_target_position = value
-
-    @property
-    def dxf_tracking_start_time(self) -> Optional[float]:
-        return self.shape.tracking_start_time
-
-    @dxf_tracking_start_time.setter
-    def dxf_tracking_start_time(self, value: Optional[float]):
-        self.shape.tracking_start_time = value
+    @path_waypoints.setter
+    def path_waypoints(self, value: List[Tuple[float, float, float]]):
+        self.path.waypoints = value
 
     @property
-    def dxf_target_start_distance(self) -> float:
-        return self.shape.target_start_distance
+    def path_length(self) -> float:
+        return self.path.path_length
 
-    @dxf_target_start_distance.setter
-    def dxf_target_start_distance(self, value: float):
-        self.shape.target_start_distance = value
-
-    @property
-    def dxf_mission_start_time(self) -> Optional[float]:
-        return self.shape.mission_start_time
-
-    @dxf_mission_start_time.setter
-    def dxf_mission_start_time(self, value: Optional[float]):
-        self.shape.mission_start_time = value
+    @path_length.setter
+    def path_length(self, value: float):
+        self.path.path_length = value
 
     @property
-    def dxf_stabilization_start_time(self) -> Optional[float]:
-        return self.shape.stabilization_start_time
+    def path_speed(self) -> float:
+        return self.path.path_speed
 
-    @dxf_stabilization_start_time.setter
-    def dxf_stabilization_start_time(self, value: Optional[float]):
-        self.shape.stabilization_start_time = value
-
-    @property
-    def dxf_final_position(self) -> Optional[Tuple[float, float, float]]:
-        return self.shape.final_position
-
-    @dxf_final_position.setter
-    def dxf_final_position(self, value: Optional[Tuple[float, float, float]]):
-        self.shape.final_position = value
-
-    @property
-    def dxf_shape_rotation(self) -> float:
-        return self.shape.rotation
-
-    @dxf_shape_rotation.setter
-    def dxf_shape_rotation(self, value: float):
-        self.shape.rotation = value
-
-    @property
-    def dxf_offset_distance(self) -> float:
-        return self.shape.offset_distance
-
-    @dxf_offset_distance.setter
-    def dxf_offset_distance(self, value: float):
-        self.shape.offset_distance = value
-
-    @property
-    def dxf_has_return(self) -> bool:
-        return self.shape.has_return
-
-    @dxf_has_return.setter
-    def dxf_has_return(self, value: bool):
-        self.shape.has_return = value
-
-    @property
-    def dxf_return_position(self) -> Optional[Tuple[float, float, float]]:
-        return self.shape.return_position
-
-    @dxf_return_position.setter
-    def dxf_return_position(self, value: Optional[Tuple[float, float, float]]):
-        self.shape.return_position = value
-
-    @property
-    def dxf_return_angle(self) -> Optional[Tuple[float, float, float]]:
-        return self.shape.return_angle
-
-    @dxf_return_angle.setter
-    def dxf_return_angle(self, value: Optional[Tuple[float, float, float]]):
-        self.shape.return_angle = value
-
-    @property
-    def dxf_return_start_time(self) -> Optional[float]:
-        return self.shape.return_start_time
-
-    @dxf_return_start_time.setter
-    def dxf_return_start_time(self, value: Optional[float]):
-        self.shape.return_start_time = value
-
-    @property
-    def dxf_trajectory(
-        self,
-    ) -> List[Tuple[float, float, float, float, float, float, float]]:
-        return self.shape.trajectory
-
-    @dxf_trajectory.setter
-    def dxf_trajectory(
-        self, value: List[Tuple[float, float, float, float, float, float, float]]
-    ):
-        self.shape.trajectory = value
-
-    @property
-    def dxf_trajectory_dt(self) -> float:
-        return self.shape.trajectory_dt
-
-    @dxf_trajectory_dt.setter
-    def dxf_trajectory_dt(self, value: float):
-        self.shape.trajectory_dt = value
+    @path_speed.setter
+    def path_speed(self, value: float):
+        self.path.path_speed = value
 
     # --- Scan Mission ---
     @property
@@ -670,8 +404,7 @@ class MissionState:
 
     def reset(self) -> None:
         """Reset all mission state to defaults."""
-        self.waypoint = WaypointState()
-        self.shape = ShapeFollowingState()
+        self.path = PathFollowingState()
         self.scan = ScanState()
         self.trajectory = TrajectoryState()
         self.obstacle_state = ObstacleState()
@@ -690,15 +423,6 @@ class MissionState:
             return "TRAJECTORY"
         if self.scan.active:
             return "SCAN"
-        if self.shape.active:
-            return "SHAPE_FOLLOWING"
-        elif self.waypoint.enabled:
-            num_targets = len(self.waypoint.targets)
-            return (
-                "WAYPOINT_NAVIGATION_MULTI"
-                if num_targets > 1
-                else "WAYPOINT_NAVIGATION"
-            )
         else:
             return "NONE"
 
@@ -722,17 +446,9 @@ def print_mission_state(state: MissionState) -> None:
     mission_type = state.get_current_mission_type()
     print(f"\nMission: {mission_type}")
 
-    if state.waypoint.enabled:
-        print("\nWaypoint Navigation:")
-        print(f"  Targets: {len(state.waypoint.targets)}")
-        print(f"  Current: {state.waypoint.current_target_index}")
-        print(f"  Phase: {state.waypoint.phase}")
-
-    if state.shape.active:
-        print("\nShape Following:")
-        print(f"  Center: {state.shape.center}")
-        print(f"  Points: {len(state.shape.path)}")
-        print(f"  Phase: {state.shape.phase}")
-        print(f"  Length: {state.shape.path_length:.2f} m")
+    if state.mpcc_path_waypoints:
+        print("\nPath Following:")
+        print(f"  Points: {len(state.mpcc_path_waypoints)}")
+        print(f"  Length: {state.mpcc_path_length:.2f} m")
 
     print("=" * 80)

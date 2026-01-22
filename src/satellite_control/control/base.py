@@ -12,7 +12,7 @@ Usage:
     controller: Controller = MPCController(...)
 
     # Use controller
-    action, info = controller.get_control_action(current_state, target_state)
+    action, info = controller.get_control_action(current_state)
 """
 
 from abc import ABC, abstractmethod
@@ -59,18 +59,14 @@ class Controller(ABC):
     def get_control_action(
         self,
         x_current: np.ndarray,
-        x_target: np.ndarray,
         previous_thrusters: Optional[np.ndarray] = None,
-        x_target_trajectory: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Compute optimal control action.
 
         Args:
             x_current: Current state vector [13] (position, quaternion, velocity, angular velocity)
-            x_target: Target state vector [13]
             previous_thrusters: Previous thruster commands [12] (optional, for smoothness)
-            x_target_trajectory: Target trajectory [N, 13] (optional, for predictive controllers)
 
         Returns:
             Tuple of:
@@ -127,15 +123,3 @@ class Controller(ABC):
         if abs(quat_norm - 1.0) > 0.1:
             return False
         return True
-
-    def validate_target(self, target: np.ndarray) -> bool:
-        """
-        Validate target state vector format.
-
-        Args:
-            target: Target state vector to validate
-
-        Returns:
-            True if target is valid, False otherwise
-        """
-        return self.validate_state(target)

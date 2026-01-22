@@ -38,7 +38,7 @@ class SimulationConfig:
 
     Attributes:
         app_config: Application configuration (MPC, physics, simulation params)
-        mission_state: Runtime mission state (waypoints, targets, etc.)
+        mission_state: Runtime mission state (waypoints, paths, etc.)
     """
 
     app_config: AppConfig
@@ -112,23 +112,14 @@ class SimulationConfig:
             "dt": self.app_config.mpc.dt,
             "solver_time_limit": self.app_config.mpc.solver_time_limit,
             "solver_type": self.app_config.mpc.solver_type,
-            "q_position": self.app_config.mpc.q_position,
-            "q_velocity": self.app_config.mpc.q_velocity,
-            "q_angle": self.app_config.mpc.q_angle,
+            "Q_contour": self.app_config.mpc.Q_contour,
+            "Q_progress": self.app_config.mpc.Q_progress,
+            "Q_smooth": self.app_config.mpc.Q_smooth,
             "q_angular_velocity": self.app_config.mpc.q_angular_velocity,
             "r_thrust": self.app_config.mpc.r_thrust,
             "r_rw_torque": self.app_config.mpc.r_rw_torque,
-            "max_velocity": self.app_config.mpc.max_velocity,
-            "max_angular_velocity": self.app_config.mpc.max_angular_velocity,
-            "position_bounds": self.app_config.mpc.position_bounds,
-            "damping_zone": self.app_config.mpc.damping_zone,
-            "velocity_threshold": self.app_config.mpc.velocity_threshold,
-            "max_velocity_weight": self.app_config.mpc.max_velocity_weight,
+            "path_speed": self.app_config.mpc.path_speed,
             "thruster_type": self.app_config.mpc.thruster_type,
-            "enable_rw_yaw": self.app_config.mpc.enable_rw_yaw,
-            "enable_z_tilt": self.app_config.mpc.enable_z_tilt,
-            "z_tilt_gain": self.app_config.mpc.z_tilt_gain,
-            "z_tilt_max_deg": self.app_config.mpc.z_tilt_max_deg,
         }
 
     def get_physics_params(self) -> Dict[str, Any]:
@@ -156,14 +147,8 @@ class SimulationConfig:
             "window_height": self.app_config.simulation.window_height,
             "use_final_stabilization": self.app_config.simulation.use_final_stabilization,
             "control_dt": self.app_config.simulation.control_dt,
-            "target_hold_time": self.app_config.simulation.target_hold_time,
-            "waypoint_final_stabilization_time": self.app_config.simulation.waypoint_final_stabilization_time,
-            "shape_final_stabilization_time": self.app_config.simulation.shape_final_stabilization_time,
-            "shape_positioning_stabilization_time": self.app_config.simulation.shape_positioning_stabilization_time,
-            "default_target_speed": self.app_config.simulation.default_target_speed,
+            "default_path_speed": self.app_config.simulation.default_path_speed,
         }
-
-
 
     def to_dict(self) -> dict:
         """
@@ -199,7 +184,14 @@ class SimulationConfig:
             "inertia": inertia_list,
             "center_of_mass": list(physics.com_offset),
             "thrusters": thrusters_list,
-            "reaction_wheels": [],
+            "reaction_wheels": [
+                {
+                    "axis": list(rw.axis),
+                    "max_torque": rw.max_torque,
+                    "inertia": rw.inertia,
+                }
+                for rw in physics.reaction_wheels
+            ],
             "size": physics.satellite_size,
         }
 
@@ -211,30 +203,19 @@ class SimulationConfig:
             "control_horizon": mpc.control_horizon,
             "solver_time_limit": mpc.solver_time_limit,
             "weights": {
-                "position": mpc.q_position,
-                "velocity": mpc.q_velocity,
-                "angle": mpc.q_angle,
+                "Q_contour": mpc.Q_contour,
+                "Q_progress": mpc.Q_progress,
+                "Q_smooth": mpc.Q_smooth,
                 "angular_velocity": mpc.q_angular_velocity,
                 "thrust": mpc.r_thrust,
                 "rw_torque": mpc.r_rw_torque,
             },
-            "constraints": {
-                "max_velocity": mpc.max_velocity,
-                "max_angular_velocity": mpc.max_angular_velocity,
-                "position_bounds": mpc.position_bounds,
-            },
-            "adaptive": {
-                "damping_zone": mpc.damping_zone,
-                "velocity_threshold": mpc.velocity_threshold,
-                "max_velocity_weight": mpc.max_velocity_weight,
+            "path_following": {
+                "path_speed": mpc.path_speed,
             },
             "settings": {
                 "dt": mpc.dt,
                 "thruster_type": mpc.thruster_type,
-                "enable_rw_yaw": mpc.enable_rw_yaw,
-                "enable_z_tilt": mpc.enable_z_tilt,
-                "z_tilt_gain": mpc.z_tilt_gain,
-                "z_tilt_max_deg": mpc.z_tilt_max_deg,
             },
         }
 
