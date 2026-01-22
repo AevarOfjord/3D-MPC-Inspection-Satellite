@@ -7,6 +7,7 @@ Runs the MPC simulation with interactive mission selection.
 """
 
 import math
+import numpy as np
 from typing import Any, Dict, Optional, Tuple
 
 import typer
@@ -119,7 +120,45 @@ def run(
         simulation_config = SimulationConfig.create_default()
         ms = simulation_config.mission_state
 
-        if "path_following" in mission_data:
+        if "segments" in mission_data and "start_pose" in mission_data:
+            console.print("[cyan]Detected unified mission format (v2)...[/cyan]")
+
+            from src.satellite_control.mission.unified_mission import MissionDefinition
+            from src.satellite_control.mission.unified_compiler import (
+                compile_unified_mission_path,
+            )
+            from src.satellite_control.mission.mission_types import Obstacle
+
+            mission_def = MissionDefinition.from_dict(mission_data)
+            sim_start_pos = tuple(mission_def.start_pose.position)
+
+            path, path_length, path_speed = compile_unified_mission_path(
+                mission=mission_def,
+                sim_config=simulation_config,
+            )
+            sim_end_pos = tuple(path[-1]) if path else sim_start_pos
+
+            if mission_def.obstacles:
+                ms.obstacles = [
+                    Obstacle(position=np.array(o.position), radius=o.radius)
+                    for o in mission_def.obstacles
+                ]
+                ms.obstacles_enabled = True
+
+            simulation_config.app_config.mpc.path_speed = float(path_speed)
+            ms.mpcc_path_waypoints = path
+            ms.dxf_shape_path = path
+            ms.dxf_path_length = float(path_length)
+            ms.dxf_path_speed = float(path_speed)
+            ms.trajectory_mode_active = False
+            ms.dxf_shape_mode_active = False
+            ms.mesh_scan_mode_active = False
+
+            console.print(
+                f"[green]Unified mission path: {len(path)} points, {path_length:.2f}m[/green]"
+            )
+
+        elif "path_following" in mission_data:
             console.print("[cyan]Detected path-following mission format...[/cyan]")
 
             path_cfg = mission_data.get("path_following", {}) or {}

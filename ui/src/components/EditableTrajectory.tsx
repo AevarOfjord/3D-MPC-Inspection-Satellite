@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Line, TransformControls, useCursor } from '@react-three/drei';
+import { Line, useCursor } from '@react-three/drei';
 import * as THREE from 'three';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
 
@@ -8,14 +8,16 @@ interface EditableTrajectoryProps {
     onHover?: (point: [number, number, number] | null) => void;
     builderActions: ReturnType<typeof useMissionBuilder>['actions'];
     selectedId: string | null;
+    sceneScale?: number;
 }
 
-export function EditableTrajectory({ points, onHover, builderActions, selectedId }: EditableTrajectoryProps) {
+export function EditableTrajectory({ points, onHover, builderActions, selectedId, sceneScale = 1 }: EditableTrajectoryProps) {
     const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
     useCursor(typeof highlightIndex === 'number');
 
     if (!points || points.length === 0) return null;
     const vectors = points.map(p => new THREE.Vector3(...p));
+    const markerRadius = Math.max(0.000005, 0.15 * sceneScale);
 
     return (
         <group>
@@ -33,7 +35,7 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                             builderActions.setSelectedObjectId(`waypoint-${i}`); 
                         }}
                     >
-                        <sphereGeometry args={[0.15, 8, 8]} />
+                        <sphereGeometry args={[markerRadius, 8, 8]} />
                         <meshBasicMaterial 
                             color={selectedId === `waypoint-${i}` ? "#ffff00" : (highlightIndex === i ? "#22d3ee" : "#22d3ee")} 
                             transparent 
@@ -46,27 +48,7 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                 </group>
             ))}
 
-            {/* Transform Controls for Selected Waypoint */}
-            {selectedId && selectedId.startsWith('waypoint-') && (
-                (() => {
-                    const idx = parseInt(selectedId.split('-')[1]);
-                    if (idx >= 0 && idx < points.length) {
-                         // We render a phantom target at the waypoint position for the controls to attach to
-                         return (
-                            <TransformControls
-                                mode="translate"
-                                object={undefined}
-                                position={vectors[idx]}
-                                onObjectChange={(e) => builderActions.handleObjectTransform(selectedId, e)}
-                                onMouseUp={() => builderActions.commitWaypointMove()} // Save history on drag release
-                            >
-                                <mesh visible={false} /> 
-                            </TransformControls>
-                         );
-                    }
-                    return null;
-                })()
-            )}
+            {/* Waypoint drag controls removed to keep objects fixed */}
         </group>
     );
 }

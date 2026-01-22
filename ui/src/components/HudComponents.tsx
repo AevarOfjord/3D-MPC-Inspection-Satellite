@@ -110,17 +110,26 @@ export function HudInput({
     step, 
     min, 
     max,
-    unit
+    unit,
+    placeholder,
+    allowEmpty = false,
 }: {
     label?: string;
-    value: string | number;
+    value: string | number | null | undefined;
     onChange: (val: any) => void;
     type?: "text" | "number";
     step?: number;
     min?: number;
     max?: number;
     unit?: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
 }) {
+    const isNumber = type === 'number';
+    const safeValue =
+        isNumber && typeof value === 'number' && Number.isNaN(value)
+            ? ''
+            : value ?? '';
     return (
         <div className="flex flex-col gap-1">
             {label && (
@@ -131,13 +140,24 @@ export function HudInput({
             <div className="relative group">
                 <input
                     type={type}
-                    value={value}
+                    value={safeValue}
                     step={step}
                     min={min}
                     max={max}
+                    placeholder={placeholder}
                     onChange={(e) => {
-                        const val = type === 'number' ? parseFloat(e.target.value) : e.target.value;
-                        onChange(val);
+                        if (type === 'number') {
+                            const raw = e.target.value;
+                            if (raw === '') {
+                                if (allowEmpty) onChange(null);
+                                return;
+                            }
+                            const parsed = parseFloat(raw);
+                            if (!Number.isFinite(parsed)) return;
+                            onChange(parsed);
+                            return;
+                        }
+                        onChange(e.target.value);
                     }}
                     className={`
                         w-full bg-slate-900/50 border border-slate-700 

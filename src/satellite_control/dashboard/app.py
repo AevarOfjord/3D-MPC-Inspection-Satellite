@@ -14,14 +14,16 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional, Literal, Dict, Any
+from typing import Annotated, List, Optional, Literal, Dict, Any, Union
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.timing import SIMULATION_DT
 from src.satellite_control.mission.mission_types import Obstacle
+from src.satellite_control.mission.unified_mission import MissionDefinition
+from src.satellite_control.mission.unified_compiler import compile_unified_mission_path
 from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 # Configure logging
@@ -71,6 +73,102 @@ class MissionConfigModel(BaseModel):
     mesh_scan: Optional[MeshScanConfigModel] = None
 
 
+class PoseModel(BaseModel):
+    frame: Literal["ECI", "LVLH"]
+    position: List[float]
+    orientation: Optional[List[float]] = None  # quaternion [w, x, y, z]
+
+    @field_validator("position")
+    @classmethod
+    def validate_position(cls, value: List[float]) -> List[float]:
+        if len(value) != 3:
+            raise ValueError("position must have length 3")
+        return value
+
+    @field_validator("orientation")
+    @classmethod
+    def validate_orientation(cls, value: Optional[List[float]]) -> Optional[List[float]]:
+        if value is None:
+            return value
+        if len(value) != 4:
+            raise ValueError("orientation must have length 4")
+        return value
+
+
+class ConstraintsModel(BaseModel):
+    speed_max: Optional[float] = None
+    accel_max: Optional[float] = None
+    angular_rate_max: Optional[float] = None
+
+
+class SplineControlModel(BaseModel):
+    position: List[float]
+    weight: float = 1.0
+
+    @field_validator("position")
+    @classmethod
+    def validate_position(cls, value: List[float]) -> List[float]:
+        if len(value) != 3:
+            raise ValueError("spline control position must have length 3")
+        return value
+
+
+class TransferSegmentModel(BaseModel):
+    type: Literal["transfer"]
+    end_pose: PoseModel
+    constraints: Optional[ConstraintsModel] = None
+
+
+class ScanConfigModel(BaseModel):
+    frame: Literal["ECI", "LVLH"] = "LVLH"
+    axis: Literal["+X", "-X", "+Y", "-Y", "+Z", "-Z", "custom"] = "+Z"
+    standoff: float = 10.0
+    overlap: float = 0.25
+    fov_deg: float = 60.0
+    pitch: Optional[float] = None
+    revolutions: int = 4
+    direction: Literal["CW", "CCW"] = "CW"
+    sensor_axis: Literal["+Y", "-Y"] = "+Y"
+
+
+class ScanSegmentModel(BaseModel):
+    type: Literal["scan"]
+    target_id: str
+    target_pose: Optional[PoseModel] = None
+    scan: ScanConfigModel
+    constraints: Optional[ConstraintsModel] = None
+
+
+class HoldSegmentModel(BaseModel):
+    type: Literal["hold"]
+    duration: float = 0.0
+    constraints: Optional[ConstraintsModel] = None
+
+
+MissionSegmentModel = Annotated[
+    Union[TransferSegmentModel, ScanSegmentModel, HoldSegmentModel],
+    Field(discriminator="type"),
+]
+
+
+class MissionOverridesModel(BaseModel):
+    spline_controls: List[SplineControlModel] = Field(default_factory=list)
+
+
+class UnifiedMissionModel(BaseModel):
+    epoch: str
+    start_pose: PoseModel
+    segments: List[MissionSegmentModel]
+    obstacles: List[ObstacleModel] = Field(default_factory=list)
+    overrides: Optional[MissionOverridesModel] = None
+
+
+class PreviewUnifiedMissionResponse(BaseModel):
+    path: List[List[float]]
+    path_length: float
+    path_speed: float
+
+
 class ControlCommand(BaseModel):
     action: Literal["pause", "resume", "step"]
     steps: int = 1
@@ -117,6 +215,7 @@ class SimulationManager:
     def __init__(self):
         self.sim_instance: Optional[SatelliteMPCLinearizedSimulation] = None
         self.current_mission_config: Optional[MissionConfigModel] = None
+        self.current_unified_mission: Optional[MissionDefinition] = None
         self.simulation_task: Optional[asyncio.Task] = None
 
         # State flags
@@ -152,12 +251,63 @@ class SimulationManager:
 
         # Update config
         self.current_mission_config = config
+        self.current_unified_mission = None
         self.sim_instance = None  # Force re-initialization
 
         # Restart
         await self.start()
         self.paused = False
         self.pending_steps = 0
+
+    async def update_unified_mission(self, mission: MissionDefinition):
+        """Update unified mission config and restart simulation."""
+        logger.info("Updating unified mission config (v2).")
+
+        await self.stop()
+
+        self.current_unified_mission = mission
+        self.current_mission_config = None
+        self.sim_instance = None
+
+        sim_config = SimulationConfig.create_default()
+
+        path, path_length, path_speed = compile_unified_mission_path(
+            mission=mission,
+            sim_config=sim_config,
+        )
+
+        sim_config.app_config.mpc.path_speed = float(path_speed)
+        if mission.obstacles:
+            sim_config.mission_state.obstacles = [
+                Obstacle(position=np.array(o.position), radius=o.radius)
+                for o in mission.obstacles
+            ]
+            sim_config.mission_state.obstacles_enabled = True
+        sim_config.mission_state.mpcc_path_waypoints = path
+        sim_config.mission_state.dxf_shape_path = path
+        sim_config.mission_state.dxf_path_length = float(path_length)
+        sim_config.mission_state.dxf_path_speed = float(path_speed)
+        sim_config.mission_state.trajectory_mode_active = False
+        sim_config.mission_state.dxf_shape_mode_active = False
+
+        start_pos = tuple(mission.start_pose.position)
+        end_pos = tuple(path[-1]) if path else start_pos
+
+        self.sim_instance = SatelliteMPCLinearizedSimulation(
+            simulation_config=sim_config,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            start_angle=(0.0, 0.0, 0.0),
+            end_angle=(0.0, 0.0, 0.0),
+        )
+
+        await self.start()
+        self.paused = False
+        self.pending_steps = 0
+
+    def set_unified_mission(self, mission: MissionDefinition) -> None:
+        """Store unified mission definition (v2) without altering simulation yet."""
+        self.current_unified_mission = mission
 
     def control(self, command: ControlCommand) -> Dict[str, Any]:
         """Handle control commands (pause, resume, step)."""
@@ -196,6 +346,7 @@ class SimulationManager:
         await self.stop()
         self.sim_instance = None
         self.current_mission_config = None
+        self.current_unified_mission = None
         self.paused = True
         self.simulation_speed = 1.0
         self.pending_steps = 0
@@ -838,6 +989,110 @@ async def list_saved_missions():
 
     files = sorted(missions_dir.glob("*.json"))
     return {"missions": [f.name for f in files]}
+
+
+class SaveUnifiedMissionRequest(BaseModel):
+    name: str
+    config: UnifiedMissionModel
+
+
+def _sanitize_mission_name(name: str) -> str:
+    safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip()
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid mission name")
+    return safe_name
+
+
+def _parse_unified_mission(data: Dict[str, Any]) -> MissionDefinition:
+    try:
+        return MissionDefinition.from_dict(data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid unified mission: {exc}")
+
+
+@app.post("/mission_v2")
+async def update_mission_v2(config: UnifiedMissionModel):
+    mission_def = _parse_unified_mission(config.model_dump())
+    await sim_manager.update_unified_mission(mission_def)
+    return {
+        "status": "success",
+        "message": "Unified mission applied.",
+    }
+
+
+@app.post("/mission_v2/preview", response_model=PreviewUnifiedMissionResponse)
+async def preview_mission_v2(config: UnifiedMissionModel):
+    mission_def = _parse_unified_mission(config.model_dump())
+    sim_config = SimulationConfig.create_default()
+    path, path_length, path_speed = compile_unified_mission_path(
+        mission=mission_def,
+        sim_config=sim_config,
+    )
+    return {
+        "path": [list(p) for p in path],
+        "path_length": float(path_length),
+        "path_speed": float(path_speed),
+    }
+
+
+@app.get("/mission_v2")
+async def get_current_mission_v2():
+    if not sim_manager.current_unified_mission:
+        raise HTTPException(status_code=404, detail="No unified mission set")
+    return sim_manager.current_unified_mission.to_dict()
+
+
+@app.post("/save_mission_v2")
+async def save_mission_v2(request: SaveUnifiedMissionRequest):
+    """Save a unified mission configuration to JSON."""
+    missions_dir = Path("missions_unified")
+    missions_dir.mkdir(exist_ok=True)
+
+    safe_name = _sanitize_mission_name(request.name)
+    file_path = missions_dir / f"{safe_name}.json"
+
+    # Validate and normalize before saving
+    mission_def = _parse_unified_mission(request.config.model_dump())
+
+    try:
+        with open(file_path, "w") as f:
+            json.dump(mission_def.to_dict(), f, indent=2)
+        return {"status": "success", "filename": f"{safe_name}.json"}
+    except Exception as exc:
+        logger.error(f"Failed to save unified mission: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/saved_missions_v2")
+async def list_saved_missions_v2():
+    """List all saved unified mission JSON files."""
+    missions_dir = Path("missions_unified")
+    if not missions_dir.exists():
+        return {"missions": []}
+    files = sorted(missions_dir.glob("*.json"))
+    return {"missions": [f.name for f in files]}
+
+
+@app.get("/mission_v2/{mission_name}")
+async def load_mission_v2(mission_name: str):
+    missions_dir = Path("missions_unified")
+    mission_file = missions_dir / f"{mission_name}.json"
+
+    if not mission_file.exists():
+        if not mission_name.endswith(".json"):
+            mission_file = missions_dir / f"{mission_name}.json"
+        if not mission_file.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Unified mission not found: {mission_name}"
+            )
+
+    try:
+        data = json.loads(mission_file.read_text())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read mission: {exc}")
+
+    mission_def = _parse_unified_mission(data)
+    return mission_def.to_dict()
 
 
 class RunMissionRequest(BaseModel):

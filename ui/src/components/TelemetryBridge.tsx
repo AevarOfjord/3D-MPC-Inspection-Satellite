@@ -21,14 +21,14 @@ export function TelemetryBridge() {
 
       const posOkNow = (data.pos_error ?? 0) <= POS_OK_THRESHOLD;
       if (posOkNow && !posOk.current) {
-        addEvent('info', 'Position error within target threshold', data.time);
+        addEvent('info', 'Position error within reference threshold', data.time);
       }
       posOk.current = posOkNow;
 
       const angErrDeg = (data.ang_error ?? 0) * (180 / Math.PI);
       const angOkNow = angErrDeg <= ANG_OK_THRESHOLD_DEG;
       if (angOkNow && !angOk.current) {
-        addEvent('info', 'Attitude error within target threshold', data.time);
+        addEvent('info', 'Attitude error within reference threshold', data.time);
       }
       angOk.current = angOkNow;
 

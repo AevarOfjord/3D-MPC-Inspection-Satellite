@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, GizmoHelper, GizmoViewcube } from '@react-three/drei';
 import { Vector3 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TargetMarker } from './Earth';
+import { ReferenceMarker } from './Earth';
 import { SatelliteModel } from './SatelliteModel';
 import { StarlinkModel } from './StarlinkModel';
 import { CustomMeshModel } from './CustomMeshModel';
@@ -20,7 +20,7 @@ function FinalStateMarker() {
   const finalState = useTelemetryStore(s => s.playbackFinalState);
   if (!finalState) return null;
   return (
-    <TargetMarker 
+    <ReferenceMarker 
       position={finalState.position} 
       orientation={finalState.reference_orientation} 
       quaternion={finalState.quaternion}
@@ -59,7 +59,7 @@ function Obstacles() {
 
   return (
     <group>
-      <TargetMarker
+      <ReferenceMarker
         position={params.referencePos}
         orientation={params.referenceOri}
         quaternion={params.referenceQuat}
@@ -125,7 +125,7 @@ export const Viewport = memo(function Viewport({ viewMode }: ViewportProps) {
 
   return (
     <div className="w-full h-full bg-slate-900">
-      <Canvas shadows camera={{ position: [5, 5, 5], fov: 45 }}>
+      <Canvas shadows camera={{ position: [5, 5, 5], fov: 45, near: 0.01, far: 1_000_000 }}>
         <CanvasRegistrar />
         <CameraManager mode={viewMode} />
         <OrbitControls 
@@ -134,18 +134,18 @@ export const Viewport = memo(function Viewport({ viewMode }: ViewportProps) {
         />
         
         {/* Environment */}
-        <color attach="background" args={['#050510']} />
-        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+        <color attach="background" args={['#0b1020']} />
+        <Stars radius={100} depth={50} count={5000} factor={4.5} saturation={0} fade speed={1} />
         
         {/* Lighting */}
-        <ambientLight intensity={0.2} />
+        <ambientLight intensity={0.6} />
         <directionalLight 
           position={[10, 10, 5]} 
-          intensity={1.5} 
+          intensity={1.8} 
           castShadow 
           shadow-mapSize={[1024, 1024]} 
         />
-        <hemisphereLight args={['#ffffff', '#000000', 0.5]} />
+        <hemisphereLight args={['#c4d2ff', '#1b2333', 0.35]} />
         
         {/* Grid Removed */}
         

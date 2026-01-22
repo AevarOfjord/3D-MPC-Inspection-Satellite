@@ -25,6 +25,7 @@ export function CameraManager({ mode }: CameraManagerProps) {
   const satPosRef = useRef(new Vector3());
   const satQuatRef = useRef(new Quaternion());
   const focusTarget = useCameraStore(s => s.focusTarget);
+  const focusDistance = useCameraStore(s => s.focusDistance);
   const focusNonce = useCameraStore(s => s.focusNonce);
   const viewPreset = useCameraStore(s => s.viewPreset);
   const viewNonce = useCameraStore(s => s.viewNonce);
@@ -62,14 +63,15 @@ export function CameraManager({ mode }: CameraManagerProps) {
   useEffect(() => {
     if (!focusTarget) return;
     const target = new Vector3(...focusTarget);
-    const offset = new Vector3(2.5, 2.5, 2.0);
+    const distance = Number.isFinite(focusDistance ?? NaN) ? (focusDistance as number) : 2.5;
+    const offset = new Vector3(1, 1, 0.8).normalize().multiplyScalar(distance);
     camera.position.copy(target.clone().add(offset));
     camera.lookAt(target);
     if (controls) {
       (controls as any).target.copy(target);
       (controls as any).update();
     }
-  }, [camera, controls, focusNonce, focusTarget]);
+  }, [camera, controls, focusDistance, focusNonce, focusTarget]);
 
   useEffect(() => {
     if (!viewPreset) return;

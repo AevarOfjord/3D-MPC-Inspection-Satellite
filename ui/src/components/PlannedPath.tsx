@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei';
 import { Vector3 } from 'three';
 import { telemetry } from '../services/telemetry';
 
-import { TargetMarker } from './Earth';
+import { ReferenceMarker } from './Earth';
 
 export function PlannedPath() {
   const [path, setPath] = useState<Vector3[]>([]);
@@ -34,7 +34,7 @@ export function PlannedPath() {
           dashSize={1}        // Default
           gapSize={0.5}       // Default
         />
-        <TargetMarker 
+        <ReferenceMarker 
             position={[lastPoint.x, lastPoint.y, lastPoint.z]} 
             color="#4ade80" // Green-400 equivalent or similar bright green
         />

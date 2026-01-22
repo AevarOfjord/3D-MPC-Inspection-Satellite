@@ -1,6 +1,6 @@
-import { useRef, useCallback, Suspense, useState, useEffect } from 'react';
+import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { TrackballControls, Stars, GizmoHelper, GizmoViewport, TransformControls, Grid } from '@react-three/drei';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useLoader } from '@react-three/fiber';
@@ -11,7 +11,7 @@ import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
 
 import { SatelliteModel } from './SatelliteModel';
-import { TargetMarker } from './Earth';
+import { ReferenceMarker } from './Earth';
 import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
 // FinalStateMarker and Obstacles are not exported from Viewport.tsx, so we don't import them.
@@ -28,10 +28,14 @@ import type { TelemetryData } from '../services/telemetry';
 import { StarlinkModel } from './StarlinkModel';
 import { CustomMeshModel } from './CustomMeshModel';
 import { HudPanel } from './HudComponents';
-import { Move3d, Rotate3d, MousePointer2 } from 'lucide-react';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
 import { EditableTrajectory } from './EditableTrajectory';
 import { ConstraintVisualizer } from './ConstraintVisualizer';
+import { OrbitSnapshotLayer } from './OrbitSnapshotLayer';
+import { SolarSystemLayer } from './SolarSystemLayer';
+import { ORBIT_SCALE } from '../data/orbitSnapshot';
+
+const PLAN_SCALE = 0.1; // meters -> scene units for planner-local visuals
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
@@ -60,7 +64,7 @@ function LiveObstaclesRender() {
 
   return (
     <group>
-      <TargetMarker
+      <ReferenceMarker
         position={params.referencePos}
         orientation={params.referenceOri}
         quaternion={params.referenceQuat}
@@ -118,7 +122,7 @@ function Model({ url }: { url: string }) {
   return <primitive object={obj} />;
 }
 
-function SatellitePreview({ position, rotation }: { position: [number, number, number]; rotation: [number, number, number] }) {
+function SatellitePreview({ position, rotation, sceneScale }: { position: [number, number, number]; rotation: [number, number, number]; sceneScale: number }) {
     const euler = new THREE.Euler(
         (rotation[0] * Math.PI) / 180,
         (rotation[1] * Math.PI) / 180,
@@ -127,10 +131,9 @@ function SatellitePreview({ position, rotation }: { position: [number, number, n
     return (
         <group position={position} rotation={euler}>
             <mesh>
-                <boxGeometry args={[0.5, 0.5, 0.5]} />
+                <boxGeometry args={[0.3 * sceneScale, 0.3 * sceneScale, 0.3 * sceneScale]} />
                 <meshStandardMaterial color="#fbbf24" metalness={0.8} roughness={0.2} />
             </mesh>
-            <axesHelper args={[1]} />
         </group>
     );
 }
@@ -144,12 +147,40 @@ interface UnifiedViewportProps {
     viewMode: 'free' | 'chase' | 'top';
     builderState?: ReturnType<typeof useMissionBuilder>['state'];
     builderActions?: ReturnType<typeof useMissionBuilder>['actions'];
+    orbitVisibility?: Record<string, boolean>;
 }
 
-export function UnifiedViewport({ mode, viewMode, builderState, builderActions }: UnifiedViewportProps) {
+export function UnifiedViewport({ mode, viewMode, builderState, builderActions, orbitVisibility }: UnifiedViewportProps) {
   const controlsRef = useRef<TrackballControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
+  const requestFocus = useCameraStore(s => s.requestFocus);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
+  const scaleToScene = useCallback(
+    (vec: [number, number, number]) => [vec[0] * ORBIT_SCALE, vec[1] * ORBIT_SCALE, vec[2] * ORBIT_SCALE] as [number, number, number],
+    []
+  );
+  const targetPosition = useMemo<[number, number, number] | null>(() => {
+    if (!builderState?.segments) return null;
+    const scan = builderState.segments.find((seg) => seg.type === 'scan') as
+      | { target_pose?: { position: [number, number, number] } }
+      | undefined;
+    return scan?.target_pose?.position ?? null;
+  }, [builderState?.segments]);
+  const hasTarget = Boolean(targetPosition);
+  const planAnchor = (targetPosition ?? [0, 0, 0]) as [number, number, number];
+  const planGroupPosition = hasTarget ? scaleToScene(planAnchor) : ([0, 0, 0] as [number, number, number]);
+  const planScale = hasTarget ? PLAN_SCALE : ORBIT_SCALE;
+  const toPlanLocal = useCallback(
+    (vec: [number, number, number]) => {
+      if (!hasTarget) return scaleToScene(vec);
+      return [
+        (vec[0] - planAnchor[0]) * PLAN_SCALE,
+        (vec[1] - planAnchor[1]) * PLAN_SCALE,
+        (vec[2] - planAnchor[2]) * PLAN_SCALE,
+      ] as [number, number, number];
+    },
+    [hasTarget, planAnchor, scaleToScene]
+  );
 
   const handleControlsRef = useCallback((node: TrackballControlsImpl | null) => {
     controlsRef.current = node;
@@ -158,7 +189,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
 
   return (
     <div className="w-full h-full bg-slate-950 relative">
-      <Canvas shadows camera={{ position: [8, 8, 8], fov: 45 }}>
+      <Canvas shadows camera={{ position: [8, 8, 8], fov: 45, near: 0.01, far: 1_000_000 }}>
         <CanvasRegistrar />
         {/* Only use CameraManager in Monitor mode or if not in editing mode? 
             Actually, CameraManager handles 'chase' view.
@@ -169,20 +200,22 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         <TrackballControls 
           ref={handleControlsRef} 
           makeDefault 
-          enabled={!builderState?.selectedObjectId} // Disable orbit when dragging gizmo
+          enabled
           rotateSpeed={4.0}
         />
         
         {/* Environment */}
-        <color attach="background" args={['#050510']} />
-        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1.5} castShadow />
+        <color attach="background" args={['#0b1020']} />
+        <Stars radius={100} depth={50} count={5000} factor={4.5} saturation={0} fade speed={1} />
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[10, 10, 5]} intensity={1.8} castShadow />
+        <hemisphereLight args={['#c4d2ff', '#1b2333', 0.35]} />
         
 
 
         {mode === 'monitor' && (
             <>
+                <SolarSystemLayer />
                 <LiveObstaclesRender />
                 <SatelliteModel />
                 <Trajectory />
@@ -197,78 +230,72 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                 
                 {/* Editable Content */}
                 <group>
-                     {/* Satellite */}
-                     <TransformControls 
-                        object={undefined} 
-                        mode={builderState.transformMode}
-                        enabled={builderState.selectedObjectId === 'satellite'}
-                        showX={builderState.selectedObjectId === 'satellite'}
-                        showY={builderState.selectedObjectId === 'satellite'}
-                        showZ={builderState.selectedObjectId === 'satellite'}
-                        onObjectChange={(e) => builderActions.handleObjectTransform('satellite', e)}
-                     >
-                        <group onClick={(e) => { e.stopPropagation(); builderActions.setSelectedObjectId('satellite'); }}>
-                            <SatellitePreview position={builderState.startPosition} rotation={builderState.startAngle} />
-                        </group>
-                    </TransformControls>
+                     <SolarSystemLayer />
+                     <OrbitSnapshotLayer
+                       selectedTargetId={builderState.selectedOrbitTargetId}
+                       orbitVisibility={orbitVisibility}
+                       onSelectTarget={(targetId, positionMeters, positionScene) => {
+                         builderActions.assignScanTarget(targetId, positionMeters);
+                         requestFocus(positionScene);
+                       }}
+                     />
 
-                    {/* Target */}
-                    <TransformControls
-                        mode={builderState.transformMode}
-                        enabled={builderState.selectedObjectId === 'target'}
-                        showX={builderState.selectedObjectId === 'target'}
-                        showY={builderState.selectedObjectId === 'target'}
-                        showZ={builderState.selectedObjectId === 'target'}
-                        onObjectChange={(e) => builderActions.handleObjectTransform('target', e)}
-                    >
-                         <group 
-                            position={builderState.objectPosition} 
-                            rotation={[
-                                builderState.objectAngle[0]*Math.PI/180, 
-                                builderState.objectAngle[1]*Math.PI/180, 
-                                builderState.objectAngle[2]*Math.PI/180
-                            ]}
-                            onClick={(e) => { e.stopPropagation(); builderActions.setSelectedObjectId('target'); }}
-                         >
-                            {builderState.modelUrl ? <Model url={builderState.modelUrl} /> : (
-                                <mesh>
-                                    <boxGeometry args={[1, 1, 1]} />
-                                    <meshStandardMaterial color="#64748b" wireframe />
-                                </mesh>
-                            )}
-                            <axesHelper args={[2]} />
-                         </group>
-                    </TransformControls>
+                     {/* Planner-local visuals anchored to the target */}
+                     <group position={planGroupPosition}>
+                        {/* Satellite */}
+                        <SatellitePreview
+                          position={toPlanLocal(builderState.startPosition)}
+                          rotation={builderState.startAngle}
+                          sceneScale={planScale}
+                        />
 
-                    {/* Obstacles */}
-                    {builderState.obstacles.map((obs, i) => (
-                        <TransformControls
-                            key={i}
-                            mode="translate"
-                            enabled={builderState.selectedObjectId === `obstacle-${i}`}
-                            showX={builderState.selectedObjectId === `obstacle-${i}`}
-                            showY={builderState.selectedObjectId === `obstacle-${i}`}
-                            showZ={builderState.selectedObjectId === `obstacle-${i}`}
-                            onObjectChange={(e) => builderActions.handleObjectTransform(`obstacle-${i}`, e)}
+                        {/* Reference */}
+                        <group 
+                          position={toPlanLocal(builderState.referencePosition)} 
+                          rotation={[
+                              builderState.referenceAngle[0]*Math.PI/180, 
+                              builderState.referenceAngle[1]*Math.PI/180, 
+                              builderState.referenceAngle[2]*Math.PI/180
+                          ]}
                         >
+                          {builderState.modelUrl ? <Model url={builderState.modelUrl} /> : (
+                              <mesh>
+                                  <boxGeometry args={[0.6 * planScale, 0.6 * planScale, 0.6 * planScale]} />
+                                  <meshStandardMaterial color="#64748b" wireframe />
+                              </mesh>
+                          )}
+                          <axesHelper args={[1 * planScale]} />
+                        </group>
+
+                        {/* Obstacles */}
+                        {builderState.obstacles.map((obs, i) => (
                             <mesh 
-                                position={obs.position} 
-                                onClick={(e) => { e.stopPropagation(); builderActions.setSelectedObjectId(`obstacle-${i}`); }}
+                                key={i}
+                                position={toPlanLocal(obs.position)} 
                             >
-                                <sphereGeometry args={[obs.radius, 16, 16]} />
+                                <sphereGeometry args={[obs.radius * planScale, 16, 16]} />
                                 <meshStandardMaterial color="#ef4444" transparent opacity={0.4} wireframe />
                             </mesh>
-                        </TransformControls>
-                    ))}
+                        ))}
 
-                    {/* Advanced Path Builder */}
-                    <EditableTrajectory 
-                        points={builderState.previewPath} 
-                        onHover={setHoveredPoint} 
-                        builderActions={builderActions}
-                        selectedId={builderState.selectedObjectId}
-                    />
-                    <ConstraintVisualizer points={builderState.previewPath} />
+                        {/* Advanced Path Builder */}
+                        <EditableTrajectory 
+                            points={builderState.previewPath.map(toPlanLocal)} 
+                            onHover={(point) => {
+                              if (!point) {
+                                setHoveredPoint(null);
+                              } else if (hasTarget) {
+                                setHoveredPoint([point[0] / PLAN_SCALE, point[1] / PLAN_SCALE, point[2] / PLAN_SCALE]);
+                              } else {
+                                setHoveredPoint([point[0] / ORBIT_SCALE, point[1] / ORBIT_SCALE, point[2] / ORBIT_SCALE]);
+                              }
+                            }} 
+                            builderActions={builderActions}
+                            selectedId={builderState.selectedObjectId}
+                            sceneScale={planScale}
+                        />
+                        <ConstraintVisualizer points={builderState.previewPath.map(toPlanLocal)} />
+                     </group>
                 </group>
             </Suspense>
         )}
@@ -277,42 +304,15 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         </GizmoHelper>
       </Canvas>
       
-      {/* Plan Mode Overlay Controls */}
-      {mode === 'plan' && builderState && builderActions && (
-          <>
-            <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur rounded p-2 flex gap-2 border border-slate-700 z-10">
-                <button 
-                    onClick={() => builderActions.setTransformMode('translate')}
-                    className={`p-2 rounded ${builderState.transformMode === 'translate' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'}`}
-                >
-                    <Move3d size={20} />
-                </button>
-                <button 
-                    onClick={() => builderActions.setTransformMode('rotate')}
-                    className={`p-2 rounded ${builderState.transformMode === 'rotate' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'}`}
-                >
-                    <Rotate3d size={20} />
-                </button>
-                <div className="w-px bg-slate-700 mx-1" />
-                <button 
-                    onClick={() => builderActions.setSelectedObjectId(null)}
-                    className="p-2 text-slate-400 hover:text-white"
-                >
-                    <MousePointer2 size={20} />
-                </button>
-            </div>
-            
-            {hoveredPoint && (
-                <div className="absolute bottom-4 left-4 pointer-events-none z-10">
-                    <HudPanel className="text-xs font-mono">
-                         <div className="text-cyan-400 font-bold mb-1">WAYPOINT</div>
-                         <div>X: {hoveredPoint[0].toFixed(2)}</div>
-                         <div>Y: {hoveredPoint[1].toFixed(2)}</div>
-                         <div>Z: {hoveredPoint[2].toFixed(2)}</div>
-                    </HudPanel>
-                </div>
-            )}
-          </>
+      {mode === 'plan' && hoveredPoint && (
+        <div className="absolute bottom-4 left-4 pointer-events-none z-10">
+            <HudPanel className="text-xs font-mono">
+                 <div className="text-cyan-400 font-bold mb-1">WAYPOINT{hasTarget ? ' (TARGET FRAME)' : ''}</div>
+                 <div>X: {hoveredPoint[0].toFixed(2)}</div>
+                 <div>Y: {hoveredPoint[1].toFixed(2)}</div>
+                 <div>Z: {hoveredPoint[2].toFixed(2)}</div>
+            </HudPanel>
+        </div>
       )}
     </div>
   );

@@ -85,7 +85,8 @@ class MPCController(Controller):
         mpc_params.Q_angvel = self.Q_angvel
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
-        mpc_params.path_speed = self.path_speed
+        if hasattr(mpc_params, "path_speed"):
+            mpc_params.path_speed = self.path_speed
 
         # Collision Avoidance
         mpc_params.enable_collision_avoidance = cfg.mpc.enable_collision_avoidance
@@ -318,7 +319,18 @@ class MPCController(Controller):
         else:
             x_input = x_current  # Assuming already augmented or custom
 
-        result = self._cpp_controller.get_control_action(x_input)
+        try:
+            result = self._cpp_controller.get_control_action(x_input)
+        except TypeError:
+            # Older/newer C++ bindings expect (x_current, x_target).
+            x_target = np.array(x_input, dtype=float)
+            try:
+                pos_ref, _ = self.get_path_reference()
+                if x_target.shape[0] >= 3:
+                    x_target[0:3] = pos_ref
+            except Exception:
+                pass
+            result = self._cpp_controller.get_control_action(x_input, x_target)
 
         self.solve_times.append(result.solve_time)
 

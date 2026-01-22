@@ -1,9 +1,50 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trajectoryApi, type MeshScanConfig } from '../api/trajectory';
+import { unifiedMissionApi } from '../api/unifiedMissionApi';
+import type {
+  MissionSegment,
+  TransferSegment,
+  ScanSegment,
+  HoldSegment,
+  ScanConfig,
+  SplineControl,
+} from '../api/unifiedMission';
 import { useHistory } from './useHistory';
+import { telemetry } from '../services/telemetry';
 
 export type TransformMode = 'translate' | 'rotate';
-export type SelectionType = 'satellite' | 'target' | `obstacle-${number}` | `waypoint-${number}` | null;
+export type SelectionType = 'satellite' | 'reference' | `obstacle-${number}` | `waypoint-${number}` | null;
+
+const defaultTransferSegment = (): TransferSegment => ({
+  type: 'transfer',
+  end_pose: { frame: 'ECI', position: [0, 0, 0] },
+  constraints: { speed_max: 0.25, accel_max: 0.05, angular_rate_max: 0.1 },
+});
+
+const defaultScanConfig = (): ScanConfig => ({
+  frame: 'LVLH',
+  axis: '+Z',
+  standoff: 10,
+  overlap: 0.25,
+  fov_deg: 60,
+  pitch: null,
+  revolutions: 4,
+  direction: 'CW',
+  sensor_axis: '+Y',
+});
+
+const defaultScanSegment = (): ScanSegment => ({
+  type: 'scan',
+  target_id: '',
+  scan: defaultScanConfig(),
+  constraints: { speed_max: 0.2, accel_max: 0.03, angular_rate_max: 0.08 },
+});
+
+const defaultHoldSegment = (): HoldSegment => ({
+  type: 'hold',
+  duration: 0,
+  constraints: { speed_max: 0.1 },
+});
 
 export function useMissionBuilder() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -21,8 +62,8 @@ export function useMissionBuilder() {
   // Mission Config State
   const [startPosition, setStartPosition] = useState<[number, number, number]>([10, 0, 0]);
   const [startAngle, setStartAngle] = useState<[number, number, number]>([0, 0, 0]);
-  const [objectPosition, setObjectPosition] = useState<[number, number, number]>([0, 0, 0]);
-  const [objectAngle, setObjectAngle] = useState<[number, number, number]>([0, 0, 0]);
+  const [referencePosition, setReferencePosition] = useState<[number, number, number]>([0, 0, 0]);
+  const [referenceAngle, setReferenceAngle] = useState<[number, number, number]>([0, 0, 0]);
   const [obstacles, setObstacles] = useState<{ position: [number, number, number]; radius: number }[]>([]);
   
   // Interaction State
@@ -42,6 +83,33 @@ export function useMissionBuilder() {
       scan_axis: 'Z'
   });
   const [levelSpacing, setLevelSpacing] = useState<number>(0.1);
+
+  // Unified Mission (V2)
+  const [epoch, setEpoch] = useState<string>(new Date().toISOString());
+  const [segments, setSegments] = useState<MissionSegment[]>([]);
+  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
+  const [splineControls, setSplineControls] = useState<SplineControl[]>([]);
+  const [savedUnifiedMissions, setSavedUnifiedMissions] = useState<string[]>([]);
+  const [selectedOrbitTargetId, setSelectedOrbitTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (segments.length === 0) {
+      setSegments([defaultScanSegment()]);
+    }
+  }, [segments.length]);
+
+  useEffect(() => {
+    const unsub = telemetry.subscribe((data) => {
+      if (isManualMode) return;
+      const planned = data.planned_path;
+      if (planned && planned.length > 0) {
+        pathHistory.set(planned as [number, number, number][]);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, [isManualMode, pathHistory]);
 
   // --- Actions ---
 
@@ -93,8 +161,8 @@ export function useMissionBuilder() {
       if (!name) return;
       const missionPayload = {
           start_position: startPosition,
-          end_position: objectPosition,
-          end_orientation: objectAngle,
+          end_position: referencePosition,
+          end_orientation: referenceAngle,
           obstacles: obstacles.map(o => ({ position: o.position, radius: o.radius })),
           mesh_scan: { ...config, level_spacing: levelSpacing },
           // TODO: If isManualMode, we might need a different payload structure or flag
@@ -129,7 +197,15 @@ export function useMissionBuilder() {
       }
   };
 
-  const addObstacle = () => setObstacles([...obstacles, { position: [5, 0, 0], radius: 0.5 }]);
+  const addObstacle = (origin?: [number, number, number], offset: [number, number, number] = [5, 0, 0]) => {
+      const base = origin ?? [0, 0, 0];
+      const position: [number, number, number] = [
+        base[0] + offset[0],
+        base[1] + offset[1],
+        base[2] + offset[2],
+      ];
+      setObstacles([...obstacles, { position, radius: 0.5 }]);
+  };
   
   const removeObstacle = (idx: number) => {
       setObstacles(obstacles.filter((_, i) => i !== idx));
@@ -174,9 +250,9 @@ export function useMissionBuilder() {
       if (key === 'satellite') {
           if(transformMode === 'translate') setStartPosition(pos);
           else setStartAngle(rot);
-      } else if (key === 'target') {
-          if(transformMode === 'translate') setObjectPosition(pos);
-          else setObjectAngle(rot);
+      } else if (key === 'reference') {
+          if(transformMode === 'translate') setReferencePosition(pos);
+          else setReferenceAngle(rot);
       } else if (key.startsWith('obstacle-')) {
           const idx = parseInt(key.split('-')[1]);
           const newObs = [...obstacles];
@@ -186,6 +262,178 @@ export function useMissionBuilder() {
           const idx = parseInt(key.split('-')[1]);
           handleWaypointMove(idx, pos);
       }
+  };
+
+  // --- Unified Mission Helpers ---
+
+  const buildUnifiedMission = (): UnifiedMission => ({
+    epoch,
+    start_pose: {
+      frame: 'ECI',
+      position: [...startPosition],
+    },
+    segments,
+    obstacles: obstacles.map((o) => ({
+      position: [...o.position] as [number, number, number],
+      radius: o.radius,
+    })),
+    overrides: splineControls.length > 0 ? { spline_controls: splineControls } : undefined,
+  });
+
+  const refreshUnifiedMissions = async () => {
+    const res = await unifiedMissionApi.listSavedMissions();
+    setSavedUnifiedMissions(res.missions);
+  };
+
+  const saveUnifiedMission = async (name: string) => {
+    const mission = buildUnifiedMission();
+    return unifiedMissionApi.saveMission(name, mission);
+  };
+
+  const loadUnifiedMission = async (name: string) => {
+    const mission = await unifiedMissionApi.loadMission(name);
+    setEpoch(mission.epoch);
+    setSegments(mission.segments);
+    setSplineControls(mission.overrides?.spline_controls || []);
+    setSelectedSegmentIndex(null);
+    setStartPosition([...mission.start_pose.position] as [number, number, number]);
+    if (mission.obstacles) {
+      setObstacles(
+        mission.obstacles.map((o) => ({
+          position: [...o.position] as [number, number, number],
+          radius: o.radius,
+        }))
+      );
+    }
+    const firstScan = mission.segments.find(seg => seg.type === 'scan') as ScanSegment | undefined;
+    setSelectedOrbitTargetId(firstScan?.target_id ?? null);
+  };
+
+  const pushUnifiedMission = async () => {
+    const mission = buildUnifiedMission();
+    return unifiedMissionApi.setMission(mission);
+  };
+
+  const generateUnifiedPath = async () => {
+    setIsManualMode(false);
+    const mission = buildUnifiedMission();
+    const preview = await unifiedMissionApi.previewMission(mission);
+    if (preview.path && preview.path.length > 0) {
+      pathHistory.set(preview.path);
+      setStats({
+        duration: preview.path_speed > 0 ? preview.path_length / preview.path_speed : 0,
+        length: preview.path_length,
+        points: preview.path.length,
+      });
+    } else {
+      pathHistory.set([]);
+      setStats(null);
+    }
+    return preview;
+  };
+
+  const addTransferSegment = () => {
+    setSegments(prev => {
+      const next = [...prev, defaultTransferSegment()];
+      setSelectedSegmentIndex(next.length - 1);
+      return next;
+    });
+  };
+
+  const addScanSegment = () => {
+    setSegments(prev => {
+      const next = [...prev, defaultScanSegment()];
+      setSelectedSegmentIndex(next.length - 1);
+      return next;
+    });
+  };
+
+  const addHoldSegment = () => {
+    setSegments(prev => {
+      const next = [...prev, defaultHoldSegment()];
+      setSelectedSegmentIndex(next.length - 1);
+      return next;
+    });
+  };
+
+  const removeSegment = (index: number) => {
+    setSegments(prev => prev.filter((_, i) => i !== index));
+    setSelectedSegmentIndex(prev => {
+      if (prev === null) return null;
+      if (prev === index) return null;
+      if (prev > index) return prev - 1;
+      return prev;
+    });
+  };
+
+  const updateSegment = (index: number, next: MissionSegment) => {
+    setSegments(prev => prev.map((seg, i) => (i === index ? next : seg)));
+  };
+
+  const addSplineControl = (position?: [number, number, number]) => {
+    const nextControl: SplineControl = {
+      position: position ? [...position] as [number, number, number] : [0, 0, 0],
+      weight: 1.0
+    };
+    setSplineControls(prev => [...prev, nextControl]);
+  };
+
+  const updateSplineControl = (index: number, next: SplineControl) => {
+    setSplineControls(prev => prev.map((c, i) => (i === index ? next : c)));
+  };
+
+  const removeSplineControl = (index: number) => {
+    setSplineControls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const assignScanTarget = (targetId: string, targetPosition?: [number, number, number]) => {
+    setSelectedOrbitTargetId(targetId);
+    setSegments(prev => {
+      const applyPrefill = (seg: ScanSegment) => {
+        const standoff = seg.scan.standoff > 0 ? seg.scan.standoff : 10;
+        const overlap = Number.isFinite(seg.scan.overlap) ? seg.scan.overlap : 0.25;
+        const fovDeg = Number.isFinite(seg.scan.fov_deg) ? seg.scan.fov_deg : 60;
+        return {
+          ...seg,
+          target_id: targetId,
+          target_pose: targetPosition
+            ? { frame: 'ECI', position: [...targetPosition] as [number, number, number] }
+            : seg.target_pose,
+          scan: {
+            ...seg.scan,
+            standoff,
+            overlap,
+            fov_deg: fovDeg,
+            pitch: seg.scan.pitch ?? null,
+          },
+        };
+      };
+
+      let targetIndex: number | null = null;
+      if (selectedSegmentIndex !== null && prev[selectedSegmentIndex]?.type === 'scan') {
+        targetIndex = selectedSegmentIndex;
+      } else {
+        const scanIndices = prev
+          .map((seg, idx) => (seg.type === 'scan' ? idx : -1))
+          .filter(idx => idx >= 0);
+        if (scanIndices.length === 1) {
+          targetIndex = scanIndices[0];
+        }
+      }
+
+      if (targetIndex !== null && targetIndex >= 0) {
+        const seg = prev[targetIndex] as ScanSegment;
+        const next = prev.map((s, i) =>
+          i === targetIndex ? applyPrefill(seg) : s
+        );
+        setSelectedSegmentIndex(targetIndex);
+        return next;
+      }
+
+      const next = [...prev, applyPrefill({ ...defaultScanSegment(), target_id: targetId })];
+      setSelectedSegmentIndex(next.length - 1);
+      return next;
+    });
   };
 
   return {
@@ -199,13 +447,19 @@ export function useMissionBuilder() {
         savedMissionName,
         startPosition,
         startAngle,
-        objectPosition,
-        objectAngle,
+        referencePosition,
+        referenceAngle,
         obstacles,
         selectedObjectId,
         transformMode,
         config,
         levelSpacing,
+        epoch,
+        segments,
+        selectedSegmentIndex,
+        splineControls,
+        savedUnifiedMissions,
+        selectedOrbitTargetId,
         // History State
         canUndo: pathHistory.canUndo,
         canRedo: pathHistory.canRedo
@@ -213,12 +467,15 @@ export function useMissionBuilder() {
     setters: {
         setStartPosition,
         setStartAngle,
-        setObjectPosition,
-        setObjectAngle,
+        setReferencePosition,
+        setReferenceAngle,
         setSelectedObjectId,
         setTransformMode,
         setConfig,
-        setLevelSpacing
+        setLevelSpacing,
+        setEpoch,
+        setSelectedSegmentIndex,
+        setSegments
     },
     actions: {
         handleFileUpload,
@@ -231,6 +488,21 @@ export function useMissionBuilder() {
         handleObjectTransform,
         setSelectedObjectId,
         setTransformMode,
+        addTransferSegment,
+        addScanSegment,
+        addHoldSegment,
+        removeSegment,
+        updateSegment,
+        addSplineControl,
+        updateSplineControl,
+        removeSplineControl,
+        assignScanTarget,
+        setSelectedOrbitTargetId,
+        refreshUnifiedMissions,
+        saveUnifiedMission,
+        loadUnifiedMission,
+        pushUnifiedMission,
+        generateUnifiedPath,
         // History Actions
         undo: pathHistory.undo,
         redo: pathHistory.redo,

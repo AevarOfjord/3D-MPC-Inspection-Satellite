@@ -11,11 +11,15 @@ import { FocusButton } from './components/FocusButton';
 import { BuilderSidebar } from './components/BuilderSidebar';
 import { useMissionBuilder } from './hooks/useMissionBuilder';
 import { Monitor, Calculator } from 'lucide-react';
+import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
+import { ORBIT_SCALE } from './data/orbitSnapshot';
+import { solarSystemBodies, getSolarBodyPosition, SOLAR_SCALE } from './data/solarSystemSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
   const [appMode, setAppMode] = useState<'monitor' | 'plan'>('monitor');
   const [eventLogOpen, setEventLogOpen] = useState(false);
+  const [orbitVisibility, setOrbitVisibility] = useState<Record<string, boolean>>({});
   const eventCount = useTelemetryStore(s => s.events.length);
   
   // Builder Hook (Hoisted State)
@@ -30,6 +34,10 @@ function App() {
   const switchToPlan = () => {
       setAppMode('plan');
       setViewMode('free'); // Free cam for planning
+  };
+
+  const toggleOrbitVisibility = (targetId: string) => {
+      setOrbitVisibility(prev => ({ ...prev, [targetId]: !prev[targetId] }));
   };
 
   return (
@@ -49,13 +57,13 @@ function App() {
                     onClick={switchToMonitor}
                     className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'monitor' ? 'bg-cyan-500/20 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]' : 'text-slate-500 hover:text-white'}`}
                 >
-                    <Monitor size={14} /> MONITOR
+                    <Monitor size={14} /> VIEWER
                 </button>
                 <button
                     onClick={switchToPlan}
                     className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'plan' ? 'bg-orange-500/20 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'text-slate-500 hover:text-white'}`}
                 >
-                    <Calculator size={14} /> PLAN
+                    <Calculator size={14} /> PLANNER
                 </button>
             </div>
         </div>
@@ -127,7 +135,49 @@ function App() {
                 viewMode={viewMode} 
                 builderState={builder.state}
                 builderActions={builder.actions}
+                orbitVisibility={orbitVisibility}
             />
+
+            {appMode === 'plan' && (
+              <OrbitTargetsPanel
+                selectedTargetId={builder.state.selectedOrbitTargetId}
+                orbitVisibility={orbitVisibility}
+                ownSatellite={{
+                  id: 'SATELLITE',
+                  name: 'Your Satellite',
+                  positionScene: [
+                    builder.state.startPosition[0] * ORBIT_SCALE,
+                    builder.state.startPosition[1] * ORBIT_SCALE,
+                    builder.state.startPosition[2] * ORBIT_SCALE,
+                  ],
+                  positionMeters: [
+                    builder.state.startPosition[0],
+                    builder.state.startPosition[1],
+                    builder.state.startPosition[2],
+                  ],
+                }}
+                solarBodies={solarSystemBodies.map((body) => ({
+                  id: body.id,
+                  name: body.name,
+                  type: body.type,
+                  positionScene: getSolarBodyPosition(body),
+                  radiusScene: body.radius_m * SOLAR_SCALE,
+                  positionMeters: [
+                    getSolarBodyPosition(body)[0] / SOLAR_SCALE,
+                    getSolarBodyPosition(body)[1] / SOLAR_SCALE,
+                    getSolarBodyPosition(body)[2] / SOLAR_SCALE,
+                  ],
+                }))}
+                onSelectTarget={(targetId, positionMeters, positionScene) => {
+                  builder.actions.assignScanTarget(targetId, positionMeters);
+                  useCameraStore.getState().requestFocus(positionScene);
+                }}
+                onFocusTarget={(_id, positionScene, focusDistance) => {
+                  useCameraStore.getState().requestFocus(positionScene, focusDistance);
+                }}
+                onToggleOrbit={toggleOrbitVisibility}
+              />
+            )}
 
             {/* Overlay (Monitor Mode Only) */}
             {appMode === 'monitor' && <Overlay />}

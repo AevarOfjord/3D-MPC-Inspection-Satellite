@@ -1,0 +1,70 @@
+{
+  "epoch": "2026-01-22T00:00:00Z",
+  "start_pose": {
+    "frame": "ECI",
+    "position": [6771000.0, 0.0, 0.0],
+    "orientation": [1.0, 0.0, 0.0, 0.0]
+  },
+  "segments": [
+    {
+      "type": "transfer",
+      "end_pose": {
+        "frame": "ECI",
+        "position": [6771200.0, 250.0, 50.0],
+        "orientation": [1.0, 0.0, 0.0, 0.0]
+      },
+      "constraints": {
+        "speed_max": 0.25,
+        "accel_max": 0.05,
+        "angular_rate_max": 0.1
+      }
+    },
+    {
+      "type": "scan",
+      "target_id": "ISS",
+      "target_pose": {
+        "frame": "ECI",
+        "position": [6771000.0, 0.0, 0.0],
+        "orientation": [1.0, 0.0, 0.0, 0.0]
+      },
+      "scan": {
+        "frame": "LVLH",
+        "axis": "+Z",
+        "standoff": 12.0,
+        "overlap": 0.25,
+        "fov_deg": 60.0,
+        "pitch": null,
+        "revolutions": 4,
+        "direction": "CW",
+        "sensor_axis": "+Y"
+      },
+      "constraints": {
+        "speed_max": 0.2,
+        "accel_max": 0.03,
+        "angular_rate_max": 0.08
+      }
+    },
+    {
+      "type": "transfer",
+      "end_pose": {
+        "frame": "ECI",
+        "position": [6771500.0, -400.0, 100.0],
+        "orientation": [1.0, 0.0, 0.0, 0.0]
+      },
+      "constraints": {
+        "speed_max": 0.3,
+        "accel_max": 0.06,
+        "angular_rate_max": 0.12
+      }
+    }
+  ],
+  "obstacles": [
+    { "position": [6771200.0, 120.0, 0.0], "radius": 15.0 }
+  ],
+  "overrides": {
+    "spline_controls": [
+      { "position": [6771300.0, 120.0, 30.0], "weight": 0.6 },
+      { "position": [6771400.0, -60.0, 80.0], "weight": 0.4 }
+    ]
+  }
+}

@@ -71,8 +71,8 @@ export function Editor() {
   const { 
       config, 
       updateStartPos,
-      updateTargetPos,
-      updateTargetOri,
+      updateEndPos,
+      updateEndOri,
       addObstacle, 
       removeObstacle, 
       updateObstacle,
@@ -94,7 +94,7 @@ export function Editor() {
   const warnings = useMemo(() => {
     const issues: string[] = [];
     const start = config.start_position;
-    const target = config.end_position;
+    const endPosition = config.end_position;
 
     config.obstacles.forEach((obs, i) => {
       if (obs.radius <= 0) {
@@ -107,12 +107,12 @@ export function Editor() {
       if (distStart < obs.radius) {
         issues.push(`Obstacle ${i + 1}: start position inside obstacle`);
       }
-      const dxt = obs.position[0] - target[0];
-      const dyt = obs.position[1] - target[1];
-      const dzt = obs.position[2] - target[2];
-      const distTarget = Math.sqrt(dxt * dxt + dyt * dyt + dzt * dzt);
-      if (distTarget < obs.radius) {
-        issues.push(`Obstacle ${i + 1}: target position inside obstacle`);
+      const dxt = obs.position[0] - endPosition[0];
+      const dyt = obs.position[1] - endPosition[1];
+      const dzt = obs.position[2] - endPosition[2];
+      const distEnd = Math.sqrt(dxt * dxt + dyt * dyt + dzt * dzt);
+      if (distEnd < obs.radius) {
+        issues.push(`Obstacle ${i + 1}: end position inside obstacle`);
       }
     });
 
@@ -281,12 +281,12 @@ export function Editor() {
     const option = missionOptions.find(item => item.id === optionId);
     if (!option) return;
     const start = option.waypoints[0];
-    const target = option.waypoints[1];
+    const endWaypoint = option.waypoints[1];
     const nextConfig: MissionConfig = {
       ...config,
       start_position: [...start.position],
-      end_position: [...target.position],
-      end_orientation: target.orientationDeg.map(degToRad) as [number, number, number],
+      end_position: [...endWaypoint.position],
+      end_orientation: endWaypoint.orientationDeg.map(degToRad) as [number, number, number],
     };
     setConfig(nextConfig);
     setSelectedMissionOption(optionId);
@@ -431,9 +431,9 @@ export function Editor() {
               </div>
            </div>
 
-           {/* Target Position */}
+           {/* End Position */}
            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Target Position (m)</label>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">End Position (m)</label>
               <div className="grid grid-cols-3 gap-2">
                  {['x', 'y', 'z'].map((label, i) => (
                     <div key={label} className="flex flex-col">
@@ -441,7 +441,7 @@ export function Editor() {
                          type="number" 
                          step="0.1"
                          value={config.end_position[i]}
-                         onChange={(e) => updateTargetPos(i, parseFloat(e.target.value) || 0)}
+                         onChange={(e) => updateEndPos(i, parseFloat(e.target.value) || 0)}
                          className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
                        />
                        <span className="text-[10px] text-gray-500 text-center mt-1 uppercase">{label}</span>
@@ -450,9 +450,9 @@ export function Editor() {
               </div>
            </div>
 
-           {/* Target Orientation */}
+           {/* End Orientation */}
            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Target Rotation (deg)</label>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">End Rotation (deg)</label>
               <div className="grid grid-cols-3 gap-2">
                  {['r', 'p', 'y'].map((label, i) => (
                     <div key={label} className="flex flex-col">
@@ -462,7 +462,7 @@ export function Editor() {
                          value={Math.round(config.end_orientation[i] * (180/Math.PI))}
                          onChange={(e) => {
                              const deg = parseFloat(e.target.value) || 0;
-                             updateTargetOri(i, deg * (Math.PI/180));
+                             updateEndOri(i, deg * (Math.PI/180));
                          }}
                          className="bg-gray-800 border border-gray-700 rounded p-1 text-sm text-center focus:border-blue-500 outline-none"
                        />
