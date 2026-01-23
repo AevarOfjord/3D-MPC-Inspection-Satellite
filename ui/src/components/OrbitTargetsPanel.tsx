@@ -82,16 +82,21 @@ export function OrbitTargetsPanel({
         {targets.map((obj) => {
           const isSelected = selectedTargetId === obj.id;
           const orbitOn = orbitVisibility?.[obj.id] ?? false;
+          const focusDistance = obj.real_span_m ? Math.max(obj.real_span_m * 5, 10) : undefined;
           return (
             <div
               key={obj.id}
               role="button"
               tabIndex={0}
-              onClick={() => onSelectTarget?.(obj.id, obj.position_m, obj.scenePosition)}
+              onClick={() => {
+                onSelectTarget?.(obj.id, obj.position_m, obj.scenePosition);
+                onFocusTarget?.(obj.id, obj.scenePosition, focusDistance);
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   onSelectTarget?.(obj.id, obj.position_m, obj.scenePosition);
+                  onFocusTarget?.(obj.id, obj.scenePosition, focusDistance);
                 }
               }}
               className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors cursor-pointer ${

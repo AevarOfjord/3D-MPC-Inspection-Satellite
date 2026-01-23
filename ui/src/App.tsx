@@ -168,9 +168,8 @@ function App() {
                     getSolarBodyPosition(body)[2] / SOLAR_SCALE,
                   ],
                 }))}
-                onSelectTarget={(targetId, positionMeters, positionScene) => {
+                onSelectTarget={(targetId, positionMeters) => {
                   builder.actions.assignScanTarget(targetId, positionMeters);
-                  useCameraStore.getState().requestFocus(positionScene);
                 }}
                 onFocusTarget={(_id, positionScene, focusDistance) => {
                   useCameraStore.getState().requestFocus(positionScene, focusDistance);

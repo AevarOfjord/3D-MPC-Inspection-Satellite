@@ -57,7 +57,8 @@ export function OrbitSnapshotLayer({
   onSelectTarget?: (
     targetId: string,
     positionMeters: [number, number, number],
-    positionScene: [number, number, number]
+    positionScene: [number, number, number],
+    focusDistance?: number
   ) => void;
   selectedTargetId?: string | null;
   orbitVisibility?: Record<string, boolean>;
@@ -90,6 +91,7 @@ export function OrbitSnapshotLayer({
               obj.orientation ?? [0, 0, 0]
             )
           : (obj.orientation ?? [0, 0, 0]),
+        focusDistance: obj.real_span_m ? Math.max(obj.real_span_m * 5, 10) : undefined,
       })),
     []
   );
@@ -128,7 +130,7 @@ export function OrbitSnapshotLayer({
           const isSelected = selectedTargetId === obj.id;
           const handleSelect = (event: ThreeEvent<PointerEvent>) => {
             event.stopPropagation();
-            onSelectTarget?.(obj.id, obj.position_m, obj.position);
+            onSelectTarget?.(obj.id, obj.position_m, obj.position, obj.focusDistance);
           };
 
           return (

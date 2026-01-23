@@ -3,6 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { Vector3, Quaternion } from 'three';
 import { telemetry } from '../services/telemetry';
 import { useCameraStore } from '../store/cameraStore';
+import { EARTH_RADIUS_M, ORBIT_SCALE } from '../data/orbitSnapshot';
 
 type CameraMode = 'free' | 'chase' | 'top';
 
@@ -29,6 +30,8 @@ export function CameraManager({ mode }: CameraManagerProps) {
   const focusNonce = useCameraStore(s => s.focusNonce);
   const viewPreset = useCameraStore(s => s.viewPreset);
   const viewNonce = useCameraStore(s => s.viewNonce);
+  const fallbackDistance = EARTH_RADIUS_M * 2.5 * ORBIT_SCALE;
+  const baseDistance = Number.isFinite(focusDistance ?? NaN) ? (focusDistance as number) : fallbackDistance;
   
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
@@ -48,7 +51,7 @@ export function CameraManager({ mode }: CameraManagerProps) {
   useEffect(() => {
     if (mode === 'top') {
        // Move to Top Down
-       camera.position.set(0, 0, 15);
+       camera.position.set(0, 0, baseDistance);
        camera.lookAt(0, 0, 0);
        camera.up.copy(TOP_VIEW_SCREEN_UP); // Keep screen-up along +Y for top-down view.
        if (controls) {
@@ -58,7 +61,7 @@ export function CameraManager({ mode }: CameraManagerProps) {
     } else {
         camera.up.copy(WORLD_UP);
     }
-  }, [mode, camera, controls]);
+  }, [baseDistance, mode, camera, controls]);
 
   useEffect(() => {
     if (!focusTarget) return;
@@ -81,24 +84,24 @@ export function CameraManager({ mode }: CameraManagerProps) {
 
     switch (viewPreset) {
       case 'top':
-        offset = new Vector3(0, 0, 10);
+        offset = new Vector3(0, 0, baseDistance);
         up = TOP_VIEW_SCREEN_UP;
         break;
       case 'front':
-        offset = new Vector3(0, 10, 0);
+        offset = new Vector3(0, baseDistance, 0);
         break;
       case 'back':
-        offset = new Vector3(0, -10, 0);
+        offset = new Vector3(0, -baseDistance, 0);
         break;
       case 'left':
-        offset = new Vector3(-10, 0, 0);
+        offset = new Vector3(-baseDistance, 0, 0);
         break;
       case 'right':
-        offset = new Vector3(10, 0, 0);
+        offset = new Vector3(baseDistance, 0, 0);
         break;
       case 'iso':
       default:
-        offset = new Vector3(6, 6, 6);
+        offset = new Vector3(baseDistance, baseDistance, baseDistance);
         break;
     }
 
@@ -109,7 +112,7 @@ export function CameraManager({ mode }: CameraManagerProps) {
       (controls as any).target.copy(target);
       (controls as any).update();
     }
-  }, [camera, controls, focusTarget, viewNonce, viewPreset]);
+  }, [camera, controls, focusTarget, viewNonce, viewPreset, baseDistance]);
 
   useFrame(() => {
     if (mode === 'chase') {
