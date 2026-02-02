@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/simulation_initialization.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.1, '#000080', '#0000FF', '#008000', '#008080', '#00FF00', '#00FFFF', '#800000', '#800080', '#808000', '#FF0000', '#FF00FF', '#FFFF00', 'angle_tolerance', 'cfg', 'constant', 'control_data.csv', 'mpcc_path_waypoints', 'physics', 'physics_data.csv', 'position_tolerance', 'set_obstacles', 'set_path', 'simulation', 'velocity_tolerance']

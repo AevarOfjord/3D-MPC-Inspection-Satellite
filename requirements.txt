@@ -1,5 +1,6 @@
 # Satellite Control System - Python Dependencies
 # Install with: pip install -r requirements.txt
+# Keep in sync with pyproject.toml [project.dependencies]
 
 # Core numerical libraries
 numpy>=1.21.0
@@ -47,6 +48,7 @@ ninja>=1.10
 
 # Testing
 pytest>=7.0.0
+hypothesis>=6.0.0
 
 # Optional: for enhanced performance
 # ecos>=2.0.0

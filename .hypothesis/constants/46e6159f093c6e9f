@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/orbital_config.py
+# hypothesis_version: 6.151.4
+
+[-20.0, -10.0, -3.0, 0.0, 0.05, 1.0, 3.0, 10.0, 51.6, 6371000.0, 398600441800000.0, 400000, 550000, 35786000, 'InspectionScenario', 'Orbital Parameters:']

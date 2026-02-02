@@ -1,4 +1,4 @@
-import { useRef, useCallback, Suspense, useState, useEffect } from 'react';
+import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { TrackballControls, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
@@ -33,7 +33,8 @@ import { EditableTrajectory } from './EditableTrajectory';
 import { ConstraintVisualizer } from './ConstraintVisualizer';
 import { OrbitSnapshotLayer } from './OrbitSnapshotLayer';
 import { SolarSystemLayer } from './SolarSystemLayer';
-import { ORBIT_SCALE, EARTH_RADIUS_M } from '../data/orbitSnapshot';
+import { SplineControlGizmos } from './SplineControlGizmos';
+import { ORBIT_SCALE, EARTH_RADIUS_M, orbitSnapshot } from '../data/orbitSnapshot';
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
@@ -141,7 +142,7 @@ function SatellitePreview({ position, rotation }: { position: [number, number, n
 // --- Main Unified Viewport ---
 
 interface UnifiedViewportProps {
-    mode: 'monitor' | 'plan';
+    mode: 'viewer' | 'mission' | 'scan';
     viewMode: 'free' | 'chase' | 'top';
     builderState?: ReturnType<typeof useMissionBuilder>['state'];
     builderActions?: ReturnType<typeof useMissionBuilder>['actions'];
@@ -153,20 +154,53 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
   const setControls = useCameraStore(s => s.setControls);
   const requestFocus = useCameraStore(s => s.requestFocus);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
+  const isPlanning = mode !== 'viewer';
+  const showOrbitLayer = mode === 'mission';
+  // --- Floating Origin Logic ---
+  // To prevent Z-fighting/Jitter at 6,000,000m, we shift the world so the active target is at (0,0,0).
+  const sceneOrigin = useMemo(() => {
+      let origin: [number, number, number] = [0, 0, 0];
+      
+      // In Plan mode, center on the selected target or start target
+      if (isPlanning && builderState) {
+          const targetId = builderState.selectedOrbitTargetId || builderState.startTargetId;
+          if (targetId) {
+             const obj = orbitSnapshot.objects.find(o => o.id === targetId);
+             if (obj) origin = obj.position_m;
+          } else {
+             // If no target, maybe center on start position?
+             // origin = builderState.startPosition; 
+             // Better to keep Earth center if defining from scratch, unless zoomed in?
+             // Let's stick to Target. If no target, Earth Center (0,0,0).
+          }
+      }
+      return origin;
+  }, [mode, builderState?.selectedOrbitTargetId, builderState?.startTargetId]);
+
   const scaleToScene = useCallback(
-    (vec: [number, number, number]) => [vec[0] * ORBIT_SCALE, vec[1] * ORBIT_SCALE, vec[2] * ORBIT_SCALE] as [number, number, number],
-    []
+    (vec: [number, number, number]) => [
+        (vec[0] - sceneOrigin[0]) * ORBIT_SCALE, 
+        (vec[1] - sceneOrigin[1]) * ORBIT_SCALE, 
+        (vec[2] - sceneOrigin[2]) * ORBIT_SCALE
+    ] as [number, number, number],
+    [sceneOrigin]
   );
+
   const initialCameraPosition = [
-    EARTH_RADIUS_M * 2.5 * ORBIT_SCALE,
-    EARTH_RADIUS_M * 0.9 * ORBIT_SCALE,
-    EARTH_RADIUS_M * 0.6 * ORBIT_SCALE,
+    (EARTH_RADIUS_M * 2.5 - sceneOrigin[0]) * ORBIT_SCALE,
+    (EARTH_RADIUS_M * 0.9 - sceneOrigin[1]) * ORBIT_SCALE,
+    (EARTH_RADIUS_M * 0.6 - sceneOrigin[2]) * ORBIT_SCALE,
   ] as [number, number, number];
 
   const handleControlsRef = useCallback((node: TrackballControlsImpl | null) => {
     controlsRef.current = node;
-    if (node) setControls(node as any); // Type assertion for generic store
-  }, [setControls]);
+    // We might need to retarget controls if origin changes?
+    if (node) {
+        setControls(node as any); 
+        // Reset target to 0,0,0 (which is now our scene origin)
+        // node.target.set(0, 0, 0);
+    }
+  }, [setControls, sceneOrigin]);
 
   return (
     <div className="w-full h-full bg-slate-950 relative">
@@ -190,15 +224,15 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
         />
         
         {/* Environment */}
-        <color attach="background" args={['#0b1020']} />
+        <color attach="background" args={['#1a2233']} />
         <Stars radius={EARTH_RADIUS_M * 50} depth={EARTH_RADIUS_M * 50} count={5000} factor={4.5} saturation={0} fade speed={1} />
-        <ambientLight intensity={0.8} />
+        <ambientLight intensity={1.15} />
         <directionalLight position={[10, 10, 5]} intensity={1.8} castShadow />
-        <hemisphereLight args={['#c4d2ff', '#1b2333', 0.35]} />
+        <hemisphereLight args={['#c4d2ff', '#1b2333', 0.5]} />
         
 
 
-        {mode === 'monitor' && (
+        {mode === 'viewer' && (
             <>
                 <SolarSystemLayer />
                 <LiveObstaclesRender />
@@ -209,28 +243,62 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
             </>
         )}
 
-        {mode === 'plan' && builderState && builderActions && (
+        {isPlanning && builderState && builderActions && (
             <Suspense fallback={null}>
                 {/* Grid Removed by User Request */}
                 
                 {/* Editable Content */}
                 <group>
-                     <SolarSystemLayer />
-                     <OrbitSnapshotLayer
-                       selectedTargetId={builderState.selectedOrbitTargetId}
-                       orbitVisibility={orbitVisibility}
-                       onSelectTarget={(targetId, positionMeters, positionScene, focusDistance) => {
-                         builderActions.assignScanTarget(targetId, positionMeters);
-                         requestFocus(positionScene, focusDistance);
-                       }}
-                     />
+                {showOrbitLayer && (
+                    <group position={scaleToScene([0,0,0])}>
+                         <SolarSystemLayer />
+                         <OrbitSnapshotLayer
+                           selectedTargetId={builderState.selectedOrbitTargetId}
+                           orbitVisibility={orbitVisibility}
+                           onSelectTarget={(targetId, positionMeters, positionScene, focusDistance) => {
+                             // We need to pass the "Scene" position back, which is relative to the floating origin now.
+                             // OrbitSnapshotLayer returns absolute scene position (scaled).
+                             // We need to adjust it to be relative to the group shift? 
+                             // No, OrbitSnapshotLayer thinks it's at P_abs. 
+                             // It is rendered at P_abs + Shift.
+                             // The click event returns P_abs.
+                             // The Camera Focus needs P_render = P_abs + Shift.
+                             // So we should adjust the positionScene passed back.
+                             // Or easier: Just calculate it here.
+                             
+                             const obj = orbitSnapshot.objects.find(o => o.id === targetId);
+                             if (obj) {
+                                 const scenePos = scaleToScene(obj.position_m);
+                                 builderActions.assignScanTarget(targetId, positionMeters);
+                                 // Focus on the object in the *floating scene*
+                                 requestFocus(scenePos, focusDistance);
+                             }
+                           }}
+                         />
+                    </group>
+                )}
 
                      {/* Satellite */}
                      <group>
-                        <SatellitePreview
-                          position={scaleToScene(builderState.startPosition)}
-                          rotation={builderState.startAngle}
-                        />
+                        {(() => {
+                             let posMeters = [...builderState.startPosition] as [number, number, number];
+                             if (builderState.startFrame === 'LVLH' && builderState.startTargetId) {
+                                  const target = orbitSnapshot.objects.find(o => o.id === builderState?.startTargetId);
+                                  if (target) {
+                                      posMeters = [
+                                          target.position_m[0] + posMeters[0],
+                                          target.position_m[1] + posMeters[1],
+                                          target.position_m[2] + posMeters[2]
+                                      ];
+                                  }
+                             }
+                            return (
+                                <SatellitePreview
+                                    position={scaleToScene(posMeters)}
+                                    rotation={builderState.startAngle}
+                                />
+                            );
+                        })()}
                     </group>
 
                     {/* Reference */}
@@ -276,7 +344,27 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
                         selectedId={builderState.selectedObjectId}
                         sceneScale={ORBIT_SCALE}
                     />
+
                     <ConstraintVisualizer points={builderState.previewPath.map(scaleToScene)} />
+
+                    {/* Spline Controls */}
+                    <SplineControlGizmos
+                        controls={builderState.splineControls.map(c => ({
+                            ...c,
+                            position: scaleToScene(c.position)
+                        }))}
+                        onUpdate={(idx, next) => {
+                             // Convert back to meters
+                             const metersPos: [number, number, number] = [
+                                 next.position[0] / ORBIT_SCALE,
+                                 next.position[1] / ORBIT_SCALE,
+                                 next.position[2] / ORBIT_SCALE
+                             ];
+                             builderActions.updateSplineControl(idx, { ...next, position: metersPos });
+                        }}
+                        onSelect={(idx) => builderActions.setSelectedObjectId(`spline-${idx}`)}
+                        selectedId={builderState.selectedObjectId}
+                    />
                 </group>
             </Suspense>
         )}
@@ -285,7 +373,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
         </GizmoHelper>
       </Canvas>
       
-      {mode === 'plan' && hoveredPoint && (
+      {isPlanning && hoveredPoint && (
         <div className="absolute bottom-4 left-4 pointer-events-none z-10">
             <HudPanel className="text-xs font-mono">
                  <div className="text-cyan-400 font-bold mb-1">WAYPOINT</div>

@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/constants.py
+# hypothesis_version: 6.151.4
+
+[-1.0, 0.0, 0.005, 0.04, 0.05, 0.08, 0.1, 0.15, 0.25, 0.3, 0.5, 0.9, 9.81, 10.0, 100.0, 180.0, 1000.0, 111, 360, 600, 700, '\nDATA MANAGEMENT:', '\nFFMPEG:', '\nUI/VISUALIZATION:', '%d-%m-%Y_%H-%M-%S', '=', 'CON', 'Darwin', 'Data', 'Linearized', 'OSQP', 'SYSTEM CONSTANTS', 'Thruster_Data', 'Windows', 'data_dir', 'ffmpeg', 'timestamp_format']

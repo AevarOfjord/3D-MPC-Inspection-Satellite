@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { trajectoryApi, type MeshScanConfig } from '../api/trajectory';
+import { useEffect, useState, useRef } from 'react';
+import { trajectoryApi, type MeshScanConfig, type ModelInfo } from '../api/trajectory';
 import { unifiedMissionApi } from '../api/unifiedMissionApi';
+import { pathAssetsApi, type PathAssetSummary } from '../api/pathAssets';
 import type {
   MissionSegment,
   TransferSegment,
@@ -8,12 +9,15 @@ import type {
   HoldSegment,
   ScanConfig,
   SplineControl,
+  UnifiedMission,
 } from '../api/unifiedMission';
 import { useHistory } from './useHistory';
 import { telemetry } from '../services/telemetry';
+import { orbitSnapshot } from '../data/orbitSnapshot';
+import { API_BASE_URL } from '../config/endpoints';
 
 export type TransformMode = 'translate' | 'rotate';
-export type SelectionType = 'satellite' | 'reference' | `obstacle-${number}` | `waypoint-${number}` | null;
+export type SelectionType = 'satellite' | 'reference' | `obstacle-${number}` | `waypoint-${number}` | `spline-${number}` | null;
 
 const defaultTransferSegment = (): TransferSegment => ({
   type: 'transfer',
@@ -31,6 +35,7 @@ const defaultScanConfig = (): ScanConfig => ({
   revolutions: 4,
   direction: 'CW',
   sensor_axis: '+Y',
+  pattern: 'spiral',
 });
 
 const defaultScanSegment = (): ScanSegment => ({
@@ -60,7 +65,10 @@ export function useMissionBuilder() {
   const [savedMissionName, setSavedMissionName] = useState<string | null>(null);
   
   // Mission Config State
+  // Mission Config State
   const [startPosition, setStartPosition] = useState<[number, number, number]>([10, 0, 0]);
+  const [startFrame, setStartFrame] = useState<'ECI' | 'LVLH'>('ECI');
+  const [startTargetId, setStartTargetId] = useState<string | undefined>(undefined);
   const [startAngle, setStartAngle] = useState<[number, number, number]>([0, 0, 0]);
   const [referencePosition, setReferencePosition] = useState<[number, number, number]>([0, 0, 0]);
   const [referenceAngle, setReferenceAngle] = useState<[number, number, number]>([0, 0, 0]);
@@ -83,6 +91,9 @@ export function useMissionBuilder() {
       scan_axis: 'Z'
   });
   const [levelSpacing, setLevelSpacing] = useState<number>(0.1);
+  const [useLevelSpacing, setUseLevelSpacing] = useState<boolean>(false);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [pathAssets, setPathAssets] = useState<PathAssetSummary[]>([]);
 
   // Unified Mission (V2)
   const [epoch, setEpoch] = useState<string>(new Date().toISOString());
@@ -99,6 +110,15 @@ export function useMissionBuilder() {
   }, [segments.length]);
 
   useEffect(() => {
+    trajectoryApi.listModels().then(setAvailableModels).catch((err) => {
+      console.warn('Failed to load model list', err);
+    });
+    pathAssetsApi.list().then(setPathAssets).catch((err) => {
+      console.warn('Failed to load path assets', err);
+    });
+  }, []);
+
+  useEffect(() => {
     const unsub = telemetry.subscribe((data) => {
       if (isManualMode) return;
       const planned = data.planned_path;
@@ -111,6 +131,36 @@ export function useMissionBuilder() {
     };
   }, [isManualMode, pathHistory]);
 
+  useEffect(() => {
+    if (previewPath.length < 2) return;
+    const length = previewPath.reduce((acc, point, idx) => {
+      if (idx === 0) return acc;
+      const prev = previewPath[idx - 1];
+      const dx = point[0] - prev[0];
+      const dy = point[1] - prev[1];
+      const dz = point[2] - prev[2];
+      return acc + Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }, 0);
+    const speed = config.speed_max > 0 ? config.speed_max : 0.1;
+    setStats({
+      duration: length / speed,
+      length,
+      points: previewPath.length,
+    });
+  }, [previewPath, config.speed_max]);
+
+  const prevAxisRef = useRef(config.scan_axis);
+  useEffect(() => {
+    if (prevAxisRef.current === config.scan_axis) return;
+    prevAxisRef.current = config.scan_axis;
+    if (!config.obj_path || previewPath.length === 0) return;
+    if (loading) return;
+    handlePreview().catch((err) => {
+      console.warn('Auto preview failed', err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.scan_axis]);
+
   // --- Actions ---
 
   const handleFileUpload = async (file: File) => {
@@ -121,6 +171,7 @@ export function useMissionBuilder() {
           const res = await trajectoryApi.uploadObject(file);
           setModelPath(res.path);
           setConfig(prev => ({ ...prev, obj_path: res.path }));
+          trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
       } catch (err) {
           console.error(err);
           alert("Upload failed");
@@ -136,7 +187,10 @@ export function useMissionBuilder() {
       }
       setLoading(true);
       try {
-          const previewConfig = { ...config, level_spacing: levelSpacing };
+          const previewConfig: MeshScanConfig = { ...config };
+          if (useLevelSpacing && levelSpacing > 0) {
+              previewConfig.level_spacing = levelSpacing;
+          }
           const res = await trajectoryApi.previewTrajectory(previewConfig);
           
           // New generation resets manual mode and history
@@ -154,6 +208,76 @@ export function useMissionBuilder() {
       } finally {
           setLoading(false);
       }
+  };
+
+  const selectModelPath = (path: string) => {
+      if (!path) return;
+      setModelPath(path);
+      setConfig(prev => ({ ...prev, obj_path: path }));
+      setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
+  };
+
+  const refreshModelList = async () => {
+      const models = await trajectoryApi.listModels();
+      setAvailableModels(models);
+      return models;
+  };
+
+  const refreshPathAssets = async () => {
+      const assets = await pathAssetsApi.list();
+      setPathAssets(assets);
+      return assets;
+  };
+
+  const savePathAsset = async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+          alert('Please enter a path asset name');
+          return;
+      }
+      if (!config.obj_path) {
+          alert('Select an OBJ model first');
+          return;
+      }
+      if (previewPath.length === 0) {
+          alert('Generate or load a path before saving');
+          return;
+      }
+      const meshScanPayload: MeshScanConfig = { ...config };
+      if (useLevelSpacing && levelSpacing > 0) {
+          meshScanPayload.level_spacing = levelSpacing;
+      }
+      const payload = {
+          name: trimmed,
+          obj_path: config.obj_path,
+          path: previewPath,
+          open: true,
+          relative_to_obj: true,
+          mesh_scan: meshScanPayload,
+      };
+      const saved = await pathAssetsApi.save(payload);
+      await refreshPathAssets();
+      return saved;
+  };
+
+  const loadPathAsset = async (assetId: string) => {
+      const asset = await pathAssetsApi.get(assetId);
+      if (asset.path && asset.path.length > 0) {
+          pathHistory.set(asset.path);
+          setIsManualMode(true);
+          const speed = config.speed_max > 0 ? config.speed_max : 0.1;
+          setStats({
+              duration: asset.path_length > 0 ? asset.path_length / speed : 0,
+              length: asset.path_length,
+              points: asset.points,
+          });
+      }
+      if (asset.obj_path) {
+          setModelPath(asset.obj_path);
+          setConfig(prev => ({ ...prev, obj_path: asset.obj_path }));
+          setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(asset.obj_path)}`);
+      }
+      return asset;
   };
 
   const handleSave = async () => {
@@ -183,15 +307,23 @@ export function useMissionBuilder() {
   };
 
   const handleRun = async (onSuccess?: () => void) => {
-      if (!savedMissionName) return;
+      // Launch directly to Live Dashboard (Single Process)
       setLoading(true);
       try {
-          const res = await trajectoryApi.runMission(savedMissionName);
-          alert(`Mission started! Monitor in Dashboard.\nPID: ${res.pid}`);
+          // 1. Push current definition to backend
+          await pushUnifiedMission();
+          
+          // 2. Resume simulation
+          await unifiedMissionApi.controlSimulation('resume');
+
+          // 3. (Optional) Switch to Monitor mode? 
+          // Not strictly required as Viewport handles mode based on parent.
+          
+          alert("Mission Launched! Switching to Live View.");
           if (onSuccess) onSuccess();
-      } catch (err) {
+      } catch (err: any) {
           console.error(err);
-          alert(`Failed: ${err}`);
+          alert(`Failed to launch: ${err.message || err}`);
       } finally {
           setLoading(false);
       }
@@ -237,6 +369,54 @@ export function useMissionBuilder() {
       pathHistory.set([...previewPath]);
   };
 
+  const addWaypoint = () => {
+      if (previewPath.length === 0) {
+          pathHistory.set([[0, 0, 0]]);
+          setIsManualMode(true);
+          return;
+      }
+      const selectedIdx =
+          selectedObjectId && selectedObjectId.startsWith('waypoint-')
+              ? parseInt(selectedObjectId.split('-')[1], 10)
+              : null;
+      let insertIndex = previewPath.length;
+      let newPoint = previewPath[previewPath.length - 1];
+      if (typeof selectedIdx === 'number' && !Number.isNaN(selectedIdx)) {
+          if (selectedIdx >= 0 && selectedIdx < previewPath.length - 1) {
+              const p0 = previewPath[selectedIdx];
+              const p1 = previewPath[selectedIdx + 1];
+              newPoint = [
+                  (p0[0] + p1[0]) / 2,
+                  (p0[1] + p1[1]) / 2,
+                  (p0[2] + p1[2]) / 2,
+              ];
+              insertIndex = selectedIdx + 1;
+          } else if (selectedIdx >= 0 && selectedIdx < previewPath.length) {
+              newPoint = previewPath[selectedIdx];
+              insertIndex = selectedIdx + 1;
+          }
+      }
+
+      const nextPath = [...previewPath];
+      nextPath.splice(insertIndex, 0, newPoint);
+      pathHistory.set(nextPath);
+      setIsManualMode(true);
+  };
+
+  const removeWaypoint = () => {
+      if (previewPath.length <= 2) return;
+      const selectedIdx =
+          selectedObjectId && selectedObjectId.startsWith('waypoint-')
+              ? parseInt(selectedObjectId.split('-')[1], 10)
+              : null;
+      if (typeof selectedIdx !== 'number' || Number.isNaN(selectedIdx)) return;
+      if (selectedIdx < 0 || selectedIdx >= previewPath.length) return;
+      const nextPath = previewPath.filter((_, i) => i !== selectedIdx);
+      pathHistory.set(nextPath);
+      setIsManualMode(true);
+      setSelectedObjectId(null);
+  };
+
   // --- Transform Helper ---
   
   const handleObjectTransform = (key: string, o: any) => {
@@ -266,19 +446,69 @@ export function useMissionBuilder() {
 
   // --- Unified Mission Helpers ---
 
-  const buildUnifiedMission = (): UnifiedMission => ({
-    epoch,
-    start_pose: {
-      frame: 'ECI',
-      position: [...startPosition],
-    },
-    segments,
-    obstacles: obstacles.map((o) => ({
-      position: [...o.position] as [number, number, number],
-      radius: o.radius,
-    })),
-    overrides: splineControls.length > 0 ? { spline_controls: splineControls } : undefined,
-  });
+  const buildUnifiedMission = (): UnifiedMission => {
+    // Resolve Start Pose
+    let resolvedStartPose = {
+        frame: startFrame,
+        position: [...startPosition] as [number, number, number],
+    };
+    let resolvedStartTargetId = startTargetId;
+
+    if (startFrame === 'LVLH' && startTargetId) {
+         const targetObj = orbitSnapshot.objects.find(o => o.id === startTargetId);
+         if (targetObj) {
+             const absPos: [number, number, number] = [
+                targetObj.position_m[0] + startPosition[0],
+                targetObj.position_m[1] + startPosition[1],
+                targetObj.position_m[2] + startPosition[2],
+            ];
+            resolvedStartPose = { frame: 'ECI', position: absPos };
+            resolvedStartTargetId = undefined; // Resolved to absolute
+         }
+    }
+
+    return {
+      epoch,
+      start_pose: resolvedStartPose,
+      start_target_id: resolvedStartTargetId, // Should be undefined if resolved, but kept if ECI? No, clean up.
+
+      segments: segments.map((seg) => {
+        // Resolve Relative Transfers to Absolute ECI
+        if (seg.type === 'transfer' && seg.end_pose.frame === 'LVLH' && seg.target_id) {
+            const targetObj = orbitSnapshot.objects.find(o => o.id === seg.target_id);
+            if (targetObj) {
+                // Transform: TargetPosition (ECI) + RelativeOffset (LVLH approx as aligned for now, or just ECI offset)
+                // Note: True LVLH rotation requires velocity state which we don't strictly have in this static snapshot.
+                // For this simplified version (and consistency with Scan segments which often assume aligned frames or point-based),
+                // we will treat "LVLH" here as "Relative Position in ECI frame centered on Target".
+                // i.e., Absolute = Target + Offset.
+                const absPos: [number, number, number] = [
+                    targetObj.position_m[0] + seg.end_pose.position[0],
+                    targetObj.position_m[1] + seg.end_pose.position[1],
+                    targetObj.position_m[2] + seg.end_pose.position[2],
+                ];
+                
+                return {
+                    ...seg,
+                    end_pose: {
+                        frame: 'ECI',
+                        position: absPos,
+                        orientation: seg.end_pose.orientation
+                    },
+                    // We remove target_id so backend treats it as standard ECI point-to-point
+                    target_id: undefined 
+                } as TransferSegment;
+            }
+        }
+        return seg;
+      }),
+      obstacles: obstacles.map((o) => ({
+        position: [...o.position] as [number, number, number],
+        radius: o.radius,
+      })),
+      overrides: splineControls.length > 0 ? { spline_controls: splineControls } : undefined,
+    };
+  };
 
   const refreshUnifiedMissions = async () => {
     const res = await unifiedMissionApi.listSavedMissions();
@@ -315,21 +545,30 @@ export function useMissionBuilder() {
   };
 
   const generateUnifiedPath = async () => {
-    setIsManualMode(false);
-    const mission = buildUnifiedMission();
-    const preview = await unifiedMissionApi.previewMission(mission);
-    if (preview.path && preview.path.length > 0) {
-      pathHistory.set(preview.path);
-      setStats({
-        duration: preview.path_speed > 0 ? preview.path_length / preview.path_speed : 0,
-        length: preview.path_length,
-        points: preview.path.length,
-      });
-    } else {
-      pathHistory.set([]);
-      setStats(null);
+    setLoading(true);
+    try {
+        setIsManualMode(false);
+        const mission = buildUnifiedMission();
+        const preview = await unifiedMissionApi.previewMission(mission);
+        if (preview.path && preview.path.length > 0) {
+          pathHistory.set(preview.path);
+          setStats({
+            duration: preview.path_speed > 0 ? preview.path_length / preview.path_speed : 0,
+            length: preview.path_length,
+            points: preview.path.length,
+          });
+        } else {
+          pathHistory.set([]);
+          setStats(null);
+        }
+        return preview;
+    } catch (err: any) {
+        console.error("Preview Error:", err);
+        alert(`Preview Failed: ${err.message || err}`);
+        throw err;
+    } finally {
+        setLoading(false);
     }
-    return preview;
   };
 
   const addTransferSegment = () => {
@@ -370,6 +609,40 @@ export function useMissionBuilder() {
     setSegments(prev => prev.map((seg, i) => (i === index ? next : seg)));
   };
 
+  const applyPathAssetToSegment = (assetId: string, index?: number) => {
+    setSegments(prev => {
+      let targetIndex = index ?? selectedSegmentIndex ?? -1;
+      if (targetIndex < 0 || !prev[targetIndex] || prev[targetIndex].type !== 'scan') {
+        targetIndex = prev.findIndex(seg => seg.type === 'scan');
+      }
+      if (targetIndex < 0) return prev;
+      const seg = prev[targetIndex] as ScanSegment;
+      const next = prev.map((s, i) =>
+        i === targetIndex ? { ...seg, path_asset: assetId } : s
+      );
+      setSelectedSegmentIndex(targetIndex);
+      return next;
+    });
+  };
+
+  const reorderSegments = (fromIndex: number, toIndex: number) => {
+    setSegments(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+    });
+    // Adjust selection if needed
+    setSelectedSegmentIndex(prev => {
+        if (prev === null) return null;
+        if (prev === fromIndex) return toIndex;
+        // If we moved something else, and it affected our index
+        if (fromIndex < prev && toIndex >= prev) return prev - 1;
+        if (fromIndex > prev && toIndex <= prev) return prev + 1;
+        return prev;
+    });
+  };
+
   const addSplineControl = (position?: [number, number, number]) => {
     const nextControl: SplineControl = {
       position: position ? [...position] as [number, number, number] : [0, 0, 0],
@@ -396,8 +669,8 @@ export function useMissionBuilder() {
         return {
           ...seg,
           target_id: targetId,
-          target_pose: targetPosition
-            ? { frame: 'ECI', position: [...targetPosition] as [number, number, number] }
+            target_pose: targetPosition
+            ? { frame: 'ECI' as const, position: [...targetPosition] as [number, number, number] }
             : seg.target_pose,
           scan: {
             ...seg.scan,
@@ -446,6 +719,8 @@ export function useMissionBuilder() {
         stats,
         savedMissionName,
         startPosition,
+        startFrame,
+        startTargetId,
         startAngle,
         referencePosition,
         referenceAngle,
@@ -454,6 +729,9 @@ export function useMissionBuilder() {
         transformMode,
         config,
         levelSpacing,
+        useLevelSpacing,
+        availableModels,
+        pathAssets,
         epoch,
         segments,
         selectedSegmentIndex,
@@ -466,6 +744,8 @@ export function useMissionBuilder() {
     },
     setters: {
         setStartPosition,
+        setStartFrame,
+        setStartTargetId,
         setStartAngle,
         setReferencePosition,
         setReferenceAngle,
@@ -473,6 +753,7 @@ export function useMissionBuilder() {
         setTransformMode,
         setConfig,
         setLevelSpacing,
+        setUseLevelSpacing,
         setEpoch,
         setSelectedSegmentIndex,
         setSegments
@@ -482,6 +763,11 @@ export function useMissionBuilder() {
         handlePreview,
         handleSave,
         handleRun,
+        selectModelPath,
+        refreshModelList,
+        refreshPathAssets,
+        savePathAsset,
+        loadPathAsset,
         addObstacle,
         removeObstacle,
         updateObstacle,
@@ -493,6 +779,8 @@ export function useMissionBuilder() {
         addHoldSegment,
         removeSegment,
         updateSegment,
+        applyPathAssetToSegment,
+        reorderSegments,
         addSplineControl,
         updateSplineControl,
         removeSplineControl,
@@ -506,7 +794,10 @@ export function useMissionBuilder() {
         // History Actions
         undo: pathHistory.undo,
         redo: pathHistory.redo,
-        commitWaypointMove
+        commitWaypointMove,
+        addWaypoint,
+        removeWaypoint,
+        selectSegment: setSelectedSegmentIndex
     }
   };
 }

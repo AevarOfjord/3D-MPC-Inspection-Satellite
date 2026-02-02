@@ -153,15 +153,7 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
     const obstacleRelative = (absolute: [number, number, number]) =>
         targetPosition ? subVec(absolute, targetPosition) : absolute;
 
-    const selectedWaypointPosition = (() => {
-        if (!state.selectedObjectId || !state.selectedObjectId.startsWith('waypoint-')) {
-            return null;
-        }
-        const idx = Number(state.selectedObjectId.split('-')[1]);
-        if (!Number.isFinite(idx)) return null;
-        if (!state.previewPath || idx < 0 || idx >= state.previewPath.length) return null;
-        return state.previewPath[idx] as [number, number, number];
-    })();
+
 
     const scanConfig = scanSegment?.scan;
 
@@ -209,53 +201,89 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                     </div>
                 )}
 
-                <HudSection title="Target" defaultOpen={true}>
+                {/* 1. Target Selection */}
+                <HudSection title="1. Select Target" defaultOpen={true}>
                     <div className="space-y-2">
                         <div className="flex items-center justify-between text-[10px] uppercase text-slate-500">
-                            <span>Selected Target</span>
-                            <span className="text-slate-300">{selectedTargetLabel || 'None'}</span>
+                            <span>Target Object</span>
+                            <span className="text-slate-200 font-bold">{selectedTargetLabel}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                            Select a target from the Orbit Targets panel.
-                        </div>
+                        {!targetPosition && (
+                            <div className="text-[11px] text-slate-500 italic">
+                                Click an object in the "Orbit Targets" panel to select it.
+                            </div>
+                        )}
                     </div>
                 </HudSection>
 
-                <HudSection title="Start / End (Target Frame)" defaultOpen={true}>
-                    <div className={`space-y-3 ${targetPosition ? '' : 'opacity-60 pointer-events-none'}`}>
+                {/* 2. Start / End Positions */}
+                <HudSection title="2. Position (Relative)" defaultOpen={true}>
+                    <div className={`space-y-4 ${targetPosition ? '' : 'opacity-60 pointer-events-none'}`}>
                         <Vec3Input
                             label="Start Offset"
                             value={startRelative}
                             onChange={setStartRelative}
                         />
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] uppercase text-slate-500">End Offset</span>
-                            <HudButton
-                                variant="ghost"
-                                size="sm"
-                                onClick={toggleEndEnabled}
-                            >
-                                {transferSegment ? 'Remove End' : 'Add End'}
-                            </HudButton>
+                        
+                        <div className="pt-2 border-t border-slate-800">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">End Offset</span>
+                                <div className="flex gap-2">
+                                    <label className="flex items-center gap-1 text-[10px] text-slate-400 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={transferIndex >= 0}
+                                            onChange={toggleEndEnabled}
+                                            className="accent-cyan-500"
+                                        />
+                                        Enable
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            {transferSegment ? (
+                                <Vec3Input
+                                    label=""
+                                    value={endRelative}
+                                    onChange={setEndRelative}
+                                />
+                            ) : (
+                                <div className="text-[10px] text-slate-600 italic">
+                                    (Optional) Define a specific end point relative to target.
+                                </div>
+                            )}
                         </div>
-                        {transferSegment && (
-                            <Vec3Input
-                                label="End Offset"
-                                value={endRelative}
-                                onChange={setEndRelative}
-                            />
-                        )}
-                        {!targetPosition && (
-                            <div className="text-[11px] text-slate-500">Select a target to edit offsets.</div>
-                        )}
                     </div>
                 </HudSection>
 
-                <HudSection title="Scan Settings" defaultOpen={true}>
+                {/* 3. Scan Settings */}
+                <HudSection title="3. Scan Settings" defaultOpen={true}>
                     {!scanConfig ? (
                         <div className="text-[11px] text-slate-500">Select a target to configure scan.</div>
                     ) : (
                         <div className="space-y-3">
+                            {/* Pattern Selection - Updated */}
+                            <div>
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                    Pattern
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['spiral', 'circles'].map((pat) => (
+                                        <button
+                                            key={pat}
+                                            onClick={() => updateScanConfig({ pattern: pat as any })}
+                                            className={`text-xs py-1.5 rounded border transition-colors uppercase ${
+                                                (scanConfig.pattern || 'spiral') === pat
+                                                    ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
+                                                    : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            {pat}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-2">
                                 <HudInput
                                     label="Standoff (m)"
@@ -273,72 +301,29 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                                     max={0.9}
                                     onChange={(val) => updateScanConfig({ overlap: Number.isFinite(val) ? val : scanConfig.overlap })}
                                 />
-                                <HudInput
-                                    label="FOV (deg)"
-                                    value={scanConfig.fov_deg}
-                                    type="number"
-                                    step={1}
-                                    onChange={(val) => updateScanConfig({ fov_deg: Number.isFinite(val) ? val : scanConfig.fov_deg })}
-                                />
-                                <HudInput
-                                    label="Revolutions"
-                                    value={scanConfig.revolutions}
-                                    type="number"
-                                    step={1}
-                                    onChange={(val) => updateScanConfig({ revolutions: Number.isFinite(val) ? val : scanConfig.revolutions })}
-                                />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                        Spiral Axis
-                                    </label>
-                                    <select
-                                        value={scanConfig.axis}
-                                        onChange={(e) => updateScanConfig({ axis: e.target.value as ScanSegment['scan']['axis'] })}
-                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
-                                    >
-                                        {['+X', '-X', '+Y', '-Y', '+Z', '-Z'].map((axis) => (
-                                            <option key={axis} value={axis}>
-                                                {axis}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                        Sensor Axis
-                                    </label>
-                                    <select
-                                        value={scanConfig.sensor_axis}
-                                        onChange={(e) => updateScanConfig({ sensor_axis: e.target.value as ScanSegment['scan']['sensor_axis'] })}
-                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
-                                    >
-                                        {['+Y', '-Y'].map((axis) => (
-                                            <option key={axis} value={axis}>
-                                                {axis}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                        Direction
-                                    </label>
-                                    <select
-                                        value={scanConfig.direction}
-                                        onChange={(e) => updateScanConfig({ direction: e.target.value as ScanSegment['scan']['direction'] })}
-                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
-                                    >
-                                        {['CW', 'CCW'].map((dir) => (
-                                            <option key={dir} value={dir}>
-                                                {dir}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
+                             <div className="grid grid-cols-2 gap-2">
+                                {scanConfig.pattern !== 'circles' && (
+                                    <HudInput
+                                        label="FOV (deg)"
+                                        value={scanConfig.fov_deg}
+                                        type="number"
+                                        step={1}
+                                        onChange={(val) => updateScanConfig({ fov_deg: Number.isFinite(val) ? val : scanConfig.fov_deg })}
+                                    />
+                                )}
+                                {scanConfig.pattern === 'circles' ? (
+                                    <HudInput
+                                        label="Level Height (m)" // Height between levels
+                                        value={scanConfig.pitch ?? ''}
+                                        type="number"
+                                        placeholder="Auto"
+                                        step={0.1}
+                                        allowEmpty
+                                        onChange={(val) => updateScanConfig({ pitch: Number.isFinite(val) ? val : null })}
+                                    />
+                                ) : (
                                     <HudInput
                                         label="Pitch (m)"
                                         value={scanConfig.pitch ?? ''}
@@ -348,17 +333,70 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                                         allowEmpty
                                         onChange={(val) => updateScanConfig({ pitch: Number.isFinite(val) ? val : null })}
                                     />
+                                )}
+                            </div>
+                            
+                            {scanConfig.pattern === 'spiral' && (
+                                <HudInput
+                                    label="Revolutions"
+                                    value={scanConfig.revolutions}
+                                    type="number"
+                                    step={1}
+                                    onChange={(val) => updateScanConfig({ revolutions: Number.isFinite(val) ? val : scanConfig.revolutions })}
+                                />
+                            )}
+
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                        Axis
+                                    </label>
+                                    <select
+                                        value={scanConfig.axis}
+                                        onChange={(e) => updateScanConfig({ axis: e.target.value as any })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-1 py-1"
+                                    >
+                                        {['+X', '-X', '+Y', '-Y', '+Z', '-Z'].map((axis) => (
+                                            <option key={axis} value={axis}>{axis}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                        Sensor
+                                    </label>
+                                    <select
+                                        value={scanConfig.sensor_axis}
+                                        onChange={(e) => updateScanConfig({ sensor_axis: e.target.value as any })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-1 py-1"
+                                    >
+                                        {['+Y', '-Y'].map((axis) => (
+                                            <option key={axis} value={axis}>{axis}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                        Dir
+                                    </label>
+                                    <select
+                                        value={scanConfig.direction}
+                                        onChange={(e) => updateScanConfig({ direction: e.target.value as any })}
+                                        className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-1 py-1"
+                                    >
+                                        {['CW', 'CCW'].map((dir) => (
+                                            <option key={dir} value={dir}>{dir}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     )}
                 </HudSection>
 
-                <HudSection title="Obstacles (Target Frame)" defaultOpen={false}>
+                {/* 4. Obstacles */}
+                <HudSection title="4. Obstacles (Optional)" defaultOpen={false}>
                     <div className={`space-y-3 ${targetPosition ? '' : 'opacity-60 pointer-events-none'}`}>
-                        {state.obstacles.length === 0 && (
-                            <div className="text-[10px] text-slate-500 italic">No obstacles yet.</div>
-                        )}
                         {state.obstacles.map((obs, i) => (
                             <div key={i} className="bg-slate-900/50 p-2 rounded border border-slate-800">
                                 <div className="flex justify-between items-center mb-2">
@@ -394,13 +432,11 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                         >
                             <Plus size={14} /> ADD OBSTACLE
                         </HudButton>
-                        {!targetPosition && (
-                            <div className="text-[11px] text-slate-500">Select a target to edit obstacles.</div>
-                        )}
                     </div>
                 </HudSection>
 
-                <HudSection title="Path" defaultOpen={true}>
+                {/* 5. Generate */}
+                <HudSection title="5. Generate Path" defaultOpen={true}>
                     <div className="space-y-3">
                         <HudButton
                             variant="primary"
@@ -412,71 +448,45 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                             {busyAction === 'generate' ? 'GENERATING…' : 'GENERATE PATH'}
                         </HudButton>
                         {!targetPosition && (
-                            <div className="text-[11px] text-slate-500">Select a target to generate the path.</div>
+                            <div className="text-[11px] text-slate-500">Select a target first.</div>
                         )}
-
-                        <div className="border border-slate-800 rounded-sm p-3 space-y-2 bg-slate-950/60">
-                            <div className="text-[10px] uppercase font-bold text-slate-500">Spline Controls</div>
-                            <div className="flex gap-2">
-                                <HudButton variant="secondary" size="sm" onClick={() => actions.addSplineControl()}>
-                                    + CONTROL
-                                </HudButton>
-                                <HudButton
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={!selectedWaypointPosition}
-                                    onClick={() => {
-                                        if (selectedWaypointPosition) {
-                                            actions.addSplineControl(selectedWaypointPosition);
-                                        }
-                                    }}
-                                >
-                                    FROM WAYPOINT
-                                </HudButton>
-                            </div>
-
-                            {state.splineControls.length === 0 && (
-                                <div className="text-[10px] text-slate-500 italic">No spline controls yet.</div>
-                            )}
-
-                            <div className="space-y-2">
-                                {state.splineControls.map((control, idx) => (
-                                    <div key={`spline-${idx}`} className="border border-slate-800 rounded-sm p-2 bg-slate-900/40">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-[10px] uppercase text-slate-500">Control {idx + 1}</span>
-                                            <button
-                                                onClick={() => actions.removeSplineControl(idx)}
-                                                className="text-[10px] uppercase text-red-400 hover:text-red-300"
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
-                                        <Vec3Input
-                                            label="Position"
-                                            value={control.position as [number, number, number]}
-                                            onChange={(next) => {
-                                                actions.updateSplineControl(idx, {
-                                                    ...control,
-                                                    position: next,
-                                                });
-                                            }}
-                                        />
-                                        <div className="mt-2">
-                                            <HudInput
-                                                label="Weight"
-                                                value={control.weight ?? 1.0}
-                                                type="number"
-                                                step={0.1}
-                                                onChange={(val) => {
-                                                    const weight = Number.isFinite(val) ? Math.max(0, val) : 1.0;
-                                                    actions.updateSplineControl(idx, { ...control, weight });
-                                                }}
-                                            />
-                                        </div>
+                        
+                        {/* Spline Controls Info */}
+                        {state.previewPath.length > 0 && (
+                            <div className="mt-4 border-t border-slate-800 pt-3">
+                                <div className="flex justify-between items-center mb-2">
+                                    <div className="text-[10px] uppercase font-bold text-slate-500">Path Deformers</div>
+                                    <HudButton variant="secondary" size="sm" onClick={() => actions.addSplineControl()}>
+                                        <Plus size={12}/> ADD CONTROL
+                                    </HudButton>
+                                </div>
+                                
+                                {state.splineControls.length === 0 ? (
+                                    <div className="text-[10px] text-slate-600 italic">
+                                        Add control points to stretch/deform the path.
                                     </div>
-                                ))}
+                                ) : (
+                                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                                        {state.splineControls.map((control, idx) => (
+                                            <div key={`spline-${idx}`} className="flex items-center justify-between bg-slate-900/40 p-1.5 rounded border border-slate-800">
+                                                <span className="text-[10px] text-slate-400 font-mono">C{idx+1}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-slate-500">
+                                                        [{control.position.map(v=>v.toFixed(1)).join(',')}]
+                                                    </span>
+                                                    <button
+                                                      onClick={() => actions.removeSplineControl(idx)}
+                                                      className="text-red-400 hover:text-red-300"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        </div>
+                        )}
                     </div>
                 </HudSection>
 
@@ -494,7 +504,7 @@ export function BuilderSidebar({ builder }: BuilderSidebarProps) {
                             onClick={handleSaveUnified}
                             disabled={busyAction === 'save' || !unifiedMissionName.trim()}
                         >
-                            <Save size={14} /> {busyAction === 'save' ? 'SAVING…' : 'SAVE'}
+                            <Save size={14} /> {busyAction === 'save' ? 'SAVING…' : 'SAVE MISSION'}
                         </HudButton>
                         <div className="border border-slate-800 rounded-sm p-2 bg-slate-950/60 space-y-2">
                             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">

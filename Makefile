@@ -1,4 +1,4 @@
-.PHONY: run run-backend run-frontend sim install venv clean
+.PHONY: run run-backend run-frontend sim install install-dev venv clean
 
 VENV_DIR ?= .venv311
 PYTHON ?= python3.11
@@ -6,6 +6,7 @@ VENV_BIN := $(VENV_DIR)/bin
 VENV_PY := $(VENV_BIN)/python
 VENV_PIP := $(VENV_BIN)/pip
 REQS_FILE ?= requirements.txt
+DEV_REQS_FILE ?= requirements-dev.txt
 
 run:
 	@$(MAKE) -j2 backend frontend
@@ -14,6 +15,7 @@ dashboard:
 	@$(MAKE) -j2 backend frontend
 
 backend:
+	@lsof -ti:8000 | xargs kill -9 || true
 	$(VENV_PY) run_dashboard.py
 
 frontend:
@@ -30,6 +32,11 @@ venv:
 
 install: venv
 	@$(VENV_PIP) install -r $(REQS_FILE)
+	@$(VENV_PIP) install --no-build-isolation -e .
+	@cp $(VENV_DIR)/lib/python3.11/site-packages/satellite_control/cpp/*.so src/satellite_control/cpp/ || true
+
+install-dev: venv
+	@$(VENV_PIP) install -r $(DEV_REQS_FILE)
 	@$(VENV_PIP) install --no-build-isolation -e .
 	@cp $(VENV_DIR)/lib/python3.11/site-packages/satellite_control/cpp/*.so src/satellite_control/cpp/ || true
 

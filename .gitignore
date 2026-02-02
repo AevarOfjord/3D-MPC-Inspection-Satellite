@@ -50,3 +50,4 @@ simulation.log
 node_modules/
 ui/node_modules/
 ui/npm_cache/
+ui/dist/

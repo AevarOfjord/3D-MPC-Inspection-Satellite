@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/fleet/fleet_manager.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.5, 1.0, 2.0, 5.0, 120.0, 1000000.0, 'InspectorState', 'avoiding', 'idle', 'inf', 'inspecting', 'inspector_collision', 'inter_inspector', 'maneuvering', 'station_keeping', 'target_keep_out', 'to_target', 'xy']

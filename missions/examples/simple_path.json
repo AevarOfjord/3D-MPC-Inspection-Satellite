@@ -1,0 +1,15 @@
+{
+  "name": "Simple Path",
+  "mission_type": "path_following",
+  "description": "Straight-line path from (0, 0, 0) to (1, 0, 0)",
+  "start_position": [0.0, 0.0, 0.0],
+  "target_position": [1.0, 0.0, 0.0],
+  "path_following": {
+    "waypoints": [
+      [1.0, 0.0, 0.0]
+    ],
+    "speed": 0.1,
+    "step_size": 0.05,
+    "hold_end": 0.0
+  }
+}

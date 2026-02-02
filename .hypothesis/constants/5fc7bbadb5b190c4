@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/simulation_config.py
+# hypothesis_version: 6.151.4
+
+['Q_contour', 'Q_progress', 'Q_smooth', 'SimulationConfig', 'angular_velocity', 'axis', 'center_of_mass', 'com_offset', 'control', 'control_dt', 'control_horizon', 'damping_angular', 'damping_linear', 'default_path_speed', 'direction', 'dt', 'duration', 'env', 'headless', 'inertia', 'mass', 'max_duration', 'max_thrust', 'max_torque', 'moment_of_inertia', 'mpc', 'path_following', 'path_speed', 'position', 'prediction_horizon', 'q_angular_velocity', 'r_rw_torque', 'r_thrust', 'reaction_wheels', 'rw_torque', 'satellite_size', 'settings', 'sim', 'simulation', 'size', 'solver_time_limit', 'solver_type', 'thrust', 'thruster_directions', 'thruster_forces', 'thruster_positions', 'thruster_type', 'thrusters', 'total_mass', 'vehicle', 'weights', 'window_height', 'window_width']

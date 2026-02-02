@@ -24,6 +24,11 @@ from src.satellite_control.config.timing import SIMULATION_DT
 from src.satellite_control.mission.mission_types import Obstacle
 from src.satellite_control.mission.unified_mission import MissionDefinition
 from src.satellite_control.mission.unified_compiler import compile_unified_mission_path
+from src.satellite_control.mission.path_assets import (
+    list_path_assets,
+    load_path_asset,
+    save_path_asset,
+)
 from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 # Configure logging
@@ -42,6 +47,22 @@ app.add_middleware(
 )
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "Data" / "Simulation"
+MISSIONS_DIR = Path("missions")
+MISSIONS_DEV_DIR = MISSIONS_DIR / "dev"
+MISSIONS_EXAMPLES_DIR = MISSIONS_DIR / "examples"
+
+
+def _resolve_mission_file(mission_name: str) -> Path:
+    candidate_name = mission_name
+    if not candidate_name.endswith(".json"):
+        candidate_name = f"{candidate_name}.json"
+
+    for missions_dir in (MISSIONS_DEV_DIR, MISSIONS_EXAMPLES_DIR):
+        mission_file = missions_dir / candidate_name
+        if mission_file.exists():
+            return mission_file
+
+    raise HTTPException(status_code=404, detail=f"Mission not found: {mission_name}")
 
 
 # --- Data Models ---
@@ -63,6 +84,16 @@ class MeshScanConfigModel(BaseModel):
     lateral_accel: float = 0.05
     z_margin: float = 0.0
     scan_axis: str = "Z"  # "X", "Y", or "Z"
+
+
+class PathAssetSaveRequest(BaseModel):
+    name: str
+    obj_path: str
+    path: List[List[float]]
+    open: bool = True
+    relative_to_obj: bool = True
+    mesh_scan: Optional[MeshScanConfigModel] = None
+    notes: Optional[str] = None
 
 
 class MissionConfigModel(BaseModel):
@@ -87,7 +118,9 @@ class PoseModel(BaseModel):
 
     @field_validator("orientation")
     @classmethod
-    def validate_orientation(cls, value: Optional[List[float]]) -> Optional[List[float]]:
+    def validate_orientation(
+        cls, value: Optional[List[float]]
+    ) -> Optional[List[float]]:
         if value is None:
             return value
         if len(value) != 4:
@@ -115,6 +148,7 @@ class SplineControlModel(BaseModel):
 
 class TransferSegmentModel(BaseModel):
     type: Literal["transfer"]
+    target_id: Optional[str] = None
     end_pose: PoseModel
     constraints: Optional[ConstraintsModel] = None
 
@@ -136,6 +170,7 @@ class ScanSegmentModel(BaseModel):
     target_id: str
     target_pose: Optional[PoseModel] = None
     scan: ScanConfigModel
+    path_asset: Optional[str] = None
     constraints: Optional[ConstraintsModel] = None
 
 
@@ -158,6 +193,7 @@ class MissionOverridesModel(BaseModel):
 class UnifiedMissionModel(BaseModel):
     epoch: str
     start_pose: PoseModel
+    start_target_id: Optional[str] = None
     segments: List[MissionSegmentModel]
     obstacles: List[ObstacleModel] = Field(default_factory=list)
     overrides: Optional[MissionOverridesModel] = None
@@ -820,6 +856,33 @@ async def serve_model_file(path: str):
     return FileResponse(path=file_path, filename=file_path.name)
 
 
+@app.get("/api/models/list")
+async def list_model_files():
+    """List available OBJ models in the repository."""
+    root = Path(__file__).resolve().parents[3]
+    search_dirs = [
+        root / "OBJ_files",
+        root / "OBJ_files" / "uploads",
+    ]
+    models: List[Dict[str, str]] = []
+    for base in search_dirs:
+        if not base.exists():
+            continue
+        for obj_file in sorted(base.rglob("*.obj")):
+            try:
+                rel_path = obj_file.relative_to(root)
+            except ValueError:
+                rel_path = obj_file
+            models.append(
+                {
+                    "name": obj_file.stem,
+                    "filename": obj_file.name,
+                    "path": str(rel_path),
+                }
+            )
+    return {"models": models}
+
+
 @app.post("/mission")
 async def update_mission(config: MissionConfigModel):
     await sim_manager.update_mission(config)
@@ -929,7 +992,7 @@ async def preview_trajectory(config: MeshScanConfigModel):
             lateral_accel=config.lateral_accel,
             dt=dt,
             z_margin=config.z_margin,
-            scan_axis=config.scan_axis,
+            scan_axis=str(config.scan_axis).upper().strip(),
             build_trajectory=False,
         )
 
@@ -950,6 +1013,42 @@ async def preview_trajectory(config: MeshScanConfigModel):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/path_assets")
+async def get_path_assets():
+    """List saved path assets."""
+    try:
+        assets = list_path_assets()
+        return {"assets": assets}
+    except Exception as e:
+        logger.error(f"Failed to list path assets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/path_assets/{asset_id}")
+async def get_path_asset(asset_id: str):
+    """Load a specific path asset by id."""
+    try:
+        asset = load_path_asset(asset_id)
+        return asset
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Path asset not found: {asset_id}")
+    except Exception as e:
+        logger.error(f"Failed to load path asset {asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/path_assets")
+async def create_path_asset(request: PathAssetSaveRequest):
+    """Save a path asset for reuse in missions."""
+    try:
+        payload = request.model_dump()
+        asset = save_path_asset(payload)
+        return asset
+    except Exception as e:
+        logger.error(f"Failed to save path asset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class SaveMissionRequest(BaseModel):
     name: str
     config: MissionConfigModel
@@ -958,8 +1057,7 @@ class SaveMissionRequest(BaseModel):
 @app.post("/save_mission")
 async def save_mission(request: SaveMissionRequest):
     """Save the current mission configuration to a JSON file."""
-    missions_dir = Path("missions")
-    missions_dir.mkdir(exist_ok=True)
+    MISSIONS_DEV_DIR.mkdir(parents=True, exist_ok=True)
 
     # Sanitize name
     safe_name = "".join(
@@ -968,7 +1066,7 @@ async def save_mission(request: SaveMissionRequest):
     if not safe_name:
         raise HTTPException(status_code=400, detail="Invalid mission name")
 
-    file_path = missions_dir / f"{safe_name}.json"
+    file_path = MISSIONS_DEV_DIR / f"{safe_name}.json"
 
     try:
         with open(file_path, "w") as f:
@@ -982,13 +1080,17 @@ async def save_mission(request: SaveMissionRequest):
 
 @app.get("/saved_missions")
 async def list_saved_missions():
-    """List all saved mission JSON files."""
-    missions_dir = Path("missions")
-    if not missions_dir.exists():
+    """List saved and example mission JSON files."""
+    mission_files = []
+    for missions_dir in (MISSIONS_DEV_DIR, MISSIONS_EXAMPLES_DIR):
+        if missions_dir.exists():
+            mission_files.extend(missions_dir.glob("*.json"))
+
+    if not mission_files:
         return {"missions": []}
 
-    files = sorted(missions_dir.glob("*.json"))
-    return {"missions": [f.name for f in files]}
+    mission_names = sorted({f.name for f in mission_files})
+    return {"missions": mission_names}
 
 
 class SaveUnifiedMissionRequest(BaseModel):
@@ -1106,17 +1208,7 @@ async def run_mission(request: RunMissionRequest):
     import sys
 
     # Find mission file
-    missions_dir = Path("missions")
-    mission_file = missions_dir / f"{request.mission_name}.json"
-
-    if not mission_file.exists():
-        # Try with .json extension if not included
-        if not request.mission_name.endswith(".json"):
-            mission_file = missions_dir / f"{request.mission_name}.json"
-        if not mission_file.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Mission not found: {request.mission_name}"
-            )
+    mission_file = _resolve_mission_file(request.mission_name)
 
     logger.info(f"[RUN_MISSION] Starting mission: {mission_file}")
 

@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useRef } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { Line } from '@react-three/drei';
@@ -7,13 +7,13 @@ import { orbitSnapshot, ORBIT_SCALE, EARTH_RADIUS_M } from '../data/orbitSnapsho
 import { StarlinkModel } from './StarlinkModel';
 import { ISSModel } from './ISSModel';
 
-const buildOrbitPoints = (radius: number, normal: THREE.Vector3, segments = 128) => {
+const buildOrbitPoints = (radius: number, normal: THREE.Vector3, startPos: THREE.Vector3, segments = 2048) => {
   const safeNormal = normal.clone().normalize();
-  const reference = Math.abs(safeNormal.dot(new THREE.Vector3(0, 1, 0))) > 0.95
-    ? new THREE.Vector3(1, 0, 0)
-    : new THREE.Vector3(0, 1, 0);
-  const axisA = new THREE.Vector3().crossVectors(reference, safeNormal).normalize();
+  
+  // Use startPos as the primary axis to ensure the loop starts exactly at the object
+  const axisA = startPos.clone().normalize();
   const axisB = new THREE.Vector3().crossVectors(safeNormal, axisA).normalize();
+  
   const points: [number, number, number][] = [];
   for (let i = 0; i <= segments; i += 1) {
     const t = (i / segments) * Math.PI * 2;
@@ -63,6 +63,7 @@ export function OrbitSnapshotLayer({
   selectedTargetId?: string | null;
   orbitVisibility?: Record<string, boolean>;
 }) {
+  const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
   const earthGltf = useGLTF('/OBJ_files/Earth/Earth.glb');
   const earthScale = useMemo(() => {
@@ -114,7 +115,8 @@ export function OrbitSnapshotLayer({
           if (normal.lengthSq() < 1e-6) {
             normal = new THREE.Vector3().crossVectors(pos, new THREE.Vector3(1, 0, 0));
           }
-          const points = buildOrbitPoints(obj.orbitRadius, normal, 180);
+          // Pass 'pos' as startPos to align vertex exactly with object
+          const points = buildOrbitPoints(obj.orbitRadius, normal, pos, 2048);
           return (
             <Line
               key={`${obj.id}-orbit`}
@@ -127,14 +129,28 @@ export function OrbitSnapshotLayer({
           );
         })}
         {orbitObjects.map((obj) => {
-          const isSelected = selectedTargetId === obj.id;
-          const handleSelect = (event: ThreeEvent<PointerEvent>) => {
+          const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
             event.stopPropagation();
-            onSelectTarget?.(obj.id, obj.position_m, obj.position, obj.focusDistance);
+            dragStartRef.current = { x: event.clientX, y: event.clientY };
+          };
+
+          const handleClick = (event: ThreeEvent<PointerEvent>) => {
+             event.stopPropagation();
+             if (dragStartRef.current) {
+                const dx = event.clientX - dragStartRef.current.x;
+                const dy = event.clientY - dragStartRef.current.y;
+                // Threshold: if moved > 5 pixels, it's a drag, not a click.
+                if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+             }
+             onSelectTarget?.(obj.id, obj.position_m, obj.position, obj.focusDistance);
           };
 
           return (
-            <group key={obj.id} onPointerDown={handleSelect}>
+            <group 
+              key={obj.id} 
+              onPointerDown={handlePointerDown} 
+              onClick={handleClick}
+            >
               {obj.type === 'iss' ? (
                 <ISSModel
                   position={obj.position}
@@ -148,6 +164,7 @@ export function OrbitSnapshotLayer({
                   orientation={obj.resolvedOrientation}
                   realSpanMeters={obj.real_span_m}
                   scale={obj.scaleBoost}
+                  pivot={obj.pivot}
                 />
               )}
               {/* Selection handled via highlight in model materials; no overlay markers */}

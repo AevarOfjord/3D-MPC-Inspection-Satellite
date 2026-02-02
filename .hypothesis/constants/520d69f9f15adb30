@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/mission/mission_state_manager.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-09, 1e-06, 0.001, 0.01, 0.02, 0.05, 0.12, 0.2, 0.5, 1.0, 2.0, 5.0, 'APPROACH', 'AppConfig', 'COMPLETE', 'PATH_STABILIZATION', 'POSITIONING', 'RETURNING', 'STABILIZE', 'STABILIZING', 'TRACKING', 'constant', 'default_target_speed', 'dt', 'dxf_return_angle', 'dxf_return_position', 'inf', 'position', 'scan']

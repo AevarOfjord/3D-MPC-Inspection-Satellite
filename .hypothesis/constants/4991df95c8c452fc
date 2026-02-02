@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/mission/mission_report_generator.py
+# hypothesis_version: 6.151.4
+
+[-1.0, 0.0, 0.02, 0.05, 1.0, 2.0, 100, '-', '=', 'FEATURE FLAGS:\n', 'MPC PARAMETERS:\n', 'NO', 'PATH CONFIGURATION:\n', 'PHYSICS PARAMETERS:\n', 'SIMULATION', 'THRUSTER FORCES:\n', 'TIMING PARAMETERS:\n', 'YES', 'constant', 'dxf_path_length', 'dxf_path_speed', 'dxf_shape_path', 'mpcc_path_length', 'position', 'trajectory_hold_end', 'w']

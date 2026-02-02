@@ -39,7 +39,10 @@
 │   ├── mission/                # Mission types & helpers
 │   └── physics/                # Orbital dynamics (CW equations)
 ├── missions/                   # Sample mission JSON files
+│   ├── examples/               # Curated example missions
+│   └── dev/                    # User-saved and scratch missions
 ├── ui/                         # Web-based mission designer
+├── missions_unified/           # Unified mission drafts/previews
 └── scripts/                    # Test scripts
 ```
 
@@ -48,6 +51,8 @@
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
+# Optional: dev tools + linters
+pip install -r requirements-dev.txt
 cd ui && npm install && cd ..
 
 # 2. Start the Backend Simulation Server (Term 1)
@@ -76,7 +81,8 @@ cd ui && npm run dev
 
 ## 📋 Mission Types
 
-Mission definitions live in `missions/` and drive the path-following MPC setup.
+Mission definitions live in `missions/examples/` (curated) and `missions/dev/` (saved)
+and drive the path-following MPC setup.
 
 ## 📄 License
 

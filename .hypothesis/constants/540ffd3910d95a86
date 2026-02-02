@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/utils/logging_config.py
+# hypothesis_version: 6.151.4
+
+[0.002, '%Y-%m-%d %H:%M:%S', 'Connection failed', 'Data/satellite.log', 'MPC solve completed', 'System initialized', '__main__', 'exception', 'extra', 'iterations', 'level', 'logger', 'message', 'replace', 'solve_time', 'stack', 'status', 'success', 'timestamp', 'utf-8']

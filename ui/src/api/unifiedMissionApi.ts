@@ -78,4 +78,16 @@ export const unifiedMissionApi = {
     }
     return response.json();
   },
+
+  controlSimulation: async (action: 'pause' | 'resume' | 'step', steps = 1) => {
+    const response = await fetch(`${API_BASE_URL}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, steps }),
+    });
+    if (!response.ok) {
+        throw new Error('Control failed');
+    }
+    return response.json();
+  },
 };

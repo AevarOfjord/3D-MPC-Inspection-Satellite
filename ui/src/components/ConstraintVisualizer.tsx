@@ -45,10 +45,12 @@ export function ConstraintVisualizer({ points, maxCurvature = 1.0 }: ConstraintV
 
     return (
         <group>
-            {/* Render Red segments for violations */}
+            {/* Disabled to prevent Z-fighting with EditableTrajectory */}
+            {/* 
             {analysis.violations.map((segment, i) => (
                 <Line key={i} points={segment} color="red" lineWidth={4} transparent opacity={0.8} />
-            ))}
+            ))} 
+            */}
         </group>
     );
 }

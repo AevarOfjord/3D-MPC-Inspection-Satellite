@@ -23,9 +23,12 @@ export interface SplineControl {
 
 export interface TransferSegment {
   type: 'transfer';
+  target_id?: string;
   end_pose: Pose;
   constraints?: Constraints;
 }
+
+export type SpiralPattern = 'spiral' | 'circles';
 
 export interface ScanConfig {
   frame: Frame;
@@ -37,6 +40,7 @@ export interface ScanConfig {
   revolutions: number;
   direction: SpiralDirection;
   sensor_axis: SensorAxis;
+  pattern: SpiralPattern;
 }
 
 export interface ScanSegment {
@@ -44,6 +48,7 @@ export interface ScanSegment {
   target_id: string;
   target_pose?: Pose;
   scan: ScanConfig;
+  path_asset?: string;
   constraints?: Constraints;
 }
 
@@ -67,6 +72,7 @@ export interface MissionObstacle {
 export interface UnifiedMission {
   epoch: string;
   start_pose: Pose;
+  start_target_id?: string;
   segments: MissionSegment[];
   obstacles?: MissionObstacle[];
   overrides?: MissionOverrides;

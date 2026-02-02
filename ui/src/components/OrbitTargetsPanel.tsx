@@ -54,7 +54,7 @@ export function OrbitTargetsPanel({
   );
 
   return (
-    <div className="fixed right-6 top-20 z-40 w-64 rounded border border-cyan-400/30 bg-slate-900/90 backdrop-blur shadow-[0_0_30px_rgba(15,23,42,0.65)] pointer-events-auto">
+    <div className="fixed left-6 top-20 z-40 w-64 rounded border border-cyan-400/30 bg-slate-900/90 backdrop-blur shadow-[0_0_30px_rgba(15,23,42,0.65)] pointer-events-auto">
       <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-300">
         Orbit Targets
       </div>

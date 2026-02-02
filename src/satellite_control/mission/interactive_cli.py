@@ -39,6 +39,7 @@ MISSION_STYLE = Style(
 QMARK = "›"
 
 console = Console()
+MISSIONS_DEV_DIR = Path("missions/dev")
 
 
 class InteractiveMissionCLI:
@@ -157,9 +158,8 @@ class InteractiveMissionCLI:
 
         # Scan for saved missions
         saved_missions = []
-        missions_dir = Path("missions")
-        if missions_dir.exists():
-            for f in sorted(missions_dir.glob("*.json")):
+        if MISSIONS_DEV_DIR.exists():
+            for f in sorted(MISSIONS_DEV_DIR.glob("*.json")):
                 saved_missions.append(
                     questionary.Choice(title=f"💾 {f.stem}", value=f"json:{f}")
                 )

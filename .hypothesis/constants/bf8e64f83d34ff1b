@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/io.py
+# hypothesis_version: 6.151.4
+
+[0.05, 0.1, '.', '.json', '.yaml', '.yml', '1.0.0', '3.0.0', '_', '_metadata', 'app_config', 'auto', 'control_dt', 'created_at', 'default_path_speed', 'description', 'json', 'mesh_scan_obj_path', 'migrated_from', 'mission_state', 'mpc', 'mpcc_path_length', 'mpcc_path_speed', 'mpcc_path_waypoints', 'obstacle_state', 'obstacles', 'obstacles_enabled', 'path', 'path_length', 'path_speed', 'path_waypoints', 'physics', 'r', 'scan', 'simulation', 'trajectory', 'version', 'w', 'yaml']

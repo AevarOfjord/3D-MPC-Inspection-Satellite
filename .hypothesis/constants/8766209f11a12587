@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/defaults.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.0001, 0.1, 1.0, 'cube']

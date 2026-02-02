@@ -9,25 +9,106 @@ from pathlib import Path
 import sys
 import logging
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.satellite_control.mission import (
     Mission,
-    MissionExecutor,
     create_flyby_mission,
     create_circumnavigation_mission,
     create_station_keeping_mission,
-    create_inspection_mission,
 )
+from src.satellite_control.control.mpc_controller import MPCController
+from src.satellite_control.config.simulation_config import SimulationConfig
+from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
+from src.satellite_control.config.models import ReactionWheelParams
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def test_flyby_mission():
-    """Test flyby mission execution."""
+def _build_state(sim: CppSatelliteSimulator) -> np.ndarray:
+    pos = sim.position.copy()
+    quat = sim.quaternion.copy()
+    vel = sim.velocity.copy()
+    ang_vel = sim.angular_velocity.copy()
+    rw_speeds = sim.wheel_speeds.copy()
+    return np.concatenate([pos, quat, vel, ang_vel, rw_speeds])
+
+
+def _rw_torque_limits(app_config) -> np.ndarray:
+    limits = [float(rw.max_torque) for rw in app_config.physics.reaction_wheels]
+    return np.array(limits, dtype=float)
+
+
+def _run_mission_segment(mission: Mission, waypoint_idx: int = 0, duration: float = 10.0) -> float:
+    sim_config = SimulationConfig.create_default()
+    app_config = sim_config.app_config
+
+    sim_dt = 0.005
+    control_dt = 0.05
+    app_config.simulation.dt = sim_dt
+    app_config.simulation.control_dt = control_dt
+    app_config.mpc.dt = control_dt
+    app_config.mpc.prediction_horizon = 40
+
+    # Tune weights for stable path following
+    app_config.mpc.Q_contour = 10.0
+    app_config.mpc.Q_progress = 1.0
+    app_config.mpc.Q_smooth = 1.0
+    app_config.mpc.q_angular_velocity = 1.0
+    app_config.mpc.r_thrust = 1.0
+    app_config.mpc.r_rw_torque = 0.1
+
+    app_config.physics.reaction_wheels = [
+        ReactionWheelParams(axis=(1.0, 0.0, 0.0), max_torque=0.06, inertia=1e-4),
+        ReactionWheelParams(axis=(0.0, 1.0, 0.0), max_torque=0.06, inertia=1e-4),
+        ReactionWheelParams(axis=(0.0, 0.0, 1.0), max_torque=0.06, inertia=1e-4),
+    ]
+
+    controller = MPCController(app_config)
+    sim = CppSatelliteSimulator(app_config=app_config)
+
+    sim.position = mission.start_position.copy()
+    sim.velocity = np.zeros(3)
+    sim.angle = (0.0, 0.0, 0.0)
+    sim.angular_velocity = np.zeros(3)
+
+    waypoints = mission.get_all_waypoints()
+    if not waypoints:
+        return 0.0
+
+    target = waypoints[waypoint_idx].position
+    controller.set_path([tuple(sim.position), tuple(target)])
+
+    rw_limits = _rw_torque_limits(app_config)
+
+    t = 0.0
+    last_control_time = -control_dt
+    initial_error = np.linalg.norm(sim.position - target)
+
+    while t < duration:
+        if t - last_control_time >= control_dt:
+            x_current = _build_state(sim)
+            u, info = controller.get_control_action(x_current)
+            rw_cmds, thruster_cmds = controller.split_control(u)
+            sim.set_reaction_wheel_torque(rw_cmds * rw_limits)
+            sim.apply_force(list(thruster_cmds))
+            last_control_time = t
+
+        sim.update_physics(sim_dt)
+        t += sim_dt
+
+    final_error = np.linalg.norm(sim.position - target)
+    print(f"  Segment error: {initial_error:.3f} -> {final_error:.3f} m")
+    return final_error
+
+
+def run_flyby_mission() -> bool:
+    """Run flyby mission execution and return success."""
     print("=" * 60)
     print("FLYBY MISSION TEST")
     print("=" * 60)
@@ -48,25 +129,24 @@ def test_flyby_mission():
         for i, wp in enumerate(phase.waypoints):
             print(f"    {i+1}. {wp.name}: {wp.position}")
 
-    # Create executor
-    model_path = ROOT / "models" / "satellite_rw.xml"
-    executor = MissionExecutor(model_path=str(model_path))
-
-    # Execute with timeout
-    print("\nExecuting mission (max 120s)...")
-    result = executor.execute(mission, timeout=120.0)
+    print("\nExecuting mission segment...")
+    final_error = _run_mission_segment(mission, waypoint_idx=0, duration=10.0)
+    success = final_error < 0.5
 
     print(f"\nResult:")
-    print(f"  Success: {result.success}")
-    print(f"  Duration: {result.duration:.1f}s")
-    print(f"  Waypoints: {result.waypoints_reached}/{result.total_waypoints}")
-    print(f"  Final error: {result.final_error*100:.2f}cm")
+    print(f"  Success: {success}")
+    print(f"  Final error: {final_error * 100:.2f}cm")
 
-    return result.success
+    return bool(success)
 
 
-def test_circumnavigation_mission():
-    """Test circumnavigation mission."""
+def test_flyby_mission():
+    """Test flyby mission execution."""
+    assert run_flyby_mission()
+
+
+def run_circumnavigation_mission() -> bool:
+    """Run circumnavigation mission and return success."""
     print("\n" + "=" * 60)
     print("CIRCUMNAVIGATION MISSION TEST")
     print("=" * 60)
@@ -80,27 +160,27 @@ def test_circumnavigation_mission():
     print(f"\nMission: {mission.name}")
     print(f"Waypoints: {mission.total_waypoints}")
 
-    model_path = ROOT / "models" / "satellite_rw.xml"
-    executor = MissionExecutor(model_path=str(model_path))
-
-    print("\nExecuting mission (max 180s)...")
-    result = executor.execute(mission, timeout=180.0)
+    print("\nExecuting mission segment...")
+    final_error = _run_mission_segment(mission, waypoint_idx=0, duration=12.0)
+    success = final_error < 0.75
 
     print(f"\nResult:")
-    print(f"  Success: {result.success}")
-    print(f"  Duration: {result.duration:.1f}s")
-    print(f"  Waypoints: {result.waypoints_reached}/{result.total_waypoints}")
+    print(f"  Success: {success}")
+    print(f"  Final error: {final_error * 100:.2f}cm")
 
-    return result.success
+    return bool(success)
 
 
-def test_station_keeping_mission():
-    """Test station-keeping mission."""
+def test_circumnavigation_mission():
+    """Test circumnavigation mission."""
+    assert run_circumnavigation_mission()
+
+
+def run_station_keeping_mission() -> bool:
+    """Run station-keeping mission and return success."""
     print("\n" + "=" * 60)
     print("STATION-KEEPING MISSION TEST")
     print("=" * 60)
-
-    import numpy as np
 
     mission = create_station_keeping_mission(
         position=np.array([5.0, 0.0, 0.0]),
@@ -111,22 +191,24 @@ def test_station_keeping_mission():
     print(f"Hold position: {mission.phases[0].waypoints[0].position}")
     print(f"Duration: {mission.phases[0].waypoints[0].hold_time}s")
 
-    model_path = ROOT / "models" / "satellite_rw.xml"
-    executor = MissionExecutor(model_path=str(model_path))
-
-    print("\nExecuting mission...")
-    result = executor.execute(mission, timeout=60.0)
+    print("\nExecuting mission segment...")
+    final_error = _run_mission_segment(mission, waypoint_idx=0, duration=10.0)
+    success = final_error < 0.5
 
     print(f"\nResult:")
-    print(f"  Success: {result.success}")
-    print(f"  Duration: {result.duration:.1f}s")
-    print(f"  Final error: {result.final_error*100:.2f}cm")
+    print(f"  Success: {success}")
+    print(f"  Final error: {final_error * 100:.2f}cm")
 
-    return result.success
+    return bool(success)
 
 
-def test_mission_save_load():
-    """Test mission serialization."""
+def test_station_keeping_mission():
+    """Test station-keeping mission."""
+    assert run_station_keeping_mission()
+
+
+def run_mission_save_load() -> bool:
+    """Run mission serialization test and return success."""
     print("\n" + "=" * 60)
     print("MISSION SAVE/LOAD TEST")
     print("=" * 60)
@@ -152,7 +234,12 @@ def test_mission_save_load():
 
         print(f"Match: {'✓ PASS' if success else '✗ FAIL'}")
 
-        return success
+        return bool(success)
+
+
+def test_mission_save_load():
+    """Test mission serialization."""
+    assert run_mission_save_load()
 
 
 if __name__ == "__main__":
@@ -161,12 +248,12 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
     # Run tests
-    save_load_ok = test_mission_save_load()
-    station_ok = test_station_keeping_mission()
-    flyby_ok = test_flyby_mission()
+    save_load_ok = run_mission_save_load()
+    station_ok = run_station_keeping_mission()
+    flyby_ok = run_flyby_mission()
 
     # Skip circumnavigation for now (takes longer)
-    # circum_ok = test_circumnavigation_mission()
+    # circum_ok = run_circumnavigation_mission()
 
     print("\n" + "=" * 60)
     print("SUMMARY")
