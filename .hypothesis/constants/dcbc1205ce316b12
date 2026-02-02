@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/utils/spline_path.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-10, 1e-08, 1e-06, 0.1, 0.5, 0.9, 1.0, 1.5, 100, 'constant']

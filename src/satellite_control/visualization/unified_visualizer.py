@@ -145,6 +145,7 @@ class PlotStyle:
 
     COLOR_REFERENCE = "#d62728"  # Red (Reference)
     COLOR_THRESHOLD = "#d62728"  # Red (Limits/Tolerances)
+    COLOR_TARGET = "#d62728"  # Red (Target/Reference alias)
 
     COLOR_BARS = "#1f77b4"  # Blue (Thruster Bars)
     COLOR_SUCCESS = "#2ca02c"  # Green

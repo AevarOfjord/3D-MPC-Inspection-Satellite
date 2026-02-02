@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Line, useCursor } from '@react-three/drei';
+import { Line, useCursor, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
 
@@ -18,11 +18,25 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
     if (!points || points.length === 0) return null;
     const vectors = points.map(p => new THREE.Vector3(...p));
     const markerRadius = Math.max(0.000005, 0.15 * sceneScale);
+    const selectedIndex =
+        selectedId && selectedId.startsWith('waypoint-')
+            ? parseInt(selectedId.split('-')[1], 10)
+            : null;
 
     return (
         <group>
-            {/* The Path Line */}
-            <Line points={vectors} color="#06b6d4" lineWidth={2} transparent={false} opacity={1} frustumCulled={false} renderOrder={10} />
+            {/* Native GL Line for precision at orbital scales */}
+            <line renderOrder={10}>
+                <bufferGeometry>
+                    <bufferAttribute
+                        attach="attributes-position"
+                        count={vectors.length}
+                        array={new Float32Array(points.flatMap(p => p))}
+                        itemSize={3}
+                    />
+                </bufferGeometry>
+                <lineBasicMaterial color="#06b6d4" linewidth={2} opacity={1} transparent={false} />
+            </line>
 
             {/* Interactive Waypoints (Invisible until hovered or selected) */}
             {vectors.map((vec, i) => (
@@ -48,7 +62,27 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                 </group>
             ))}
 
-            {/* Waypoint drag controls removed to keep objects fixed */}
+            {/* Waypoint drag controls */}
+            {typeof selectedIndex === 'number' && selectedIndex >= 0 && selectedIndex < vectors.length && (
+                <TransformControls
+                    mode="translate"
+                    position={[vectors[selectedIndex].x, vectors[selectedIndex].y, vectors[selectedIndex].z]}
+                    showX
+                    showY
+                    showZ
+                    onObjectChange={(e: any) => {
+                        const obj = e?.target?.object as THREE.Object3D;
+                        if (!obj) return;
+                        const next: [number, number, number] = [
+                            obj.position.x / sceneScale,
+                            obj.position.y / sceneScale,
+                            obj.position.z / sceneScale,
+                        ];
+                        builderActions.handleWaypointMove(selectedIndex, next);
+                    }}
+                    onMouseUp={() => builderActions.commitWaypointMove()}
+                />
+            )}
         </group>
     );
 }

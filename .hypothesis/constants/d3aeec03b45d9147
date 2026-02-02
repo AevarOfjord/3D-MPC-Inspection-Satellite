@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/mission/path_following.py
+# hypothesis_version: 6.151.4
+
+[1e-09, 0.001, 0.1, 0.5, 800, 'constant']

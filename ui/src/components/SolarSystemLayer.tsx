@@ -1,8 +1,7 @@
-import { Suspense, useMemo, useState } from 'react';
-import { useGLTF, Line, Html, useCursor } from '@react-three/drei';
+import { Suspense, useMemo } from 'react';
+import { useGLTF, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { solarSystemBodies, SOLAR_SCALE, AU_M, getSolarBodyPosition } from '../data/solarSystemSnapshot';
-import { useCameraStore } from '../store/cameraStore';
 
 interface PlanetModelProps {
   url: string;
@@ -42,9 +41,6 @@ const buildOrbitPoints = (radius: number, centerX: number, segments = 180) => {
 };
 
 export function SolarSystemLayer() {
-  const requestFocus = useCameraStore(s => s.requestFocus);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
   const bodies = useMemo(
     () =>
       solarSystemBodies.map((body) => ({
@@ -54,71 +50,52 @@ export function SolarSystemLayer() {
     []
   );
   const sunCenterX = -AU_M * SOLAR_SCALE;
-  useCursor(!!hoveredId);
 
   return (
     <group>
       {bodies
-        .filter((body) => body.type === 'planet')
+        .filter((body) => body.type === 'planet' || body.type === 'moon')
         .map((body) => {
           const orbitRadius = body.orbit_au * AU_M * SOLAR_SCALE;
-          const pickWidth = Math.max(orbitRadius * 0.03, 0.2);
+          
+          let centerX = sunCenterX;
+          if (body.parentId) {
+            const parent = bodies.find(b => b.id === body.parentId);
+            if (parent && parent.position) {
+              // Parent's X position is the center of the orbit
+              centerX = parent.position[0];
+            }
+          }
+
+          // Moons need thinner orbt lines
+          const pickWidth =  body.type === 'moon' 
+             ? Math.max(orbitRadius * 0.1, 0.05)
+             : Math.max(orbitRadius * 0.03, 0.2);
+
           return (
             <group key={`${body.id}-orbit`}>
               <Line
-                points={buildOrbitPoints(orbitRadius, sunCenterX, 240)}
-                color="#64748b"
-                lineWidth={2}
+                points={buildOrbitPoints(orbitRadius, centerX, 240)}
+                color={body.type === 'moon' ? '#94a3b8' : '#64748b'}
+                lineWidth={body.type === 'moon' ? 1 : 2}
                 transparent
                 opacity={0.55}
                 depthWrite={false}
                 frustumCulled={false}
                 renderOrder={5}
               />
-              <mesh
-                position={[sunCenterX, 0, 0]}
-                rotation={[Math.PI / 2, 0, 0]}
-                renderOrder={10}
-                frustumCulled={false}
-                onPointerOver={(event) => {
-                  event.stopPropagation();
-                  setHoveredId(body.id);
-                  setHoveredPoint([event.point.x, event.point.y, event.point.z]);
-                }}
-                onPointerMove={(event) => {
-                  event.stopPropagation();
-                  setHoveredPoint([event.point.x, event.point.y, event.point.z]);
-                }}
-                onPointerOut={(event) => {
-                  event.stopPropagation();
-                  setHoveredId((prev) => (prev === body.id ? null : prev));
-                  setHoveredPoint(null);
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  const radiusScene = body.radius_m * SOLAR_SCALE;
-                  requestFocus(body.position, Math.max(radiusScene * 3, 5));
-                }}
-              >
-                <torusGeometry args={[orbitRadius, pickWidth, 12, 96]} />
-                <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
-              </mesh>
+              {/* Only show hit ring for planets if we removed interaction? Or remove hit ring entirely?
+                  The user asked to remove "interaction feature", but keeping the ring for visual debugging/hit detection might be useless now.
+                  BUT, the previous request only asked to remove "hover name and click". 
+                  The user didn't ask to remove the TORUS mesh, but since it was transparent and used only for picking...
+                  Wait, step 264 removed interactions from the Torus mesh.
+                  If the Torus mesh is invisible (opacity 0) and has no handlers, it's dead code.
+                  I should probably remove it to clean up, but for now I will leave it or remove it.
+                  Let's remove the Torus mesh entirely since it served only interaction purposes.
+              */}
             </group>
           );
         })}
-      {hoveredId && hoveredPoint && (
-        (() => {
-          const body = bodies.find((b) => b.id === hoveredId);
-          if (!body) return null;
-          return (
-            <Html position={hoveredPoint} center>
-              <div className="px-2 py-1 rounded bg-slate-900/80 border border-slate-700 text-[10px] uppercase tracking-widest text-slate-200">
-                {body.name} Orbit
-              </div>
-            </Html>
-          );
-        })()
-      )}
       {bodies.map((body) => {
         if (body.glb) {
           return (

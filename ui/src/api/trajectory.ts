@@ -31,6 +31,12 @@ export interface UploadResponse {
     filename: string;
 }
 
+export interface ModelInfo {
+  name: string;
+  filename: string;
+  path: string;
+}
+
 export const trajectoryApi = {
   uploadObject: async (file: File): Promise<UploadResponse> => {
     const formData = new FormData();
@@ -47,6 +53,15 @@ export const trajectoryApi = {
       throw new Error(err.detail || 'Upload failed');
     }
     return response.json();
+  },
+
+  listModels: async (): Promise<ModelInfo[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/models/list`);
+    if (!response.ok) {
+      throw new Error('Failed to list models');
+    }
+    const data = await response.json();
+    return data.models || [];
   },
 
   previewTrajectory: async (config: MeshScanConfig): Promise<PreviewResponse> => {

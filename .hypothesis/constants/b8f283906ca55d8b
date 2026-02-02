@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/simulation.py
+# hypothesis_version: 6.151.4
+
+[-0.999999, 0.0, 1e-06, 0.01, 0.9, 0.999999, 1.0, 1000, 'Active_Thrusters', 'Angle_Error_deg', 'Next_Update_s', 'PATH_FOLLOWING', 'Position_Error_m', 'Simulation closed.', 'Solve_Time_s', 'Stabilization_Time', 'Status', 'Time', '_path_length', 'all', 'close', 'command_sent_time', 'context', 'dxf_path_length', 'initial_start_pos', 'logger_helper', 'loop', 'max_rw_torque', 'mpc_controller', 'mpc_runner', 'mpc_start_time', 'previous_command', 's', 'satellite', 'solve_time', 'state', 'thrusters', 'timeout', 'visualizer', 'wheel_speeds']

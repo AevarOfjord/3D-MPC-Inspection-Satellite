@@ -14,8 +14,8 @@ client = TestClient(app)
 @pytest.fixture
 def clean_missions():
     """Cleanup missions directory before and after tests."""
-    missions_dir = Path("missions")
-    missions_dir.mkdir(exist_ok=True)
+    missions_dir = Path("missions/dev")
+    missions_dir.mkdir(parents=True, exist_ok=True)
 
     # Backup existing
     backup = []
@@ -47,23 +47,23 @@ def test_save_mission(clean_missions):
     assert response.json()["filename"] == "TestMission1.json"
 
     # Verify file exists
-    assert Path("missions/TestMission1.json").exists()
+    assert Path("missions/dev/TestMission1.json").exists()
 
     # Verify content
-    saved = json.loads(Path("missions/TestMission1.json").read_text())
+    saved = json.loads(Path("missions/dev/TestMission1.json").read_text())
     assert saved["start_position"] == [1.0, 2.0, 3.0]
 
 
 def test_list_saved_missions(clean_missions):
     # create dummy file
-    Path("missions/Alpha.json").touch()
-    Path("missions/Beta.json").touch()
+    Path("missions/dev/DevAlpha.json").touch()
+    Path("missions/dev/DevBeta.json").touch()
 
     response = client.get("/saved_missions")
     assert response.status_code == 200
     missions = response.json()["missions"]
-    assert "Alpha.json" in missions
-    assert "Beta.json" in missions
+    assert "DevAlpha.json" in missions
+    assert "DevBeta.json" in missions
 
 
 def test_preview_trajectory():

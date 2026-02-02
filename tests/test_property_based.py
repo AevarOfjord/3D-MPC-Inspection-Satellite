@@ -267,20 +267,20 @@ class TestOrientationUtilsProperties:
     )
     @settings(max_examples=100)
     def test_euler_quat_roundtrip(self, roll, pitch, yaw):
-        """Euler to quaternion and back should be idempotent."""
+        """Euler -> quat -> Euler should preserve rotation."""
         from src.satellite_control.utils.orientation_utils import (
             euler_xyz_to_quat_wxyz,
             quat_wxyz_to_euler_xyz,
+            quat_angle_error,
         )
 
         euler = (roll, pitch, yaw)
         quat = euler_xyz_to_quat_wxyz(euler)
         euler_back = quat_wxyz_to_euler_xyz(quat)
+        quat_back = euler_xyz_to_quat_wxyz(euler_back)
 
-        # Should be close (within reasonable tolerance for gimbal lock cases)
-        assert np.allclose(euler, euler_back, atol=1e-5) or np.allclose(
-            np.array(euler) + np.array([0, 0, 2 * np.pi]), euler_back, atol=1e-5
-        )
+        # Compare rotations rather than raw Euler angles to handle gimbal lock.
+        assert quat_angle_error(quat, quat_back) < 1e-6
 
     @given(
         roll=st.floats(-np.pi, np.pi, allow_nan=False),

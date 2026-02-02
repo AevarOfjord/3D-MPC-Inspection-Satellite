@@ -69,7 +69,9 @@ class Pose:
         return {
             "frame": self.frame.value,
             "position": list(self.position),
-            "orientation": list(self.orientation) if self.orientation is not None else None,
+            "orientation": list(self.orientation)
+            if self.orientation is not None
+            else None,
         }
 
     @classmethod
@@ -77,7 +79,9 @@ class Pose:
         return cls(
             frame=Frame(data["frame"]),
             position=list(data["position"]),
-            orientation=list(data["orientation"]) if data.get("orientation") is not None else None,
+            orientation=list(data["orientation"])
+            if data.get("orientation") is not None
+            else None,
         )
 
 
@@ -115,7 +119,9 @@ class SplineControl:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SplineControl":
-        return cls(position=list(data["position"]), weight=float(data.get("weight", 1.0)))
+        return cls(
+            position=list(data["position"]), weight=float(data.get("weight", 1.0))
+        )
 
 
 @dataclass
@@ -146,7 +152,9 @@ class TransferSegment(SegmentBase):
     def from_dict(cls, data: Dict[str, Any]) -> "TransferSegment":
         constraints = Constraints.from_dict(data.get("constraints", {}))
         end_pose = Pose.from_dict(data["end_pose"])
-        return cls(type=SegmentType.TRANSFER, constraints=constraints, end_pose=end_pose)
+        return cls(
+            type=SegmentType.TRANSFER, constraints=constraints, end_pose=end_pose
+        )
 
 
 @dataclass
@@ -160,6 +168,7 @@ class ScanConfig:
     revolutions: int = 4
     direction: SpiralDirection = SpiralDirection.CW
     sensor_axis: SensorAxis = SensorAxis.PLUS_Y
+    pattern: str = "spiral"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -172,6 +181,7 @@ class ScanConfig:
             "revolutions": self.revolutions,
             "direction": self.direction.value,
             "sensor_axis": self.sensor_axis.value,
+            "pattern": self.pattern,
         }
 
     @classmethod
@@ -188,6 +198,7 @@ class ScanConfig:
             revolutions=int(data.get("revolutions", 4)),
             direction=SpiralDirection(data.get("direction", SpiralDirection.CW.value)),
             sensor_axis=SensorAxis(data.get("sensor_axis", SensorAxis.PLUS_Y.value)),
+            pattern=data.get("pattern", "spiral"),
         )
 
 
@@ -196,6 +207,7 @@ class ScanSegment(SegmentBase):
     target_id: str = ""
     target_pose: Optional[Pose] = None
     scan: ScanConfig = field(default_factory=ScanConfig)
+    path_asset: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.type = SegmentType.SCAN
@@ -205,6 +217,7 @@ class ScanSegment(SegmentBase):
         data["target_id"] = self.target_id
         data["target_pose"] = self.target_pose.to_dict() if self.target_pose else None
         data["scan"] = self.scan.to_dict()
+        data["path_asset"] = self.path_asset
         return data
 
     @classmethod
@@ -220,6 +233,7 @@ class ScanSegment(SegmentBase):
             target_id=data.get("target_id", ""),
             target_pose=target_pose,
             scan=scan,
+            path_asset=data.get("path_asset"),
         )
 
 
@@ -238,7 +252,11 @@ class HoldSegment(SegmentBase):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "HoldSegment":
         constraints = Constraints.from_dict(data.get("constraints") or {})
-        return cls(type=SegmentType.HOLD, constraints=constraints, duration=float(data.get("duration", 0.0)))
+        return cls(
+            type=SegmentType.HOLD,
+            constraints=constraints,
+            duration=float(data.get("duration", 0.0)),
+        )
 
 
 Segment = Union[TransferSegment, ScanSegment, HoldSegment]
@@ -293,7 +311,9 @@ class MissionDefinition:
                 raise ValueError(f"Unknown segment type: {seg_type}")
 
         overrides = MissionOverrides.from_dict(data.get("overrides") or {})
-        obstacles = [MissionObstacle.from_dict(o) for o in (data.get("obstacles") or [])]
+        obstacles = [
+            MissionObstacle.from_dict(o) for o in (data.get("obstacles") or [])
+        ]
         return cls(
             epoch=str(data["epoch"]),
             start_pose=Pose.from_dict(data["start_pose"]),

@@ -1,0 +1,4 @@
+# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/timing.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.001, 0.05, 0.1, 'DISABLED', 'ENABLED']

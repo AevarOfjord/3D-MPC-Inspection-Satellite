@@ -1,0 +1,330 @@
+"""
+Mission Executor
+
+Executes missions using the MPC controller and MuJoCo simulation.
+"""
+
+import logging
+import time
+from dataclasses import dataclass, field
+from typing import Callable, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import mujoco
+
+try:
+    import mujoco
+except ImportError:
+    mujoco = None
+
+import numpy as np
+
+from .mission_types import Mission, MissionStatus, Waypoint
+from src.satellite_control.config.orbital_config import OrbitalConfig
+from src.satellite_control.physics.orbital_dynamics import CWDynamics
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExecutionResult:
+    """Result of mission execution."""
+
+    success: bool
+    duration: float  # Total time in seconds
+    waypoints_reached: int
+    total_waypoints: int
+    final_position: np.ndarray
+    final_error: float  # Distance from final target
+    trajectory: List[np.ndarray] = field(default_factory=list)
+    message: str = ""
+
+
+class MissionExecutor:
+    """
+    Executes missions in MuJoCo simulation.
+
+    Handles:
+    - Loading appropriate model
+    - Running control loop
+    - Tracking progress through waypoints
+    - Safety checks (keep-out zones)
+    """
+
+    def __init__(
+        self,
+        model_path: str = None,
+        control_dt: float = 0.05,
+        sim_dt: float = 0.005,
+    ):
+        """
+        Initialize mission executor.
+
+        Args:
+            model_path: Path to MuJoCo XML model
+            control_dt: Control loop timestep (seconds)
+            sim_dt: Physics timestep (seconds)
+        """
+        self.model_path = model_path
+        self.control_dt = control_dt
+        self.sim_dt = sim_dt
+
+        # State
+        self.model: Optional["mujoco.MjModel"] = None
+        self.data: Optional["mujoco.MjData"] = None
+        self.controller = None
+        self.current_mission: Optional[Mission] = None
+
+        # Physics
+        self.orbital_config = OrbitalConfig()
+        self.cw_dynamics = CWDynamics(self.orbital_config)
+
+        # Callbacks
+        self.on_waypoint_reached: Optional[Callable[[int, Waypoint], None]] = None
+        self.on_progress: Optional[Callable[[float, np.ndarray], None]] = None
+
+    def load_model(self, model_path: str = None):
+        """Load MuJoCo model."""
+        if mujoco is None:
+            raise ImportError(
+                "MuJoCo is not installed. Please install it to use this feature."
+            )
+
+        if model_path:
+            self.model_path = model_path
+
+        if not self.model_path:
+            from pathlib import Path
+
+            self.model_path = str(
+                Path(__file__).parent.parent.parent.parent.parent
+                / "models"
+                / "satellite_3d.xml"
+            )
+
+        self.model = mujoco.MjModel.from_xml_path(self.model_path)
+        self.data = mujoco.MjData(self.model)
+        logger.info(f"Loaded model: {self.model_path}")
+
+    def load_controller(self):
+        """Load the hybrid MPC controller using SimulationConfig."""
+        from src.satellite_control.control.mpc_controller import MPCController
+        from src.satellite_control.config.simulation_config import SimulationConfig
+
+        # Create default config and controller
+        config = SimulationConfig.create_default()
+
+        # Override for mission execution context
+        config_overrides = {
+            "mpc": {
+                "prediction_horizon": 30,
+                "control_horizon": 30,
+                "dt": self.control_dt,
+            }
+        }
+        config = SimulationConfig.create_with_overrides(
+            config_overrides, base_config=config
+        )
+
+        self.controller = MPCController(cfg=config.app_config)
+        logger.info("Controller loaded")
+
+    def execute(
+        self,
+        mission: Mission,
+        real_time: bool = False,
+        timeout: float = 600.0,  # 10 minute max
+    ) -> ExecutionResult:
+        """
+        Execute a mission.
+
+        Args:
+            mission: Mission to execute
+            real_time: If True, pace simulation to real time
+            timeout: Maximum execution time in seconds
+
+        Returns:
+            ExecutionResult with success status and metrics
+        """
+        # Initialize
+        if self.model is None:
+            self.load_model()
+        if self.controller is None:
+            self.load_controller()
+
+        self.current_mission = mission
+
+        # Configure collision avoidance (V3.0.0)
+        if hasattr(self.controller, "set_obstacles"):
+            self.controller.set_obstacles(mission.obstacles)
+
+        mission.status = MissionStatus.RUNNING
+        mission.current_phase_idx = 0
+        mission.current_waypoint_idx = 0
+
+        # Get all waypoints
+        all_waypoints = mission.get_all_waypoints()
+        if not all_waypoints:
+            return ExecutionResult(
+                success=False,
+                duration=0,
+                waypoints_reached=0,
+                total_waypoints=0,
+                final_position=mission.start_position,
+                final_error=0,
+                message="No waypoints in mission",
+            )
+
+        # Set initial position
+        sat_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "satellite"
+        )
+        self.data.qpos[0:3] = mission.start_position
+        self.data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]  # Identity quaternion
+        self.data.qvel[:] = 0.0
+        mujoco.mj_forward(self.model, self.data)
+
+        # Execution state
+        waypoint_idx = 0
+        current_target = all_waypoints[0]
+        waypoints_reached = 0
+        hold_start_time = None
+        trajectory = [mission.start_position.copy()]
+
+        # Timing
+        t = 0.0
+        start_wall = time.time()
+        last_control_time = -self.control_dt
+
+        logger.info(f"Starting mission: {mission.name}")
+        logger.info(f"Total waypoints: {len(all_waypoints)}")
+
+        while t < timeout:
+            # Control update
+            if t - last_control_time >= self.control_dt:
+                # Get current state
+                pos = self.data.qpos[0:3].copy()
+                quat = self.data.qpos[3:7].copy()
+                vel = self.data.qvel[0:3].copy()
+                ang_vel = self.data.qvel[3:6].copy()
+                x_current = np.concatenate([pos, quat, vel, ang_vel])
+
+                # Build target state
+                x_target = np.zeros(13)
+                x_target[0:3] = current_target.position
+                x_target[3] = 1.0  # Identity quaternion
+
+                # Compute control
+                u, info = self.controller.get_control_action(x_current, x_target)
+
+                rw_torque_norm, thruster_cmd = self.controller.split_control(u)
+                rw_torque_body = rw_torque_norm * self.controller.max_rw_torque
+
+                # Apply thruster forces + torques
+                quat = self.data.qpos[3:7].copy()
+                R = np.zeros(9)
+                mujoco.mju_quat2Mat(R, quat)
+                R = R.reshape(3, 3)
+
+                net_force = np.zeros(3)
+                net_torque_body = np.zeros(3)
+                for i in range(self.controller.num_thrusters):
+                    force_body = thruster_cmd[i] * self.controller.body_frame_forces[i]
+                    net_force += R @ force_body
+                    net_torque_body += (
+                        thruster_cmd[i] * self.controller.body_frame_torques[i]
+                    )
+
+                net_torque_body += rw_torque_body
+                net_torque_world = R @ net_torque_body
+
+                # Add CW orbital forces
+                # V2.0.0: consolidated physics
+                cw_accel = self.cw_dynamics.compute_acceleration(pos, vel)
+                cw_force = cw_accel * 10.0  # Hardcoded mass (TODO: use config)
+
+                self.data.xfrc_applied[sat_body_id, :] = 0.0
+                self.data.xfrc_applied[sat_body_id, 0:3] = net_force + cw_force
+                self.data.xfrc_applied[sat_body_id, 3:6] = net_torque_world
+
+                # Check waypoint reached
+                error = np.linalg.norm(pos - current_target.position)
+
+                # Consider waypoint reached if within 5cm
+                if error < 0.05:
+                    if hold_start_time is None:
+                        hold_start_time = t
+                        logger.info(
+                            f"Reached waypoint {waypoint_idx + 1}: {current_target.name}"
+                        )
+
+                    # Check hold time
+                    if t - hold_start_time >= current_target.hold_time:
+                        waypoints_reached += 1
+
+                        if self.on_waypoint_reached:
+                            self.on_waypoint_reached(waypoint_idx, current_target)
+
+                        # Move to next waypoint
+                        waypoint_idx += 1
+                        if waypoint_idx >= len(all_waypoints):
+                            # Mission complete
+                            mission.status = MissionStatus.COMPLETED
+                            break
+
+                        current_target = all_waypoints[waypoint_idx]
+                        hold_start_time = None
+                        logger.info(f"Moving to waypoint {waypoint_idx + 1}")
+                else:
+                    hold_start_time = None
+
+                # Safety check: keep-out zone
+                dist_to_target = np.linalg.norm(pos)
+                if dist_to_target < mission.keep_out_radius * 0.9:
+                    logger.warning(f"Keep-out zone violation: {dist_to_target:.2f}m")
+
+                # Progress callback
+                if self.on_progress:
+                    self.on_progress(t, pos)
+
+                # Log trajectory
+                trajectory.append(pos.copy())
+
+                last_control_time = t
+
+            # Physics step
+            mujoco.mj_step(self.model, self.data)
+            t += self.sim_dt
+
+            # Real-time pacing
+            if real_time:
+                elapsed_wall = time.time() - start_wall
+                if elapsed_wall < t:
+                    time.sleep(t - elapsed_wall)
+
+        # Final metrics
+        final_pos = self.data.qpos[0:3].copy()
+        final_error = np.linalg.norm(final_pos - all_waypoints[-1].position)
+
+        result = ExecutionResult(
+            success=(mission.status == MissionStatus.COMPLETED),
+            duration=t,
+            waypoints_reached=waypoints_reached,
+            total_waypoints=len(all_waypoints),
+            final_position=final_pos,
+            final_error=final_error,
+            trajectory=trajectory,
+            message=f"Mission {mission.status.value}",
+        )
+
+        logger.info(
+            f"Mission complete: {result.waypoints_reached}/{result.total_waypoints} waypoints"
+        )
+
+        return result
+
+    def abort(self):
+        """Abort current mission."""
+        if self.current_mission:
+            self.current_mission.status = MissionStatus.ABORTED
+            logger.info("Mission aborted")

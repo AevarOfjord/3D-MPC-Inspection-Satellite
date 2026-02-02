@@ -8,13 +8,15 @@ interface StarlinkModelProps {
   orientation: [number, number, number];
   scale?: number;
   realSpanMeters?: number;
+  pivot?: 'center' | 'minY' | 'maxY' | 'centroid' | 'origin';
 }
 
 export function StarlinkModel({ 
   position, 
   orientation,
   scale = 1,
-  realSpanMeters
+  realSpanMeters,
+  pivot = 'center',
 }: StarlinkModelProps) {
   const gltf = useGLTF('/OBJ_files/Starlink/starlink.glb');
 
@@ -42,23 +44,54 @@ export function StarlinkModel({
     return clone;
   }, [gltf.scene]);
 
+  const modelMetrics = useMemo(() => {
+    // Ensure the clone has up-to-date matrices before measurement
+    clonedObj.updateWorldMatrix(true, true);
+    
+    const box = new THREE.Box3().setFromObject(clonedObj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    box.getSize(size);
+    box.getCenter(center);
+    
+    // Fallback if box is empty
+    if (box.isEmpty()) {
+      return { 
+        maxDim: 0, 
+        center: new THREE.Vector3(0, 0, 0),
+        min: new THREE.Vector3(0, 0, 0),
+        max: new THREE.Vector3(0, 0, 0)
+      };
+    }
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    return { maxDim, center, min: box.min, max: box.max };
+  }, [clonedObj]);
+
   const resolvedScale = useMemo(() => {
     if (!realSpanMeters) return scale;
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (!Number.isFinite(maxDim) || maxDim <= 0) return scale;
+    if (!Number.isFinite(modelMetrics.maxDim) || modelMetrics.maxDim <= 0) return scale;
     const targetSpan = realSpanMeters * ORBIT_SCALE;
-    return (targetSpan / maxDim) * scale;
-  }, [gltf.scene, realSpanMeters, scale]);
+    return (targetSpan / modelMetrics.maxDim) * scale;
+  }, [modelMetrics.maxDim, realSpanMeters, scale]);
+
+  const centerOffset = useMemo(() => {
+    if (pivot === 'origin') {
+      return [0, 0, 0] as [number, number, number];
+    }
+    if (pivot === 'minY') {
+      return [-modelMetrics.center.x, -modelMetrics.min.y, -modelMetrics.center.z] as [number, number, number];
+    }
+    if (pivot === 'maxY') {
+      return [-modelMetrics.center.x, -modelMetrics.max.y, -modelMetrics.center.z] as [number, number, number];
+    }
+    return [-modelMetrics.center.x, -modelMetrics.center.y, -modelMetrics.center.z] as [number, number, number];
+  }, [modelMetrics, pivot]);
   
   return (
-    <primitive
-      object={clonedObj}
-      position={position}
-      rotation={orientation}
-      scale={[resolvedScale, resolvedScale, resolvedScale]}
-    />
+    <group position={position} rotation={orientation} scale={[resolvedScale, resolvedScale, resolvedScale]}>
+      <primitive object={clonedObj} position={centerOffset} />
+    </group>
   );
 }

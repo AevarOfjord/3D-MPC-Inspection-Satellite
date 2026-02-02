@@ -31,23 +31,31 @@ export function ISSModel({ position, orientation, scale = 1, realSpanMeters }: I
     return clone;
   }, [gltf.scene]);
 
-  const resolvedScale = useMemo(() => {
-    if (!realSpanMeters) return scale;
+  const modelMetrics = useMemo(() => {
     const box = new THREE.Box3().setFromObject(gltf.scene);
     const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
     box.getSize(size);
+    box.getCenter(center);
     const maxDim = Math.max(size.x, size.y, size.z);
-    if (!Number.isFinite(maxDim) || maxDim <= 0) return scale;
+    return { maxDim, center };
+  }, [gltf.scene]);
+
+  const resolvedScale = useMemo(() => {
+    if (!realSpanMeters) return scale;
+    if (!Number.isFinite(modelMetrics.maxDim) || modelMetrics.maxDim <= 0) return scale;
     const targetSpan = realSpanMeters * ORBIT_SCALE;
-    return (targetSpan / maxDim) * scale;
-  }, [gltf.scene, realSpanMeters, scale]);
+    return (targetSpan / modelMetrics.maxDim) * scale;
+  }, [modelMetrics.maxDim, realSpanMeters, scale]);
+
+  const centerOffset = useMemo(
+    () => [-modelMetrics.center.x, -modelMetrics.center.y, -modelMetrics.center.z] as [number, number, number],
+    [modelMetrics.center]
+  );
 
   return (
-    <primitive
-      object={clonedObj}
-      position={position}
-      rotation={orientation}
-      scale={[resolvedScale, resolvedScale, resolvedScale]}
-    />
+    <group position={position} rotation={orientation} scale={[resolvedScale, resolvedScale, resolvedScale]}>
+      <primitive object={clonedObj} position={centerOffset} />
+    </group>
   );
 }

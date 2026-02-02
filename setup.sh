@@ -37,11 +37,11 @@ python -m pip install --upgrade pip
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 
-# Install the package (builds C++ extension) and dev tools
+# Install the package (builds C++ extension)
 echo "Installing satellite_control package (showing build progress)..."
-python -m pip install -v ".[dev]"
+python -m pip install -v -e .
 
 # Copy .so files to src for development
 echo "Copying compiled extensions..."
