@@ -4,8 +4,13 @@
 
 namespace satellite_control {
 
-Linearizer::Linearizer(const SatelliteParams& params) : params_(params) {
+Linearizer::Linearizer(const SatelliteParams& params)
+    : params_(params),
+      cw_dynamics_(params.orbital_mean_motion > 0.0 ? params.orbital_mean_motion : 0.0),
+      two_body_dynamics_(params.orbital_mu, params.orbital_radius),
+      use_two_body_(params.use_two_body) {
     precompute_thrusters();
+    affine_ = VectorXd::Zero(16);
 }
 
 void Linearizer::precompute_thrusters() {
@@ -44,6 +49,7 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     
     MatrixXd A = MatrixXd::Identity(nx, nx);
     MatrixXd B = MatrixXd::Zero(nx, nu);
+    affine_.setZero();
     
     // Extract quaternion
     Eigen::Vector4d q = x_current.segment<4>(3);
@@ -66,6 +72,39 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
          -y,  x,  w;
     G = 0.5 * G * dt;
     A.block<4, 3>(3, 10) = G;
+
+    // Orbital dynamics (gravity) terms
+    Eigen::Vector3d r_rel = x_current.segment<3>(0);
+    if (use_two_body_) {
+        Eigen::Vector3d target_pos = two_body_dynamics_.get_target_position();
+        Eigen::Vector3d r_abs = target_pos + r_rel;
+        double r_norm = r_abs.norm();
+        if (r_norm > 1.0) {
+            double r_norm3 = r_norm * r_norm * r_norm;
+            double r_norm5 = r_norm3 * r_norm * r_norm;
+            Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+            Eigen::Matrix3d rrT = (r_abs * r_abs.transpose());
+            Eigen::Matrix3d J = (-params_.orbital_mu) * (I / r_norm3 - 3.0 * rrT / r_norm5);
+
+            // Relative acceleration (inspector - target)
+            Eigen::Vector3d a_inspector = (-params_.orbital_mu / r_norm3) * r_abs;
+            Eigen::Vector3d a_target = two_body_dynamics_.compute_acceleration(target_pos);
+            Eigen::Vector3d a_rel = a_inspector - a_target;
+
+            // Add linearized gravity to velocity rows (7-9) w.r.t. position (0-2)
+            A.block<3, 3>(7, 0) += J * dt;
+
+            // Affine term for velocity update
+            affine_.segment<3>(7) = dt * (a_rel - J * r_rel);
+        }
+
+        if (!freeze_target_) {
+            two_body_dynamics_.propagate_target(dt);
+        }
+    } else if (params_.orbital_mean_motion > 0.0) {
+        auto [A_cw, _] = cw_dynamics_.get_mpc_dynamics_matrices(dt);
+        A += A_cw;
+    }
 
     // B matrix
     // Reaction wheels (first num_rw inputs)

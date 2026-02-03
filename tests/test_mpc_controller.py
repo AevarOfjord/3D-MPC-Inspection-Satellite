@@ -115,5 +115,18 @@ class TestControlAction:
         assert "solve_time" in info
         assert info["status"] in [1, -1, -2]  # OSQP status codes
 
+    def test_set_obstacles_accepts_tuples_and_dicts(self):
+        """Ensure obstacle normalization accepts tuple/dict inputs."""
+        cfg = create_default_app_config()
+        mpc = MPCController(cfg)
+
+        tuple_obs = [(0.0, 0.0, 0.0, 0.5)]
+        dict_obs = [
+            {"type": "sphere", "position": [1.0, 0.0, 0.0], "radius": 0.25}
+        ]
+
+        mpc.set_obstacles(tuple_obs)
+        mpc.set_obstacles(dict_obs)
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

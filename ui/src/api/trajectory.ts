@@ -11,6 +11,7 @@ export interface MeshScanConfig {
   lateral_accel: number;
   z_margin: number;
   scan_axis: 'X' | 'Y' | 'Z';
+  pattern?: 'spiral' | 'rings';
 }
 
 export interface PreviewResponse {
@@ -35,6 +36,13 @@ export interface ModelInfo {
   name: string;
   filename: string;
   path: string;
+}
+
+export interface ModelBounds {
+  center: [number, number, number];
+  min_bounds: [number, number, number];
+  max_bounds: [number, number, number];
+  extents: [number, number, number];
 }
 
 export const trajectoryApi = {
@@ -62,6 +70,17 @@ export const trajectoryApi = {
     }
     const data = await response.json();
     return data.models || [];
+  },
+
+  getModelBounds: async (path: string): Promise<ModelBounds> => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/models/bounds?path=${encodeURIComponent(path)}`
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Bounds failed' }));
+      throw new Error(err.detail || 'Bounds failed');
+    }
+    return response.json();
   },
 
   previewTrajectory: async (config: MeshScanConfig): Promise<PreviewResponse> => {

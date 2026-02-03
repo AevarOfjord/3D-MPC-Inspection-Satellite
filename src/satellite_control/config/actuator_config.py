@@ -2,8 +2,8 @@
 Unified Actuator Configuration
 
 Supports multiple actuator modes:
-- reaction_wheels: 3 reaction wheels + 8 thrusters (new default)
-- legacy_thrusters: 8 thrusters only (backward compatibility)
+- reaction_wheels: 3 reaction wheels + 6 thrusters (default)
+- legacy_thrusters: 6 thrusters only (backward compatibility)
 
 This module provides a unified interface for actuator configuration
 regardless of the underlying actuation mode.
@@ -23,15 +23,15 @@ class ActuatorMode(Enum):
     """Actuator configuration modes."""
 
     REACTION_WHEELS = "reaction_wheels"  # RW + thrusters (torque-only)
-    LEGACY_THRUSTERS = "legacy_thrusters"  # Thrusters only (8 thrusters)
+    LEGACY_THRUSTERS = "legacy_thrusters"  # Thrusters only (6 thrusters)
 
 
 @dataclass
 class ThrusterSetConfig:
     """
-    Configuration for six thrusters (IDs 1-6) around the body.
+    Configuration for six thrusters (IDs 1-6) at face centers.
 
-    Used in reaction wheel mode for translation + yaw torque.
+    Used in reaction wheel mode for translation only.
     """
 
     # Thruster positions (IDs 1-6 from PhysicsConfig)

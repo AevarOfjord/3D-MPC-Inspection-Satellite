@@ -44,6 +44,16 @@ public:
     void step(double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques);
 
     /**
+     * @brief Perform multiple simulation steps with constant inputs
+     *
+     * @param steps Number of steps to advance
+     * @param dt Time step [s] for each step
+     * @param thruster_cmds Thruster duty cycles [0-1] (length num_thrusters)
+     * @param rw_torques Reaction wheel torques [N.m] (length 3 or num_rw)
+     */
+    void step_batch(int steps, double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques);
+
+    /**
      * @brief Get the current state
      * 
      * @return Eigen::VectorXd State vector (16 elements)
@@ -68,10 +78,6 @@ private:
     Eigen::VectorXd state_;
     
     // rw_speeds_ integrated into state_ (indices 13-15)
-    
-    // Helpers
-    Eigen::Vector3d compute_total_force(const std::vector<double>& thruster_cmds, const Eigen::Vector4d& quat) const;
-    Eigen::Vector3d compute_total_torque(const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) const;
     
     // Dynamics
     Eigen::VectorXd compute_state_derivative(const Eigen::VectorXd& x, const Eigen::Vector3d& total_force, const Eigen::Vector3d& total_torque, const Eigen::Vector3d& total_rw_torque);

@@ -115,52 +115,56 @@ function App() {
         </div>
 
         <div className="flex gap-4 items-center">
-             {/* View Controls (Only useful if not fully managed by modes, but keeping for overrides) */}
-             <div className="flex bg-slate-900 rounded p-1 gap-1 items-center border border-slate-800">
-                 <FocusButton />
-                 <button
-                    onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
-                    className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${
-                      viewMode === 'chase' 
-                        ? 'border-blue-500 bg-blue-900/30 text-blue-200' 
-                        : 'border-slate-700 text-slate-300 hover:border-blue-500'
-                    }`}
-                  >
-                    Chase Sat
-                  </button>
-                  <div className="w-px h-4 bg-slate-700 mx-1" />
-                  <button
-                    onClick={() => useCameraStore.getState().zoomOut()}
-                    className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
-                  >
-                    -
-                  </button>
-                  <button
-                    onClick={() => useCameraStore.getState().zoomIn()}
-                    className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
-                  >
-                    +
-                  </button>
-             </div>
+             {appMode === 'viewer' && (
+                <>
+                  {/* Viewer Controls */}
+                  <div className="flex bg-slate-900 rounded p-1 gap-1 items-center border border-slate-800">
+                      <FocusButton />
+                      <button
+                        onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
+                        className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${
+                          viewMode === 'chase' 
+                            ? 'border-blue-500 bg-blue-900/30 text-blue-200' 
+                            : 'border-slate-700 text-slate-300 hover:border-blue-500'
+                        }`}
+                      >
+                        Chase Sat
+                      </button>
+                      <div className="w-px h-4 bg-slate-700 mx-1" />
+                      <button
+                        onClick={() => useCameraStore.getState().zoomOut()}
+                        className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() => useCameraStore.getState().zoomIn()}
+                        className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
+                      >
+                        +
+                      </button>
+                  </div>
 
-             <PlaybackSelector />
+                  <PlaybackSelector />
 
-             <div className="relative">
-               <button
-                 onClick={() => setEventLogOpen((open) => !open)}
-                 className={`px-2 py-1 text-[10px] uppercase rounded border ${
-                   eventLogOpen ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300 hover:border-blue-500'
-                 }`}
-               >
-                 Event Log
-                 {eventCount > 0 && (
-                   <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
-                     {eventCount}
-                   </span>
-                 )}
-               </button>
-               <EventLog open={eventLogOpen} onClose={() => setEventLogOpen(false)} />
-             </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setEventLogOpen((open) => !open)}
+                      className={`px-2 py-1 text-[10px] uppercase rounded border ${
+                        eventLogOpen ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300 hover:border-blue-500'
+                      }`}
+                    >
+                      Event Log
+                      {eventCount > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                          {eventCount}
+                        </span>
+                      )}
+                    </button>
+                    <EventLog open={eventLogOpen} onClose={() => setEventLogOpen(false)} />
+                  </div>
+                </>
+             )}
         </div>
       </header>
       

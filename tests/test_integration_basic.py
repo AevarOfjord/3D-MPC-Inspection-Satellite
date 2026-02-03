@@ -21,7 +21,7 @@ class TestConfigModelIntegration:
         config_thruster_count = len(config.app_config.physics.thruster_forces)
         model_thruster_count = len(model.thruster_positions)
 
-        assert config_thruster_count == model_thruster_count == 8
+        assert config_thruster_count == model_thruster_count == 6
 
     def test_config_and_model_thruster_ids_match(self):
         """Test that thruster IDs are consistent between config and model."""
@@ -44,7 +44,7 @@ class TestConfigModelIntegration:
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
 
-        for thruster_id in range(1, 9):
+        for thruster_id in range(1, 7):
             config_pos = config.app_config.physics.thruster_positions[thruster_id]
             model_pos = model.thruster_positions[thruster_id]
 
@@ -60,7 +60,7 @@ class TestConfigModelIntegration:
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
 
-        for thruster_id in range(1, 9):
+        for thruster_id in range(1, 7):
             config_dir = config.app_config.physics.thruster_directions[thruster_id]
             model_dir = model.thruster_directions[thruster_id]
 
@@ -156,7 +156,7 @@ class TestPhysicsComputation:
         total_force = np.zeros(3)
         total_torque = np.zeros(3)
 
-        for thruster_id in range(1, 9):
+        for thruster_id in range(1, 7):
             force_mag = physics.thruster_forces[thruster_id]
             position = np.array(model.thruster_positions[thruster_id])
             direction = np.array(model.thruster_directions[thruster_id])

@@ -8,13 +8,13 @@ Physical Parameters for Satellite Control System
 
 Configuration sections:
 - Mass Properties: Total mass, moment of inertia, center of mass offset
-- Thruster Configuration: Eight-thruster layout with positions and directions
+- Thruster Configuration: Six-thruster layout with positions and directions
 - Thruster Forces: Individual force calibration per thruster
 - Realistic Physics: Damping, friction, sensor noise
 - Air Bearing System: Three-point support configuration
 
 Thruster layout:
-- Eight thrusters arranged around satellite body
+- Six thrusters at the center of each cube face
 - Individual position and direction vectors
 - Configurable force magnitude per thruster
 - Support for force calibration and testing
@@ -49,7 +49,7 @@ class PhysicsConfig:
         satellite_size: Characteristic dimension in meters
         com_offset: Center of mass offset [x, y, z] in meters
         thruster_positions: Dict[int, Tuple[float, float, float]]
-        # Dict mapping thruster ID (1-8) to (x, y, z) position in meters
+        # Dict mapping thruster ID (1-6) to (x, y, z) position in meters
         thruster_directions: Dict mapping thruster ID to unit direction vector
         thruster_forces: Dict mapping thruster ID to force magnitude in Newtons
         use_realistic_physics: Enable realistic physics modeling
@@ -112,38 +112,34 @@ SATELLITE_SIZE = Constants.SATELLITE_SIZE
 # Moment of Inertia for a solid cube: I = (1/6) * m * s^2
 MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 
-# Thruster configuration (8 thrusters, planar layout)
+# Thruster configuration (6 thrusters, one per face)
+HALF_SIZE = SATELLITE_SIZE * 0.5
 THRUSTER_POSITIONS = {
-    1: (0.145, 0.06, 0.0),
-    2: (0.145, -0.06, 0.0),
-    3: (0.06, -0.145, 0.0),
-    4: (-0.06, -0.145, 0.0),
-    5: (-0.145, -0.06, 0.0),
-    6: (-0.145, 0.06, 0.0),
-    7: (-0.06, 0.145, 0.0),
-    8: (0.06, 0.145, 0.0),
+    1: (HALF_SIZE, 0.0, 0.0),   # +X face
+    2: (-HALF_SIZE, 0.0, 0.0),  # -X face
+    3: (0.0, HALF_SIZE, 0.0),   # +Y face
+    4: (0.0, -HALF_SIZE, 0.0),  # -Y face
+    5: (0.0, 0.0, HALF_SIZE),   # +Z face
+    6: (0.0, 0.0, -HALF_SIZE),  # -Z face
 }
 
+# Thrust direction is the force direction on the satellite (points toward center).
 THRUSTER_DIRECTIONS = {
     1: np.array([-1.0, 0.0, 0.0]),
-    2: np.array([-1.0, 0.0, 0.0]),
-    3: np.array([0.0, 1.0, 0.0]),
+    2: np.array([1.0, 0.0, 0.0]),
+    3: np.array([0.0, -1.0, 0.0]),
     4: np.array([0.0, 1.0, 0.0]),
-    5: np.array([1.0, 0.0, 0.0]),
-    6: np.array([1.0, 0.0, 0.0]),
-    7: np.array([0.0, -1.0, 0.0]),
-    8: np.array([0.0, -1.0, 0.0]),
+    5: np.array([0.0, 0.0, -1.0]),
+    6: np.array([0.0, 0.0, 1.0]),
 }
 
 THRUSTER_FORCES = {
-    1: 0.441,
-    2: 0.431,
-    3: 0.428,
-    4: 0.438,
-    5: 0.469,
-    6: 0.447,
-    7: 0.467,
-    8: 0.484,
+    1: 0.45,
+    2: 0.45,
+    3: 0.45,
+    4: 0.45,
+    5: 0.45,
+    6: 0.45,
 }
 
 GRAVITY_M_S2 = Constants.GRAVITY_M_S2
@@ -197,14 +193,14 @@ def set_thruster_force(thruster_id: int, force: float) -> None:
     Set individual thruster force for calibration.
 
     Args:
-        thruster_id: Thruster ID (1-8)
+        thruster_id: Thruster ID (1-6)
         force: Force magnitude in Newtons
 
     Raises:
         ValueError: If thruster_id invalid or force non-positive
     """
-    if thruster_id not in range(1, 9):
-        raise ValueError(f"Thruster ID must be 1-8, got {thruster_id}")
+    if thruster_id not in range(1, 7):
+        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 

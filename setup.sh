@@ -43,10 +43,6 @@ python -m pip install -r requirements-dev.txt
 echo "Installing satellite_control package (showing build progress)..."
 python -m pip install -v -e .
 
-# Copy .so files to src for development
-echo "Copying compiled extensions..."
-cp .venv311/lib/python3.11/site-packages/satellite_control/cpp/*.so src/satellite_control/cpp/ 2>/dev/null || true
-
 # Install frontend dependencies
 echo "Installing frontend dependencies..."
 cd ui

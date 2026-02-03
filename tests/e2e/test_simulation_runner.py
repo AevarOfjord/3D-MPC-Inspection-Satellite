@@ -112,10 +112,10 @@ def test_config_validation():
 
     from src.satellite_control.config.models import SatellitePhysicalParams
 
-    # Create valid thruster configuration (8 thrusters required)
-    thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in range(1, 9)}
-    thruster_directions = {i: (1.0, 0.0, 0.0) for i in range(1, 9)}
-    thruster_forces = {i: 0.3 for i in range(1, 9)}
+    # Create valid thruster configuration (6 thrusters required)
+    thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in range(1, 7)}
+    thruster_directions = {i: (1.0, 0.0, 0.0) for i in range(1, 7)}
+    thruster_forces = {i: 0.3 for i in range(1, 7)}
 
     # Valid config
     params = SatellitePhysicalParams(

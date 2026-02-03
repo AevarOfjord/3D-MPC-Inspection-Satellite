@@ -935,6 +935,81 @@ def build_mesh_scan_trajectory(
     return path, trajectory, path_length
 
 
+def build_mesh_spiral_trajectory(
+    obj_path: str,
+    standoff: float,
+    levels: int,
+    points_per_circle: int,
+    v_max: float,
+    v_min: float,
+    lateral_accel: float,
+    dt: float,
+    z_margin: float = 0.0,
+    scan_axis: str = "Z",
+    build_trajectory: bool = True,
+) -> Tuple[List[Tuple[float, float, float]], np.ndarray, float]:
+    """Generate a spiral (helical) scan path around a mesh."""
+    vertices, _ = load_obj_data(obj_path)
+
+    axis = scan_axis.upper().strip()
+    if axis == "X":
+        perm_order = [1, 2, 0]
+        inv_perm_order = [2, 0, 1]
+    elif axis == "Y":
+        perm_order = [2, 0, 1]
+        inv_perm_order = [1, 2, 0]
+    else:
+        perm_order = [0, 1, 2]
+        inv_perm_order = [0, 1, 2]
+
+    vertices_perm = vertices[:, perm_order]
+
+    center, rx, ry, _angle, eigenvectors, z_min, z_max = compute_oriented_bounds(
+        vertices_perm
+    )
+
+    z_min = float(z_min - z_margin)
+    z_max = float(z_max + z_margin)
+    height = max(z_max - z_min, 1e-6)
+
+    turns = max(int(levels), 1)
+    points_per_turn = max(int(points_per_circle), 12)
+    total_points = max(3, turns * points_per_turn)
+
+    radius_x = float(rx + standoff)
+    radius_y = float(ry + standoff)
+    center_xy = np.array(center[:2], dtype=float)
+
+    spiral_points = []
+    for i in range(total_points + 1):
+        frac = i / float(total_points)
+        angle = 2.0 * np.pi * turns * frac
+        local = np.array(
+            [radius_x * np.cos(angle), radius_y * np.sin(angle)], dtype=float
+        )
+        xy = center_xy + np.dot(local, eigenvectors.T)
+        z = z_min + height * frac
+        perm_point = np.array([xy[0], xy[1], z], dtype=float)
+        world_point = perm_point[inv_perm_order]
+        spiral_points.append(tuple(map(float, world_point)))
+
+    path = spiral_points
+    path_length = (
+        float(np.sum(np.linalg.norm(np.diff(np.array(path), axis=0), axis=1)))
+        if len(path) > 1
+        else 0.0
+    )
+    if not build_trajectory:
+        return path, np.empty((0, 7), dtype=float), path_length
+
+    curvature = compute_curvature(np.array(path, dtype=float))
+    speeds = compute_speed_profile(curvature, v_max, v_min, lateral_accel)
+    trajectory, total_time = build_time_parameterized_trajectory(
+        np.array(path, dtype=float), speeds, dt
+    )
+    return path, trajectory, path_length
+
+
 def build_cylinder_scan_trajectory(
     center: Iterable[float],
     rotation_xyz: Iterable[float],

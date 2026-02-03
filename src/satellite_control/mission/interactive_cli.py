@@ -92,6 +92,10 @@ class InteractiveMissionCLI:
                 value="starlink_orbit",
             ),
             questionary.Choice(
+                title="🧪  MPCC Test Suite (complex paths)",
+                value="mpcc_tests",
+            ),
+            questionary.Choice(
                 title="💾 Load Saved Mission (JSON)",
                 value="load_saved",
             ),
@@ -641,6 +645,9 @@ class InteractiveMissionCLI:
         mission_state.obstacles_enabled = obstacles_enabled
 
         simulation_config.app_config.mpc.path_speed = speed
+        z_vals = [p[2] for p in path if len(p) > 2]
+        if z_vals and (max(z_vals) - min(z_vals)) > 1e-3:
+            simulation_config.app_config.mpc.Q_attitude = 50.0
         # Store path waypoints for MPC initialization
         mission_state.mpcc_path_waypoints = path  # Pass to simulation for set_path()
 
@@ -905,6 +912,90 @@ class InteractiveMissionCLI:
 
         return {
             "mission_type": "starlink_orbit",
+            "start_pos": start_pos,
+            "start_angle": start_angle,
+            "simulation_config": simulation_config,
+        }
+
+    def run_mpcc_test_mission(self) -> Dict[str, Any]:
+        """MPCC Test Suite: complex paths for validation."""
+        from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.mission.mpcc_test_paths import (
+            MPCC_TEST_CASES,
+            build_test_path,
+        )
+
+        simulation_config = SimulationConfig.create_default()
+        mission_state = simulation_config.mission_state
+
+        console.print()
+        console.print(Panel("MPCC Test Suite", style="magenta"))
+
+        choices = []
+        for key, meta in MPCC_TEST_CASES.items():
+            title = str(meta.get("title", key))
+            desc = str(meta.get("description", ""))
+            label = f"●  {title}"
+            if desc:
+                label = f"{label} — {desc}"
+            choices.append(questionary.Choice(title=label, value=key))
+
+        test_key = questionary.select(
+            "Select MPCC test path:",
+            choices=choices,
+            style=MISSION_STYLE,
+            qmark=QMARK,
+        ).ask()
+
+        if test_key is None:
+            return {}
+
+        path, path_length, default_speed = build_test_path(test_key)
+
+        speed = float(
+            questionary.text(
+                f"Path speed (m/s) [{default_speed:.2f}]:",
+                default=f"{default_speed:.2f}",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or default_speed
+        )
+
+        hold_end = float(
+            questionary.text(
+                "Hold time at end (s) [5.0]:",
+                default="5.0",
+                validate=lambda x: self._validate_positive_float(x) or x == "0",
+                style=MISSION_STYLE,
+                qmark=QMARK,
+            ).ask()
+            or 5.0
+        )
+
+        obstacles, obstacles_enabled = self.configure_obstacles_interactive(mission_state)
+
+        simulation_config.app_config.mpc.path_speed = speed
+        simulation_config.app_config.mpc.Q_attitude = 50.0
+        simulation_config.app_config.mpc.enable_collision_avoidance = obstacles_enabled
+
+        mission_state.trajectory_mode_active = False
+        mission_state.trajectory_type = "path"
+        mission_state.trajectory_hold_end = hold_end
+        mission_state.mesh_scan_mode_active = False
+        mission_state.obstacles = obstacles
+        mission_state.obstacles_enabled = obstacles_enabled
+        mission_state.mpcc_path_waypoints = path
+        mission_state.dxf_shape_path = path
+        mission_state.dxf_path_length = path_length
+        mission_state.dxf_path_speed = speed
+
+        start_pos = tuple(path[0]) if path else (0.0, 0.0, 0.0)
+        start_angle = (0.0, 0.0, 0.0)
+
+        return {
+            "mission_type": "mpcc_tests",
             "start_pos": start_pos,
             "start_angle": start_angle,
             "simulation_config": simulation_config,

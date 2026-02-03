@@ -15,6 +15,7 @@ dashboard:
 	@$(MAKE) -j2 backend frontend
 
 backend:
+	@echo "Stopping any existing process on port 8000..."
 	@lsof -ti:8000 | xargs kill -9 || true
 	$(VENV_PY) run_dashboard.py
 
@@ -33,14 +34,13 @@ venv:
 install: venv
 	@$(VENV_PIP) install -r $(REQS_FILE)
 	@$(VENV_PIP) install --no-build-isolation -e .
-	@cp $(VENV_DIR)/lib/python3.11/site-packages/satellite_control/cpp/*.so src/satellite_control/cpp/ || true
 
 install-dev: venv
 	@$(VENV_PIP) install -r $(DEV_REQS_FILE)
 	@$(VENV_PIP) install --no-build-isolation -e .
-	@cp $(VENV_DIR)/lib/python3.11/site-packages/satellite_control/cpp/*.so src/satellite_control/cpp/ || true
 
 clean:
 	@rm -rf $(VENV_DIR) build dist src/lib
 	@rm -f src/satellite_control/cpp/*.so
 	@rm -rf .venv311
+	@rm -rf ui/node_modules/.vite

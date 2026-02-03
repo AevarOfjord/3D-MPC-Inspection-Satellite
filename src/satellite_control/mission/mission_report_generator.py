@@ -351,8 +351,18 @@ class MissionReportGenerator:
         f.write(
             f"  Q_PROGRESS:                    {self.app_config.mpc.Q_progress:.1f}\n"
         )
+        f.write(f"  Q_LAG:                         {self.app_config.mpc.Q_lag:.1f}\n")
         f.write(
             f"  Q_SMOOTH:                      {self.app_config.mpc.Q_smooth:.1f}\n"
+        )
+        f.write(
+            f"  Q_ATTITUDE:                    {self.app_config.mpc.Q_attitude:.1f}\n"
+        )
+        f.write(
+            f"  Q_TERMINAL_POS:                {self.app_config.mpc.Q_terminal_pos:.1f}\n"
+        )
+        f.write(
+            f"  Q_TERMINAL_S:                  {self.app_config.mpc.Q_terminal_s:.1f}\n"
         )
         f.write(
             f"  Q_ANGULAR_VELOCITY:            {self.app_config.mpc.q_angular_velocity:.1f}\n"
@@ -365,6 +375,12 @@ class MissionReportGenerator:
         )
         f.write(
             f"  PATH_SPEED:                   {self.app_config.mpc.path_speed:.3f} m/s\n"
+        )
+        f.write(
+            f"  PROGRESS_TAPER_DISTANCE:      {self.app_config.mpc.progress_taper_distance:.3f} m\n"
+        )
+        f.write(
+            f"  PROGRESS_SLOWDOWN_DISTANCE:   {self.app_config.mpc.progress_slowdown_distance:.3f} m\n"
         )
 
         f.write(

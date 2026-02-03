@@ -105,3 +105,17 @@ class TestMPCPathFollowing:
         assert "path_s" in info
         assert "path_v_s" in info
         assert "solve_time" in info
+
+    def test_path_projection_progress(self):
+        """Test path projection for progress and error metrics."""
+        cfg = create_default_app_config()
+        mpc = MPCController(cfg)
+
+        path = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+        mpc.set_path(path)
+
+        pos = np.array([0.75, 0.2, 0.0])
+        metrics = mpc.get_path_progress(pos)
+
+        assert metrics["s"] == pytest.approx(0.75, abs=1e-2)
+        assert metrics["path_error"] == pytest.approx(0.2, abs=1e-2)

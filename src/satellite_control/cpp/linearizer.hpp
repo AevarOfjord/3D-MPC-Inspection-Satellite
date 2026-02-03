@@ -3,6 +3,7 @@
 #include <vector>
 #include <tuple>
 #include "satellite_params.hpp"
+#include "orbital_dynamics.hpp"
 
 namespace satellite_control {
 
@@ -16,13 +17,20 @@ public:
 
     // Returns {A, B}
     std::pair<MatrixXd, MatrixXd> linearize(const VectorXd& x_current);
+    const VectorXd& affine() const { return affine_; }
+    void set_freeze_target(bool freeze) { freeze_target_ = freeze; }
 
 private:
     SatelliteParams params_;
+    CWDynamics cw_dynamics_;
+    TwoBodyDynamics two_body_dynamics_;
+    bool use_two_body_ = true;
+    bool freeze_target_ = false;
     
     // Precomputed thruster data in body frame
     std::vector<Vector3d> body_forces_;
     std::vector<Vector3d> body_torques_;
+    VectorXd affine_;
 
     void precompute_thrusters();
     Eigen::Matrix3d compute_rotation_matrix(const Eigen::Vector4d& q);

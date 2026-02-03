@@ -58,7 +58,7 @@ class ThrusterConfig:
 @dataclass
 class ThrusterArrayConfig:
     """
-    Configuration for all 8 thrusters.
+    Configuration for all 6 thrusters.
 
     Provides type-safe access to thruster parameters and converts
     from legacy dictionary format.
@@ -94,7 +94,7 @@ class ThrusterArrayConfig:
         return cls(thrusters=thrusters)
 
     def __getitem__(self, thruster_id: int) -> ThrusterConfig:
-        """Get thruster by ID (1-8)."""
+        """Get thruster by ID (1-6)."""
         return self.thrusters[thruster_id]
 
     def __iter__(self):

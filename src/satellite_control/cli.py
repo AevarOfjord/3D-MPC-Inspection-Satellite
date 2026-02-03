@@ -173,11 +173,15 @@ def run(
 
             # Obstacles
             obs_data = mission_data.get("obstacles", [])
+            from src.satellite_control.mission.mission_types import (
+                Obstacle as MissionObstacle,
+            )
+
             obstacles = []
             for o in obs_data:
                 p = o.get("position", [0, 0, 0])
                 r = o.get("radius", 0.5)
-                obstacles.append((p[0], p[1], p[2], r))
+                obstacles.append(MissionObstacle(position=np.array(p), radius=r))
             ms.obstacles = obstacles
             ms.obstacles_enabled = len(obstacles) > 0
 
@@ -240,11 +244,15 @@ def run(
 
             # Obstacles
             obs_data = mission_data.get("obstacles", [])
+            from src.satellite_control.mission.mission_types import (
+                Obstacle as MissionObstacle,
+            )
+
             obstacles = []
             for o in obs_data:
                 p = o.get("position", [0, 0, 0])
                 r = o.get("radius", 0.5)
-                obstacles.append((p[0], p[1], p[2], r))
+                obstacles.append(MissionObstacle(position=np.array(p), radius=r))
             ms.obstacles = obstacles
             ms.obstacles_enabled = len(obstacles) > 0
 
@@ -377,6 +385,17 @@ def run(
                     sim_start_angle = mission_config.get("start_angle")
             elif mode == "starlink_orbit":
                 mission_config = interactive_cli.run_starlink_orbit_mission()
+                if not mission_config:
+                    console.print("[red]Mission cancelled.[/red]")
+                    raise typer.Exit()
+                if "simulation_config" in mission_config:
+                    simulation_config = mission_config["simulation_config"]
+                if "start_pos" in mission_config:
+                    sim_start_pos = mission_config.get("start_pos")
+                if "start_angle" in mission_config:
+                    sim_start_angle = mission_config.get("start_angle")
+            elif mode == "mpcc_tests":
+                mission_config = interactive_cli.run_mpcc_test_mission()
                 if not mission_config:
                     console.print("[red]Mission cancelled.[/red]")
                     raise typer.Exit()

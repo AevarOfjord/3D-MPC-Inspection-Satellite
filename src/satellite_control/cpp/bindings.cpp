@@ -25,7 +25,12 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("thruster_forces", &SatelliteParams::thruster_forces)
         .def_readwrite("rw_torque_limits", &SatelliteParams::rw_torque_limits)
         .def_readwrite("rw_inertia", &SatelliteParams::rw_inertia)
-        .def_readwrite("com_offset", &SatelliteParams::com_offset);
+        .def_readwrite("rw_speed_limits", &SatelliteParams::rw_speed_limits)
+        .def_readwrite("com_offset", &SatelliteParams::com_offset)
+        .def_readwrite("orbital_mean_motion", &SatelliteParams::orbital_mean_motion)
+        .def_readwrite("orbital_mu", &SatelliteParams::orbital_mu)
+        .def_readwrite("orbital_radius", &SatelliteParams::orbital_radius)
+        .def_readwrite("use_two_body", &SatelliteParams::use_two_body);
 
     // Linearizer
     py::class_<Linearizer>(m, "Linearizer")
@@ -36,9 +41,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
     py::class_<MPCParams>(m, "MPCParams")
         .def(py::init<>())
         .def_readwrite("prediction_horizon", &MPCParams::prediction_horizon)
+        .def_readwrite("control_horizon", &MPCParams::control_horizon)
         .def_readwrite("dt", &MPCParams::dt)
         .def_readwrite("solver_time_limit", &MPCParams::solver_time_limit)
+        .def_readwrite("solver_type", &MPCParams::solver_type)
+        .def_readwrite("verbose_mpc", &MPCParams::verbose_mpc)
         .def_readwrite("Q_angvel", &MPCParams::Q_angvel)
+        .def_readwrite("Q_attitude", &MPCParams::Q_attitude)
         .def_readwrite("R_thrust", &MPCParams::R_thrust)
         .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
 
@@ -48,8 +57,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         // Path Following (V4.0.1) - General Path MPCC
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
+        .def_readwrite("Q_lag", &MPCParams::Q_lag)
         .def_readwrite("Q_smooth", &MPCParams::Q_smooth)
-        .def_readwrite("path_speed", &MPCParams::path_speed);
+        .def_readwrite("path_speed", &MPCParams::path_speed)
+        .def_readwrite("Q_terminal_pos", &MPCParams::Q_terminal_pos)
+        .def_readwrite("Q_terminal_s", &MPCParams::Q_terminal_s)
+        .def_readwrite("progress_taper_distance", &MPCParams::progress_taper_distance)
+        .def_readwrite("progress_slowdown_distance", &MPCParams::progress_slowdown_distance);
 
     // Control Result
     py::class_<ControlResult>(m, "ControlResult")
@@ -89,12 +103,18 @@ PYBIND11_MODULE(_cpp_mpc, m) {
              "Compute optimal control action")
         .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
         .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
+        .def("set_warm_start_control", &MPCControllerCpp::set_warm_start_control,
+             py::arg("u_prev"),
+             "Provide a warm-start control guess")
         .def("set_path_data", &MPCControllerCpp::set_path_data,
              py::arg("path_data"),
              "Set path data for general path following. path_data is list of [s, x, y, z] arrays.")
+        .def("project_onto_path", &MPCControllerCpp::project_onto_path,
+             py::arg("position"),
+             "Project a position onto the current path. Returns (s, point, distance, endpoint_error).")
         .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
         .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
-        .def_property_readonly("dt", &MPCControllerCpp::dt);
-
-    m.def("add", [](int i, int j) { return i + j; }, "A function that adds two numbers");
+        .def_property_readonly("dt", &MPCControllerCpp::dt)
+        .def_property_readonly("path_length", &MPCControllerCpp::path_length)
+        .def_property_readonly("has_path", &MPCControllerCpp::has_path);
 }

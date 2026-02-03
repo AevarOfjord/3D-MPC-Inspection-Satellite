@@ -322,6 +322,12 @@ class SimulationInitializer:
         self.simulation.next_control_simulation_time = (
             0.0  # Track next scheduled control update
         )
+        self.simulation.physics_log_stride = int(
+            getattr(app_config.simulation, "physics_log_stride", 1)
+        )
+        self.simulation.control_log_stride = int(
+            getattr(app_config.simulation, "control_log_stride", 1)
+        )
 
     def _initialize_thruster_manager(self, app_config: Any) -> None:
         """Initialize thruster manager with delays and physics settings."""
@@ -361,6 +367,10 @@ class SimulationInitializer:
         self.simulation.reference_history: List[np.ndarray] = []
         self.simulation.mpc_solve_times: List[float] = []
         self.simulation.mpc_info_history: List[dict] = []
+
+        # Logging stride counters
+        self.simulation._physics_log_counter = 0
+        self.simulation._control_log_counter = 0
 
         # Previous command for rate limiting
         self.simulation.previous_command: Optional[np.ndarray] = None

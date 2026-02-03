@@ -22,6 +22,10 @@ from src.satellite_control.cpp._cpp_mpc import (
     ObstacleSet,
     ObstacleType,
 )
+from src.satellite_control.mission.mission_types import (
+    Obstacle as MissionObstacle,
+    ObstacleType as MissionObstacleType,
+)
 
 from .base import Controller
 
@@ -71,25 +75,46 @@ class MPCController(Controller):
         sat_params.thruster_forces = self.thruster_forces
         sat_params.rw_torque_limits = self.rw_torque_limits
         sat_params.rw_inertia = self.rw_inertia
+        sat_params.rw_speed_limits = self.rw_speed_limits
         sat_params.com_offset = self.com_offset
+        sat_params.orbital_mean_motion = self.orbital_mean_motion
+        sat_params.orbital_mu = self.orbital_mu
+        sat_params.orbital_radius = self.orbital_radius
+        sat_params.use_two_body = self.use_two_body
 
         # Build C++ MPCParams
         mpc_params = CppMPCParams()
         mpc_params.prediction_horizon = self.N
+        mpc_params.control_horizon = int(self.control_horizon)
         mpc_params.dt = self._dt
         mpc_params.solver_time_limit = self.solver_time_limit
+        mpc_params.solver_type = str(self.solver_type)
+        mpc_params.verbose_mpc = bool(self.verbose_mpc)
 
         mpc_params.Q_contour = self.Q_contour
         mpc_params.Q_progress = self.Q_progress
+        if hasattr(mpc_params, "Q_lag"):
+            mpc_params.Q_lag = self.Q_lag
         mpc_params.Q_smooth = self.Q_smooth
+        if hasattr(mpc_params, "Q_terminal_pos"):
+            mpc_params.Q_terminal_pos = self.Q_terminal_pos
+        if hasattr(mpc_params, "Q_terminal_s"):
+            mpc_params.Q_terminal_s = self.Q_terminal_s
         mpc_params.Q_angvel = self.Q_angvel
+        if hasattr(mpc_params, "Q_attitude"):
+            mpc_params.Q_attitude = self.Q_attitude
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
         if hasattr(mpc_params, "path_speed"):
             mpc_params.path_speed = self.path_speed
+        if hasattr(mpc_params, "progress_taper_distance"):
+            mpc_params.progress_taper_distance = self.progress_taper_distance
+        if hasattr(mpc_params, "progress_slowdown_distance"):
+            mpc_params.progress_slowdown_distance = self.progress_slowdown_distance
 
         # Collision Avoidance
-        mpc_params.enable_collision_avoidance = cfg.mpc.enable_collision_avoidance
+        # Path-focused MPCC: obstacles are ignored by design.
+        mpc_params.enable_collision_avoidance = False
         mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
@@ -101,6 +126,8 @@ class MPCController(Controller):
         self.s = 0.0
         self._path_data: list[list[float]] = []  # [(s, x, y, z), ...]
         self._path_set = False
+        self._path_length = 0.0
+        self._last_path_projection: Dict[str, Any] = {}
 
         # Dimensions (Fixed for MPCC)
         self.nx = 17
@@ -145,8 +172,126 @@ class MPCController(Controller):
         self._cpp_controller.set_path_data(self._path_data)
         self._path_set = True
         self.s = 0.0  # Reset path parameter
+        self._last_path_projection = {}
 
         logger.info(f"Path set with {len(path_points)} points, total length: {s:.3f}m")
+
+    def _project_onto_path(
+        self, position: np.ndarray
+    ) -> Tuple[float, np.ndarray, float]:
+        """
+        Project a position onto the path and return (s, closest_point, distance).
+
+        Uses linear segments between path samples.
+        """
+        if not self._path_data or len(self._path_data) < 2:
+            return 0.0, np.zeros(3, dtype=float), float("inf")
+
+        pos_arr = np.array(position, dtype=float).reshape(-1)
+        if pos_arr.size < 3:
+            return 0.0, np.zeros(3, dtype=float), float("inf")
+        pos = pos_arr[:3]
+
+        if hasattr(self, "_cpp_controller") and hasattr(
+            self._cpp_controller, "project_onto_path"
+        ):
+            try:
+                s_val, proj, dist, _ = self._cpp_controller.project_onto_path(pos)
+                return float(s_val), np.array(proj, dtype=float), float(dist)
+            except Exception:
+                pass
+
+        min_dist = float("inf")
+        best_s = 0.0
+        best_point = np.array(self._path_data[0][1:4], dtype=float)
+
+        for idx in range(len(self._path_data) - 1):
+            s0, x0, y0, z0 = self._path_data[idx]
+            s1, x1, y1, z1 = self._path_data[idx + 1]
+            p0 = np.array([x0, y0, z0], dtype=float)
+            p1 = np.array([x1, y1, z1], dtype=float)
+            seg = p1 - p0
+            seg_len2 = float(np.dot(seg, seg))
+            if seg_len2 < 1e-12:
+                t = 0.0
+                proj = p0
+            else:
+                t = float(np.dot(pos - p0, seg) / seg_len2)
+                t = float(np.clip(t, 0.0, 1.0))
+                proj = p0 + t * seg
+            dist = float(np.linalg.norm(pos - proj))
+            if dist < min_dist:
+                min_dist = dist
+                best_point = proj
+                best_s = float(s0 + t * (s1 - s0))
+
+        if self._path_length > 0.0:
+            best_s = float(np.clip(best_s, 0.0, self._path_length))
+
+        return best_s, best_point, float(min_dist)
+
+    def get_path_progress(
+        self, position: Optional[np.ndarray] = None
+    ) -> Dict[str, float]:
+        """
+        Compute progress metrics for a given position.
+
+        Returns dict with s, progress (0-1), remaining, path_error, endpoint_error.
+        """
+        if not self._path_data or len(self._path_data) < 2:
+            return {
+                "s": 0.0,
+                "progress": 0.0,
+                "remaining": 0.0,
+                "path_error": float("inf"),
+                "endpoint_error": float("inf"),
+            }
+
+        if position is None:
+            if self._last_path_projection:
+                s_val = float(self._last_path_projection.get("s", self.s))
+                path_error = float(self._last_path_projection.get("path_error", 0.0))
+                endpoint_error = float(
+                    self._last_path_projection.get("endpoint_error", 0.0)
+                )
+            else:
+                s_val = float(self.s)
+                path_error = float("inf")
+                endpoint_error = float("inf")
+        else:
+            pos_arr = np.array(position, dtype=float).reshape(-1)
+            pos = pos_arr[:3] if pos_arr.size >= 3 else pos_arr
+
+            if hasattr(self, "_cpp_controller") and hasattr(
+                self._cpp_controller, "project_onto_path"
+            ):
+                try:
+                    s_val, _, path_error, endpoint_error = (
+                        self._cpp_controller.project_onto_path(pos)
+                    )
+                    s_val = float(s_val)
+                    path_error = float(path_error)
+                    endpoint_error = float(endpoint_error)
+                except Exception:
+                    s_val, _, path_error = self._project_onto_path(position)
+                    endpoint = np.array(self._path_data[-1][1:4], dtype=float)
+                    endpoint_error = float(np.linalg.norm(pos - endpoint))
+            else:
+                s_val, _, path_error = self._project_onto_path(position)
+                endpoint = np.array(self._path_data[-1][1:4], dtype=float)
+                endpoint_error = float(np.linalg.norm(pos - endpoint))
+
+        path_len = float(self._path_length) if self._path_length > 0 else 0.0
+        progress = float(s_val / path_len) if path_len > 1e-9 else 0.0
+        remaining = float(path_len - s_val) if path_len > 0 else 0.0
+
+        return {
+            "s": s_val,
+            "progress": progress,
+            "remaining": remaining,
+            "path_error": float(path_error),
+            "endpoint_error": float(endpoint_error),
+        }
 
     def get_path_reference(
         self, s_query: Optional[float] = None
@@ -224,11 +369,15 @@ class MPCController(Controller):
                 float(rw.max_torque) for rw in self.reaction_wheels
             ]
             self.rw_inertia = [float(rw.inertia) for rw in self.reaction_wheels]
+            self.rw_speed_limits = [
+                float(getattr(rw, "max_speed", 0.0)) for rw in self.reaction_wheels
+            ]
         else:
             self.reaction_wheels = []
             self.num_rw_axes = 0
             self.rw_torque_limits = []
             self.rw_inertia = []
+            self.rw_speed_limits = []
 
         self.max_rw_torque = (
             max(self.rw_torque_limits) if self.rw_torque_limits else 0.0
@@ -238,8 +387,18 @@ class MPCController(Controller):
         self.N = mpc.prediction_horizon
         self._dt = mpc.dt
         self.solver_time_limit = mpc.solver_time_limit
+        self.control_horizon = max(
+            1,
+            min(int(getattr(mpc, "control_horizon", self.N)), int(self.N)),
+        )
+        self.solver_type = str(getattr(mpc, "solver_type", "OSQP"))
+        if self.solver_type.upper() != "OSQP":
+            logger.warning("MPC solver_type '%s' not supported, using OSQP.", self.solver_type)
+            self.solver_type = "OSQP"
+        self.verbose_mpc = getattr(mpc, "verbose_mpc", False)
 
         self.Q_angvel = mpc.q_angular_velocity
+        self.Q_attitude = getattr(mpc, "Q_attitude", 0.0)
         self.R_thrust = mpc.r_thrust
         self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
 
@@ -248,7 +407,39 @@ class MPCController(Controller):
         self.Q_contour = mpc.Q_contour
         self.Q_progress = mpc.Q_progress
         self.Q_smooth = mpc.Q_smooth
+        self.Q_lag = getattr(mpc, "Q_lag", 0.0)
+        self.Q_terminal_pos = getattr(mpc, "Q_terminal_pos", 0.0)
+        self.Q_terminal_s = getattr(mpc, "Q_terminal_s", 0.0)
         self.path_speed = mpc.path_speed
+        self.progress_taper_distance = getattr(mpc, "progress_taper_distance", 0.0)
+        self.progress_slowdown_distance = getattr(
+            mpc, "progress_slowdown_distance", 0.0
+        )
+
+        # Orbital parameters (for MPC linearization)
+        try:
+            from src.satellite_control.config.orbital_config import OrbitalConfig
+            orbital_cfg = getattr(physics, "orbital", None)
+            if orbital_cfg is not None:
+                self.orbital_mu = float(getattr(orbital_cfg, "mu", OrbitalConfig().mu))
+                self.orbital_radius = float(
+                    getattr(orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius)
+                )
+                self.orbital_mean_motion = float(
+                    getattr(orbital_cfg, "mean_motion", OrbitalConfig().mean_motion)
+                )
+                self.use_two_body = bool(getattr(orbital_cfg, "use_two_body", True))
+            else:
+                orbital_default = OrbitalConfig()
+                self.orbital_mu = float(orbital_default.mu)
+                self.orbital_radius = float(orbital_default.orbital_radius)
+                self.orbital_mean_motion = float(orbital_default.mean_motion)
+                self.use_two_body = True
+        except Exception:
+            self.orbital_mu = 3.986004418e14
+            self.orbital_radius = 6.778e6
+            self.orbital_mean_motion = 0.0
+            self.use_two_body = True
 
     @property
     def dt(self) -> float:
@@ -314,10 +505,74 @@ class MPCController(Controller):
         # Handle Path Following State Augmentation
         # Append current path parameter s to state
         # Ensure x_current is basic 16-dim state before appending
+        s_for_state = float(self.s)
+        path_error = None
+        endpoint_error = None
+        s_proj = None
+        if self._path_set and len(x_current) >= 3:
+            if hasattr(self, "_cpp_controller") and hasattr(
+                self._cpp_controller, "project_onto_path"
+            ):
+                try:
+                    s_proj, closest_point, proj_err, endpoint_error = (
+                        self._cpp_controller.project_onto_path(x_current[:3])
+                    )
+                    s_proj = float(s_proj)
+                    closest_point = np.array(closest_point, dtype=float)
+                    path_error = float(proj_err)
+                    endpoint_error = float(endpoint_error)
+                except Exception:
+                    s_proj, closest_point, proj_err = self._project_onto_path(
+                        x_current[:3]
+                    )
+                    path_error = float(proj_err)
+                    endpoint = np.array(self._path_data[-1][1:4], dtype=float)
+                    endpoint_error = float(np.linalg.norm(x_current[:3] - endpoint))
+            else:
+                s_proj, closest_point, proj_err = self._project_onto_path(x_current[:3])
+                path_error = float(proj_err)
+                endpoint = np.array(self._path_data[-1][1:4], dtype=float)
+                endpoint_error = float(np.linalg.norm(x_current[:3] - endpoint))
+
+            # Keep s monotonic but bound lead to avoid drift
+            lead_max = 0.5 * float(self.path_speed) * float(self.dt) * float(self.N)
+            lead_max = float(max(0.2, min(1.0, lead_max)))
+            if self._path_length > 0.0:
+                lead_max = min(lead_max, float(self._path_length))
+
+            if self.s < float(s_proj):
+                self.s = float(s_proj)
+            if self.s > float(s_proj) + lead_max:
+                self.s = float(s_proj) + lead_max
+
+            s_for_state = float(self.s)
+
+            self._last_path_projection = {
+                "s": s_for_state,
+                "s_proj": float(s_proj),
+                "closest_point": closest_point,
+                "path_error": path_error,
+                "endpoint_error": endpoint_error,
+                "lead_max": lead_max,
+            }
+
         if len(x_current) == 16:
-            x_input = np.append(x_current, self.s)
+            x_input = np.append(x_current, s_for_state)
+        elif len(x_current) == 17:
+            x_input = np.array(x_current, dtype=float).copy()
+            x_input[16] = s_for_state
         else:
             x_input = x_current  # Assuming already augmented or custom
+
+        if previous_thrusters is not None and hasattr(
+            self._cpp_controller, "set_warm_start_control"
+        ):
+            try:
+                self._cpp_controller.set_warm_start_control(
+                    np.array(previous_thrusters, dtype=float)
+                )
+            except Exception:
+                pass
 
         try:
             result = self._cpp_controller.get_control_action(x_input)
@@ -342,19 +597,31 @@ class MPCController(Controller):
 
         # Update internal path state s only if solved successfully
         if result.status == 1:
-            self.s += v_s * self.dt
-            # Clamp s to valid range [0, L]
+            s_pred = s_for_state + v_s * self.dt
             if self._path_set and hasattr(self, "_path_length"):
-                self.s = max(0.0, min(self.s, self._path_length))
+                s_pred = max(0.0, min(float(s_pred), float(self._path_length)))
+            self._last_path_projection["s_pred"] = float(s_pred)
+            self.s = float(s_pred)
 
         # Strip virtual control from output so simulation gets only physical actuators
         u_phys = u_out[:-1]
 
+        path_len = float(self._path_length) if self._path_length > 0 else 0.0
+        progress = float(s_for_state / path_len) if path_len > 1e-9 else 0.0
+        remaining = float(path_len - s_for_state) if path_len > 0 else 0.0
+
         extras = {
             "status": result.status,
             "solve_time": result.solve_time,
-            "path_s": self.s,
+            "solver_type": self.solver_type,
+            "path_s": float(s_for_state),
+            "path_s_proj": float(s_proj) if s_proj is not None else None,
             "path_v_s": v_s,
+            "path_progress": progress,
+            "path_remaining": remaining,
+            "path_error": path_error,
+            "path_endpoint_error": endpoint_error,
+            "path_s_pred": self._last_path_projection.get("s_pred"),
         }
         return u_phys, extras
 
@@ -365,9 +632,63 @@ class MPCController(Controller):
         Args:
             mission_obstacles: List of mission_types.Obstacle objects
         """
-        cpp_obstacle_set = ObstacleSet()
+        logger.info("MPC is path-focused; obstacles are ignored in this controller.")
+        normalized: list[MissionObstacle] = []
 
         for obs in mission_obstacles:
+            if isinstance(obs, MissionObstacle):
+                normalized.append(obs)
+                continue
+
+            if isinstance(obs, dict):
+                try:
+                    normalized.append(MissionObstacle.from_dict(obs))
+                    continue
+                except Exception:
+                    pass
+
+            if isinstance(obs, (list, tuple)):
+                if len(obs) >= 4:
+                    pos = np.array(obs[:3], dtype=float)
+                    radius = float(obs[3])
+                elif len(obs) == 3:
+                    pos = np.array(obs[:3], dtype=float)
+                    radius = 0.5
+                else:
+                    continue
+                normalized.append(
+                    MissionObstacle(position=pos, radius=radius)
+                )
+                continue
+
+            if hasattr(obs, "position") and hasattr(obs, "radius"):
+                try:
+                    pos = np.array(getattr(obs, "position"), dtype=float)
+                    radius = float(getattr(obs, "radius"))
+                    size = np.array(getattr(obs, "size", [1.0, 1.0, 1.0]), dtype=float)
+                    name = str(getattr(obs, "name", "obstacle"))
+                    type_val = getattr(obs, "type", MissionObstacleType.SPHERE)
+                    if isinstance(type_val, str):
+                        type_val = MissionObstacleType(type_val)
+                    normalized.append(
+                        MissionObstacle(
+                            type=type_val,
+                            position=pos,
+                            radius=radius,
+                            size=size,
+                            name=name,
+                        )
+                    )
+                except Exception:
+                    continue
+
+        if not normalized:
+            self._cpp_controller.clear_obstacles()
+            return
+
+        cpp_obstacle_set = ObstacleSet()
+
+        for obs in normalized:
             cpp_obs = Obstacle()
             # Map parameters
             cpp_obs.position = np.array(obs.position)
@@ -376,7 +697,7 @@ class MPCController(Controller):
             cpp_obs.name = str(obs.name)
 
             # Map type (string value from enum to C++ enum)
-            type_val = obs.type.value
+            type_val = obs.type.value if hasattr(obs.type, "value") else str(obs.type)
 
             if type_val == "sphere":
                 cpp_obs.type = ObstacleType.SPHERE

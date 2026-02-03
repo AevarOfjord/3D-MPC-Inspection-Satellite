@@ -25,6 +25,8 @@ def mock_simulation():
     sim.satellite = MagicMock()
     sim.satellite.dt = 0.005
     sim.satellite.simulation_time = 0.0
+    sim.satellite.position = np.zeros(3)
+    sim.satellite.velocity = np.zeros(3)
     sim.satellite.update_physics = MagicMock()
     sim.satellite.fig = None
     sim.data_logger = MagicMock()
@@ -48,6 +50,7 @@ def mock_simulation():
     sim.check_path_complete = MagicMock(return_value=False)
     sim.trajectory_endpoint_reached_time = None
     sim.reference_state = np.zeros(13)
+    sim.position_tolerance = 0.05
     sim.draw_simulation = MagicMock()
     sim.update_mpc_info_panel = MagicMock()
     sim.performance_monitor = MagicMock()
@@ -218,7 +221,12 @@ class TestSimulationLoopTermination:
         loop = SimulationLoop(mock_simulation)
         mock_simulation.is_running = True
         mock_simulation.simulation_config.mission_state.dxf_path_length = 1.0
+        mock_simulation.simulation_config.mission_state.mpcc_path_waypoints = [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+        ]
         mock_simulation.mpc_controller.s = 1.0
+        mock_simulation.satellite.position = np.array([1.0, 0.0, 0.0])
         mock_simulation.simulation_time = 1.0
 
         result = loop._check_termination_conditions()

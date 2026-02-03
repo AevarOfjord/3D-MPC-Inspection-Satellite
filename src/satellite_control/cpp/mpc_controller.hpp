@@ -5,6 +5,8 @@
 #include <array>
 #include <vector>
 #include <memory>
+#include <tuple>
+#include <string>
 #include "osqp.h"
 #include "linearizer.hpp"
 #include "obstacle.hpp"
@@ -21,14 +23,19 @@ using Eigen::SparseMatrix;
 struct MPCParams {
     // Dimensions
     int prediction_horizon = 50;    ///< Number of steps to predict
+    int control_horizon = 50;       ///< Number of steps with independent control inputs
     double dt = 0.05;               ///< Time step [s]
     double solver_time_limit = 0.05;///< Max solver time per step [s]
+    std::string solver_type = "OSQP"; ///< Solver backend identifier
+    bool verbose_mpc = false;       ///< Verbose solver output
     
     // Weights (MPCC)
     double Q_contour = 1000.0;          ///< Weight for contouring error (stay on path)
     double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
+    double Q_lag = 0.0;                 ///< Weight for lag error (along tangent, 0 = auto)
     double Q_smooth = 10.0;             ///< Weight for velocity smoothness
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
+    double Q_attitude = 0.0;            ///< Attitude tracking weight (align body x-axis to path tangent)
 
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
@@ -41,6 +48,13 @@ struct MPCParams {
 
     // Path Following (V4.0.0) - General Path MPCC
     double path_speed = 0.1;           ///< Path speed along reference [m/s]
+
+    // Terminal handling (MPCC)
+    // If set to 0, controller will auto-scale from Q_contour/Q_progress.
+    double Q_terminal_pos = 0.0;       ///< Terminal position weight (0 = auto)
+    double Q_terminal_s = 0.0;         ///< Terminal progress weight (0 = auto)
+    double progress_taper_distance = 0.0; ///< Distance to taper v_ref near end (0 = auto)
+    double progress_slowdown_distance = 0.0; ///< Slow down v_ref if contour error is high (0 = auto)
 };
 
 /**
@@ -101,6 +115,18 @@ public:
     int num_controls() const { return nu_; }
     int prediction_horizon() const { return N_; }
     double dt() const { return dt_; }
+    double path_length() const { return path_total_length_; }
+    bool has_path() const { return path_data_valid_; }
+
+    // Path utilities (for fast projection in Python)
+    std::tuple<double, Eigen::Vector3d, double, double> project_onto_path(
+        const Eigen::Vector3d& position) const;
+
+    /**
+     * @brief Provide a warm-start control guess.
+     * @param u_prev Either thruster-only (num_thrusters) or full control (nu).
+     */
+    void set_warm_start_control(const VectorXd& u_prev);
 
 private:
     // Dimensions
@@ -176,19 +202,49 @@ private:
     
     /// Maps [row][col] -> index in A_data_ for quaternion dynamics entries.
     std::vector<std::vector<int>> A_idx_map_;
+
+    /// Maps [row][col] -> index in A_data_ for orbital/velocity dynamics updates (rows 7-9, cols 0-9).
+    std::vector<std::vector<int>> A_orbital_idx_map_;
     
     // -- Collision Avoidance Internals --
     ObstacleSet obstacles_;
     int n_obs_constraints_ = 0;
-    std::vector<std::vector<int>> obs_A_indices_; // Map[step][col] -> A index
-    
+    int obs_per_step_ = 0;
+    int obs_row_start_ = 0;
+    std::vector<std::array<int, 3>> obs_A_indices_; // Map[row] -> A index for x,y,z
+
     // Map [step][0..2] -> Index in P_data_ for (x,s), (y,s), (z,s) cross terms
     std::vector<std::vector<int>> path_P_indices_; 
     // Map [step] -> Index in P_data_ for (s,s) diagonal entry
     std::vector<int> path_s_diag_indices_;
+    // Map [step][0..2] -> Index in P_data_ for (x,x), (y,y), (z,z) diagonal entries
+    std::vector<std::vector<int>> path_pos_diag_indices_;
+    // Map [step][0..2] -> Index in P_data_ for (x,y), (x,z), (y,z) off-diagonal entries
+    std::vector<std::vector<int>> path_pos_offdiag_indices_;
     // Map [step][0..5] -> Index in P_data_ for velocity block upper triangle
     // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
     std::vector<std::vector<int>> path_vel_P_indices_;
+    std::vector<c_int> path_P_update_indices_;
+    std::vector<c_float> path_P_update_values_;
+
+    // Constraint bookkeeping
+    int n_dyn_ = 0;
+    int n_init_ = 0;
+    int n_bounds_x_ = 0;
+    int n_bounds_u_ = 0;
+    int n_control_horizon_constraints_ = 0;
+    int control_horizon_ = 0;
+
+    // Dynamic affine term (for gravity, etc.)
+    VectorXd dyn_affine_;
+
+    // A-matrix update tracking
+    bool A_dirty_ = false;
+
+    // Warm-start storage
+    VectorXd warm_start_control_;
+    VectorXd warm_start_x_;
+    bool has_warm_start_control_ = false;
     
     // -- Runtime Methods --
     void update_dynamics(const VectorXd& x_current);
@@ -217,8 +273,8 @@ public:
     void set_path_data(const std::vector<std::array<double, 4>>& path_data);
     
 private:
-    // Deprecated
-    void apply_obstacle_constraints(const VectorXd& x_current);
+    void cleanup_solver();
+    void rebuild_solver();
 };
 
 } // namespace satellite_control

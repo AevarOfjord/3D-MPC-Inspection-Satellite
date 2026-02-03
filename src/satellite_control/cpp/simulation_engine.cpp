@@ -1,5 +1,4 @@
 #include "simulation_engine.hpp"
-#include <iostream>
 
 namespace satellite_control {
 
@@ -48,34 +47,7 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     // y_next = y + dt/6 * (k1 + 2k2 + 2k3 + k4)
 
     // Compute Forces & Torques (constant over step for zero-order hold assumption)
-    // In reality, thrusters might pulse, but 'thruster_cmds' is average duty cycle over dt?
-    // If dt is small (physics step ~5ms), we can treat as constant force * duty.
-    
-    // Quaternion extraction from state
-    Eigen::Vector4d q = state_.segment<4>(3);
-    
-    Eigen::Vector3d forces = compute_total_force(thruster_cmds, q);
-    Eigen::Vector3d torques = compute_total_torque(thruster_cmds, rw_torques);
-
-    // RK4 for Rigid Body Dynamics
-    // Note: forces depend on attitude (if body fixed) but here we precalc in BODY frame usually?
-    // compute_total_force needs to return force in INERTIAL/HILL frame for CW dynamics if we apply it there.
-    // Actually, `body_forces_` are in body frame. We rotate them to Hill frame using 'q'.
-    // `forces` passed to derivative must be handled carefully.
-    
-    // Let's refine the compute_force logic inside derivative or outside?
-    // The force in Hill frame depends on 'q'. Since 'q' changes during step, force direction changes.
-    // So 'forces' should be re-evaluated inside derivative function if we want high precision.
-    // However, for small steps, holding it constant in BODY frame is correct (thrusters attached to body),
-    // but its INERTIAL direction changes.
-    
-    // So compute_state_derivative needs to take BODY forces and rotate them.
-
-    // (Moved to RK4 block below)
-    
-    // Re-architecture: compute_state_derivative calculates forces internally from stored cmds?
-    // Or we pass body frame forces and it rotates them?
-    // Let's pass body frame force/torque vectors and let derivative function rotate them.
+    // For small dt, treating body-frame thruster forces as constant is acceptable.
     
     Eigen::Vector3d body_force_cmds = Eigen::Vector3d::Zero();
     Eigen::Vector3d body_torque_cmds = Eigen::Vector3d::Zero();
@@ -134,6 +106,12 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     // Reaction Wheel Speed Accel: update internal state via derivative now
 }
 
+void SimulationEngine::step_batch(int steps, double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) {
+    for (int i = 0; i < steps; ++i) {
+        step(dt, thruster_cmds, rw_torques);
+    }
+}
+
 Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd& s, const Eigen::Vector3d& body_force, const Eigen::Vector3d& body_torque, const Eigen::Vector3d& rw_torque) {
     /*
      State: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz]
@@ -156,12 +134,7 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     // qy_dot = 0.5 * (qw*wy - qx*wz + qz*wx)
     // qz_dot = 0.5 * (qw*wz + qx*wy - qy*wx)
     
-    dxdt(3) = -0.5 * (q.x()*w.x() + q.y()*w.y() + q.z()*w.z()); // Note q(1)=x, q(2)=y, q(3)=z in Eigen if using Vector4d but we manually map 0=w, 1=x, 2=y, 3=z
-    // Wait, Eigen quaternions are usually x,y,z,w or w,x,y,z?
-    // Eigen::Quaterniond stores as (x,y,z,w) internally usually? NO, it's coefficient access.
-    // BUT we are using Vector4d. Let's stick to our convention: [w, x, y, z] (scalar first)
-    // q(0)=w, q(1)=x, q(2)=y, q(3)=z
-    
+    // Using scalar-first convention: q = [w, x, y, z]
     dxdt(3) = -0.5 * (q(1)*w(0) + q(2)*w(1) + q(3)*w(2));
     dxdt(4) = 0.5 * (q(0)*w(0) + q(2)*w(2) - q(3)*w(1));
     dxdt(5) = 0.5 * (q(0)*w(1) - q(1)*w(2) + q(3)*w(0));
@@ -222,16 +195,6 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     }
     
     return dxdt;
-}
-
-Eigen::Vector3d SimulationEngine::compute_total_force(const std::vector<double>& cmds, const Eigen::Vector4d& q) const {
-    // Helper not used in main step logic anymore
-    return Eigen::Vector3d::Zero();
-}
-
-Eigen::Vector3d SimulationEngine::compute_total_torque(const std::vector<double>& cmds, const std::vector<double>& rw_torques) const {
-    // Helper not used in main step logic anymore
-    return Eigen::Vector3d::Zero();
 }
 
 } // namespace satellite_control

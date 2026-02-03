@@ -114,12 +114,13 @@ class TestPointToPointMission:
         sim = simple_simulation
 
         # Initially not at path end
-        sim.mpc_controller._path_length = 1.0
         sim.mpc_controller.s = 0.0
         assert not sim.check_path_complete()
 
         # Mark path progress complete
-        sim.mpc_controller.s = 1.0
+        path_len = float(getattr(sim.mpc_controller, "_path_length", 0.0) or 0.0)
+        sim.mpc_controller.s = path_len
+        sim.satellite.position = np.array([0.0, 0.0, 0.0])
         assert sim.check_path_complete()
 
     def test_point_to_point_mpc_control_update(self, simple_simulation):
@@ -498,8 +499,11 @@ class TestPathCompletion:
         from src.satellite_control.core.simulation_loop import SimulationLoop
 
         sim = simple_simulation
-        sim.simulation_config.mission_state.dxf_path_length = 1.0
+        sim.simulation_config.mission_state.dxf_path_length = float(
+            getattr(sim.mpc_controller, "_path_length", 0.0) or 0.0
+        )
         sim.simulation_config.mission_state.trajectory_hold_end = 0.0
+        sim.satellite.position = np.array([0.0, 0.0, 0.0])
         sim.mpc_controller.s = 1.0
         sim.simulation_time = 1.0
 

@@ -69,34 +69,29 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
         <HudSection title="Scan Params" defaultOpen>
           <div className="mb-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Level Mode
+              Pattern
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => setters.setUseLevelSpacing(false)}
+                onClick={() => setters.setConfig((prev) => ({ ...prev, pattern: 'spiral' }))}
                 className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                  !state.useLevelSpacing
-                    ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
+                  (state.config.pattern ?? 'spiral') === 'spiral'
+                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-100'
                     : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                Fixed Levels
+                Spiral
               </button>
               <button
-                onClick={() => setters.setUseLevelSpacing(true)}
+                onClick={() => setters.setConfig((prev) => ({ ...prev, pattern: 'rings' }))}
                 className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                  state.useLevelSpacing
+                  state.config.pattern === 'rings'
                     ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
                     : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                Level Spacing
+                Circle
               </button>
-            </div>
-            <div className="text-[10px] text-slate-500 mt-1">
-              {state.useLevelSpacing
-                ? 'Levels are auto-computed from spacing.'
-                : 'Fixed levels are used for all axes.'}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -113,83 +108,11 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
               }
             />
             <HudInput
-              label="Levels"
-              value={state.config.levels}
-              type="number"
-              step={1}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  levels: Number.isFinite(val) ? Math.max(1, Math.floor(val)) : prev.levels,
-                }))
-              }
-            />
-            <HudInput
               label="Level Spacing (m)"
               value={state.levelSpacing}
               type="number"
               step={0.1}
               onChange={(val) => setters.setLevelSpacing(Number.isFinite(val) ? val : state.levelSpacing)}
-            />
-            <HudInput
-              label="Points / Ring"
-              value={state.config.points_per_circle}
-              type="number"
-              step={1}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  points_per_circle: Number.isFinite(val) ? Math.max(6, Math.floor(val)) : prev.points_per_circle,
-                }))
-              }
-            />
-            <HudInput
-              label="Speed Max"
-              value={state.config.speed_max}
-              type="number"
-              step={0.01}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  speed_max: Number.isFinite(val) ? val : prev.speed_max,
-                }))
-              }
-            />
-            <HudInput
-              label="Speed Min"
-              value={state.config.speed_min}
-              type="number"
-              step={0.01}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  speed_min: Number.isFinite(val) ? val : prev.speed_min,
-                }))
-              }
-            />
-            <HudInput
-              label="Lat Accel"
-              value={state.config.lateral_accel}
-              type="number"
-              step={0.01}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  lateral_accel: Number.isFinite(val) ? val : prev.lateral_accel,
-                }))
-              }
-            />
-            <HudInput
-              label="Z Margin"
-              value={state.config.z_margin}
-              type="number"
-              step={0.05}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  z_margin: Number.isFinite(val) ? val : prev.z_margin,
-                }))
-              }
             />
           </div>
           <div className="mt-2">

@@ -63,7 +63,11 @@ def create_default_app_config() -> AppConfig:
         # MPCC Weights
         Q_contour=constants.Constants.Q_CONTOUR,
         Q_progress=constants.Constants.Q_PROGRESS,
+        Q_lag=0.0,
         Q_smooth=constants.Constants.Q_SMOOTH,
+        Q_attitude=0.0,
+        Q_terminal_pos=0.0,
+        Q_terminal_s=0.0,
         q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,
         r_thrust=constants.Constants.R_THRUST,
         r_rw_torque=constants.Constants.R_RW_TORQUE,
@@ -71,6 +75,8 @@ def create_default_app_config() -> AppConfig:
         verbose_mpc=False,
         # Path Following
         path_speed=timing.DEFAULT_PATH_SPEED,
+        progress_taper_distance=0.0,
+        progress_slowdown_distance=0.0,
     )
 
     # Simulation
@@ -83,6 +89,8 @@ def create_default_app_config() -> AppConfig:
         use_final_stabilization=timing.USE_FINAL_STABILIZATION_IN_SIMULATION,
         control_dt=timing.CONTROL_DT,
         default_path_speed=timing.DEFAULT_PATH_SPEED,
+        physics_log_stride=1,
+        control_log_stride=1,
     )
 
     return AppConfig(physics=phys, mpc=mpc, simulation=sim, input_file_path=None)
