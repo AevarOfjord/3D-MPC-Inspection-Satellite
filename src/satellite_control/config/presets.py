@@ -57,7 +57,9 @@ def _create_fast_mpc() -> MPCParams:
         # MPCC Weights
         Q_contour=500.0,
         Q_progress=500.0,
+        Q_lag=0.0,
         Q_smooth=1.0,
+        Q_attitude=0.0,
         q_angular_velocity=100.0,
         r_thrust=0.01,
         thruster_type=Constants.THRUSTER_TYPE,
@@ -80,7 +82,9 @@ def _create_balanced_mpc() -> MPCParams:
         # MPCC Weights
         Q_contour=1000.0,
         Q_progress=100.0,
+        Q_lag=0.0,
         Q_smooth=10.0,
+        Q_attitude=0.0,
         q_angular_velocity=Constants.Q_ANGULAR_VELOCITY,
         r_thrust=Constants.R_THRUST,
         r_rw_torque=Constants.R_RW_TORQUE,
@@ -104,7 +108,9 @@ def _create_stable_mpc() -> MPCParams:
         # MPCC Weights
         Q_contour=2000.0,
         Q_progress=50.0,
+        Q_lag=0.0,
         Q_smooth=50.0,
+        Q_attitude=0.0,
         q_angular_velocity=2000.0,
         r_thrust=1.0,
         r_rw_torque=2.0,
@@ -128,7 +134,9 @@ def _create_precision_mpc() -> MPCParams:
         # MPCC Weights
         Q_contour=5000.0,
         Q_progress=10.0,
+        Q_lag=0.0,
         Q_smooth=100.0,
+        Q_attitude=0.0,
         q_angular_velocity=5000.0,
         r_thrust=5.0,
         r_rw_torque=5.0,
@@ -179,11 +187,17 @@ def load_preset(preset_name: str) -> Dict[str, Any]:
             "control_horizon": mpc.control_horizon,
             "Q_contour": mpc.Q_contour,
             "Q_progress": mpc.Q_progress,
+            "Q_lag": mpc.Q_lag,
             "Q_smooth": mpc.Q_smooth,
+            "Q_attitude": mpc.Q_attitude,
+            "Q_terminal_pos": mpc.Q_terminal_pos,
+            "Q_terminal_s": mpc.Q_terminal_s,
             "q_angular_velocity": mpc.q_angular_velocity,
             "r_thrust": mpc.r_thrust,
             "r_rw_torque": mpc.r_rw_torque,
             "path_speed": mpc.path_speed,
+            "progress_taper_distance": mpc.progress_taper_distance,
+            "progress_slowdown_distance": mpc.progress_slowdown_distance,
         }
     }
 

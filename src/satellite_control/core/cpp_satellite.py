@@ -138,11 +138,48 @@ class CppSatelliteSimulator:
             params.num_rw = len(rws)
             params.rw_torque_limits = [float(rw.max_torque) for rw in rws]
             params.rw_inertia = [float(rw.inertia) if hasattr(rw, "inertia") else 0.001 for rw in rws]
+            if hasattr(params, "rw_speed_limits"):
+                params.rw_speed_limits = [float(getattr(rw, "max_speed", 0.0)) for rw in rws]
         elif hasattr(cfg, "mpc") and hasattr(cfg.mpc, "r_rw_torque"):
              # Basic fallback if needed, but safe to leave 0
              pass
+        else:
+            if hasattr(params, "rw_speed_limits"):
+                params.rw_speed_limits = []
 
         params.com_offset = np.array(cfg.physics.com_offset)
+
+        # Orbital parameters for MPC consistency (not used by simulation engine)
+        try:
+            orbital_cfg = getattr(cfg.physics, "orbital", None)
+            if orbital_cfg is not None:
+                if hasattr(params, "orbital_mu"):
+                    params.orbital_mu = float(getattr(orbital_cfg, "mu", OrbitalConfig().mu))
+                if hasattr(params, "orbital_radius"):
+                    params.orbital_radius = float(
+                        getattr(orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius)
+                    )
+                if hasattr(params, "orbital_mean_motion"):
+                    params.orbital_mean_motion = float(
+                        getattr(orbital_cfg, "mean_motion", OrbitalConfig().mean_motion)
+                    )
+            else:
+                orbital_default = OrbitalConfig()
+                if hasattr(params, "orbital_mu"):
+                    params.orbital_mu = float(orbital_default.mu)
+                if hasattr(params, "orbital_radius"):
+                    params.orbital_radius = float(orbital_default.orbital_radius)
+                if hasattr(params, "orbital_mean_motion"):
+                    params.orbital_mean_motion = float(orbital_default.mean_motion)
+        except Exception:
+            if hasattr(params, "orbital_mu"):
+                params.orbital_mu = 3.986004418e14
+            if hasattr(params, "orbital_radius"):
+                params.orbital_radius = 6.778e6
+            if hasattr(params, "orbital_mean_motion"):
+                params.orbital_mean_motion = 0.0
+        if hasattr(params, "use_two_body"):
+            params.use_two_body = True
         return params
 
     @property
@@ -237,6 +274,26 @@ class CppSatelliteSimulator:
         # Call Engine Step
         self.engine.step(dt, self._current_thruster_cmds, self._current_rw_torques)
         self.simulation_time += dt
+
+    def update_physics_batch(self, steps: int, dt: float):
+        """
+        Step the physics simulation multiple times with constant inputs.
+
+        Args:
+            steps: Number of physics steps to take
+            dt: Time step per physics step
+        """
+        if steps <= 0:
+            return
+
+        if not hasattr(self, "_current_thruster_cmds"):
+            self._current_thruster_cmds = [0.0] * self._cpp_params.num_thrusters
+
+        if not hasattr(self, "_current_rw_torques"):
+            self._current_rw_torques = [0.0] * 3
+
+        self.engine.step_batch(steps, dt, self._current_thruster_cmds, self._current_rw_torques)
+        self.simulation_time += dt * steps
 
 
     # Visualization Compat (Headless Mocks)

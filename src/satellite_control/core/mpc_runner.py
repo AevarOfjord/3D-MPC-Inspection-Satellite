@@ -50,7 +50,7 @@ class MPCRunner:
         self.state_validator = state_validator
 
         # Internal state management
-        self.thruster_count = getattr(self.mpc, "num_thrusters", 8)
+        self.thruster_count = getattr(self.mpc, "num_thrusters", 6)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history: list = []

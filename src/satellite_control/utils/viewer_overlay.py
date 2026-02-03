@@ -33,8 +33,8 @@ class OverlayData:
     mpc_solve_time_ms: float = 0.0
     mpc_status: str = "OK"
 
-    # Thruster activity (8 thrusters, 0.0-1.0 each)
-    thruster_levels: Tuple[float, ...] = (0.0,) * 8
+    # Thruster activity (6 thrusters, 0.0-1.0 each)
+    thruster_levels: Tuple[float, ...] = (0.0,) * 6
 
 
 class ViewerOverlay:

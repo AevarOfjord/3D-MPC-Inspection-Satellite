@@ -19,6 +19,11 @@ class ReactionWheelParams(BaseModel):
         ...,
         description="Rotation axis vector (x, y, z)",
     )
+    max_speed: float = Field(
+        628.0,
+        gt=0,
+        description="Maximum wheel speed in rad/s",
+    )
     max_torque: float = Field(
         ...,
         gt=0,
@@ -69,15 +74,19 @@ class SatellitePhysicalParams(BaseModel):
     # Thruster configuration
     thruster_positions: Dict[int, Tuple[float, float, float]] = Field(
         ...,
-        description="Map of thruster ID (1-6 or 1-8) to (x, y, z) position in meters",
+        description=(
+            "Map of thruster ID (1-6, 1-8, or 1-12) to (x, y, z) position in meters"
+        ),
     )
     thruster_directions: Dict[int, Tuple[float, float, float]] = Field(
         ...,
-        description="Map of thruster ID (1-6 or 1-8) to (dx, dy, dz) unit direction vector",
+        description=(
+            "Map of thruster ID (1-6, 1-8, or 1-12) to (dx, dy, dz) unit direction vector"
+        ),
     )
     thruster_forces: Dict[int, float] = Field(
         ...,
-        description="Map of thruster ID (1-6 or 1-8) to max force in Newtons",
+        description="Map of thruster ID (1-6, 1-8, or 1-12) to max force in Newtons",
     )
 
     # Reaction Wheels
@@ -261,11 +270,35 @@ class MPCParams(BaseModel):
         le=10000.0,
         description="Progress weight - penalizes deviation from path speed [unitless]",
     )
+    Q_lag: float = Field(
+        0.0,
+        ge=0.0,
+        le=100000.0,
+        description="Lag weight - penalizes along-track error (0 = auto)",
+    )
     Q_smooth: float = Field(
         10.0,
         ge=0.0,
         le=1000.0,
         description="Smoothness weight - penalizes velocity changes [unitless]",
+    )
+    Q_attitude: float = Field(
+        0.0,
+        ge=0.0,
+        le=1e6,
+        description="Attitude tracking weight (align body x-axis with path tangent)",
+    )
+    Q_terminal_pos: float = Field(
+        0.0,
+        ge=0.0,
+        le=1e6,
+        description="Terminal position weight (0 = auto-scale from Q_contour)",
+    )
+    Q_terminal_s: float = Field(
+        0.0,
+        ge=0.0,
+        le=1e6,
+        description="Terminal progress weight (0 = auto-scale from Q_progress/Q_contour)",
     )
     q_angular_velocity: float = Field(
         1.0,
@@ -316,6 +349,18 @@ class MPCParams(BaseModel):
         le=1.0,
         description="Path speed along reference curve [m/s]",
     )
+    progress_taper_distance: float = Field(
+        0.0,
+        ge=0.0,
+        le=1e6,
+        description="Distance before endpoint to taper v_ref (0 = auto)",
+    )
+    progress_slowdown_distance: float = Field(
+        0.0,
+        ge=0.0,
+        le=1e6,
+        description="Contour error threshold to slow progress (0 = auto)",
+    )
 
     @field_validator("thruster_type")
     @classmethod
@@ -351,7 +396,14 @@ class MPCParams(BaseModel):
     def validate_weight_balance(self) -> "MPCParams":
         """Check that weights are reasonably balanced."""
         total_q = (
-            self.Q_contour + self.Q_progress + self.Q_smooth + self.q_angular_velocity
+            self.Q_contour
+            + self.Q_progress
+            + self.Q_lag
+            + self.Q_smooth
+            + self.Q_attitude
+            + self.Q_terminal_pos
+            + self.Q_terminal_s
+            + self.q_angular_velocity
         )
         if total_q == 0 and self.r_thrust > 0:
             raise ValueError(
@@ -411,6 +463,20 @@ class SimulationParams(BaseModel):
         gt=0,
         le=1.0,
         description="Default path speed for shape following missions in m/s",
+    )
+
+    # Logging controls
+    physics_log_stride: int = Field(
+        1,
+        ge=1,
+        le=1000,
+        description="Log every N physics steps (1 = log all)",
+    )
+    control_log_stride: int = Field(
+        1,
+        ge=1,
+        le=1000,
+        description="Log every N control steps (1 = log all)",
     )
 
 

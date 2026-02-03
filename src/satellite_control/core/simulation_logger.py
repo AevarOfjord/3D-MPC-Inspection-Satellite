@@ -118,7 +118,13 @@ class SimulationLogger:
         mpc_optimality_gap = mpc_info.get("optimality_gap") if mpc_info else None
         mpc_computation_time = mpc_info.get("mpc_computation_time", 0.0)
         path_s = mpc_info.get("path_s") if mpc_info else None
+        path_s_proj = mpc_info.get("path_s_proj") if mpc_info else None
         path_v_s = mpc_info.get("path_v_s") if mpc_info else None
+        path_progress = mpc_info.get("path_progress") if mpc_info else None
+        path_remaining = mpc_info.get("path_remaining") if mpc_info else None
+        path_error = mpc_info.get("path_error") if mpc_info else None
+        endpoint_error = mpc_info.get("path_endpoint_error") if mpc_info else None
+        path_s_pred = mpc_info.get("path_s_pred") if mpc_info else None
 
         # Velocity errors
         error_vx = ref_vx - curr_vx
@@ -205,7 +211,13 @@ class SimulationLogger:
             "MPC_Iterations": mpc_iterations,
             "MPC_Optimality_Gap": mpc_optimality_gap,
             "Path_S": path_s,
+            "Path_S_Proj": path_s_proj,
             "Path_V_S": path_v_s,
+            "Path_S_Pred": path_s_pred,
+            "Path_Progress": path_progress,
+            "Path_Remaining": path_remaining,
+            "Path_Error": path_error,
+            "Path_Endpoint_Error": endpoint_error,
             "Command_Vector": command_vector_str,
             "Command_Hex": command_hex,
             "Command_Sent_Time": command_sent_time,

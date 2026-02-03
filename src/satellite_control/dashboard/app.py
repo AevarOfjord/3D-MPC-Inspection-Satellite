@@ -2,6 +2,7 @@ import asyncio
 import csv
 import json
 import logging
+import math
 import numpy as np
 from fastapi import (
     FastAPI,
@@ -84,6 +85,7 @@ class MeshScanConfigModel(BaseModel):
     lateral_accel: float = 0.05
     z_margin: float = 0.0
     scan_axis: str = "Z"  # "X", "Y", or "Z"
+    pattern: str = "rings"  # "rings" or "spiral"
 
 
 class PathAssetSaveRequest(BaseModel):
@@ -451,22 +453,42 @@ class SimulationManager:
         self, sim_config: SimulationConfig, mesh_scan: MeshScanConfigModel
     ):
         """Helper to configure mesh scan parameters."""
-        from src.satellite_control.mission.mesh_scan import build_mesh_scan_trajectory
+        from src.satellite_control.mission.mesh_scan import (
+            build_mesh_scan_trajectory,
+            build_mesh_spiral_trajectory,
+        )
 
         try:
             mpc_dt = float(sim_config.app_config.mpc.dt)
-            path, _, path_length = build_mesh_scan_trajectory(
-                obj_path=mesh_scan.obj_path,
-                standoff=mesh_scan.standoff,
-                levels=mesh_scan.levels,
-                points_per_circle=mesh_scan.points_per_circle,
-                v_max=mesh_scan.speed_max,
-                v_min=mesh_scan.speed_min,
-                lateral_accel=mesh_scan.lateral_accel,
-                dt=mpc_dt,
-                z_margin=mesh_scan.z_margin,
-                build_trajectory=False,
-            )
+            axis = str(mesh_scan.scan_axis).upper().strip()
+            if str(mesh_scan.pattern).lower() == "spiral":
+                path, _, path_length = build_mesh_spiral_trajectory(
+                    obj_path=mesh_scan.obj_path,
+                    standoff=mesh_scan.standoff,
+                    levels=mesh_scan.levels,
+                    points_per_circle=mesh_scan.points_per_circle,
+                    v_max=mesh_scan.speed_max,
+                    v_min=mesh_scan.speed_min,
+                    lateral_accel=mesh_scan.lateral_accel,
+                    dt=mpc_dt,
+                    z_margin=mesh_scan.z_margin,
+                    scan_axis=axis,
+                    build_trajectory=False,
+                )
+            else:
+                path, _, path_length = build_mesh_scan_trajectory(
+                    obj_path=mesh_scan.obj_path,
+                    standoff=mesh_scan.standoff,
+                    levels=mesh_scan.levels,
+                    points_per_circle=mesh_scan.points_per_circle,
+                    v_max=mesh_scan.speed_max,
+                    v_min=mesh_scan.speed_min,
+                    lateral_accel=mesh_scan.lateral_accel,
+                    dt=mpc_dt,
+                    z_margin=mesh_scan.z_margin,
+                    scan_axis=axis,
+                    build_trajectory=False,
+                )
         except Exception as exc:
             logger.error(f"Mesh scan generation failed: {exc}")
             return
@@ -883,6 +905,33 @@ async def list_model_files():
     return {"models": models}
 
 
+@app.get("/api/models/bounds")
+async def get_model_bounds(path: str):
+    """Compute basic bounds for an OBJ model."""
+    from src.satellite_control.mission.mesh_scan import (
+        load_obj_vertices,
+        compute_mesh_bounds,
+    )
+
+    file_path = Path(path)
+    if not file_path.is_absolute():
+        file_path = Path.cwd() / file_path
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Model file not found: {path}")
+
+    vertices = load_obj_vertices(str(file_path))
+    min_bounds, max_bounds, center, _ = compute_mesh_bounds(vertices)
+    extents = (max_bounds - min_bounds).tolist()
+
+    return {
+        "center": center.tolist(),
+        "min_bounds": min_bounds.tolist(),
+        "max_bounds": max_bounds.tolist(),
+        "extents": extents,
+    }
+
+
 @app.post("/mission")
 async def update_mission(config: MissionConfigModel):
     await sim_manager.update_mission(config)
@@ -954,6 +1003,7 @@ async def preview_trajectory(config: MeshScanConfigModel):
     """Generate a preview of the mesh scan trajectory without running simulation."""
     from src.satellite_control.mission.mesh_scan import (
         build_mesh_scan_trajectory,
+        build_mesh_spiral_trajectory,
         load_obj_vertices,
         compute_mesh_bounds,
     )
@@ -975,26 +1025,44 @@ async def preview_trajectory(config: MeshScanConfigModel):
                     axis_idx = 1
 
                 object_height = max_bounds[axis_idx] - min_bounds[axis_idx]
-                levels = max(1, int(object_height / config.level_spacing))
+                levels = max(
+                    1, int(math.ceil(object_height / max(config.level_spacing, 1e-6)))
+                )
             except Exception:
                 # Fallback to default if can't read object
                 levels = 8
 
         # Use simple default dt for preview
         dt = 0.1
-        path, _, path_length = build_mesh_scan_trajectory(
-            obj_path=config.obj_path,
-            standoff=config.standoff,
-            levels=levels,
-            points_per_circle=config.points_per_circle,
-            v_max=config.speed_max,
-            v_min=config.speed_min,
-            lateral_accel=config.lateral_accel,
-            dt=dt,
-            z_margin=config.z_margin,
-            scan_axis=str(config.scan_axis).upper().strip(),
-            build_trajectory=False,
-        )
+        axis = str(config.scan_axis).upper().strip()
+        if str(config.pattern).lower() == "spiral":
+            path, _, path_length = build_mesh_spiral_trajectory(
+                obj_path=config.obj_path,
+                standoff=config.standoff,
+                levels=levels,
+                points_per_circle=config.points_per_circle,
+                v_max=config.speed_max,
+                v_min=config.speed_min,
+                lateral_accel=config.lateral_accel,
+                dt=dt,
+                z_margin=config.z_margin,
+                scan_axis=axis,
+                build_trajectory=False,
+            )
+        else:
+            path, _, path_length = build_mesh_scan_trajectory(
+                obj_path=config.obj_path,
+                standoff=config.standoff,
+                levels=levels,
+                points_per_circle=config.points_per_circle,
+                v_max=config.speed_max,
+                v_min=config.speed_min,
+                lateral_accel=config.lateral_accel,
+                dt=dt,
+                z_margin=config.z_margin,
+                scan_axis=axis,
+                build_trajectory=False,
+            )
 
         # Calculate approximate duration
         speed = max(float(config.speed_max), 1e-3)

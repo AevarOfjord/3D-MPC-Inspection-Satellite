@@ -327,6 +327,7 @@ def compile_unified_mission_path(
 
     for segment in mission.segments:
         if segment.type == SegmentType.TRANSFER:
+            end = np.array(segment.end_pose.position, dtype=float)
             dist = np.linalg.norm(end - current)
             # Dynamic step size: clamp between 0.1m and 100m, target ~1000 points per segment if long
             step_size = max(0.1, min(100.0, dist / 1000.0))

@@ -697,7 +697,7 @@ class UnifiedVisualizationGenerator:
         try:
             # Handle None or empty
             if command_str is None or command_str == "":
-                return np.zeros(8)
+                return np.zeros(6)
 
             # Convert to string if not already
             command_str = str(command_str)
@@ -707,7 +707,7 @@ class UnifiedVisualizationGenerator:
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
-            return np.zeros(8)
+            return np.zeros(6)
 
     def get_active_thrusters(self, command_vector: np.ndarray) -> list:
         """Get list of active thruster IDs from command vector.
@@ -716,7 +716,7 @@ class UnifiedVisualizationGenerator:
             command_vector: Array of thruster commands
 
         Returns:
-            List of active thruster IDs (1-8)
+            List of active thruster IDs (1-6)
         """
         return [i + 1 for i, cmd in enumerate(command_vector) if cmd > 0.5]
 

@@ -13,9 +13,16 @@ double Obstacle::signed_distance(const Vector3d& point) const {
         
         case ObstacleType::CYLINDER: {
             // Project point onto axis, compute distance to axis, subtract radius
+            Vector3d axis_unit = axis;
+            double axis_norm = axis_unit.norm();
+            if (axis_norm < 1e-12) {
+                axis_unit = Vector3d::UnitZ();
+            } else {
+                axis_unit /= axis_norm;
+            }
             Vector3d to_point = point - position;
-            double along_axis = to_point.dot(axis);
-            Vector3d perpendicular = to_point - along_axis * axis;
+            double along_axis = to_point.dot(axis_unit);
+            Vector3d perpendicular = to_point - along_axis * axis_unit;
             return perpendicular.norm() - radius;
         }
         
@@ -47,14 +54,21 @@ Vector3d Obstacle::distance_gradient(const Vector3d& point) const {
         
         case ObstacleType::CYLINDER: {
             // Gradient is perpendicular to axis
+            Vector3d axis_unit = axis;
+            double axis_norm = axis_unit.norm();
+            if (axis_norm < 1e-12) {
+                axis_unit = Vector3d::UnitZ();
+            } else {
+                axis_unit /= axis_norm;
+            }
             Vector3d to_point = point - position;
-            double along_axis = to_point.dot(axis);
-            Vector3d perpendicular = to_point - along_axis * axis;
+            double along_axis = to_point.dot(axis_unit);
+            Vector3d perpendicular = to_point - along_axis * axis_unit;
             double norm = perpendicular.norm();
             if (norm < 1e-10) {
                 // On the axis, return arbitrary perpendicular
-                Vector3d arbitrary = (std::abs(axis.x()) < 0.9) ? Vector3d::UnitX() : Vector3d::UnitY();
-                return axis.cross(arbitrary).normalized();
+                Vector3d arbitrary = (std::abs(axis_unit.x()) < 0.9) ? Vector3d::UnitX() : Vector3d::UnitY();
+                return axis_unit.cross(arbitrary).normalized();
             }
             return perpendicular / norm;
         }
@@ -115,13 +129,20 @@ std::vector<std::pair<Vector3d, double>> ObstacleSet::get_linear_constraints(
     for (const auto& obs : obstacles_) {
         // Linearize: n^T * x >= offset
         // where n is the gradient (pointing away from obstacle)
-        // and offset ensures we stay at least (radius + margin) away
+        // and offset ensures we stay at least margin away using signed distance
         
         Vector3d n = obs.distance_gradient(point);
-        
-        // The constraint is: n^T * (x - obs.position) >= radius + margin
-        // Rearranged: n^T * x >= n^T * obs.position + radius + margin
-        double offset = n.dot(obs.position) + obs.radius + margin;
+        double n_norm = n.norm();
+        if (n_norm < 1e-12) {
+            n = Vector3d::UnitX();
+        } else {
+            n /= n_norm;
+        }
+        double dist = obs.signed_distance(point);
+
+        // Linearized signed-distance constraint:
+        // d(p) + n^T (x - p) >= margin  =>  n^T x >= n^T p + (margin - d(p))
+        double offset = n.dot(point) + (margin - dist);
         
         constraints.emplace_back(n, offset);
     }

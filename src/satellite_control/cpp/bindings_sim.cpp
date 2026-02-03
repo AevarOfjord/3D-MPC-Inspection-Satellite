@@ -23,7 +23,12 @@ PYBIND11_MODULE(_cpp_sim, m) {
         .def_readwrite("thruster_forces", &SatelliteParams::thruster_forces)
         .def_readwrite("rw_torque_limits", &SatelliteParams::rw_torque_limits)
         .def_readwrite("rw_inertia", &SatelliteParams::rw_inertia)
-        .def_readwrite("com_offset", &SatelliteParams::com_offset);
+        .def_readwrite("rw_speed_limits", &SatelliteParams::rw_speed_limits)
+        .def_readwrite("com_offset", &SatelliteParams::com_offset)
+        .def_readwrite("orbital_mean_motion", &SatelliteParams::orbital_mean_motion)
+        .def_readwrite("orbital_mu", &SatelliteParams::orbital_mu)
+        .def_readwrite("orbital_radius", &SatelliteParams::orbital_radius)
+        .def_readwrite("use_two_body", &SatelliteParams::use_two_body);
 
     py::class_<SimulationEngine>(m, "SimulationEngine")
         .def(py::init<const SatelliteParams&, double, double, double, bool>(), 
@@ -36,6 +41,9 @@ PYBIND11_MODULE(_cpp_sim, m) {
         .def("step", &SimulationEngine::step,
              py::arg("dt"), py::arg("thruster_cmds"), py::arg("rw_torques"),
              "Advance simulation by dt")
+        .def("step_batch", &SimulationEngine::step_batch,
+             py::arg("steps"), py::arg("dt"), py::arg("thruster_cmds"), py::arg("rw_torques"),
+             "Advance simulation by multiple steps with constant inputs")
         .def("get_state", &SimulationEngine::get_state, 
              "Get current state vector [13]")
         .def("get_rw_speeds", &SimulationEngine::get_rw_speeds,

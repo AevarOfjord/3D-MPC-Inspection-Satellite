@@ -114,11 +114,17 @@ class SimulationConfig:
             "solver_type": self.app_config.mpc.solver_type,
             "Q_contour": self.app_config.mpc.Q_contour,
             "Q_progress": self.app_config.mpc.Q_progress,
+            "Q_lag": self.app_config.mpc.Q_lag,
             "Q_smooth": self.app_config.mpc.Q_smooth,
+            "Q_attitude": self.app_config.mpc.Q_attitude,
+            "Q_terminal_pos": self.app_config.mpc.Q_terminal_pos,
+            "Q_terminal_s": self.app_config.mpc.Q_terminal_s,
             "q_angular_velocity": self.app_config.mpc.q_angular_velocity,
             "r_thrust": self.app_config.mpc.r_thrust,
             "r_rw_torque": self.app_config.mpc.r_rw_torque,
             "path_speed": self.app_config.mpc.path_speed,
+            "progress_taper_distance": self.app_config.mpc.progress_taper_distance,
+            "progress_slowdown_distance": self.app_config.mpc.progress_slowdown_distance,
             "thruster_type": self.app_config.mpc.thruster_type,
         }
 
@@ -148,6 +154,8 @@ class SimulationConfig:
             "use_final_stabilization": self.app_config.simulation.use_final_stabilization,
             "control_dt": self.app_config.simulation.control_dt,
             "default_path_speed": self.app_config.simulation.default_path_speed,
+            "physics_log_stride": self.app_config.simulation.physics_log_stride,
+            "control_log_stride": self.app_config.simulation.control_log_stride,
         }
 
     def to_dict(self) -> dict:
@@ -205,13 +213,19 @@ class SimulationConfig:
             "weights": {
                 "Q_contour": mpc.Q_contour,
                 "Q_progress": mpc.Q_progress,
+                "Q_lag": mpc.Q_lag,
                 "Q_smooth": mpc.Q_smooth,
+                "Q_attitude": mpc.Q_attitude,
+                "Q_terminal_pos": mpc.Q_terminal_pos,
+                "Q_terminal_s": mpc.Q_terminal_s,
                 "angular_velocity": mpc.q_angular_velocity,
                 "thrust": mpc.r_thrust,
                 "rw_torque": mpc.r_rw_torque,
             },
             "path_following": {
                 "path_speed": mpc.path_speed,
+                "progress_taper_distance": mpc.progress_taper_distance,
+                "progress_slowdown_distance": mpc.progress_slowdown_distance,
             },
             "settings": {
                 "dt": mpc.dt,

@@ -15,6 +15,8 @@ import { useHistory } from './useHistory';
 import { telemetry } from '../services/telemetry';
 import { orbitSnapshot } from '../data/orbitSnapshot';
 import { API_BASE_URL } from '../config/endpoints';
+import { useCameraStore } from '../store/cameraStore';
+import { ORBIT_SCALE } from '../data/orbitSnapshot';
 
 export type TransformMode = 'translate' | 'rotate';
 export type SelectionType = 'satellite' | 'reference' | `obstacle-${number}` | `waypoint-${number}` | `spline-${number}` | null;
@@ -88,10 +90,10 @@ export function useMissionBuilder() {
       speed_min: 0.05,
       lateral_accel: 0.05,
       z_margin: 0.0,
-      scan_axis: 'Z'
+      scan_axis: 'Z',
+      pattern: 'spiral',
   });
   const [levelSpacing, setLevelSpacing] = useState<number>(0.1);
-  const [useLevelSpacing, setUseLevelSpacing] = useState<boolean>(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [pathAssets, setPathAssets] = useState<PathAssetSummary[]>([]);
 
@@ -188,7 +190,7 @@ export function useMissionBuilder() {
       setLoading(true);
       try {
           const previewConfig: MeshScanConfig = { ...config };
-          if (useLevelSpacing && levelSpacing > 0) {
+          if (levelSpacing > 0) {
               previewConfig.level_spacing = levelSpacing;
           }
           const res = await trajectoryApi.previewTrajectory(previewConfig);
@@ -215,6 +217,16 @@ export function useMissionBuilder() {
       setModelPath(path);
       setConfig(prev => ({ ...prev, obj_path: path }));
       setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
+      trajectoryApi.getModelBounds(path).then((bounds) => {
+          const extent = Math.max(bounds.extents[0], bounds.extents[1], bounds.extents[2]);
+          const distance = Math.max(extent * 2.5, 5);
+          useCameraStore
+              .getState()
+              .requestFocus(
+                  [bounds.center[0] * ORBIT_SCALE, bounds.center[1] * ORBIT_SCALE, bounds.center[2] * ORBIT_SCALE],
+                  distance * ORBIT_SCALE
+              );
+      }).catch(() => null);
   };
 
   const refreshModelList = async () => {
@@ -244,7 +256,7 @@ export function useMissionBuilder() {
           return;
       }
       const meshScanPayload: MeshScanConfig = { ...config };
-      if (useLevelSpacing && levelSpacing > 0) {
+      if (levelSpacing > 0) {
           meshScanPayload.level_spacing = levelSpacing;
       }
       const payload = {
@@ -729,7 +741,6 @@ export function useMissionBuilder() {
         transformMode,
         config,
         levelSpacing,
-        useLevelSpacing,
         availableModels,
         pathAssets,
         epoch,
@@ -753,7 +764,6 @@ export function useMissionBuilder() {
         setTransformMode,
         setConfig,
         setLevelSpacing,
-        setUseLevelSpacing,
         setEpoch,
         setSelectedSegmentIndex,
         setSegments

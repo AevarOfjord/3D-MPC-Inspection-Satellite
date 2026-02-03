@@ -141,36 +141,7 @@ class SatelliteMPCLinearizedSimulation:
         self.planned_path = []  # Path waypoints [x, y, z]
         self.last_solve_time = 0.0  # Track last MPC solve time for physics logging
 
-        # Hydra Config Adoption
-        if cfg is None:
-            # Fallback or initialization from defaults if no config provided
-            # For now, we assume cfg IS provided by the new CLI.
-            # If not, we might need a default factory.
-            pass
-
-        self.cfg = cfg
-
-        # Legacy Compatibility Layer (Minimal)
-        # We assign self.simulation_config or self.structured_config if other parts of the system
-        # still rely on them.
-        # Ideally, we start replacing usages of self.structured_config with self.cfg
-
-        # Use SimulationInitializer to handle all initialization
-        # We need to adapt SimulationInitializer to accept cfg as well, or update how it's called.
-        # For this refactor step, we might need to modify SimulationInitializer next.
-        # But let's look at how it's called below.
-
-        # We need to preserve the "simulation_config" attribute if other classes access it.
-        # Let's mock it or wrap cfg if needed, but better to update the initializer.
-
-        # Temporarily creating a dummy or adapted structured_config to satisfy legacy initializers
-        # This is a bit of a hack during migration.
-        # Ideally SimulationInitializer is updated to take cfg.
-
-        # Let's assume we update logic to use self.cfg where possible.
-
-        # Initialize
-        # Initialize
+        # Ensure we have a structured SimulationConfig for downstream components.
         # Adapt Hydra config to SimulationConfig if needed
         # V4.1.0: Prefer explicitly passed simulation_config, then AppConfig
         if self.simulation_config is None:
@@ -190,16 +161,6 @@ class SatelliteMPCLinearizedSimulation:
             simulation=self,
             simulation_config=self.simulation_config,
         )
-        # We might need to monkey-patch or update the initializer to support this.
-        # Or better, we just overwrite the .initialize call
-
-        pass
-
-        # NOTE to reviewer: This replaced block is incomplete because dependent classes (Initializer)
-        # need updates. I am proceeding with the plan to update them one by one.
-        # Restoring the original logic flow but injecting the new config.
-
-        # ... (Legacy logic removal) ...
 
         self.initializer.initialize(
             start_pos,
@@ -286,6 +247,13 @@ class SatelliteMPCLinearizedSimulation:
     def log_physics_step(self):
         """Log high-frequency physics data (every 5ms)."""
         if not self.data_save_path:
+            return
+
+        stride = int(getattr(self, "physics_log_stride", 1) or 1)
+        if not hasattr(self, "_physics_log_counter"):
+            self._physics_log_counter = 0
+        self._physics_log_counter += 1
+        if stride > 1 and (self._physics_log_counter % stride) != 0:
             return
 
         current_state = self.get_current_state()
@@ -550,8 +518,15 @@ class SatelliteMPCLinearizedSimulation:
         if control_loop_duration is None:
             control_loop_duration = 0.0
 
+        stride = int(getattr(self, "control_log_stride", 1) or 1)
+        if not hasattr(self, "_control_log_counter"):
+            self._control_log_counter = 0
+        self._control_log_counter += 1
+        do_log = stride <= 1 or (self._control_log_counter % stride) == 0
+
         # Store state history for summaries/plots
-        self.state_history.append(current_state.copy())
+        if do_log:
+            self.state_history.append(current_state.copy())
 
         # Record performance metrics
         solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
@@ -585,7 +560,12 @@ class SatelliteMPCLinearizedSimulation:
         path_s = getattr(self.mpc_controller, "s", None)
         path_len = None
         if hasattr(self.mpc_controller, "_path_length"):
-            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+            try:
+                path_len = float(
+                    getattr(self.mpc_controller, "_path_length", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                path_len = 0.0
         if path_len is None or path_len <= 0.0:
             if self.simulation_config is not None:
                 path_len = float(
@@ -654,68 +634,70 @@ class SatelliteMPCLinearizedSimulation:
             rw_vals = np.array(rw_torque, dtype=float)
             rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
         rw_out = [round(float(val), 2) for val in rw_norm]
-        logger.info(
-            f"t = {self.simulation_time:.1f}s: {status_msg}\n"
-            f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
-            f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
-            f"Position = {fmt_position_mm(current_state)}\n"
-            f"Angle = {fmt_angles_deg(current_state)}\n"
-            f"Reference Pos = {fmt_position_mm(safe_reference)}\n"
-            f"Reference Ang = {fmt_angles_deg(safe_reference)}\n"
-            f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
-            f"Thrusters = {active_thruster_ids}\n"
-            f"Thruster Output = {thr_out}\n"
-            f"Reaction Wheel = [X, Y, Z]\n"
-            f"RW Output = {rw_out}\n"
-        )
+        if do_log:
+            logger.info(
+                f"t = {self.simulation_time:.1f}s: {status_msg}\n"
+                f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
+                f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
+                f"Position = {fmt_position_mm(current_state)}\n"
+                f"Angle = {fmt_angles_deg(current_state)}\n"
+                f"Reference Pos = {fmt_position_mm(safe_reference)}\n"
+                f"Reference Ang = {fmt_angles_deg(safe_reference)}\n"
+                f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
+                f"Thrusters = {active_thruster_ids}\n"
+                f"Thruster Output = {thr_out}\n"
+                f"Reaction Wheel = [X, Y, Z]\n"
+                f"RW Output = {rw_out}\n"
+            )
 
-        # Delegate to SimulationLogger for control_data.csv output
-        if not hasattr(self, "logger_helper"):
-            from src.satellite_control.core.simulation_logger import SimulationLogger
+        if do_log:
+            # Delegate to SimulationLogger for control_data.csv output
+            if not hasattr(self, "logger_helper"):
+                from src.satellite_control.core.simulation_logger import SimulationLogger
 
-            self.logger_helper = SimulationLogger(self.data_logger)
+                self.logger_helper = SimulationLogger(self.data_logger)
 
-        previous_thruster_action: Optional[np.ndarray] = (
-            self.previous_command if hasattr(self, "previous_command") else None
-        )
+            previous_thruster_action: Optional[np.ndarray] = (
+                self.previous_command if hasattr(self, "previous_command") else None
+            )
 
-        # Update Context
-        self.context.update_state(
-            self.simulation_time, current_state, self.reference_state
-        )
-        self.context.step_number = self.data_logger.current_step
-        self.context.mission_phase = mission_phase
-        self.context.previous_thruster_command = previous_thruster_action
-        if rw_torque is not None:
-            self.context.rw_torque_command = np.array(rw_torque, dtype=np.float64)
+            # Update Context
+            self.context.update_state(
+                self.simulation_time, current_state, self.reference_state
+            )
+            self.context.step_number = self.data_logger.current_step
+            self.context.mission_phase = mission_phase
+            self.context.previous_thruster_command = previous_thruster_action
+            if rw_torque is not None:
+                self.context.rw_torque_command = np.array(rw_torque, dtype=np.float64)
 
-        mpc_info_safe = mpc_info if mpc_info is not None else {}
-        self.logger_helper.log_step(
-            self.context,
-            mpc_start_sim_time,
-            command_sent_sim_time,
-            thruster_action,
-            mpc_info_safe,
-            rw_torque=self.context.rw_torque_command,
-            solve_time=self.last_solve_time,  # Added solve_time for compatibility
-        )
+            mpc_info_safe = mpc_info if mpc_info is not None else {}
+            self.logger_helper.log_step(
+                self.context,
+                mpc_start_sim_time,
+                command_sent_sim_time,
+                thruster_action,
+                mpc_info_safe,
+                rw_torque=self.context.rw_torque_command,
+                solve_time=self.last_solve_time,  # Added solve_time for compatibility
+            )
+
+            # Log terminal message to CSV
+            terminal_entry = {
+                "Time": self.simulation_time,
+                "Status": status_msg,
+                "Stabilization_Time": (
+                    stabilization_time if stabilization_time is not None else ""
+                ),
+                "Position_Error_m": pos_error,
+                "Angle_Error_deg": np.degrees(ang_error),
+                "Active_Thrusters": str(active_thruster_ids),
+                "Solve_Time_s": mpc_computation_time,
+                "Next_Update_s": self.next_control_simulation_time,
+            }
+            self.data_logger.log_terminal_message(terminal_entry)
 
         self.previous_command = thruster_action.copy()
-
-        # Log terminal message to CSV
-        terminal_entry = {
-            "Time": self.simulation_time,
-            "Status": status_msg,
-            "Stabilization_Time": (
-                stabilization_time if stabilization_time is not None else ""
-            ),
-            "Position_Error_m": pos_error,
-            "Angle_Error_deg": np.degrees(ang_error),
-            "Active_Thrusters": str(active_thruster_ids),
-            "Solve_Time_s": mpc_computation_time,
-            "Next_Update_s": self.next_control_simulation_time,
-        }
-        self.data_logger.log_terminal_message(terminal_entry)
 
     def check_path_complete(self) -> bool:
         """
@@ -735,9 +717,33 @@ class SatelliteMPCLinearizedSimulation:
             )
         if path_len <= 0.0:
             return False
+        pos = None
+        if hasattr(self.satellite, "position"):
+            pos = np.array(self.satellite.position, dtype=float)
+        else:
+            try:
+                pos = self.get_current_state()[:3]
+            except Exception:
+                pos = None
 
         path_s = float(getattr(self.mpc_controller, "s", 0.0) or 0.0)
-        return path_s >= path_len
+        endpoint_error = float("inf")
+        if hasattr(self.mpc_controller, "get_path_progress") and pos is not None:
+            metrics = self.mpc_controller.get_path_progress(pos)
+            if isinstance(metrics, dict):
+                path_s = float(metrics.get("s", path_s))
+                endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
+        elif pos is not None:
+            try:
+                end_pt = np.array(self.simulation_config.mission_state.mpcc_path_waypoints[-1], dtype=float)
+                endpoint_error = float(np.linalg.norm(pos - end_pt))
+            except Exception:
+                endpoint_error = float("inf")
+
+        pos_tol = float(getattr(self, "position_tolerance", 0.05))
+        progress_ok = path_s >= (path_len - pos_tol)
+        pos_ok = endpoint_error <= pos_tol
+        return bool(progress_ok and pos_ok)
 
     def draw_simulation(self) -> None:
         """Draw the simulation with satellite, reference, and trajectory."""

@@ -207,21 +207,40 @@ class SimulationLoop:
         )
 
         fast_batch_steps = steps_per_batch - 1
+        can_batch_physics = (
+            batch_mode
+            and hasattr(self.simulation.satellite, "update_physics_batch")
+            and getattr(self.simulation.thruster_manager, "thruster_type", "") == "CON"
+            and not getattr(self.simulation.thruster_manager, "use_realistic_physics", True)
+            and float(getattr(self.simulation, "VALVE_DELAY", 0.0) or 0.0) == 0.0
+            and float(getattr(self.simulation, "THRUST_RAMPUP_TIME", 0.0) or 0.0) == 0.0
+        )
 
         while self.simulation.is_running:
             # Optimized Batch: Run physics steps without control logic
             # overhead
             if batch_mode:
-                for _ in range(fast_batch_steps):
-                    # Inline logic for speed
+                if can_batch_physics and fast_batch_steps > 0:
+                    # Constant inputs in idealized continuous mode allow C++ batching.
                     self.simulation.process_command_queue()
-                    self.simulation.satellite.update_physics(
-                        self.simulation.satellite.dt
+                    self.simulation.satellite.update_physics_batch(
+                        fast_batch_steps, self.simulation.satellite.dt
                     )
                     self.simulation.simulation_time = (
                         self.simulation.satellite.simulation_time
                     )
                     self.simulation.log_physics_step()
+                else:
+                    for _ in range(fast_batch_steps):
+                        # Inline logic for speed
+                        self.simulation.process_command_queue()
+                        self.simulation.satellite.update_physics(
+                            self.simulation.satellite.dt
+                        )
+                        self.simulation.simulation_time = (
+                            self.simulation.satellite.simulation_time
+                        )
+                        self.simulation.log_physics_step()
 
             # Full Update (run MPC check, Mission Check, Logging, 1
             # Physics Step)
@@ -319,7 +338,16 @@ class SimulationLoop:
     def _check_path_following_completion(self) -> bool:
         """Terminate when path progress reaches the end of the path."""
         mission_state = self._get_mission_state()
-        path_length = float(getattr(mission_state, "dxf_path_length", 0.0) or 0.0)
+        path_length = 0.0
+        if hasattr(self.simulation.mpc_controller, "_path_length"):
+            try:
+                path_length = float(
+                    getattr(self.simulation.mpc_controller, "_path_length", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                path_length = 0.0
+        if path_length <= 0.0:
+            path_length = float(getattr(mission_state, "dxf_path_length", 0.0) or 0.0)
         if path_length <= 0.0:
             path = getattr(mission_state, "mpcc_path_waypoints", None)
             if path and len(path) > 1:
@@ -329,12 +357,37 @@ class SimulationLoop:
                 )
         if path_length <= 0.0:
             return False
+        pos = None
+        if hasattr(self.simulation.satellite, "position"):
+            pos = np.array(self.simulation.satellite.position, dtype=float)
+        else:
+            try:
+                pos = self.simulation.get_current_state()[:3]
+            except Exception:
+                pos = None
 
         path_s = getattr(self.simulation.mpc_controller, "s", None)
+        endpoint_error = float("inf")
+        if hasattr(self.simulation.mpc_controller, "get_path_progress") and pos is not None:
+            metrics = self.simulation.mpc_controller.get_path_progress(pos)
+            if isinstance(metrics, dict):
+                path_s = metrics.get("s", path_s)
+                endpoint_error = metrics.get("endpoint_error", endpoint_error)
+        elif pos is not None:
+            try:
+                end_pt = np.array(mission_state.mpcc_path_waypoints[-1], dtype=float)
+                endpoint_error = float(np.linalg.norm(pos - end_pt))
+            except Exception:
+                endpoint_error = float("inf")
+
         if path_s is None:
             return False
 
-        if path_s < path_length:
+        pos_tol = float(getattr(self.simulation, "position_tolerance", 0.05))
+        progress_ok = float(path_s) >= (path_length - pos_tol)
+        pos_ok = endpoint_error <= pos_tol
+
+        if not (progress_ok and pos_ok):
             self.simulation.trajectory_endpoint_reached_time = None
             return False
 
