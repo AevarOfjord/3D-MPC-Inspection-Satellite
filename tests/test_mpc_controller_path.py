@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from src.satellite_control.config import physics as physics_cfg
+
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.config.models import (
     AppConfig,
@@ -12,9 +14,10 @@ from src.satellite_control.config.models import (
 
 def create_default_app_config(path_speed=0.1) -> AppConfig:
     """Create a valid default AppConfig for testing."""
-    thruster_pos = {i: (0.1, 0.0, 0.0) for i in range(1, 7)}
-    thruster_dir = {i: (1.0, 0.0, 0.0) for i in range(1, 7)}
-    thruster_force = {i: 1.0 for i in range(1, 7)}
+    thruster_ids = range(1, len(physics_cfg.THRUSTER_POSITIONS) + 1)
+    thruster_pos = {i: (0.1, 0.0, 0.0) for i in thruster_ids}
+    thruster_dir = {i: (1.0, 0.0, 0.0) for i in thruster_ids}
+    thruster_force = {i: 1.0 for i in thruster_ids}
 
     return AppConfig(
         physics=SatellitePhysicalParams(

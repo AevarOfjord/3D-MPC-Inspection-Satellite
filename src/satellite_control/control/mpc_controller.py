@@ -105,6 +105,16 @@ class MPCController(Controller):
             mpc_params.Q_attitude = self.Q_attitude
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
+        if hasattr(mpc_params, "thrust_l1_weight"):
+            mpc_params.thrust_l1_weight = float(self.thrust_l1_weight)
+        if hasattr(mpc_params, "thrust_pair_weight"):
+            mpc_params.thrust_pair_weight = float(self.thrust_pair_weight)
+        if hasattr(mpc_params, "coast_pos_tolerance"):
+            mpc_params.coast_pos_tolerance = float(self.coast_pos_tolerance)
+        if hasattr(mpc_params, "coast_vel_tolerance"):
+            mpc_params.coast_vel_tolerance = float(self.coast_vel_tolerance)
+        if hasattr(mpc_params, "coast_min_speed"):
+            mpc_params.coast_min_speed = float(self.coast_min_speed)
         if hasattr(mpc_params, "path_speed"):
             mpc_params.path_speed = self.path_speed
         if hasattr(mpc_params, "progress_taper_distance"):
@@ -401,6 +411,11 @@ class MPCController(Controller):
         self.Q_attitude = getattr(mpc, "Q_attitude", 0.0)
         self.R_thrust = mpc.r_thrust
         self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
+        self.thrust_l1_weight = getattr(mpc, "thrust_l1_weight", 0.0)
+        self.thrust_pair_weight = getattr(mpc, "thrust_pair_weight", 0.0)
+        self.coast_pos_tolerance = getattr(mpc, "coast_pos_tolerance", 0.0)
+        self.coast_vel_tolerance = getattr(mpc, "coast_vel_tolerance", 0.0)
+        self.coast_min_speed = getattr(mpc, "coast_min_speed", 0.0)
 
         # Path Following (V4.0.1) - General Path MPCC
         self.mode_path_following = True  # Always True now

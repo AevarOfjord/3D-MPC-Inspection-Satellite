@@ -136,7 +136,11 @@ def run(
                 mission=mission_def,
                 sim_config=simulation_config,
             )
-            sim_end_pos = tuple(path[-1]) if path else sim_start_pos
+            if path:
+                sim_start_pos = tuple(path[0])
+                sim_end_pos = tuple(path[-1])
+            else:
+                sim_end_pos = sim_start_pos
 
             if mission_def.obstacles:
                 ms.obstacles = [

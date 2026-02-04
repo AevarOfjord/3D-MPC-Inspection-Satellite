@@ -23,7 +23,7 @@ from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulati
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.timing import SIMULATION_DT
 from src.satellite_control.mission.mission_types import Obstacle
-from src.satellite_control.mission.unified_mission import MissionDefinition
+from src.satellite_control.mission.unified_mission import MissionDefinition, SegmentType
 from src.satellite_control.mission.unified_compiler import compile_unified_mission_path
 from src.satellite_control.mission.path_assets import (
     list_path_assets,
@@ -328,7 +328,7 @@ class SimulationManager:
         sim_config.mission_state.trajectory_mode_active = False
         sim_config.mission_state.dxf_shape_mode_active = False
 
-        start_pos = tuple(mission.start_pose.position)
+        start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
         end_pos = tuple(path[-1]) if path else start_pos
 
         self.sim_instance = SatelliteMPCLinearizedSimulation(
@@ -556,6 +556,48 @@ class SimulationManager:
                 for o in self.sim_instance.simulation_config.mission_state.obstacles
             ]
 
+        frame = "ECI"
+        frame_origin = None
+        if self.current_unified_mission:
+            def norm_frame(val: Any) -> str:
+                if hasattr(val, "value"):
+                    return str(val.value).upper()
+                return str(val).upper()
+
+            uses_lvlh = False
+            if norm_frame(self.current_unified_mission.start_pose.frame) == "LVLH":
+                uses_lvlh = True
+            for seg in self.current_unified_mission.segments:
+                if seg.type == SegmentType.TRANSFER:
+                    if norm_frame(seg.end_pose.frame) == "LVLH":
+                        uses_lvlh = True
+                        break
+                if seg.type == SegmentType.SCAN:
+                    if norm_frame(seg.scan.frame) == "LVLH":
+                        uses_lvlh = True
+                        break
+
+            if uses_lvlh:
+                frame = "LVLH"
+                origin = None
+                start_target_id = getattr(self.current_unified_mission, "start_target_id", None)
+                if start_target_id:
+                    for seg in self.current_unified_mission.segments:
+                        if (
+                            seg.type == SegmentType.SCAN
+                            and seg.target_id == start_target_id
+                            and seg.target_pose
+                        ):
+                            origin = list(seg.target_pose.position)
+                            break
+                if origin is None:
+                    for seg in self.current_unified_mission.segments:
+                        if seg.type == SegmentType.SCAN and seg.target_pose:
+                            origin = list(seg.target_pose.position)
+                            break
+                if origin is not None:
+                    frame_origin = origin
+
         return {
             "time": self.sim_instance.simulation_time,
             "position": state[0:3],
@@ -574,6 +616,8 @@ class SimulationManager:
             "solve_time": getattr(self.sim_instance, "last_solve_time", 0.0),
             "pos_error": getattr(self.sim_instance, "last_pos_error", 0.0),
             "ang_error": getattr(self.sim_instance, "last_ang_error", 0.0),
+            "frame": frame,
+            "frame_origin": frame_origin,
         }
 
     async def _run_loop(self):
@@ -1197,6 +1241,7 @@ async def preview_mission_v2(config: UnifiedMissionModel):
     path, path_length, path_speed = compile_unified_mission_path(
         mission=mission_def,
         sim_config=sim_config,
+        output_frame="ECI",
     )
     return {
         "path": [list(p) for p in path],

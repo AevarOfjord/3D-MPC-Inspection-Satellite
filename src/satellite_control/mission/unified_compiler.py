@@ -37,9 +37,9 @@ def _resolve_target_obj_path(target_id: str) -> Optional[Path]:
     upper = target_id.upper()
     root = _repo_root()
     if "ISS" in upper:
-        return root / "OBJ_files" / "ISS.obj"
+        return root / "OBJ_files" / "ISS" / "ISS.obj"
     if "STARLINK" in upper:
-        return root / "OBJ_files" / "starlink.obj"
+        return root / "OBJ_files" / "Starlink" / "starlink.obj"
     return None
 
 
@@ -191,24 +191,55 @@ def _build_scan_path(
 
 def _build_asset_path(
     asset_id: str, target_pos: np.ndarray
-) -> List[Tuple[float, float, float]]:
+) -> Tuple[List[Tuple[float, float, float]], bool]:
     """Load a prebuilt path asset and optionally offset to target."""
     try:
         asset = load_path_asset(asset_id)
     except Exception:
-        return []
+        return [], False
 
     raw_path = asset.get("path") or []
     if not raw_path:
-        return []
+        return [], False
 
     relative = bool(asset.get("relative_to_obj", True))
     if relative and target_pos is not None:
         offset = np.array(target_pos, dtype=float)
         return [
             tuple(map(float, np.array(p, dtype=float) + offset)) for p in raw_path
-        ]
-    return [tuple(map(float, p)) for p in raw_path]
+        ], True
+    return [tuple(map(float, p)) for p in raw_path], False
+
+
+def _quat_rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Rotate vector v by quaternion q = [w, x, y, z]."""
+    w, x, y, z = q
+    q_vec = np.array([x, y, z], dtype=float)
+    uv = np.cross(q_vec, v)
+    uuv = np.cross(q_vec, uv)
+    return v + 2.0 * (w * uv + uuv)
+
+
+def _apply_target_orientation(
+    path: List[Tuple[float, float, float]],
+    target_pos: np.ndarray,
+    target_orientation: Optional[Sequence[float]],
+) -> List[Tuple[float, float, float]]:
+    if not target_orientation:
+        return path
+    q = np.array(target_orientation, dtype=float)
+    if q.shape[0] != 4:
+        return path
+    norm = float(np.linalg.norm(q))
+    if norm < 1e-9:
+        return path
+    q = q / norm
+    rotated: List[Tuple[float, float, float]] = []
+    for p in path:
+        vec = np.array(p, dtype=float) - target_pos
+        vec_rot = _quat_rotate(q, vec)
+        rotated.append(tuple(map(float, target_pos + vec_rot)))
+    return rotated
 
 
 def _compute_path_length(path: List[Tuple[float, float, float]]) -> float:
@@ -218,54 +249,6 @@ def _compute_path_length(path: List[Tuple[float, float, float]]) -> float:
     return float(np.sum(np.linalg.norm(arr[1:] - arr[:-1], axis=1)))
 
 
-def _distance_point_to_segment(
-    point: np.ndarray, start: np.ndarray, end: np.ndarray
-) -> float:
-    segment = end - start
-    seg_len_sq = float(np.dot(segment, segment))
-    if seg_len_sq < 1e-12:
-        return float(np.linalg.norm(point - start))
-    t = float(np.dot(point - start, segment) / seg_len_sq)
-    t = max(0.0, min(1.0, t))
-    proj = start + t * segment
-    return float(np.linalg.norm(point - proj))
-
-
-def _segment_intersects_sphere(
-    start: np.ndarray,
-    end: np.ndarray,
-    center: np.ndarray,
-    radius: float,
-    margin: float,
-) -> bool:
-    dist = _distance_point_to_segment(center, start, end)
-    return dist <= float(radius + margin)
-
-
-def _compute_detour_point(
-    start: np.ndarray,
-    end: np.ndarray,
-    center: np.ndarray,
-    radius: float,
-    margin: float,
-) -> np.ndarray:
-    direction = end - start
-    norm = float(np.linalg.norm(direction))
-    if norm < 1e-9:
-        return center + np.array([radius + margin, 0.0, 0.0], dtype=float)
-    unit_dir = direction / norm
-    axis = np.array([0.0, 0.0, 1.0], dtype=float)
-    if abs(float(unit_dir[2])) > 0.9:
-        axis = np.array([0.0, 1.0, 0.0], dtype=float)
-    perp = np.cross(unit_dir, axis)
-    perp_norm = float(np.linalg.norm(perp))
-    if perp_norm < 1e-9:
-        perp = np.array([1.0, 0.0, 0.0], dtype=float)
-    else:
-        perp = perp / perp_norm
-    return center + perp * (radius + margin)
-
-
 def _build_segment_path(
     start: np.ndarray,
     end: np.ndarray,
@@ -273,31 +256,73 @@ def _build_segment_path(
     step_size: float,
     margin: float,
 ) -> List[Tuple[float, float, float]]:
-    waypoints: List[Tuple[float, float, float]] = [
-        tuple(map(float, start)),
-        tuple(map(float, end)),
-    ]
-    for obstacle in obstacles:
-        center = np.array(obstacle.position, dtype=float)
-        if _segment_intersects_sphere(start, end, center, obstacle.radius, margin):
-            detour = _compute_detour_point(start, end, center, obstacle.radius, margin)
-            waypoints = [
-                tuple(map(float, start)),
-                tuple(map(float, detour)),
-                tuple(map(float, end)),
-            ]
-            break
-
     return build_point_to_point_path(
-        waypoints=waypoints,
-        obstacles=None,
+        waypoints=[tuple(map(float, start)), tuple(map(float, end))],
+        obstacles=obstacles,
         step_size=step_size,
+        safety_margin=margin,
     )
+
+
+def _normalize_frame(frame: Any) -> str:
+    if hasattr(frame, "value"):
+        return str(frame.value).upper()
+    return str(frame).upper()
+
+
+def _mission_uses_lvlh(mission: MissionDefinition) -> bool:
+    if _normalize_frame(getattr(mission.start_pose, "frame", "ECI")) == "LVLH":
+        return True
+    for segment in mission.segments:
+        if segment.type == SegmentType.TRANSFER:
+            frame = getattr(segment.end_pose, "frame", "ECI")
+            if _normalize_frame(frame) == "LVLH":
+                return True
+        if segment.type == SegmentType.SCAN:
+            frame = getattr(segment.scan, "frame", "ECI")
+            if _normalize_frame(frame) == "LVLH":
+                return True
+    return False
+
+
+def _resolve_reference_origin(mission: MissionDefinition) -> np.ndarray:
+    target_id = getattr(mission, "start_target_id", None)
+    if target_id:
+        for segment in mission.segments:
+            if (
+                segment.type == SegmentType.SCAN
+                and segment.target_id == target_id
+                and segment.target_pose
+            ):
+                return np.array(segment.target_pose.position, dtype=float)
+    for segment in mission.segments:
+        if segment.type == SegmentType.SCAN and segment.target_pose:
+            return np.array(segment.target_pose.position, dtype=float)
+    return np.zeros(3, dtype=float)
+
+
+def _convert_position(
+    position: Sequence[float],
+    source_frame: str,
+    target_frame: str,
+    origin: np.ndarray,
+) -> np.ndarray:
+    src = _normalize_frame(source_frame)
+    dst = _normalize_frame(target_frame)
+    pos = np.array(position, dtype=float)
+    if src == dst:
+        return pos
+    if src == "ECI" and dst == "LVLH":
+        return pos - origin
+    if src == "LVLH" and dst == "ECI":
+        return pos + origin
+    return pos
 
 
 def compile_unified_mission_path(
     mission: MissionDefinition,
     sim_config: SimulationConfig,
+    output_frame: Optional[str] = None,
 ) -> Tuple[List[Tuple[float, float, float]], float, float]:
     """
     Convert a unified mission into a single MPCC path.
@@ -309,7 +334,21 @@ def compile_unified_mission_path(
         start = tuple(mission.start_pose.position)
         return [start], 0.0, float(sim_config.app_config.mpc.path_speed)
 
-    path: List[Tuple[float, float, float]] = [tuple(mission.start_pose.position)]
+    frame_mode = (
+        output_frame.upper()
+        if output_frame is not None
+        else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
+    )
+    origin = _resolve_reference_origin(mission)
+
+    start_pos = _convert_position(
+        mission.start_pose.position,
+        getattr(mission.start_pose, "frame", "ECI"),
+        frame_mode,
+        origin,
+    )
+
+    path: List[Tuple[float, float, float]] = [tuple(start_pos)]
     current = np.array(path[-1], dtype=float)
     obstacles = mission.obstacles
     margin = float(sim_config.app_config.mpc.obstacle_margin)
@@ -327,7 +366,12 @@ def compile_unified_mission_path(
 
     for segment in mission.segments:
         if segment.type == SegmentType.TRANSFER:
-            end = np.array(segment.end_pose.position, dtype=float)
+            end = _convert_position(
+                segment.end_pose.position,
+                getattr(segment.end_pose, "frame", "ECI"),
+                frame_mode,
+                origin,
+            )
             dist = np.linalg.norm(end - current)
             # Dynamic step size: clamp between 0.1m and 100m, target ~1000 points per segment if long
             step_size = max(0.1, min(100.0, dist / 1000.0))
@@ -345,11 +389,29 @@ def compile_unified_mission_path(
 
         elif segment.type == SegmentType.SCAN:
             scan = segment.scan
-            target_pos = (
-                np.array(segment.target_pose.position, dtype=float)
-                if segment.target_pose
-                else np.zeros(3, dtype=float)
-            )
+            scan_frame = _normalize_frame(getattr(scan, "frame", "ECI"))
+
+            target_pos = np.zeros(3, dtype=float)
+            if scan_frame == "ECI":
+                target_pos = (
+                    np.array(segment.target_pose.position, dtype=float)
+                    if segment.target_pose
+                    else np.zeros(3, dtype=float)
+                )
+                if frame_mode == "LVLH":
+                    target_pos = target_pos - origin
+            elif scan_frame == "LVLH":
+                # LVLH scan is defined around the local origin.
+                target_pos = np.zeros(3, dtype=float)
+
+            target_orientation = None
+            if (
+                frame_mode == "ECI"
+                and scan_frame == "ECI"
+                and segment.target_pose
+                and segment.target_pose.orientation is not None
+            ):
+                target_orientation = list(segment.target_pose.orientation)
             obj_path = _resolve_target_obj_path(segment.target_id)
 
             v_max = (
@@ -361,15 +423,28 @@ def compile_unified_mission_path(
             lateral_accel = float(sim_config.mission_state.mesh_scan_lateral_accel)
             dt = float(sim_config.app_config.mpc.dt)
             scan_path: List[Tuple[float, float, float]] = []
+            apply_orientation = False
             asset_id = getattr(segment, "path_asset", None)
             if asset_id:
-                scan_path = _build_asset_path(asset_id, target_pos)
+                scan_path, apply_orientation = _build_asset_path(asset_id, target_pos)
             if not scan_path:
                 scan_path = _build_scan_path(
                     target_pos=target_pos,
                     obj_path=obj_path,
                     scan=scan,
                 )
+                apply_orientation = True
+
+            if scan_path and apply_orientation and target_orientation:
+                scan_path = _apply_target_orientation(
+                    scan_path, target_pos=target_pos, target_orientation=target_orientation
+                )
+
+            if scan_path and scan_frame == "LVLH" and frame_mode == "ECI":
+                scan_path = [
+                    tuple(map(float, np.array(p, dtype=float) + origin))
+                    for p in scan_path
+                ]
 
             if scan_path:
                 start_p = current

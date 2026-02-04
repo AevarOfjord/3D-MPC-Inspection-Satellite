@@ -14,14 +14,16 @@ class TestConfigModelIntegration:
     def test_config_and_model_thruster_counts_match(self):
         """Test that config and model have same number of thrusters."""
         from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.config import physics as physics_cfg
         from src.satellite_control.core import model
 
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         config_thruster_count = len(config.app_config.physics.thruster_forces)
         model_thruster_count = len(model.thruster_positions)
+        expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
-        assert config_thruster_count == model_thruster_count == 6
+        assert config_thruster_count == model_thruster_count == expected_count
 
     def test_config_and_model_thruster_ids_match(self):
         """Test that thruster IDs are consistent between config and model."""
@@ -39,12 +41,14 @@ class TestConfigModelIntegration:
     def test_config_thruster_positions_match_model(self):
         """Test that thruster positions in config match model."""
         from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.config import physics as physics_cfg
         from src.satellite_control.core import model
 
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
+        expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
-        for thruster_id in range(1, 7):
+        for thruster_id in range(1, expected_count + 1):
             config_pos = config.app_config.physics.thruster_positions[thruster_id]
             model_pos = model.thruster_positions[thruster_id]
 
@@ -55,12 +59,14 @@ class TestConfigModelIntegration:
         import numpy as np
 
         from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.config import physics as physics_cfg
         from src.satellite_control.core import model
 
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
+        expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
-        for thruster_id in range(1, 7):
+        for thruster_id in range(1, expected_count + 1):
             config_dir = config.app_config.physics.thruster_directions[thruster_id]
             model_dir = model.thruster_directions[thruster_id]
 
@@ -144,6 +150,7 @@ class TestPhysicsComputation:
         import numpy as np
 
         from src.satellite_control.config.simulation_config import SimulationConfig
+        from src.satellite_control.config import physics as physics_cfg
         from src.satellite_control.core import model
 
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
@@ -151,12 +158,13 @@ class TestPhysicsComputation:
         physics = config.app_config.physics
         mass = physics.total_mass
         inertia = physics.moment_of_inertia
+        expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
         # All thrusters firing
         total_force = np.zeros(3)
         total_torque = np.zeros(3)
 
-        for thruster_id in range(1, 7):
+        for thruster_id in range(1, expected_count + 1):
             force_mag = physics.thruster_forces[thruster_id]
             position = np.array(model.thruster_positions[thruster_id])
             direction = np.array(model.thruster_directions[thruster_id])

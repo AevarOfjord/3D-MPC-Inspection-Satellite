@@ -142,6 +142,9 @@ THRUSTER_FORCES = {
     6: 0.45,
 }
 
+THRUSTER_IDS = tuple(sorted(THRUSTER_POSITIONS.keys()))
+THRUSTER_COUNT = len(THRUSTER_IDS)
+
 GRAVITY_M_S2 = Constants.GRAVITY_M_S2
 
 
@@ -193,14 +196,14 @@ def set_thruster_force(thruster_id: int, force: float) -> None:
     Set individual thruster force for calibration.
 
     Args:
-        thruster_id: Thruster ID (1-6)
+        thruster_id: Thruster ID in configured set
         force: Force magnitude in Newtons
 
     Raises:
         ValueError: If thruster_id invalid or force non-positive
     """
-    if thruster_id not in range(1, 7):
-        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
+    if thruster_id not in THRUSTER_IDS:
+        raise ValueError(f"Thruster ID must be in {THRUSTER_IDS}, got {thruster_id}")
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 
@@ -221,7 +224,7 @@ def set_all_thruster_forces(force: float) -> None:
     if force <= 0:
         raise ValueError(f"Force must be positive, got {force}")
 
-    for thruster_id in range(1, 7):
+    for thruster_id in THRUSTER_IDS:
         THRUSTER_FORCES[thruster_id] = force
     logger.info(f"All thruster forces set to {force:.3f} N")
 
@@ -231,7 +234,7 @@ def get_thruster_force(thruster_id: int) -> float:
     Get individual thruster force.
 
     Args:
-        thruster_id: Thruster ID (1-6)
+        thruster_id: Thruster ID in configured set
 
     Returns:
         Force magnitude in Newtons
@@ -239,15 +242,15 @@ def get_thruster_force(thruster_id: int) -> float:
     Raises:
         ValueError: If thruster_id is invalid
     """
-    if thruster_id not in range(1, 7):
-        raise ValueError(f"Thruster ID must be 1-6, got {thruster_id}")
+    if thruster_id not in THRUSTER_IDS:
+        raise ValueError(f"Thruster ID must be in {THRUSTER_IDS}, got {thruster_id}")
     return THRUSTER_FORCES[thruster_id]
 
 
 def print_thruster_forces() -> None:
     """Print current thruster force configuration."""
     logger.info("CURRENT THRUSTER FORCE CONFIGURATION:")
-    for thruster_id in range(1, 7):
+    for thruster_id in THRUSTER_IDS:
         force = THRUSTER_FORCES[thruster_id]
         logger.info(f"  Thruster {thruster_id}: {force:.3f} N")
 
@@ -273,16 +276,21 @@ def validate_physics_params(config: PhysicsConfig) -> bool:
         issues.append(f"Invalid moment of inertia: {config.moment_of_inertia}")
 
     # Thruster configuration validation
-    if len(config.thruster_positions) != 6:
-        issues.append(f"Expected 6 thrusters, got {len(config.thruster_positions)}")
-
-    if len(config.thruster_directions) != 6:
+    if len(config.thruster_positions) != THRUSTER_COUNT:
         issues.append(
-            f"Expected 6 thruster directions, got {len(config.thruster_directions)}"
+            f"Expected {THRUSTER_COUNT} thrusters, got {len(config.thruster_positions)}"
         )
 
-    if len(config.thruster_forces) != 6:
-        issues.append(f"Expected 6 thruster forces, got {len(config.thruster_forces)}")
+    if len(config.thruster_directions) != THRUSTER_COUNT:
+        issues.append(
+            "Expected "
+            f"{THRUSTER_COUNT} thruster directions, got {len(config.thruster_directions)}"
+        )
+
+    if len(config.thruster_forces) != THRUSTER_COUNT:
+        issues.append(
+            f"Expected {THRUSTER_COUNT} thruster forces, got {len(config.thruster_forces)}"
+        )
 
     # Validate thruster force values are positive
     for thruster_id, force in config.thruster_forces.items():

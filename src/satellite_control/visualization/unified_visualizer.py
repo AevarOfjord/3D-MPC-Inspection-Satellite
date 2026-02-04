@@ -36,6 +36,7 @@ from src.satellite_control.config.mission_state import MissionState
 from src.satellite_control.config.models import AppConfig
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.constants import Constants
+from src.satellite_control.config.physics import THRUSTER_COUNT
 
 # V4.0.0: mpc_params removed
 
@@ -697,7 +698,7 @@ class UnifiedVisualizationGenerator:
         try:
             # Handle None or empty
             if command_str is None or command_str == "":
-                return np.zeros(6)
+                return np.zeros(THRUSTER_COUNT)
 
             # Convert to string if not already
             command_str = str(command_str)
@@ -707,7 +708,7 @@ class UnifiedVisualizationGenerator:
             values = [float(x.strip()) for x in command_str.split(",")]
             return np.array(values)
         except Exception:
-            return np.zeros(6)
+            return np.zeros(THRUSTER_COUNT)
 
     def get_active_thrusters(self, command_vector: np.ndarray) -> list:
         """Get list of active thruster IDs from command vector.
@@ -716,7 +717,7 @@ class UnifiedVisualizationGenerator:
             command_vector: Array of thruster commands
 
         Returns:
-            List of active thruster IDs (1-6)
+            List of active thruster IDs (1..N)
         """
         return [i + 1 for i, cmd in enumerate(command_vector) if cmd > 0.5]
 

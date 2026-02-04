@@ -39,6 +39,11 @@ struct MPCParams {
 
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
+    double thrust_l1_weight = 0.0;  ///< Linear thruster penalty (fuel bias)
+    double thrust_pair_weight = 0.0; ///< Penalty on opposing-pair co-firing
+    double coast_pos_tolerance = 0.0; ///< Coasting band position error [m] (0 = off)
+    double coast_vel_tolerance = 0.0; ///< Coasting band lateral velocity [m/s] (0 = off)
+    double coast_min_speed = 0.0;     ///< Minimum progress speed when coasting [m/s]
     
 
     

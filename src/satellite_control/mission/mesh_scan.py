@@ -7,7 +7,9 @@ curvature-based speed profiling for MPC trajectory tracking.
 
 from __future__ import annotations
 
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Optional
+
+from pathlib import Path
 
 import numpy as np
 
@@ -17,6 +19,29 @@ from src.satellite_control.mission.trajectory_utils import (
     compute_curvature,
     compute_speed_profile,
 )
+
+
+def _real_span_for_obj(obj_path: str) -> Optional[float]:
+    name = Path(obj_path).name.lower()
+    if "starlink" in name:
+        return 11.0
+    if name.startswith("iss") or "iss" in name:
+        return 109.0
+    return None
+
+
+def _maybe_scale_vertices(obj_path: str, vertices: np.ndarray) -> np.ndarray:
+    target_span = _real_span_for_obj(obj_path)
+    if not target_span:
+        return vertices
+    if vertices.size == 0:
+        return vertices
+    extents = vertices.max(axis=0) - vertices.min(axis=0)
+    max_dim = float(np.max(extents))
+    if max_dim < 1e-9:
+        return vertices
+    scale = float(target_span / max_dim)
+    return vertices * scale
 
 
 def load_obj_data(obj_path: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -55,7 +80,9 @@ def load_obj_data(obj_path: str) -> Tuple[np.ndarray, np.ndarray]:
     if not vertices:
         raise ValueError(f"No vertices found in OBJ: {obj_path}")
 
-    return np.array(vertices, dtype=float), np.array(faces, dtype=int)
+    verts = np.array(vertices, dtype=float)
+    verts = _maybe_scale_vertices(obj_path, verts)
+    return verts, np.array(faces, dtype=int)
 
 
 def load_obj_vertices(obj_path: str) -> np.ndarray:

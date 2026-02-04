@@ -3,8 +3,8 @@ import { Canvas } from '@react-three/fiber';
 import { TrackballControls, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
-import { useLoader } from '@react-three/fiber';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 
 import { CameraManager } from './CameraManager';
 import { CanvasRegistrar } from './CanvasRegistrar';
@@ -26,6 +26,7 @@ import { PlannedPath } from './PlannedPath';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 import { StarlinkModel } from './StarlinkModel';
+import { ISSModel } from './ISSModel';
 import { CustomMeshModel } from './CustomMeshModel';
 import { HudPanel } from './HudComponents';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
@@ -35,6 +36,7 @@ import { OrbitSnapshotLayer } from './OrbitSnapshotLayer';
 import { SolarSystemLayer } from './SolarSystemLayer';
 import { SplineControlGizmos } from './SplineControlGizmos';
 import { ORBIT_SCALE, EARTH_RADIUS_M, orbitSnapshot } from '../data/orbitSnapshot';
+import { API_BASE_URL } from '../config/endpoints';
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
@@ -116,9 +118,88 @@ function LiveObstaclesRender() {
 
 // --- Plan Mode Components ---
 
-function Model({ url }: { url: string }) {
-  const obj = useLoader(OBJLoader, url);
-  return <primitive object={obj} />;
+function ObjWithMtl({ objPath }: { objPath: string }) {
+  const [object, setObject] = useState<THREE.Object3D | null>(null);
+
+  useEffect(() => {
+    if (!objPath) {
+      setObject(null);
+      return;
+    }
+
+    let cancelled = false;
+    const objUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(objPath)}`;
+    const mtlPath = objPath.replace(/\.obj$/i, '.mtl');
+    const mtlUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(mtlPath)}`;
+
+    const objLoader = new OBJLoader();
+    const applyFallback = () => {
+      objLoader.load(objUrl, (obj) => {
+        if (cancelled) return;
+        obj.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            mesh.material = new THREE.MeshStandardMaterial({
+              color: '#8b8b8b',
+              metalness: 0.2,
+              roughness: 0.7,
+            });
+          }
+        });
+        setObject(obj);
+      });
+    };
+
+    const mtlLoader = new MTLLoader();
+    mtlLoader.load(
+      mtlUrl,
+      (materials) => {
+        if (cancelled) return;
+        materials.preload();
+        objLoader.setMaterials(materials);
+        objLoader.load(objUrl, (obj) => {
+          if (cancelled) return;
+          setObject(obj);
+        });
+      },
+      undefined,
+      () => applyFallback()
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [objPath]);
+
+  if (!object) return null;
+  return <primitive object={object} />;
+}
+
+function resolvePreviewModel(modelPath?: string) {
+  if (!modelPath) return null;
+  const lower = modelPath.toLowerCase();
+  if (lower.includes('starlink')) {
+    return (
+      <StarlinkModel
+        position={[0, 0, 0]}
+        orientation={[0, 0, 0]}
+        realSpanMeters={11}
+        scale={1}
+        pivot="origin"
+      />
+    );
+  }
+  if (lower.includes('iss')) {
+    return (
+      <ISSModel
+        position={[0, 0, 0]}
+        orientation={[0, 0, 0]}
+        realSpanMeters={109}
+        scale={1}
+      />
+    );
+  }
+  return null;
 }
 
 function SatellitePreview({ position, rotation }: { position: [number, number, number]; rotation: [number, number, number] }) {
@@ -310,11 +391,15 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
                           builderState.referenceAngle[2]*Math.PI/180
                       ]}
                     >
-                      {builderState.modelUrl ? <Model url={builderState.modelUrl} /> : (
-                          <mesh>
-                              <boxGeometry args={[1, 1, 1]} />
-                              <meshStandardMaterial color="#64748b" wireframe />
-                          </mesh>
+                      {builderState.modelPath ? (
+                        resolvePreviewModel(builderState.modelPath) ?? (
+                          <ObjWithMtl objPath={builderState.modelPath} />
+                        )
+                      ) : (
+                        <mesh>
+                          <boxGeometry args={[1, 1, 1]} />
+                          <meshStandardMaterial color="#64748b" wireframe />
+                        </mesh>
                       )}
                       <axesHelper args={[2]} />
                     </group>

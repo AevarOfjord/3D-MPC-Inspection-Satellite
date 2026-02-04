@@ -160,10 +160,16 @@ class SimulationInitializer:
                 build_point_to_point_path,
             )
 
+            obstacles = (
+                mission_state.obstacles
+                if getattr(mission_state, "obstacles_enabled", False)
+                else None
+            )
             path = build_point_to_point_path(
                 waypoints=[tuple(start_pos), tuple(path_end_pos)],
-                obstacles=None,
+                obstacles=obstacles,
                 step_size=0.1,
+                safety_margin=float(app_config.mpc.obstacle_margin),
             )
             path_length = float(
                 np.sum(

@@ -29,6 +29,8 @@ export interface TelemetryData {
   planned_path?: [number, number, number][];
   paused?: boolean;
   sim_speed?: number;
+  frame?: 'ECI' | 'LVLH';
+  frame_origin?: [number, number, number] | null;
 }
 
 type TelemetryCallback = (data: TelemetryData) => void;
@@ -59,7 +61,7 @@ class TelemetryService {
     this.socket.onmessage = (event) => {
       try {
         const data: TelemetryData = JSON.parse(event.data);
-        this.notify(data);
+        this.notify(this.applyFrameTransform(data));
       } catch (e) {
         console.error("Failed to parse telemetry", e);
       }
@@ -88,7 +90,7 @@ class TelemetryService {
   }
 
   emit(data: TelemetryData) {
-    this.notify(data);
+    this.notify(this.applyFrameTransform(data));
   }
 
   subscribe(callback: TelemetryCallback) {
@@ -103,6 +105,40 @@ class TelemetryService {
 
   private notify(data: TelemetryData) {
     this.subscribers.forEach((cb) => cb(data));
+  }
+
+  private applyFrameTransform(data: TelemetryData): TelemetryData {
+    if (data.frame !== 'LVLH' || !data.frame_origin) {
+      return data;
+    }
+
+    const origin = data.frame_origin;
+    const add = (p?: [number, number, number]) =>
+      p
+        ? ([p[0] + origin[0], p[1] + origin[1], p[2] + origin[2]] as [number, number, number])
+        : p;
+
+    const addPath = (path?: [number, number, number][]) =>
+      path ? path.map((p) => add(p) as [number, number, number]) : path;
+
+    const addObstacles = (obs?: Array<{ position: [number, number, number]; radius: number }>) =>
+      obs
+        ? obs.map((o) => ({ ...o, position: add(o.position) as [number, number, number] }))
+        : obs;
+
+    const scan_object = data.scan_object
+      ? { ...data.scan_object, position: add(data.scan_object.position) as [number, number, number] }
+      : data.scan_object;
+
+    return {
+      ...data,
+      position: add(data.position) as [number, number, number],
+      reference_position: add(data.reference_position) as [number, number, number],
+      planned_path: addPath(data.planned_path),
+      obstacles: addObstacles(data.obstacles),
+      scan_object,
+      frame: 'ECI',
+    };
   }
 
   private notifyStatus(connected: boolean) {

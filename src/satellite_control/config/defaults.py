@@ -6,6 +6,7 @@ This replaces the implicit defaults in the legacy SatelliteConfig.
 """
 
 from src.satellite_control.config import constants, physics, timing
+from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
 from src.satellite_control.config.models import (
     AppConfig,
     MPCParams,
@@ -26,11 +27,13 @@ def create_default_app_config() -> AppConfig:
         AppConfig with default parameters
     """
     # Physics
+    rw_cfg = get_reaction_wheel_config()
+    phys_defaults = physics.get_physics_params()
     phys = SatellitePhysicalParams(
         total_mass=physics.TOTAL_MASS,
         moment_of_inertia=physics.MOMENT_OF_INERTIA,
         satellite_size=physics.SATELLITE_SIZE,
-        satellite_shape="cube",
+        satellite_shape=constants.Constants.DEFAULT_SATELLITE_SHAPE,
         com_offset=tuple(physics.COM_OFFSET),
         thruster_positions=physics.THRUSTER_POSITIONS,
         thruster_directions={
@@ -39,18 +42,27 @@ def create_default_app_config() -> AppConfig:
         thruster_forces=physics.THRUSTER_FORCES,
         reaction_wheels=[
             ReactionWheelParams(
-                axis=(1.0, 0.0, 0.0), max_torque=0.1, inertia=1e-4
+                axis=rw_cfg.wheel_x.axis,
+                max_torque=rw_cfg.wheel_x.max_torque,
+                inertia=rw_cfg.wheel_x.inertia,
+                max_speed=rw_cfg.wheel_x.max_speed,
             ),  # X-axis
             ReactionWheelParams(
-                axis=(0.0, 1.0, 0.0), max_torque=0.1, inertia=1e-4
+                axis=rw_cfg.wheel_y.axis,
+                max_torque=rw_cfg.wheel_y.max_torque,
+                inertia=rw_cfg.wheel_y.inertia,
+                max_speed=rw_cfg.wheel_y.max_speed,
             ),  # Y-axis
             ReactionWheelParams(
-                axis=(0.0, 0.0, 1.0), max_torque=0.1, inertia=1e-4
+                axis=rw_cfg.wheel_z.axis,
+                max_torque=rw_cfg.wheel_z.max_torque,
+                inertia=rw_cfg.wheel_z.inertia,
+                max_speed=rw_cfg.wheel_z.max_speed,
             ),  # Z-axis
         ],
-        use_realistic_physics=False,
-        damping_linear=0.0,
-        damping_angular=0.0,
+        use_realistic_physics=phys_defaults.use_realistic_physics,
+        damping_linear=phys_defaults.linear_damping_coeff,
+        damping_angular=phys_defaults.rotational_damping_coeff,
     )
 
     # MPC
@@ -71,6 +83,11 @@ def create_default_app_config() -> AppConfig:
         q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,
         r_thrust=constants.Constants.R_THRUST,
         r_rw_torque=constants.Constants.R_RW_TORQUE,
+        thrust_l1_weight=constants.Constants.THRUST_L1_WEIGHT,
+        thrust_pair_weight=constants.Constants.THRUST_PAIR_WEIGHT,
+        coast_pos_tolerance=constants.Constants.COAST_POS_TOLERANCE,
+        coast_vel_tolerance=constants.Constants.COAST_VEL_TOLERANCE,
+        coast_min_speed=constants.Constants.COAST_MIN_SPEED,
         thruster_type=constants.Constants.THRUSTER_TYPE,
         verbose_mpc=False,
         # Path Following

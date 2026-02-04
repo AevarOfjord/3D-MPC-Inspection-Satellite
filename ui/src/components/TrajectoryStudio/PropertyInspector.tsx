@@ -118,14 +118,6 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
     const segment = state.segments[selectedSegmentIndex];
     if (!segment) return null;
 
-    const updateScanConfig = (patch: any) => {
-        const s = segment as ScanSegment;
-        actions.updateSegment(selectedSegmentIndex, {
-            ...s,
-            scan: { ...s.scan, ...patch }
-        });
-    };
-
     const updateTransferConfig = (patch: any) => {
         const s = segment as TransferSegment;
         actions.updateSegment(selectedSegmentIndex, {
@@ -251,6 +243,41 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                     <div className="space-y-3">
                         <div>
                             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                Target Object
+                            </label>
+                            <select
+                                value={(segment as ScanSegment).target_id || ''}
+                                onChange={(e) => {
+                                    const targetId = e.target.value || '';
+                                    if (!targetId) {
+                                        actions.updateSegment(selectedSegmentIndex, {
+                                            ...(segment as ScanSegment),
+                                            target_id: '',
+                                            target_pose: undefined,
+                                        });
+                                        actions.setSelectedOrbitTargetId(null);
+                                        return;
+                                    }
+                                    const target = orbitSnapshot.objects.find(obj => obj.id === targetId);
+                                    const targetPos = target ? (target.position_m as [number, number, number]) : undefined;
+                                    actions.assignScanTarget(targetId, targetPos);
+                                }}
+                                className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
+                            >
+                                <option value="">Select Object...</option>
+                                {orbitSnapshot.objects.map(obj => (
+                                    <option key={obj.id} value={obj.id}>{obj.name}</option>
+                                ))}
+                            </select>
+                            {!(segment as ScanSegment).target_id && (
+                                <div className="text-[10px] text-amber-400 mt-1">
+                                    Select the object the scan path is relative to.
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                                 Path Asset
                             </label>
                             <select
@@ -264,90 +291,17 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                                 }}
                                 className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
                             >
-                                <option value="">Auto (use scan params)</option>
+                                <option value="">Select Path Asset...</option>
                                 {state.pathAssets.map((asset) => (
                                     <option key={asset.id} value={asset.id}>
                                         {asset.name}
                                     </option>
                                 ))}
                             </select>
-                            {(segment as ScanSegment).path_asset && (
-                                <div className="text-[10px] text-slate-500 mt-1">
-                                    Using a saved path asset. Scan parameters below are ignored.
+                            {!(segment as ScanSegment).path_asset && (
+                                <div className="text-[10px] text-amber-400 mt-1">
+                                    Path assets are created in Scan Planner.
                                 </div>
-                            )}
-                        </div>
-                         {/* Pattern Selector */}
-                        <div>
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                Pattern
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {['spiral', 'circles'].map((pat) => (
-                                    <button
-                                        key={pat}
-                                        onClick={() => updateScanConfig({ pattern: pat as any })}
-                                        className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                                            ((segment as ScanSegment).scan?.pattern || 'spiral') === pat
-                                                ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
-                                                : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
-                                        }`}
-                                    >
-                                        {pat}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                            <HudInput
-                                label="Standoff (m)"
-                                value={(segment as ScanSegment).scan.standoff}
-                                type="number"
-                                step={0.5}
-                                onChange={(val) => updateScanConfig({ standoff: Number.isFinite(val) ? val : (segment as ScanSegment).scan.standoff })}
-                            />
-                            <HudInput
-                                label="Overlap"
-                                value={(segment as ScanSegment).scan.overlap}
-                                type="number"
-                                step={0.05}
-                                min={0}
-                                max={0.9}
-                                onChange={(val) => updateScanConfig({ overlap: Number.isFinite(val) ? val : (segment as ScanSegment).scan.overlap })}
-                            />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                             {(segment as ScanSegment).scan.pattern !== 'circles' && (
-                                <HudInput
-                                    label="FOV (deg)"
-                                    value={(segment as ScanSegment).scan.fov_deg}
-                                    type="number"
-                                    step={1}
-                                    onChange={(val) => updateScanConfig({ fov_deg: Number.isFinite(val) ? val : (segment as ScanSegment).scan.fov_deg })}
-                                />
-                             )}
-                            {(segment as ScanSegment).scan.pattern === 'circles' ? (
-                                <HudInput
-                                    label="Level Height (m)"
-                                    value={(segment as ScanSegment).scan.pitch ?? ''}
-                                    type="number"
-                                    placeholder="Auto"
-                                    step={0.1}
-                                    allowEmpty
-                                    onChange={(val) => updateScanConfig({ pitch: Number.isFinite(val) ? val : null })}
-                                />
-                            ) : (
-                                <HudInput
-                                    label="Pitch (m)"
-                                    value={(segment as ScanSegment).scan.pitch ?? ''}
-                                    type="number"
-                                    step={0.1}
-                                    placeholder="auto"
-                                    allowEmpty
-                                    onChange={(val) => updateScanConfig({ pitch: Number.isFinite(val) ? val : null })}
-                                />
                             )}
                         </div>
                     </div>
