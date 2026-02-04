@@ -21,6 +21,10 @@ Key features:
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any
 
+import math
+
+from . import constants, timing
+
 
 @dataclass
 class PathFollowingState:
@@ -28,7 +32,7 @@ class PathFollowingState:
 
     active: bool = False
     waypoints: List[Tuple[float, float, float]] = field(default_factory=list)
-    path_speed: float = 0.1
+    path_speed: float = timing.DEFAULT_PATH_SPEED
     path_length: float = 0.0
 
 
@@ -69,8 +73,8 @@ class TrajectoryState:
     start_orientation: Optional[Tuple[float, float, float]] = None
     end_orientation: Optional[Tuple[float, float, float]] = None
     object_center: Optional[Tuple[float, float, float]] = None
-    end_pos_tolerance: float = 0.05
-    end_ang_tolerance_deg: float = 2.0
+    end_pos_tolerance: float = constants.Constants.POSITION_TOLERANCE
+    end_ang_tolerance_deg: float = math.degrees(constants.Constants.ANGLE_TOLERANCE)
 
 
 @dataclass

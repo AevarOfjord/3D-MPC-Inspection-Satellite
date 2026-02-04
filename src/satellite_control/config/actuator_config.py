@@ -15,7 +15,7 @@ from typing import Dict, Literal, Optional, Tuple
 
 import numpy as np
 
-from .physics import THRUSTER_DIRECTIONS, THRUSTER_POSITIONS
+from .physics import THRUSTER_DIRECTIONS, THRUSTER_FORCES, THRUSTER_POSITIONS
 from .reaction_wheel_config import ReactionWheelArrayConfig, get_reaction_wheel_config
 
 
@@ -45,7 +45,9 @@ class ThrusterSetConfig:
     )
 
     # Force magnitude per thruster [N]
-    force: float = 0.45
+    force: float = field(
+        default_factory=lambda: float(np.mean(list(THRUSTER_FORCES.values())))
+    )
 
     # Thruster dynamics
     valve_delay: float = 0.04  # seconds

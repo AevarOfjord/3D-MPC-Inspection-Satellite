@@ -120,6 +120,7 @@ class Constants:
     OBSTACLE_WAYPOINT_STABILIZATION_TIME = 0.5
     OBSTACLE_FLYTHROUGH_TOLERANCE = 0.15
     OBSTACLE_AVOIDANCE_SAFETY_MARGIN = 0.25
+    OBSTACLE_TURNING_MARGIN = 0.2
 
     # ========================================================================
     # MPC DEFAULTS
@@ -136,6 +137,11 @@ class Constants:
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1
     R_RW_TORQUE = 0.1
+    THRUST_L1_WEIGHT = 0.1
+    THRUST_PAIR_WEIGHT = 2.0
+    COAST_POS_TOLERANCE = POSITION_TOLERANCE
+    COAST_VEL_TOLERANCE = 0.02
+    COAST_MIN_SPEED = 0.02
 
     THRUSTER_TYPE = "CON"
 
@@ -148,6 +154,7 @@ class Constants:
     TOTAL_MASS = 10.0  # kg
     SATELLITE_SIZE = 0.30  # m (cube side length)
     GRAVITY_M_S2 = 9.81  # m/s²
+    DEFAULT_SATELLITE_SHAPE = "cube"
 
     # ========================================================================
     # HELPER METHODS

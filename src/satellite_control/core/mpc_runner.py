@@ -16,6 +16,7 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from src.satellite_control.control.mpc_controller import MPCController
+from src.satellite_control.config.physics import THRUSTER_COUNT
 
 if TYPE_CHECKING:
     from src.satellite_control.config.models import AppConfig
@@ -50,7 +51,15 @@ class MPCRunner:
         self.state_validator = state_validator
 
         # Internal state management
-        self.thruster_count = getattr(self.mpc, "num_thrusters", 6)
+        default_thruster_count = THRUSTER_COUNT
+        if self.config is not None and hasattr(self.config, "physics"):
+            try:
+                default_thruster_count = len(self.config.physics.thruster_positions)
+            except Exception:
+                default_thruster_count = THRUSTER_COUNT
+        self.thruster_count = getattr(
+            self.mpc, "num_thrusters", default_thruster_count
+        )
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history: list = []

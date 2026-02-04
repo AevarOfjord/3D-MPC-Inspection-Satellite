@@ -11,6 +11,12 @@ from typing import Any, Dict, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List
 
+from . import constants, physics, timing
+from .reaction_wheel_config import ReactionWheelParams as RWConfigParams
+
+_RW_DEFAULT = RWConfigParams()
+_PHYS_DEFAULT = physics.get_physics_params()
+
 
 class ReactionWheelParams(BaseModel):
     """Configuration for a single reaction wheel."""
@@ -20,17 +26,17 @@ class ReactionWheelParams(BaseModel):
         description="Rotation axis vector (x, y, z)",
     )
     max_speed: float = Field(
-        628.0,
+        _RW_DEFAULT.max_speed,
         gt=0,
         description="Maximum wheel speed in rad/s",
     )
     max_torque: float = Field(
-        ...,
+        _RW_DEFAULT.max_torque,
         gt=0,
         description="Maximum torque in N*m",
     )
     inertia: float = Field(
-        ...,
+        _RW_DEFAULT.inertia,
         gt=0,
         description="Rotational inertia in kg*m^2",
     )
@@ -44,48 +50,50 @@ class SatellitePhysicalParams(BaseModel):
     """
 
     total_mass: float = Field(
-        ...,
+        physics.TOTAL_MASS,
         gt=0,
         le=100,  # Reasonable upper bound for a small satellite
         description="Total mass in kg (must be positive, max 100kg)",
     )
     moment_of_inertia: float = Field(
-        ...,
+        physics.MOMENT_OF_INERTIA,
         gt=0,
         le=10,  # Reasonable upper bound
         description="Moment of inertia in kg*m^2 (must be positive)",
     )
     satellite_size: float = Field(
-        ...,
+        physics.SATELLITE_SIZE,
         gt=0,
         le=2,  # Reasonable upper bound in meters
         description="Characteristic size in meters (must be positive, max 2m)",
     )
     satellite_shape: str = Field(
-        "sphere",
+        constants.Constants.DEFAULT_SATELLITE_SHAPE,
         pattern="^(sphere|cube)$",
         description="Satellite shape ('sphere' or 'cube')",
     )
     com_offset: Tuple[float, float, float] = Field(
-        (0.0, 0.0, 0.0),
+        tuple(_PHYS_DEFAULT.com_offset),
         description="Center of Mass offset (x, y, z) in meters",
     )
 
     # Thruster configuration
     thruster_positions: Dict[int, Tuple[float, float, float]] = Field(
-        ...,
+        default_factory=lambda: physics.THRUSTER_POSITIONS.copy(),
         description=(
             "Map of thruster ID (1-6, 1-8, or 1-12) to (x, y, z) position in meters"
         ),
     )
     thruster_directions: Dict[int, Tuple[float, float, float]] = Field(
-        ...,
+        default_factory=lambda: {
+            k: tuple(v) for k, v in physics.THRUSTER_DIRECTIONS.items()
+        },
         description=(
             "Map of thruster ID (1-6, 1-8, or 1-12) to (dx, dy, dz) unit direction vector"
         ),
     )
     thruster_forces: Dict[int, float] = Field(
-        ...,
+        default_factory=lambda: physics.THRUSTER_FORCES.copy(),
         description="Map of thruster ID (1-6, 1-8, or 1-12) to max force in Newtons",
     )
 
@@ -104,17 +112,17 @@ class SatellitePhysicalParams(BaseModel):
 
     # Damping
     use_realistic_physics: bool = Field(
-        False,
+        _PHYS_DEFAULT.use_realistic_physics,
         description="Enable realistic physics (damping, noise, delays)",
     )
     damping_linear: float = Field(
-        0.0,
+        _PHYS_DEFAULT.linear_damping_coeff,
         ge=0,
         le=10,
         description="Linear damping coefficient N/(m/s)",
     )
     damping_angular: float = Field(
-        0.0,
+        _PHYS_DEFAULT.rotational_damping_coeff,
         ge=0,
         le=1,
         description="Angular damping coefficient N*m/(rad/s)",
@@ -122,19 +130,19 @@ class SatellitePhysicalParams(BaseModel):
 
     # Delays & Noise (Realistic Physics)
     thruster_valve_delay: float = Field(
-        0.05,
+        _PHYS_DEFAULT.thruster_valve_delay,
         ge=0,
         le=0.5,
         description="Thruster valve open/close delay in seconds",
     )
     thruster_rampup_time: float = Field(
-        0.015,
+        _PHYS_DEFAULT.thruster_rampup_time,
         ge=0,
         le=0.5,
         description="Thruster thrust ramp-up time in seconds",
     )
     thrust_force_noise_percent: float = Field(
-        0.0,
+        _PHYS_DEFAULT.thruster_force_noise_std * 100.0,
         ge=0,
         le=20.0,
         description="Thruster force noise (percentage std dev)",
@@ -142,38 +150,38 @@ class SatellitePhysicalParams(BaseModel):
 
     # Sensor Noise
     position_noise_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.position_noise_std,
         ge=0,
         description="Position measurement noise (std dev) in meters",
     )
     velocity_noise_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.velocity_noise_std,
         ge=0,
         description="Velocity measurement noise (std dev) in m/s",
     )
     angle_noise_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.angle_noise_std,
         ge=0,
         description="Angle measurement noise (std dev) in rad",
     )
     angular_velocity_noise_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.angular_velocity_noise_std,
         ge=0,
         description="Angular velocity measurement noise (std dev) in rad/s",
     )
 
     # External Disturbances
     random_disturbances_enabled: bool = Field(
-        False,
+        _PHYS_DEFAULT.enable_random_disturbances,
         description="Enable random external force/torque disturbances",
     )
     disturbance_force_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.disturbance_force_std,
         ge=0,
         description="External disturbance force (std dev) in N",
     )
     disturbance_torque_std: float = Field(
-        0.0,
+        _PHYS_DEFAULT.disturbance_torque_std,
         ge=0,
         description="External disturbance torque (std dev) in N*m",
     )
@@ -229,43 +237,43 @@ class MPCParams(BaseModel):
     """
 
     prediction_horizon: int = Field(
-        ...,
+        constants.Constants.MPC_PREDICTION_HORIZON,
         gt=0,
         le=5000,
         description="Prediction horizon N (1-5000 steps)",
     )
     control_horizon: int = Field(
-        ...,
+        constants.Constants.MPC_CONTROL_HORIZON,
         gt=0,
         le=5000,
         description="Control horizon M (1-5000 steps, must be <= N)",
     )
     dt: float = Field(
-        ...,
+        timing.CONTROL_DT,
         gt=0,
         le=1.0,
         description="Control timestep in seconds (0-1s)",
     )
     solver_time_limit: float = Field(
-        ...,
+        constants.Constants.MPC_SOLVER_TIME_LIMIT,
         gt=0,
         le=10.0,
         description="Maximum solver time in seconds",
     )
     solver_type: str = Field(
-        "OSQP",
+        constants.Constants.MPC_SOLVER_TYPE,
         description="Optimization solver type",
     )
 
     # Weights (MPCC)
     Q_contour: float = Field(
-        1000.0,
+        constants.Constants.Q_CONTOUR,
         ge=0.0,
         le=100000.0,
         description="Contouring weight - penalizes distance from path [unitless]",
     )
     Q_progress: float = Field(
-        100.0,
+        constants.Constants.Q_PROGRESS,
         ge=0.0,
         le=10000.0,
         description="Progress weight - penalizes deviation from path speed [unitless]",
@@ -277,7 +285,7 @@ class MPCParams(BaseModel):
         description="Lag weight - penalizes along-track error (0 = auto)",
     )
     Q_smooth: float = Field(
-        10.0,
+        constants.Constants.Q_SMOOTH,
         ge=0.0,
         le=1000.0,
         description="Smoothness weight - penalizes velocity changes [unitless]",
@@ -301,27 +309,56 @@ class MPCParams(BaseModel):
         description="Terminal progress weight (0 = auto-scale from Q_progress/Q_contour)",
     )
     q_angular_velocity: float = Field(
-        1.0,
+        constants.Constants.Q_ANGULAR_VELOCITY,
         ge=0,
         le=1e6,
         description="Angular velocity tracking weight (stabilization)",
     )
     r_thrust: float = Field(
-        0.1,
+        constants.Constants.R_THRUST,
         ge=0,
         le=1e6,
         description="Thrust usage penalty weight",
     )
     r_rw_torque: float = Field(
-        1.0,
+        constants.Constants.R_RW_TORQUE,
         ge=0,
         le=1e6,
         description="Reaction wheel torque penalty weight",
     )
-
+    thrust_l1_weight: float = Field(
+        constants.Constants.THRUST_L1_WEIGHT,
+        ge=0.0,
+        le=1e6,
+        description="Linear thruster penalty (fuel bias, promotes coasting)",
+    )
+    thrust_pair_weight: float = Field(
+        constants.Constants.THRUST_PAIR_WEIGHT,
+        ge=0.0,
+        le=1e6,
+        description="Penalty on opposing thruster co-firing (promotes single-thruster use per axis)",
+    )
+    coast_pos_tolerance: float = Field(
+        constants.Constants.COAST_POS_TOLERANCE,
+        ge=0.0,
+        le=1e3,
+        description="Coasting band position error [m] (0 = off)",
+    )
+    coast_vel_tolerance: float = Field(
+        constants.Constants.COAST_VEL_TOLERANCE,
+        ge=0.0,
+        le=1e3,
+        description="Coasting band lateral velocity [m/s] (0 = off)",
+    )
+    coast_min_speed: float = Field(
+        constants.Constants.COAST_MIN_SPEED,
+        ge=0.0,
+        le=1e3,
+        description="Minimum progress speed when coasting [m/s]",
+    )
     # Adaptive control
     thruster_type: str = Field(
-        "PWM",
+        constants.Constants.THRUSTER_TYPE,
         description="Thruster actuation type: 'PWM' (Binary) or 'CON' (Continuous)",
     )
 
@@ -336,7 +373,7 @@ class MPCParams(BaseModel):
         description="Enable collision avoidance constraints",
     )
     obstacle_margin: float = Field(
-        0.5,
+        constants.Constants.OBSTACLE_SAFETY_MARGIN,
         ge=0.0,
         le=5.0,
         description="Safety margin around obstacles in meters",
@@ -344,7 +381,7 @@ class MPCParams(BaseModel):
 
     # Path Following (V4.0.1) - General Path MPCC
     path_speed: float = Field(
-        0.1,
+        timing.DEFAULT_PATH_SPEED,
         gt=0.0,
         le=1.0,
         description="Path speed along reference curve [m/s]",
@@ -417,49 +454,49 @@ class SimulationParams(BaseModel):
     """Simulation settings with validation."""
 
     dt: float = Field(
-        0.005,
+        timing.SIMULATION_DT,
         gt=0,
         le=0.1,
         description="Physics timestep in seconds (max 100ms)",
     )
     max_duration: float = Field(
-        ...,
+        timing.MAX_SIMULATION_TIME,
         ge=0,
         description="Maximum simulation duration in seconds (0 disables limit)",
     )
     headless: bool = Field(
-        False,
+        constants.Constants.HEADLESS_MODE,
         description="Run without visualization",
     )
 
     # Visualization defaults
     window_width: int = Field(
-        1600,
+        constants.Constants.WINDOW_WIDTH,
         ge=640,
         le=4096,
         description="Window width in pixels",
     )
     window_height: int = Field(
-        1000,
+        constants.Constants.WINDOW_HEIGHT,
         ge=480,
         le=2160,
         description="Window height in pixels",
     )
 
     use_final_stabilization: bool = Field(
-        False,
+        timing.USE_FINAL_STABILIZATION_IN_SIMULATION,
         description="Require final stabilization hold before terminating missions",
     )
 
     # Timing parameters (V3.0.0: moved from SatelliteConfig/timing.py)
     control_dt: float = Field(
-        0.050,
+        timing.CONTROL_DT,
         gt=0,
         le=1.0,
         description="MPC control update interval in seconds (must be >= dt)",
     )
     default_path_speed: float = Field(
-        0.1,
+        timing.DEFAULT_PATH_SPEED,
         gt=0,
         le=1.0,
         description="Default path speed for shape following missions in m/s",

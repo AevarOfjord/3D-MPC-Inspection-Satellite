@@ -10,6 +10,8 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from src.satellite_control.config.constants import Constants
+
 
 class MissionHandler(ABC):
     """
@@ -21,8 +23,8 @@ class MissionHandler(ABC):
 
     def __init__(
         self,
-        position_tolerance: float = 0.05,
-        angle_tolerance: float = 0.05,
+        position_tolerance: float = Constants.POSITION_TOLERANCE,
+        angle_tolerance: float = Constants.ANGLE_TOLERANCE,
         normalize_angle_func: Optional[Callable[[float], float]] = None,
         angle_difference_func: Optional[Callable[[float, float], float]] = None,
     ):

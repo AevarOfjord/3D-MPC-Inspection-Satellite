@@ -400,6 +400,26 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
     for (int k = 0; k < N_; ++k) {
         P_diag.segment((N_ + 1) * nx_ + k * nu_, nu_) = R_diag_; // Augmented nu handles vs cost
     }
+
+    // Penalize opposing thruster co-firing: w * (u_i + u_j)^2 per axis.
+    if (mpc_params_.thrust_pair_weight > 0.0 && sat_params_.num_thrusters >= 2) {
+        double w = mpc_params_.thrust_pair_weight;
+        int thruster_offset = sat_params_.num_rw;
+        int pair_count = sat_params_.num_thrusters / 2;
+        for (int k = 0; k < N_; ++k) {
+            int base = (N_ + 1) * nx_ + k * nu_;
+            for (int p = 0; p < pair_count; ++p) {
+                int i = base + thruster_offset + 2 * p;
+                int j = i + 1;
+                if (j >= base + thruster_offset + sat_params_.num_thrusters) {
+                    break;
+                }
+                P_diag(i) += 2.0 * w;
+                P_diag(j) += 2.0 * w;
+                triplets.emplace_back(i, j, 2.0 * w);
+            }
+        }
+    }
     
     for (int i = 0; i < n_vars; ++i) {
         triplets.emplace_back(i, i, P_diag(i));
@@ -947,6 +967,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     }
     s_curr = std::max(0.0, std::min(s_curr, path_total_length_));
 
+    double remaining = std::max(0.0, path_total_length_ - s_curr);
+
     double speed_scale = 1.0;
     if (x_current.size() >= 3 && slowdown_dist > 1e-6) {
         Eigen::Vector3d p_curr = x_current.segment<3>(0);
@@ -954,7 +976,34 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         double contour_err = (p_curr - p_ref_curr).norm();
         speed_scale = std::max(0.0, std::min(1.0, 1.0 - contour_err / slowdown_dist));
     }
-    double v_ref_base = v_ref * speed_scale;
+    double end_scale = 1.0;
+    if (taper_dist > 1e-6) {
+        end_scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
+    }
+    double v_ref_base = v_ref * speed_scale * end_scale;
+
+    // Coasting bias: if we're already on the path and moving along it,
+    // match the reference speed to the current along-track speed to avoid braking.
+    if (mpc_params_.coast_pos_tolerance > 0.0 &&
+        mpc_params_.coast_vel_tolerance >= 0.0 &&
+        x_current.size() >= 10 &&
+        remaining > taper_dist) {
+        Eigen::Vector3d p_curr = x_current.segment<3>(0);
+        Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
+        Eigen::Vector3d t_curr = get_path_tangent(s_curr);
+        Eigen::Vector3d v_curr = x_current.segment<3>(7);
+        double contour_err = (p_curr - p_ref_curr).norm();
+        double v_along = v_curr.dot(t_curr);
+        Eigen::Vector3d v_perp = v_curr - v_along * t_curr;
+        double v_perp_norm = v_perp.norm();
+
+        if (contour_err <= mpc_params_.coast_pos_tolerance &&
+            v_perp_norm <= mpc_params_.coast_vel_tolerance &&
+            v_along >= 0.0) {
+            double v_coast = std::max(mpc_params_.coast_min_speed, v_along);
+            v_ref_base = v_coast;
+        }
+    }
 
     // Initialize s_guess if needed
     if (s_guess_.size() != static_cast<size_t>(N_ + 1)) {
@@ -1133,6 +1182,14 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
             q_(u_idx) = -2.0 * Q_p * v_ref_k;
+
+            // Fuel bias: linear penalty on thruster usage to promote coasting.
+            if (mpc_params_.thrust_l1_weight > 0.0) {
+                int thruster_base = (N_ + 1) * nx_ + k * nu_ + sat_params_.num_rw;
+                for (int i = 0; i < sat_params_.num_thrusters; ++i) {
+                    q_(thruster_base + i) += mpc_params_.thrust_l1_weight;
+                }
+            }
         }
         
     }// Push updates to OSQP

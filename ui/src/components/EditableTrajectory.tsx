@@ -35,7 +35,7 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                         itemSize={3}
                     />
                 </bufferGeometry>
-                <lineBasicMaterial color="#06b6d4" linewidth={2} opacity={1} transparent={false} />
+                <lineBasicMaterial color="#22d3ee" linewidth={2} opacity={0.95} transparent depthTest={false} depthWrite={false} />
             </line>
 
             {/* Interactive Waypoints (Invisible until hovered or selected) */}

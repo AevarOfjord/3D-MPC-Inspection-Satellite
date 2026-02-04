@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import * as THREE from 'three';
 import { trajectoryApi, type MeshScanConfig, type ModelInfo } from '../api/trajectory';
 import { unifiedMissionApi } from '../api/unifiedMissionApi';
 import { pathAssetsApi, type PathAssetSummary } from '../api/pathAssets';
@@ -52,6 +53,39 @@ const defaultHoldSegment = (): HoldSegment => ({
   duration: 0,
   constraints: { speed_max: 0.1 },
 });
+
+const computeFacingEuler = (
+  position: [number, number, number],
+  baseAxis: [number, number, number] = [0, 0, -1],
+  fallback: [number, number, number] = [0, 0, 0]
+) => {
+  const toEarth = new THREE.Vector3(-position[0], -position[1], -position[2]);
+  if (toEarth.lengthSq() < 1e-8) return fallback;
+  toEarth.normalize();
+  const base = new THREE.Vector3(baseAxis[0], baseAxis[1], baseAxis[2]);
+  if (base.lengthSq() < 1e-8) return fallback;
+  base.normalize();
+  const quat = new THREE.Quaternion().setFromUnitVectors(base, toEarth);
+  const euler = new THREE.Euler().setFromQuaternion(quat);
+  return [euler.x, euler.y, euler.z] as [number, number, number];
+};
+
+const eulerToQuat = (euler: [number, number, number]) => {
+  const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(euler[0], euler[1], euler[2]));
+  return [quat.w, quat.x, quat.y, quat.z] as [number, number, number, number];
+};
+
+const resolveOrbitTargetPose = (targetId: string) => {
+  const obj = orbitSnapshot.objects.find(o => o.id === targetId);
+  if (!obj) return undefined;
+  const position = [...obj.position_m] as [number, number, number];
+  const baseOrientation = obj.orientation ?? [0, 0, 0];
+  const euler = obj.align_to_earth
+    ? computeFacingEuler(position, obj.base_axis ?? [0, 0, -1], baseOrientation as [number, number, number])
+    : (baseOrientation as [number, number, number]);
+  const orientation = eulerToQuat(euler);
+  return { frame: 'ECI' as const, position, orientation };
+};
 
 export function useMissionBuilder() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -322,6 +356,11 @@ export function useMissionBuilder() {
       // Launch directly to Live Dashboard (Single Process)
       setLoading(true);
       try {
+          const validationError = validateScanSegments();
+          if (validationError) {
+            alert(validationError);
+            return;
+          }
           // 1. Push current definition to backend
           await pushUnifiedMission();
           
@@ -512,6 +551,15 @@ export function useMissionBuilder() {
                 } as TransferSegment;
             }
         }
+        if (seg.type === 'scan' && seg.target_id) {
+          const resolvedPose = resolveOrbitTargetPose(seg.target_id);
+          if (resolvedPose) {
+            return {
+              ...seg,
+              target_pose: resolvedPose,
+            } as ScanSegment;
+          }
+        }
         return seg;
       }),
       obstacles: obstacles.map((o) => ({
@@ -532,10 +580,38 @@ export function useMissionBuilder() {
     return unifiedMissionApi.saveMission(name, mission);
   };
 
+  const handleSaveUnifiedMission = async () => {
+    const validationError = validateScanSegments();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+    const name = prompt('Enter mission name (e.g. Starlink_Scan_M01):');
+    if (!name) return;
+    try {
+      await saveUnifiedMission(name);
+      await refreshUnifiedMissions();
+      setSavedMissionName(name);
+      alert(`Mission saved: ${name}`);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to save mission: ${err.message || err}`);
+    }
+  };
+
   const loadUnifiedMission = async (name: string) => {
     const mission = await unifiedMissionApi.loadMission(name);
     setEpoch(mission.epoch);
-    setSegments(mission.segments);
+    const hydratedSegments = mission.segments.map((seg) => {
+      if (seg.type === 'scan' && seg.target_id && !seg.target_pose) {
+        const resolvedPose = resolveOrbitTargetPose(seg.target_id);
+        if (resolvedPose) {
+          return { ...seg, target_pose: resolvedPose } as ScanSegment;
+        }
+      }
+      return seg;
+    });
+    setSegments(hydratedSegments);
     setSplineControls(mission.overrides?.spline_controls || []);
     setSelectedSegmentIndex(null);
     setStartPosition([...mission.start_pose.position] as [number, number, number]);
@@ -547,7 +623,7 @@ export function useMissionBuilder() {
         }))
       );
     }
-    const firstScan = mission.segments.find(seg => seg.type === 'scan') as ScanSegment | undefined;
+    const firstScan = hydratedSegments.find(seg => seg.type === 'scan') as ScanSegment | undefined;
     setSelectedOrbitTargetId(firstScan?.target_id ?? null);
   };
 
@@ -559,6 +635,11 @@ export function useMissionBuilder() {
   const generateUnifiedPath = async () => {
     setLoading(true);
     try {
+        const validationError = validateScanSegments();
+        if (validationError) {
+          alert(validationError);
+          return;
+        }
         setIsManualMode(false);
         const mission = buildUnifiedMission();
         const preview = await unifiedMissionApi.previewMission(mission);
@@ -595,6 +676,7 @@ export function useMissionBuilder() {
     setSegments(prev => {
       const next = [...prev, defaultScanSegment()];
       setSelectedSegmentIndex(next.length - 1);
+      setSelectedOrbitTargetId(null);
       return next;
     });
   };
@@ -673,6 +755,7 @@ export function useMissionBuilder() {
 
   const assignScanTarget = (targetId: string, targetPosition?: [number, number, number]) => {
     setSelectedOrbitTargetId(targetId);
+    const resolvedPose = targetId ? resolveOrbitTargetPose(targetId) : undefined;
     setSegments(prev => {
       const applyPrefill = (seg: ScanSegment) => {
         const standoff = seg.scan.standoff > 0 ? seg.scan.standoff : 10;
@@ -681,9 +764,9 @@ export function useMissionBuilder() {
         return {
           ...seg,
           target_id: targetId,
-            target_pose: targetPosition
+          target_pose: resolvedPose ?? (targetPosition
             ? { frame: 'ECI' as const, position: [...targetPosition] as [number, number, number] }
-            : seg.target_pose,
+            : seg.target_pose),
           scan: {
             ...seg.scan,
             standoff,
@@ -719,6 +802,23 @@ export function useMissionBuilder() {
       setSelectedSegmentIndex(next.length - 1);
       return next;
     });
+  };
+
+  const validateScanSegments = (): string | null => {
+    const scanSegments = segments
+      .map((seg, idx) => ({ seg, idx }))
+      .filter(({ seg }) => seg.type === 'scan') as { seg: ScanSegment; idx: number }[];
+    for (const { seg, idx } of scanSegments) {
+      if (!seg.target_id) {
+        setSelectedSegmentIndex(idx);
+        return 'Scan segment requires a target object. Select one in the Inspector.';
+      }
+      if (!seg.path_asset) {
+        setSelectedSegmentIndex(idx);
+        return 'Scan segment requires a saved Path Asset. Create one in Scan Planner.';
+      }
+    }
+    return null;
   };
 
   return {
@@ -773,6 +873,7 @@ export function useMissionBuilder() {
         handlePreview,
         handleSave,
         handleRun,
+        handleSaveUnifiedMission,
         selectModelPath,
         refreshModelList,
         refreshPathAssets,

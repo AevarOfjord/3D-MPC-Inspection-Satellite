@@ -50,6 +50,11 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("Q_attitude", &MPCParams::Q_attitude)
         .def_readwrite("R_thrust", &MPCParams::R_thrust)
         .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
+        .def_readwrite("thrust_l1_weight", &MPCParams::thrust_l1_weight)
+        .def_readwrite("thrust_pair_weight", &MPCParams::thrust_pair_weight)
+        .def_readwrite("coast_pos_tolerance", &MPCParams::coast_pos_tolerance)
+        .def_readwrite("coast_vel_tolerance", &MPCParams::coast_vel_tolerance)
+        .def_readwrite("coast_min_speed", &MPCParams::coast_min_speed)
 
         // Collision avoidance (V3.0.0)
         .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)

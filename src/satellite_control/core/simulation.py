@@ -376,9 +376,67 @@ class SatelliteMPCLinearizedSimulation:
             reference_state[3:7] = current_state[3:7]
 
         path_speed = 0.0
+        taper_dist = 0.0
+        coast_pos_tol = 0.0
+        coast_vel_tol = 0.0
+        coast_min_speed = 0.0
         if self.simulation_config is not None:
             path_speed = float(self.simulation_config.app_config.mpc.path_speed)
-        reference_state[7:10] = tangent * path_speed
+            taper_dist = float(
+                getattr(self.simulation_config.app_config.mpc, "progress_taper_distance", 0.0)
+                or 0.0
+            )
+            coast_pos_tol = float(
+                getattr(self.simulation_config.app_config.mpc, "coast_pos_tolerance", 0.0)
+                or 0.0
+            )
+            coast_vel_tol = float(
+                getattr(self.simulation_config.app_config.mpc, "coast_vel_tolerance", 0.0)
+                or 0.0
+            )
+            coast_min_speed = float(
+                getattr(self.simulation_config.app_config.mpc, "coast_min_speed", 0.0)
+                or 0.0
+            )
+
+        # Taper reference velocity to zero as we approach the path end so
+        # completion can satisfy velocity tolerances.
+        speed_scale = 1.0
+        remaining = None
+        try:
+            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+            s_val = float(getattr(self.mpc_controller, "s", 0.0) or 0.0)
+            if path_len > 0.0:
+                remaining = max(0.0, path_len - s_val)
+                if taper_dist <= 0.0:
+                    pos_tol = float(getattr(self, "position_tolerance", 0.05))
+                    taper_dist = max(pos_tol, path_speed * self.control_update_interval)
+                if taper_dist > 1e-6:
+                    speed_scale = max(0.0, min(1.0, remaining / taper_dist))
+        except Exception:
+            speed_scale = 1.0
+
+        pos_tol = float(getattr(self, "position_tolerance", 0.05))
+        at_path_end = remaining is not None and remaining <= max(pos_tol, 1e-6)
+
+        # Coasting bias: match reference speed to current along-track speed when on-path.
+        v_ref = path_speed * speed_scale
+        if (not at_path_end) and coast_pos_tol > 0.0 and np.linalg.norm(tangent) > 1e-6:
+            pos_err = float(np.linalg.norm(current_state[:3] - pos_ref))
+            v_curr = current_state[7:10]
+            v_along = float(np.dot(v_curr, tangent))
+            v_perp = v_curr - v_along * tangent
+            if pos_err <= coast_pos_tol and np.linalg.norm(v_perp) <= coast_vel_tol and v_along >= 0.0:
+                v_ref = max(coast_min_speed, v_along)
+        if at_path_end:
+            # Force a full stop at the end of the path.
+            v_ref = 0.0
+
+        reference_state[7:10] = tangent * v_ref
+
+        # At the end of the path, don't enforce a specific attitude; use current.
+        if at_path_end:
+            reference_state[3:7] = current_state[3:7]
 
         self.reference_state = reference_state
 
@@ -742,8 +800,29 @@ class SatelliteMPCLinearizedSimulation:
 
         pos_tol = float(getattr(self, "position_tolerance", 0.05))
         progress_ok = path_s >= (path_len - pos_tol)
-        pos_ok = endpoint_error <= pos_tol
-        return bool(progress_ok and pos_ok)
+
+        # Require full state tolerances when reference is available.
+        state_ok = None
+        if hasattr(self, "state_validator") and self.state_validator is not None:
+            try:
+                current_state = self.get_current_state()[:13]
+                reference_state = (
+                    self.reference_state
+                    if self.reference_state is not None
+                    else np.zeros(13)
+                )
+                state_ok = self.state_validator.check_reference_reached(
+                    current_state, reference_state
+                )
+            except Exception:
+                state_ok = None
+
+        # Fallback to endpoint position check if validator/reference is unavailable.
+        if state_ok is None:
+            pos_ok = endpoint_error <= pos_tol
+            state_ok = pos_ok
+
+        return bool(progress_ok and state_ok)
 
     def draw_simulation(self) -> None:
         """Draw the simulation with satellite, reference, and trajectory."""

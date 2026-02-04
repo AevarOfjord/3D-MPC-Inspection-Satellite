@@ -5,10 +5,12 @@ Provides real-time telemetry overlay for the MuJoCo simulation viewer.
 Renders text overlays showing mission status, position error, and thruster activity.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple, Union
 
 import numpy as np
+
+from src.satellite_control.config.physics import THRUSTER_COUNT
 
 
 @dataclass
@@ -33,8 +35,10 @@ class OverlayData:
     mpc_solve_time_ms: float = 0.0
     mpc_status: str = "OK"
 
-    # Thruster activity (6 thrusters, 0.0-1.0 each)
-    thruster_levels: Tuple[float, ...] = (0.0,) * 6
+    # Thruster activity (one per configured thruster, 0.0-1.0 each)
+    thruster_levels: Tuple[float, ...] = field(
+        default_factory=lambda: (0.0,) * THRUSTER_COUNT
+    )
 
 
 class ViewerOverlay:

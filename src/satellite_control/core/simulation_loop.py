@@ -385,9 +385,29 @@ class SimulationLoop:
 
         pos_tol = float(getattr(self.simulation, "position_tolerance", 0.05))
         progress_ok = float(path_s) >= (path_length - pos_tol)
-        pos_ok = endpoint_error <= pos_tol
 
-        if not (progress_ok and pos_ok):
+        # Require full state tolerances when reference is available.
+        state_ok = None
+        if hasattr(self.simulation, "state_validator") and self.simulation.state_validator:
+            try:
+                current_state = self.simulation.get_current_state()[:13]
+                reference_state = (
+                    self.simulation.reference_state
+                    if self.simulation.reference_state is not None
+                    else np.zeros(13)
+                )
+                state_ok = self.simulation.state_validator.check_reference_reached(
+                    current_state, reference_state
+                )
+            except Exception:
+                state_ok = None
+
+        # Fallback to endpoint position check if validator/reference unavailable.
+        if state_ok is None:
+            pos_ok = endpoint_error <= pos_tol
+            state_ok = pos_ok
+
+        if not (progress_ok and state_ok):
             self.simulation.trajectory_endpoint_reached_time = None
             return False
 

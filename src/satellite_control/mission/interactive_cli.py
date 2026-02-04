@@ -299,6 +299,54 @@ class InteractiveMissionCLI:
         simulation_config = SimulationConfig.create_default()
         ms = simulation_config.mission_state
 
+        # Unified mission format (v2)
+        if "segments" in data and "start_pose" in data:
+            from src.satellite_control.mission.unified_mission import MissionDefinition
+            from src.satellite_control.mission.unified_compiler import (
+                compile_unified_mission_path,
+            )
+            from src.satellite_control.mission.mission_types import (
+                Obstacle as MissionObstacle,
+            )
+
+            mission_def = MissionDefinition.from_dict(data)
+            path, path_length, path_speed = compile_unified_mission_path(
+                mission=mission_def,
+                sim_config=simulation_config,
+            )
+
+            simulation_config.app_config.mpc.path_speed = float(path_speed)
+            if mission_def.obstacles:
+                ms.obstacles = [
+                    MissionObstacle(
+                        position=np.array(o.position, dtype=float), radius=o.radius
+                    )
+                    for o in mission_def.obstacles
+                ]
+                ms.obstacles_enabled = True
+
+            ms.mpcc_path_waypoints = path
+            ms.dxf_shape_path = path
+            ms.dxf_path_length = float(path_length)
+            ms.dxf_path_speed = float(path_speed)
+            ms.trajectory_mode_active = False
+            ms.dxf_shape_mode_active = False
+            ms.mesh_scan_mode_active = False
+
+            start_pos = tuple(path[0]) if path else (0.0, 0.0, 0.0)
+            start_angle = (0.0, 0.0, 0.0)
+            end_pos = tuple(path[-1]) if path else start_pos
+            end_angle = (0.0, 0.0, 0.0)
+
+            return {
+                "mission_type": "unified_v2",
+                "start_pos": start_pos,
+                "start_angle": start_angle,
+                "end_pos": end_pos,
+                "end_angle": end_angle,
+                "simulation_config": simulation_config,
+            }
+
         # Hydrate MissionState from data (MissionConfigModel structure)
         # start_position, end_position, end_orientation, obstacles
         start_pos = tuple(data.get("start_position", [10, 0, 0]))

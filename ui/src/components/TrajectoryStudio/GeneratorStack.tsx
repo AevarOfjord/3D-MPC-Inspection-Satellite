@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Plus, GripVertical, Trash2, Play, RefreshCw } from 'lucide-react';
+import { Layers, Plus, GripVertical, Trash2, RefreshCw, Save, Play } from 'lucide-react';
 import { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import { type MissionSegment } from '../../api/unifiedMission';
 import {
@@ -258,12 +258,12 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                      PREVIEW
                  </button>
                  <button
-                    onClick={() => actions.handleRun()}
+                    onClick={() => actions.handleSaveUnifiedMission()}
                     disabled={state.loading}
                     className="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(8,145,178,0.4)] transition-all"
                  >
-                     <Play size={14} />
-                     LAUNCH
+                     <Save size={14} />
+                     SAVE
                  </button>
             </div>
         </div>

@@ -38,6 +38,8 @@ from pathlib import Path
 
 import matplotlib.patches as patches
 import numpy as np
+
+from src.satellite_control.config.physics import THRUSTER_COUNT
 from matplotlib.animation import writers
 
 # Conditional import for visualization generator
@@ -787,7 +789,7 @@ class SimulationVisualizationManager:
 
         # Draw Thruster Bars (6 Thrusters)
         thruster_output = getattr(
-            self.controller, "thruster_actual_output", np.zeros(6)
+            self.controller, "thruster_actual_output", np.zeros(THRUSTER_COUNT)
         )
 
         # Bar chart settings
@@ -1091,19 +1093,19 @@ class SimulationVisualizationManager:
         def parse_command_vector(cmd_str):
             try:
                 if not cmd_str or cmd_str == "[]":
-                    return np.zeros(6)
+                    return np.zeros(THRUSTER_COUNT)
                 cmd_str = str(cmd_str).strip("[]")
                 if not cmd_str:
-                    return np.zeros(6)
+                    return np.zeros(THRUSTER_COUNT)
                 # Parse
                 parts = [float(x.strip()) for x in cmd_str.split(",")]
                 # Ensure length 6
-                res = np.zeros(6)
+                res = np.zeros(THRUSTER_COUNT)
                 length = min(len(parts), 6)
                 res[:length] = parts[:length]
                 return res
             except Exception:
-                return np.zeros(6)
+                return np.zeros(THRUSTER_COUNT)
 
         def init():
             line_3d.set_data([], [])
@@ -1519,8 +1521,8 @@ class SimulationVisualizationManager:
         self.mpc_info_history.clear()
 
         # Reset control
-        self.current_thrusters = np.zeros(8, dtype=np.float64)
-        self.previous_thrusters = np.zeros(8, dtype=np.float64)
+        self.current_thrusters = np.zeros(THRUSTER_COUNT, dtype=np.float64)
+        self.previous_thrusters = np.zeros(THRUSTER_COUNT, dtype=np.float64)
         self.satellite.active_thrusters.clear()
 
         # Reset trajectory
