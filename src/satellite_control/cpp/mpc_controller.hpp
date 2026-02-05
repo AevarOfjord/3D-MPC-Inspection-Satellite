@@ -7,6 +7,7 @@
 #include <memory>
 #include <tuple>
 #include <string>
+#include <algorithm>
 #include "osqp.h"
 #include "linearizer.hpp"
 #include "obstacle.hpp"
@@ -135,6 +136,20 @@ public:
      * @param u_prev Either thruster-only (num_thrusters) or full control (nu).
      */
     void set_warm_start_control(const VectorXd& u_prev);
+
+    /**
+     * @brief Configure scan-attitude context for stable object-facing attitude.
+     */
+    void set_scan_attitude_context(
+        const Eigen::Vector3d& center,
+        const Eigen::Vector3d& axis,
+        const std::string& direction
+    );
+
+    /**
+     * @brief Disable scan-attitude context and fall back to tangent/up behavior.
+     */
+    void clear_scan_attitude_context();
 
 private:
     // Dimensions
@@ -271,6 +286,9 @@ private:
     std::vector<Eigen::Vector3d> path_points_; // Position samples
     double path_total_length_ = 0.0;          // Total path length
     bool path_data_valid_ = false;            // True if path data has been set
+    bool scan_attitude_enabled_ = false;      // If true, keep object-facing side stable
+    Eigen::Vector3d scan_center_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     
     // Helper methods for path interpolation
     Eigen::Vector3d get_path_point(double s) const;

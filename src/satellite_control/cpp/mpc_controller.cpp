@@ -1,5 +1,6 @@
 
 #include "mpc_controller.hpp"
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -904,6 +905,28 @@ void MPCControllerCpp::set_warm_start_control(const VectorXd& u_prev) {
     has_warm_start_control_ = true;
 }
 
+void MPCControllerCpp::set_scan_attitude_context(
+    const Eigen::Vector3d& center,
+    const Eigen::Vector3d& axis,
+    const std::string& direction
+) {
+    (void)direction;
+    scan_center_ = center;
+    double axis_norm = axis.norm();
+    if (axis_norm > 1e-9) {
+        scan_axis_ = axis / axis_norm;
+    } else {
+        scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+    }
+    scan_attitude_enabled_ = true;
+}
+
+void MPCControllerCpp::clear_scan_attitude_context() {
+    scan_attitude_enabled_ = false;
+    scan_center_ = Eigen::Vector3d::Zero();
+    scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+}
+
 void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     // if (!mpc_params_.mode_path_following) return; // Always on
     q_.setZero();
@@ -1129,21 +1152,92 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             q_(x_idx + 16) += -2.0 * Q_s_anchor * stage_scale * s_bar;
         }
 
-        // 2c. Attitude tracking: align body x-axis with path tangent
+        // 2c. Attitude tracking:
+        // +X follows path tangent. In scan mode, choose the object-facing side
+        // (+Y or -Y) that is closest to current attitude to avoid roll flips.
         if (Q_att > 0.0) {
-            Eigen::Vector3d u(1.0, 0.0, 0.0);
-            Eigen::Vector3d v = t_ref;
-            double dot = u.dot(v);
-            Eigen::Vector4d q_ref;
-            if (dot > 0.999999) {
-                q_ref << 1.0, 0.0, 0.0, 0.0;
-            } else if (dot < -0.999999) {
-                q_ref << 0.0, 0.0, 0.0, 1.0;
+            Eigen::Vector3d x_axis = t_ref;
+            double x_norm = x_axis.norm();
+            if (x_norm > 1e-9) {
+                x_axis /= x_norm;
             } else {
-                Eigen::Vector3d cross = u.cross(v);
-                q_ref << 1.0 + dot, cross(0), cross(1), cross(2);
-                q_ref.normalize();
+                x_axis = Eigen::Vector3d(1.0, 0.0, 0.0);
             }
+            Eigen::Vector3d y_axis(0.0, 1.0, 0.0);
+            Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
+
+            if (scan_attitude_enabled_) {
+                Eigen::Vector3d radial_in = scan_center_ - p_ref;
+                radial_in -= radial_in.dot(x_axis) * x_axis;
+                double radial_norm = radial_in.norm();
+
+                if (radial_norm > 1e-9) {
+                    radial_in /= radial_norm;
+                    y_axis = radial_in;
+                    if (q_curr.norm() > 1e-9) {
+                        Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
+                        q_curr_eig.normalize();
+                        Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
+                        if (curr_y.norm() > 1e-9 && curr_y.dot(y_axis) < 0.0) {
+                            y_axis = -y_axis;
+                        }
+                    }
+                    z_axis = x_axis.cross(y_axis);
+                    double z_norm = z_axis.norm();
+                    if (z_norm > 1e-9) {
+                        z_axis /= z_norm;
+                        y_axis = z_axis.cross(x_axis);
+                        double y_norm = y_axis.norm();
+                        if (y_norm > 1e-9) {
+                            y_axis /= y_norm;
+                        } else {
+                            y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                        }
+                    }
+                } else {
+                    // Degenerate radial case near scan axis: preserve roll with scan axis.
+                    z_axis = scan_axis_ - scan_axis_.dot(x_axis) * x_axis;
+                    double z_norm = z_axis.norm();
+                    if (z_norm > 1e-9) {
+                        z_axis /= z_norm;
+                    } else {
+                        z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                    }
+                    y_axis = z_axis.cross(x_axis);
+                    double y_norm = y_axis.norm();
+                    if (y_norm > 1e-9) {
+                        y_axis /= y_norm;
+                    } else {
+                        y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                    }
+                }
+            } else {
+                Eigen::Vector3d up(0.0, 0.0, 1.0);
+                if (std::abs(x_axis.dot(up)) > 0.95) {
+                    up = Eigen::Vector3d(0.0, 1.0, 0.0);
+                }
+                z_axis = up - up.dot(x_axis) * x_axis;
+                double z_norm = z_axis.norm();
+                if (z_norm > 1e-9) {
+                    z_axis /= z_norm;
+                } else {
+                    z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                }
+                y_axis = z_axis.cross(x_axis);
+                double y_norm = y_axis.norm();
+                if (y_norm > 1e-9) {
+                    y_axis /= y_norm;
+                } else {
+                    y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                }
+            }
+
+            Eigen::Matrix3d R;
+            R.col(0) = x_axis;
+            R.col(1) = y_axis;
+            R.col(2) = z_axis;
+            Eigen::Quaterniond q_ref_eig(R);
+            Eigen::Vector4d q_ref(q_ref_eig.w(), q_ref_eig.x(), q_ref_eig.y(), q_ref_eig.z());
 
             if (q_curr.dot(q_ref) < 0.0) {
                 q_ref = -q_ref;

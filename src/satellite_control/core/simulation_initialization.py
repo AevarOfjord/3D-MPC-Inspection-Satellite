@@ -200,6 +200,23 @@ class SimulationInitializer:
             self.simulation.mpc_controller.set_path(mission_state.mpcc_path_waypoints)
             self.simulation.planned_path = list(mission_state.mpcc_path_waypoints)
 
+        # Configure scan-attitude context for stable object-facing attitude.
+        if hasattr(self.simulation.mpc_controller, "set_scan_attitude_context"):
+            is_scan = str(getattr(mission_state, "trajectory_type", "")).lower() == "scan"
+            center = getattr(mission_state, "trajectory_object_center", None)
+            if is_scan and center is not None:
+                axis = getattr(mission_state, "trajectory_scan_axis", (0.0, 0.0, 1.0))
+                direction = str(
+                    getattr(mission_state, "trajectory_scan_direction", "CW") or "CW"
+                ).upper()
+                self.simulation.mpc_controller.set_scan_attitude_context(
+                    tuple(center),
+                    tuple(axis),
+                    direction,
+                )
+            else:
+                self.simulation.mpc_controller.set_scan_attitude_context(None, None, "CW")
+
         # Initialize state validator
         self._initialize_state_validator()
 

@@ -63,6 +63,7 @@ from src.satellite_control.utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
+    quat_wxyz_from_basis,
 )
 
 
@@ -72,6 +73,21 @@ logger = setup_logging(__name__, log_file=None, simple_format=True)
 
 # Use centralized FFMPEG path from Constants (handles all platforms)
 plt.rcParams["animation.ffmpeg_path"] = Constants.FFMPEG_PATH
+
+
+def _quat_wxyz_rotate_vector(q_wxyz: np.ndarray, vec: np.ndarray) -> np.ndarray:
+    """Rotate world-space vector by quaternion [w, x, y, z]."""
+    q = np.array(q_wxyz, dtype=float).reshape(-1)
+    v = np.array(vec, dtype=float).reshape(-1)
+    if q.size != 4 or v.size != 3:
+        return np.array(v[:3], dtype=float)
+    q_norm = float(np.linalg.norm(q))
+    if q_norm <= 1e-9:
+        return np.array(v, dtype=float)
+    q = q / q_norm
+    s = float(q[0])
+    u = q[1:4]
+    return 2.0 * np.dot(u, v) * u + (s * s - np.dot(u, u)) * v + 2.0 * s * np.cross(u, v)
 
 try:
     from src.satellite_control.visualization.unified_visualizer import (
@@ -350,27 +366,81 @@ class SatelliteMPCLinearizedSimulation:
         reference_state[0:3] = pos_ref
 
         if np.linalg.norm(tangent) > 1e-6:
-            # 3D Alignment: Align Satellite X-axis (1,0,0) with Path Tangent
-            # Compute shortest arc quaternion
-            # u = [1, 0, 0], v = tangent (normalized)
-            u = np.array([1.0, 0.0, 0.0])
-            v = tangent / np.linalg.norm(tangent)
+            x_axis = tangent / np.linalg.norm(tangent)
+            y_axis = np.array([0.0, 1.0, 0.0], dtype=float)
+            z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
 
-            dot = np.dot(u, v)
+            mission_state = getattr(self, "mission_state", None)
+            is_scan = (
+                mission_state is not None
+                and str(getattr(mission_state, "trajectory_type", "")).lower() == "scan"
+                and getattr(mission_state, "trajectory_object_center", None) is not None
+            )
 
-            if dot > 0.999999:
-                # Parallel, no rotation needed from X-axis
-                reference_quat = np.array([1.0, 0.0, 0.0, 0.0])
-            elif dot < -0.999999:
-                # Anti-parallel, 180 deg rotation about Z
-                reference_quat = np.array([0.0, 0.0, 0.0, 1.0])
+            if is_scan:
+                scan_center = np.array(mission_state.trajectory_object_center, dtype=float)
+                scan_axis = np.array(
+                    getattr(mission_state, "trajectory_scan_axis", (0.0, 0.0, 1.0)),
+                    dtype=float,
+                )
+                if np.linalg.norm(scan_axis) > 1e-6:
+                    scan_axis = scan_axis / np.linalg.norm(scan_axis)
+                else:
+                    scan_axis = np.array([0.0, 0.0, 1.0], dtype=float)
+
+                radial_in = scan_center - pos_ref
+                radial_in = radial_in - np.dot(radial_in, x_axis) * x_axis
+
+                if np.linalg.norm(radial_in) > 1e-6:
+                    radial_in = radial_in / np.linalg.norm(radial_in)
+                    y_axis = radial_in
+                    if current_state.shape[0] >= 7:
+                        curr_y = _quat_wxyz_rotate_vector(
+                            current_state[3:7],
+                            np.array([0.0, 1.0, 0.0], dtype=float),
+                        )
+                        if np.linalg.norm(curr_y) > 1e-6 and np.dot(curr_y, y_axis) < 0.0:
+                            y_axis = -y_axis
+                    z_axis = np.cross(x_axis, y_axis)
+                    if np.linalg.norm(z_axis) > 1e-6:
+                        z_axis = z_axis / np.linalg.norm(z_axis)
+                        y_axis = np.cross(z_axis, x_axis)
+                        if np.linalg.norm(y_axis) > 1e-6:
+                            y_axis = y_axis / np.linalg.norm(y_axis)
+                        else:
+                            y_axis = np.array([0.0, 1.0, 0.0], dtype=float)
+                    else:
+                        z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
+                else:
+                    z_axis = scan_axis - np.dot(scan_axis, x_axis) * x_axis
+                    if np.linalg.norm(z_axis) > 1e-6:
+                        z_axis = z_axis / np.linalg.norm(z_axis)
+                    else:
+                        z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
+                    y_axis = np.cross(z_axis, x_axis)
+                    if np.linalg.norm(y_axis) > 1e-6:
+                        y_axis = y_axis / np.linalg.norm(y_axis)
+                    else:
+                        y_axis = np.array([0.0, 1.0, 0.0], dtype=float)
             else:
-                # Shortest arc
-                cross = np.cross(u, v)
-                reference_quat = np.array([1.0 + dot, *cross])
-                reference_quat /= np.linalg.norm(reference_quat)
+                up = np.array([0.0, 0.0, 1.0], dtype=float)
+                if abs(float(np.dot(x_axis, up))) > 0.95:
+                    up = np.array([0.0, 1.0, 0.0], dtype=float)
+                z_axis = up - np.dot(up, x_axis) * x_axis
+                if np.linalg.norm(z_axis) > 1e-6:
+                    z_axis = z_axis / np.linalg.norm(z_axis)
+                else:
+                    z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
+                y_axis = np.cross(z_axis, x_axis)
+                if np.linalg.norm(y_axis) > 1e-6:
+                    y_axis = y_axis / np.linalg.norm(y_axis)
+                else:
+                    y_axis = np.array([0.0, 1.0, 0.0], dtype=float)
+                z_axis = np.cross(x_axis, y_axis)
+                if np.linalg.norm(z_axis) > 1e-6:
+                    z_axis = z_axis / np.linalg.norm(z_axis)
 
-            reference_state[3:7] = reference_quat
+            reference_state[3:7] = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
         else:
             # Maintain current orientation if stationary
             reference_state[3:7] = current_state[3:7]

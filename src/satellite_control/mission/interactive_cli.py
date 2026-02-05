@@ -42,6 +42,17 @@ console = Console()
 MISSIONS_DEV_DIR = Path("missions/dev")
 
 
+def _axis_to_vector(axis_value: Any) -> Tuple[float, float, float]:
+    axis = str(axis_value or "+Z").strip().upper()
+    sign = -1.0 if axis.startswith("-") else 1.0
+    letter = axis[-1] if axis and axis[-1] in ("X", "Y", "Z") else "Z"
+    if letter == "X":
+        return (sign, 0.0, 0.0)
+    if letter == "Y":
+        return (0.0, sign, 0.0)
+    return (0.0, 0.0, sign)
+
+
 class InteractiveMissionCLI:
     """
     Interactive mission CLI using questionary for styled menus.
@@ -329,13 +340,19 @@ class InteractiveMissionCLI:
                 ms.obstacles_enabled = True
 
             scan_center = None
+            scan_axis = (0.0, 0.0, 1.0)
+            scan_direction = "CW"
             for seg in mission_def.segments:
                 if seg.type == SegmentType.SCAN and seg.target_pose:
                     scan_center = tuple(seg.target_pose.position)
+                    scan_axis = _axis_to_vector(getattr(seg.scan, "axis", "+Z"))
+                    scan_direction = str(getattr(seg.scan, "direction", "CW"))
                     break
             if scan_center is not None:
                 ms.trajectory_type = "scan"
                 ms.trajectory_object_center = scan_center
+                ms.trajectory_scan_axis = scan_axis
+                ms.trajectory_scan_direction = scan_direction
 
             ms.mpcc_path_waypoints = path
             ms.dxf_shape_path = path

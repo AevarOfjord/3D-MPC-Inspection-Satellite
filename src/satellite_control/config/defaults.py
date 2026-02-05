@@ -78,7 +78,7 @@ def create_default_app_config() -> AppConfig:
         progress_reward=constants.Constants.Q_PROGRESS * timing.DEFAULT_PATH_SPEED,
         Q_lag=0.0,
         Q_smooth=constants.Constants.Q_SMOOTH,
-        Q_attitude=0.0,
+        Q_attitude=constants.Constants.Q_ATTITUDE,
         Q_terminal_pos=0.0,
         Q_terminal_s=0.0,
         q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,
