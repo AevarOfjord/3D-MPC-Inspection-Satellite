@@ -61,7 +61,7 @@ class TelemetryService {
     this.socket.onmessage = (event) => {
       try {
         const data: TelemetryData = JSON.parse(event.data);
-        this.notify(this.applyFrameTransform(data));
+        this.notify(this.normalize(data));
       } catch (e) {
         console.error("Failed to parse telemetry", e);
       }
@@ -90,7 +90,7 @@ class TelemetryService {
   }
 
   emit(data: TelemetryData) {
-    this.notify(this.applyFrameTransform(data));
+    this.notify(this.normalize(data));
   }
 
   subscribe(callback: TelemetryCallback) {
@@ -107,7 +107,7 @@ class TelemetryService {
     this.subscribers.forEach((cb) => cb(data));
   }
 
-  private applyFrameTransform(data: TelemetryData): TelemetryData {
+  normalize(data: TelemetryData): TelemetryData {
     if (data.frame !== 'LVLH' || !data.frame_origin) {
       return data;
     }
@@ -127,7 +127,19 @@ class TelemetryService {
         : obs;
 
     const scan_object = data.scan_object
-      ? { ...data.scan_object, position: add(data.scan_object.position) as [number, number, number] }
+      ? {
+          ...data.scan_object,
+          position: (() => {
+            const pos = data.scan_object?.position;
+            if (!pos) return pos;
+            const sameAsOrigin =
+              Math.abs(pos[0] - origin[0]) < 1e-6 &&
+              Math.abs(pos[1] - origin[1]) < 1e-6 &&
+              Math.abs(pos[2] - origin[2]) < 1e-6;
+            // If scan_object position already equals the LVLH origin, don't add it again.
+            return sameAsOrigin ? pos : (add(pos) as [number, number, number]);
+          })(),
+        }
       : data.scan_object;
 
     return {

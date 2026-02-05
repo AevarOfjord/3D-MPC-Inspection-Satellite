@@ -51,8 +51,6 @@ function computeFacingEuler(
 
 export function OrbitSnapshotLayer({
   onSelectTarget,
-  selectedTargetId,
-  orbitVisibility,
 }: {
   onSelectTarget?: (
     targetId: string,
@@ -60,8 +58,6 @@ export function OrbitSnapshotLayer({
     positionScene: [number, number, number],
     focusDistance?: number
   ) => void;
-  selectedTargetId?: string | null;
-  orbitVisibility?: Record<string, boolean>;
 }) {
   const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
@@ -109,7 +105,6 @@ export function OrbitSnapshotLayer({
 
       <Suspense fallback={null}>
         {orbitObjects.map((obj) => {
-          if (!orbitVisibility?.[obj.id]) return null;
           const pos = new THREE.Vector3(obj.position[0], obj.position[1], obj.position[2]);
           let normal = new THREE.Vector3().crossVectors(pos, new THREE.Vector3(0, 1, 0));
           if (normal.lengthSq() < 1e-6) {

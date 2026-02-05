@@ -34,10 +34,12 @@ venv:
 install: venv
 	@$(VENV_PIP) install -r $(REQS_FILE)
 	@$(VENV_PIP) install --no-build-isolation -e .
+	@cp build/cp3*-cp3*-macosx_*_arm64/*.so src/satellite_control/cpp/ || echo "Warning: Could not auto-copy .so files"
 
 install-dev: venv
 	@$(VENV_PIP) install -r $(DEV_REQS_FILE)
 	@$(VENV_PIP) install --no-build-isolation -e .
+	@cp build/cp3*-cp3*-macosx_*_arm64/*.so src/satellite_control/cpp/ || echo "Warning: Could not auto-copy .so files"
 
 clean:
 	@rm -rf $(VENV_DIR) build dist src/lib

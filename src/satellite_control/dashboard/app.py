@@ -327,6 +327,16 @@ class SimulationManager:
         sim_config.mission_state.dxf_path_speed = float(path_speed)
         sim_config.mission_state.trajectory_mode_active = False
         sim_config.mission_state.dxf_shape_mode_active = False
+        sim_config.mission_state.mesh_scan_mode_active = False
+
+        scan_center = None
+        for seg in mission.segments:
+            if seg.type == SegmentType.SCAN and seg.target_pose:
+                scan_center = tuple(seg.target_pose.position)
+                break
+        if scan_center is not None:
+            sim_config.mission_state.trajectory_type = "scan"
+            sim_config.mission_state.trajectory_object_center = scan_center
 
         start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
         end_pos = tuple(path[-1]) if path else start_pos
@@ -787,12 +797,24 @@ async def get_simulation_telemetry(
         raise HTTPException(status_code=404, detail="physics_data.csv not found")
     metadata_path = run_dir / "mission_metadata.json"
     scan_object = None
+    planned_path = None
+    frame = "ECI"
+    frame_origin = None
     if metadata_path.exists():
         try:
             metadata = json.loads(metadata_path.read_text())
             scan_object = metadata.get("scan_object")
+            planned_path = metadata.get("planned_path")
+            if scan_object and scan_object.get("position") is not None:
+                frame = "LVLH"
+                frame_origin = scan_object.get("position")
         except Exception as exc:
             logger.warning(f"Failed to read mission metadata for {run_id}: {exc}")
+    
+    if planned_path:
+        logger.info(f"[TELEMETRY] Loaded {len(planned_path)} points from metadata for {run_id}")
+    else:
+        logger.info(f"[TELEMETRY] No planned_path in metadata for {run_id}, will compute from CSV")
 
     from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
@@ -820,7 +842,26 @@ async def get_simulation_telemetry(
             thruster_cols.sort(key=thruster_key)
 
             telemetry = []
+            computed_path = []
+            last_ref = None
+            min_ref_step = 0.02  # meters; keep path detail without overloading payload
             for idx, row in enumerate(reader):
+                ref_x = to_float(row.get("Reference_X"))
+                ref_y = to_float(row.get("Reference_Y"))
+                ref_z = to_float(row.get("Reference_Z"))
+
+                if planned_path is None:
+                    if last_ref is None:
+                        computed_path.append([ref_x, ref_y, ref_z])
+                        last_ref = (ref_x, ref_y, ref_z)
+                    else:
+                        dx = ref_x - last_ref[0]
+                        dy = ref_y - last_ref[1]
+                        dz = ref_z - last_ref[2]
+                        if (dx * dx + dy * dy + dz * dz) ** 0.5 >= min_ref_step:
+                            computed_path.append([ref_x, ref_y, ref_z])
+                            last_ref = (ref_x, ref_y, ref_z)
+
                 if idx % stride != 0:
                     continue
 
@@ -862,11 +903,7 @@ async def get_simulation_telemetry(
                             to_float(row.get("Current_WY")),
                             to_float(row.get("Current_WZ")),
                         ],
-                        "reference_position": [
-                            to_float(row.get("Reference_X")),
-                            to_float(row.get("Reference_Y")),
-                            to_float(row.get("Reference_Z")),
-                        ],
+                        "reference_position": [ref_x, ref_y, ref_z],
                         "reference_orientation": [
                             reference_roll,
                             reference_pitch,
@@ -882,9 +919,13 @@ async def get_simulation_telemetry(
                         "ang_error": float(
                             np.linalg.norm([err_roll, err_pitch, err_yaw])
                         ),
+                        "frame": frame,
+                        "frame_origin": frame_origin,
                     }
                 )
-        return {"run_id": run_id, "telemetry": telemetry}
+        if planned_path is None:
+            planned_path = computed_path
+        return {"run_id": run_id, "telemetry": telemetry, "planned_path": planned_path or []}
     except Exception as e:
         logger.error(f"Error processing telemetry for {run_id}: {e}")
         raise HTTPException(status_code=500, detail="Error processing telemetry data")

@@ -3,7 +3,7 @@ import { simulationsApi, type SimulationRun } from '../api/simulations';
 import { telemetry, type TelemetryData } from '../services/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
 
-const MAX_PLAYBACK_SAMPLES = 4000;
+const MAX_PLAYBACK_SAMPLES = 1000000;
 
 export function PlaybackSelector() {
   const [runs, setRuns] = useState<SimulationRun[]>([]);
@@ -152,14 +152,22 @@ export function PlaybackSelector() {
           : 1;
 
       const response = await simulationsApi.loadTelemetry(value, stride);
-      dataRef.current = response.telemetry;
+      const plannedPath = response.planned_path;
+      const normalized = response.telemetry.map((sample, idx) => {
+        const withPath =
+          plannedPath && plannedPath.length > 0 && idx === 0
+            ? { ...sample, planned_path: plannedPath }
+            : sample;
+        return telemetry.normalize(withPath);
+      });
+      dataRef.current = normalized;
       
       // Store all playback data for trajectory visualization
-      useTelemetryStore.getState().setPlaybackData(response.telemetry);
+      useTelemetryStore.getState().setPlaybackData(normalized);
       
       // Set final state for visualization
-      if (response.telemetry.length > 0) {
-        useTelemetryStore.getState().setPlaybackFinalState(response.telemetry[response.telemetry.length - 1]);
+      if (normalized.length > 0) {
+        useTelemetryStore.getState().setPlaybackFinalState(normalized[normalized.length - 1]);
       } else {
         useTelemetryStore.getState().setPlaybackFinalState(null);
       }
@@ -167,9 +175,9 @@ export function PlaybackSelector() {
       indexRef.current = 0;
       setUiIndex(0);
       useTelemetryStore.getState().setPlaybackIndex(0);
-      setDuration(response.telemetry.at(-1)?.time ?? 0);
-      if (response.telemetry.length) {
-        telemetry.emit(response.telemetry[0]);
+      setDuration(normalized.at(-1)?.time ?? 0);
+      if (normalized.length) {
+        telemetry.emit(normalized[0]);
         lastEmitRef.current = 0;
       }
     } catch (error) {

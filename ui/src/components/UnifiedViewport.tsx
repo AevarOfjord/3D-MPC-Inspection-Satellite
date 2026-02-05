@@ -1,6 +1,6 @@
 import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { TrackballControls, Stars, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewport, Line, useGLTF } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -9,6 +9,7 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { CameraManager } from './CameraManager';
 import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
+import { useTelemetryStore } from '../store/telemetryStore';
 
 import { SatelliteModel } from './SatelliteModel';
 import { ReferenceMarker } from './Earth';
@@ -202,6 +203,152 @@ function resolvePreviewModel(modelPath?: string) {
   return null;
 }
 
+function computeFacingEuler(
+  position: [number, number, number],
+  baseAxis: [number, number, number] = [0, 0, -1],
+  fallback: [number, number, number] = [0, 0, 0]
+) {
+  const toEarth = new THREE.Vector3(-position[0], -position[1], -position[2]);
+  if (toEarth.lengthSq() < 1e-8) return fallback;
+  toEarth.normalize();
+  const base = new THREE.Vector3(baseAxis[0], baseAxis[1], baseAxis[2]);
+  if (base.lengthSq() < 1e-8) return fallback;
+  base.normalize();
+  const quat = new THREE.Quaternion().setFromUnitVectors(base, toEarth);
+  const euler = new THREE.Euler().setFromQuaternion(quat);
+  return [euler.x, euler.y, euler.z] as [number, number, number];
+}
+
+function OrbitObjectsLayer() {
+  const orbitObjects = useMemo(
+    () =>
+      orbitSnapshot.objects.map((obj) => ({
+        ...obj,
+        position: [
+          obj.position_m[0] * ORBIT_SCALE,
+          obj.position_m[1] * ORBIT_SCALE,
+          obj.position_m[2] * ORBIT_SCALE,
+        ] as [number, number, number],
+        scaleBoost: obj.visual_scale_boost ?? 1,
+        resolvedOrientation: obj.align_to_earth
+          ? computeFacingEuler(
+              [
+                obj.position_m[0] * ORBIT_SCALE,
+                obj.position_m[1] * ORBIT_SCALE,
+                obj.position_m[2] * ORBIT_SCALE,
+              ],
+              obj.base_axis ?? [0, 0, -1],
+              obj.orientation ?? [0, 0, 0]
+            )
+          : (obj.orientation ?? [0, 0, 0]),
+      })),
+    []
+  );
+
+  return (
+    <Suspense fallback={null}>
+      {orbitObjects.map((obj) => {
+        return obj.type === 'iss' ? (
+          <ISSModel
+            key={obj.id}
+            position={obj.position}
+            orientation={obj.resolvedOrientation}
+            realSpanMeters={obj.real_span_m}
+            scale={obj.scaleBoost}
+          />
+        ) : (
+          <StarlinkModel
+            key={obj.id}
+            position={obj.position}
+            orientation={obj.resolvedOrientation}
+            realSpanMeters={obj.real_span_m}
+            scale={obj.scaleBoost}
+            pivot={obj.pivot}
+          />
+        );
+      })}
+    </Suspense>
+  );
+}
+
+function OrbitRingsLayer() {
+  const orbitObjects = useMemo(
+    () =>
+      orbitSnapshot.objects.map((obj) => ({
+        id: obj.id,
+        type: obj.type,
+        position: [
+          obj.position_m[0] * ORBIT_SCALE,
+          obj.position_m[1] * ORBIT_SCALE,
+          obj.position_m[2] * ORBIT_SCALE,
+        ] as [number, number, number],
+      })),
+    []
+  );
+
+  const buildOrbitPoints = (radius: number, normal: THREE.Vector3, startPos: THREE.Vector3, segments = 2048) => {
+    const safeNormal = normal.clone().normalize();
+    const axisA = startPos.clone().normalize();
+    const axisB = new THREE.Vector3().crossVectors(safeNormal, axisA).normalize();
+    const points: [number, number, number][] = [];
+    for (let i = 0; i <= segments; i += 1) {
+      const t = (i / segments) * Math.PI * 2;
+      const cos = Math.cos(t);
+      const sin = Math.sin(t);
+      const p = axisA.clone().multiplyScalar(radius * cos).add(axisB.clone().multiplyScalar(radius * sin));
+      points.push([p.x, p.y, p.z]);
+    }
+    return points;
+  };
+
+  return (
+    <group>
+      {orbitObjects.map((obj) => {
+        const pos = new THREE.Vector3(obj.position[0], obj.position[1], obj.position[2]);
+        const orbitRadius = pos.length();
+        let normal = new THREE.Vector3().crossVectors(pos, new THREE.Vector3(0, 1, 0));
+        if (normal.lengthSq() < 1e-6) {
+          normal = new THREE.Vector3().crossVectors(pos, new THREE.Vector3(1, 0, 0));
+        }
+        const points = buildOrbitPoints(orbitRadius, normal, pos, 2048);
+        return (
+          <Line
+            key={`${obj.id}-orbit`}
+            points={points}
+            color={obj.type === 'iss' ? '#38bdf8' : '#a78bfa'}
+            lineWidth={1.5}
+            transparent
+            opacity={0.6}
+          />
+        );
+      })}
+    </group>
+  );
+}
+
+function EarthLayer() {
+  const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
+  const earthGltf = useGLTF('/OBJ_files/Earth/Earth.glb');
+  const earthScale = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(earthGltf.scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (!Number.isFinite(maxDim) || maxDim <= 0) return 1;
+    return (earthRadius * 2) / maxDim;
+  }, [earthGltf, earthRadius]);
+
+  return (
+    <Suspense fallback={null}>
+      <primitive object={earthGltf.scene} scale={[earthScale, earthScale, earthScale]} />
+      <mesh>
+        <sphereGeometry args={[earthRadius * 1.02, 32, 32]} />
+        <meshStandardMaterial color="#4cc9f0" transparent opacity={0.08} />
+      </mesh>
+    </Suspense>
+  );
+}
+
 function SatellitePreview({ position, rotation }: { position: [number, number, number]; rotation: [number, number, number] }) {
     const euler = new THREE.Euler(
         (rotation[0] * Math.PI) / 180,
@@ -227,16 +374,37 @@ interface UnifiedViewportProps {
     viewMode: 'free' | 'chase' | 'top';
     builderState?: ReturnType<typeof useMissionBuilder>['state'];
     builderActions?: ReturnType<typeof useMissionBuilder>['actions'];
-    orbitVisibility?: Record<string, boolean>;
 }
 
-export function UnifiedViewport({ mode, viewMode, builderState, builderActions, orbitVisibility }: UnifiedViewportProps) {
+export function UnifiedViewport({ mode, viewMode, builderState, builderActions }: UnifiedViewportProps) {
   const controlsRef = useRef<TrackballControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
   const requestFocus = useCameraStore(s => s.requestFocus);
+  const latestTelemetry = useTelemetryStore(s => s.latest);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
   const isPlanning = mode !== 'viewer';
   const showOrbitLayer = mode === 'mission';
+  const [viewerOrigin, setViewerOrigin] = useState<[number, number, number]>([0, 0, 0]);
+
+  useEffect(() => {
+    if (mode !== 'viewer') return;
+    const frameOrigin = latestTelemetry?.frame_origin;
+    const scanPos = latestTelemetry?.scan_object?.position;
+    const nextOrigin = (frameOrigin && frameOrigin.length === 3)
+      ? frameOrigin
+      : (scanPos && scanPos.length === 3 ? scanPos : null);
+    if (nextOrigin) {
+      setViewerOrigin([nextOrigin[0], nextOrigin[1], nextOrigin[2]]);
+    }
+  }, [
+    mode,
+    latestTelemetry?.frame_origin?.[0],
+    latestTelemetry?.frame_origin?.[1],
+    latestTelemetry?.frame_origin?.[2],
+    latestTelemetry?.scan_object?.position?.[0],
+    latestTelemetry?.scan_object?.position?.[1],
+    latestTelemetry?.scan_object?.position?.[2],
+  ]);
   // --- Floating Origin Logic ---
   // To prevent Z-fighting/Jitter at 6,000,000m, we shift the world so the active target is at (0,0,0).
   const sceneOrigin = useMemo(() => {
@@ -295,7 +463,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
             Actually, CameraManager handles 'chase' view.
             In Plan mode, we usually want 'free' view.
         */}
-        <CameraManager mode={viewMode} />
+        <CameraManager mode={viewMode} origin={mode === 'viewer' ? viewerOrigin : [0, 0, 0]} />
         
         <TrackballControls 
           ref={handleControlsRef} 
@@ -314,14 +482,23 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
 
 
         {mode === 'viewer' && (
-            <>
-                <SolarSystemLayer />
+          <>
+            <group position={[
+              -viewerOrigin[0] * ORBIT_SCALE,
+              -viewerOrigin[1] * ORBIT_SCALE,
+              -viewerOrigin[2] * ORBIT_SCALE,
+            ]}>
+                <EarthLayer />
+                <OrbitRingsLayer />
+                <OrbitObjectsLayer />
                 <LiveObstaclesRender />
                 <SatelliteModel />
-                <Trajectory />
-                <PlannedPath />
                 {/* FinalStateMarker removed for brevity or need import */}
-            </>
+            </group>
+            {/* Trajectory and PlannedPath rendered with floating origin subtraction to prevent jitter */}
+            <Trajectory origin={viewerOrigin} />
+            <PlannedPath origin={viewerOrigin} />
+          </>
         )}
 
         {isPlanning && builderState && builderActions && (
@@ -334,8 +511,6 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
                     <group position={scaleToScene([0,0,0])}>
                          <SolarSystemLayer />
                          <OrbitSnapshotLayer
-                           selectedTargetId={builderState.selectedOrbitTargetId}
-                           orbitVisibility={orbitVisibility}
                            onSelectTarget={(targetId, positionMeters, positionScene, focusDistance) => {
                              // We need to pass the "Scene" position back, which is relative to the floating origin now.
                              // OrbitSnapshotLayer returns absolute scene position (scaled).
@@ -428,6 +603,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions, 
                         builderActions={builderActions}
                         selectedId={builderState.selectedObjectId}
                         sceneScale={ORBIT_SCALE}
+                        sceneOrigin={sceneOrigin}
                     />
 
                     <ConstraintVisualizer points={builderState.previewPath.map(scaleToScene)} />

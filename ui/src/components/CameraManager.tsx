@@ -9,6 +9,7 @@ type CameraMode = 'free' | 'chase' | 'top';
 
 interface CameraManagerProps {
   mode: CameraMode;
+  origin?: [number, number, number];
 }
 
 const WORLD_UP = new Vector3(0, 0, 1);
@@ -21,10 +22,11 @@ const isValidVector = (v: [number, number, number] | Vector3) => {
   return Number.isFinite(v[0]) && Number.isFinite(v[1]) && Number.isFinite(v[2]);
 };
 
-export function CameraManager({ mode }: CameraManagerProps) {
+export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) {
   const { camera, controls } = useThree();
   const satPosRef = useRef(new Vector3());
   const satQuatRef = useRef(new Quaternion());
+  const originRef = useRef(new Vector3(origin[0], origin[1], origin[2]));
   const focusTarget = useCameraStore(s => s.focusTarget);
   const focusDistance = useCameraStore(s => s.focusDistance);
   const focusNonce = useCameraStore(s => s.focusNonce);
@@ -34,13 +36,21 @@ export function CameraManager({ mode }: CameraManagerProps) {
   const baseDistance = Number.isFinite(focusDistance ?? NaN) ? (focusDistance as number) : fallbackDistance;
   
   useEffect(() => {
+    originRef.current.set(origin[0], origin[1], origin[2]);
+  }, [origin[0], origin[1], origin[2]]);
+
+  useEffect(() => {
     const unsub = telemetry.subscribe(d => {
        if (!d || !d.position || !d.quaternion) return;
        // Valid Check
        if (!isValidVector(d.position)) return;
        if (d.quaternion.some(v => !Number.isFinite(v))) return;
        
-       satPosRef.current.set(d.position[0], d.position[1], d.position[2]);
+       satPosRef.current.set(
+         d.position[0] - originRef.current.x,
+         d.position[1] - originRef.current.y,
+         d.position[2] - originRef.current.z
+       );
        const [w, x, y, z] = d.quaternion;
        satQuatRef.current.set(x, y, z, w);
     });
@@ -65,7 +75,11 @@ export function CameraManager({ mode }: CameraManagerProps) {
 
   useEffect(() => {
     if (!focusTarget) return;
-    const target = new Vector3(...focusTarget);
+    const target = new Vector3(
+      focusTarget[0] - originRef.current.x,
+      focusTarget[1] - originRef.current.y,
+      focusTarget[2] - originRef.current.z
+    );
     const distance = Number.isFinite(focusDistance ?? NaN) ? (focusDistance as number) : 2.5;
     const offset = new Vector3(1, 1, 0.8).normalize().multiplyScalar(distance);
     camera.position.copy(target.clone().add(offset));
@@ -78,7 +92,13 @@ export function CameraManager({ mode }: CameraManagerProps) {
 
   useEffect(() => {
     if (!viewPreset) return;
-    const target = focusTarget ? new Vector3(...focusTarget) : new Vector3(0, 0, 0);
+    const target = focusTarget
+      ? new Vector3(
+          focusTarget[0] - originRef.current.x,
+          focusTarget[1] - originRef.current.y,
+          focusTarget[2] - originRef.current.z
+        )
+      : new Vector3(0, 0, 0);
     let offset: Vector3;
     let up = WORLD_UP;
 

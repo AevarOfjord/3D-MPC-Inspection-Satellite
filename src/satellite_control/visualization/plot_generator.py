@@ -620,6 +620,45 @@ class PlotGenerator:
         reference_z = float(reference_z_col[0]) if len(reference_z_col) > 0 else 0.0
 
         fig = go.Figure()
+        # Target path (yellow)
+        if (
+            len(reference_x_col) > 1
+            and len(reference_y_col) > 1
+            and len(reference_z_col) > 1
+        ):
+            target_x: List[float] = []
+            target_y: List[float] = []
+            target_z: List[float] = []
+            last = None
+            min_step = 0.02  # meters
+            for rx, ry, rz in zip(reference_x_col, reference_y_col, reference_z_col):
+                if last is None:
+                    target_x.append(float(rx))
+                    target_y.append(float(ry))
+                    target_z.append(float(rz))
+                    last = (float(rx), float(ry), float(rz))
+                    continue
+                dx = float(rx) - last[0]
+                dy = float(ry) - last[1]
+                dz = float(rz) - last[2]
+                if (dx * dx + dy * dy + dz * dz) ** 0.5 >= min_step:
+                    target_x.append(float(rx))
+                    target_y.append(float(ry))
+                    target_z.append(float(rz))
+                    last = (float(rx), float(ry), float(rz))
+
+            if len(target_x) > 1:
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=target_x,
+                        y=target_y,
+                        z=target_z,
+                        mode="lines",
+                        line=dict(color="#facc15", width=3, dash="dash"),
+                        name="Target Path",
+                    )
+                )
+
         fig.add_trace(
             go.Scatter3d(
                 x=x_pos,

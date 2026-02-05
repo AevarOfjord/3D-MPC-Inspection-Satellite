@@ -13,6 +13,7 @@ import type {
   UnifiedMission,
 } from '../api/unifiedMission';
 import { useHistory } from './useHistory';
+import { resamplePath } from '../utils/pathResample';
 import { telemetry } from '../services/telemetry';
 import { orbitSnapshot } from '../data/orbitSnapshot';
 import { API_BASE_URL } from '../config/endpoints';
@@ -293,10 +294,11 @@ export function useMissionBuilder() {
       if (levelSpacing > 0) {
           meshScanPayload.level_spacing = levelSpacing;
       }
+      const densePath = resamplePath(previewPath, 10);
       const payload = {
           name: trimmed,
           obj_path: config.obj_path,
-          path: previewPath,
+          path: densePath,
           open: true,
           relative_to_obj: true,
           mesh_scan: meshScanPayload,
@@ -405,14 +407,72 @@ export function useMissionBuilder() {
   // --- Manual Path Editing ---
   const handleWaypointMove = (idx: number, newPos: [number, number, number]) => {
       if (!isManualMode) setIsManualMode(true);
-      
-      const newPath = [...previewPath];
-      newPath[idx] = newPos;
+
+      if (!previewPath || previewPath.length === 0) return;
+      const current = previewPath[idx];
+      if (!current) return;
+      const delta: [number, number, number] = [
+          newPos[0] - current[0],
+          newPos[1] - current[1],
+          newPos[2] - current[2],
+      ];
+
+      // If no change, avoid extra work
+      if (Math.abs(delta[0]) < 1e-9 && Math.abs(delta[1]) < 1e-9 && Math.abs(delta[2]) < 1e-9) {
+          return;
+      }
+
+      const n = previewPath.length;
+      if (n < 2) {
+          const single = [...previewPath];
+          single[idx] = newPos;
+          pathHistory.updatePresent(single);
+          return;
+      }
+
+      // Soft deformation along arc-length so nearby points stretch smoothly.
+      // Use a bounded falloff to avoid long-range drift.
+      const arc: number[] = new Array(n).fill(0);
+      for (let i = 1; i < n; i++) {
+          const a = previewPath[i - 1];
+          const b = previewPath[i];
+          const dx = b[0] - a[0];
+          const dy = b[1] - a[1];
+          const dz = b[2] - a[2];
+          arc[i] = arc[i - 1] + Math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+      const totalLength = arc[n - 1];
+      const avgSpacing = totalLength / Math.max(1, n - 1);
+      const localStart = Math.max(0, idx - 3);
+      const localEnd = Math.min(n - 2, idx + 2);
+      let localSum = 0;
+      let localCount = 0;
+      for (let i = localStart; i <= localEnd; i++) {
+          const seg = arc[i + 1] - arc[i];
+          if (seg > 0) {
+              localSum += seg;
+              localCount += 1;
+          }
+      }
+      const localSpacing = localCount > 0 ? localSum / localCount : avgSpacing;
+      const radius = Math.max((localSpacing || avgSpacing || 1.0) * 6, localSpacing || avgSpacing || 1.0);
+      const s0 = arc[idx];
+
+      const nextPath = previewPath.map((p, i) => {
+          const d = Math.abs(arc[i] - s0);
+          const t = radius > 0 ? Math.max(0, 1 - d / radius) : 0;
+          const w = t * t;
+          return [
+              p[0] + delta[0] * w,
+              p[1] + delta[1] * w,
+              p[2] + delta[2] * w,
+          ] as [number, number, number];
+      });
       
       // We use updatePresent for drag operations to avoid spamming history
       // Ideally onDragEnd we push to history. 
       // specific implementation triggers set() on drag end, updatePresent on drag
-      pathHistory.updatePresent(newPath);
+      pathHistory.updatePresent(nextPath);
   };
 
   const commitWaypointMove = () => {
@@ -466,6 +526,17 @@ export function useMissionBuilder() {
       pathHistory.set(nextPath);
       setIsManualMode(true);
       setSelectedObjectId(null);
+  };
+
+  const removeWaypointAtIndex = (idx: number) => {
+      if (previewPath.length <= 2) return;
+      if (!Number.isFinite(idx) || idx < 0 || idx >= previewPath.length) return;
+      const nextPath = previewPath.filter((_, i) => i !== idx);
+      pathHistory.set(nextPath);
+      setIsManualMode(true);
+      if (selectedObjectId === `waypoint-${idx}`) {
+          setSelectedObjectId(null);
+      }
   };
 
   // --- Transform Helper ---
@@ -821,6 +892,20 @@ export function useMissionBuilder() {
     return null;
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      if (selectedObjectId && selectedObjectId.startsWith('waypoint-')) {
+        event.preventDefault();
+        removeWaypoint();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedObjectId, previewPath]);
+
   return {
     state: {
         modelUrl,
@@ -905,9 +990,11 @@ export function useMissionBuilder() {
         // History Actions
         undo: pathHistory.undo,
         redo: pathHistory.redo,
+        handleWaypointMove,
         commitWaypointMove,
         addWaypoint,
         removeWaypoint,
+        removeWaypointAtIndex,
         selectSegment: setSelectedSegmentIndex
     }
   };

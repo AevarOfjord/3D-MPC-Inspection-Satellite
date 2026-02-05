@@ -291,6 +291,16 @@ class MPCController(Controller):
                 endpoint = np.array(self._path_data[-1][1:4], dtype=float)
                 endpoint_error = float(np.linalg.norm(pos - endpoint))
 
+            # Prevent global projection from jumping backwards on looping paths.
+            try:
+                backtrack_tol = max(0.1, 0.5 * float(self.path_speed) * float(self.dt))
+                if self._path_length > 0.0:
+                    backtrack_tol = min(backtrack_tol, float(self._path_length))
+                if s_val < float(self.s) - backtrack_tol:
+                    s_val = float(self.s)
+            except Exception:
+                pass
+
         path_len = float(self._path_length) if self._path_length > 0 else 0.0
         progress = float(s_val / path_len) if path_len > 1e-9 else 0.0
         remaining = float(path_len - s_val) if path_len > 0 else 0.0
@@ -549,26 +559,37 @@ class MPCController(Controller):
                 endpoint = np.array(self._path_data[-1][1:4], dtype=float)
                 endpoint_error = float(np.linalg.norm(x_current[:3] - endpoint))
 
-            # Keep s monotonic but bound lead to avoid drift
+            # Keep s monotonic but bound lead to avoid drift. Ignore large backward jumps
+            # from global projection (e.g., looping paths near the start/end).
             lead_max = 0.5 * float(self.path_speed) * float(self.dt) * float(self.N)
             lead_max = float(max(0.2, min(1.0, lead_max)))
             if self._path_length > 0.0:
                 lead_max = min(lead_max, float(self._path_length))
 
-            if self.s < float(s_proj):
-                self.s = float(s_proj)
-            if self.s > float(s_proj) + lead_max:
-                self.s = float(s_proj) + lead_max
+            backtrack_tol = max(0.1, 0.5 * float(self.path_speed) * float(self.dt))
+            if self._path_length > 0.0:
+                backtrack_tol = min(backtrack_tol, float(self._path_length))
+
+            s_proj_filtered = float(s_proj)
+            if s_proj_filtered < float(self.s) - backtrack_tol:
+                s_proj_filtered = float(self.s)
+
+            if self.s < s_proj_filtered:
+                self.s = float(s_proj_filtered)
+            if self.s > s_proj_filtered + lead_max:
+                self.s = float(s_proj_filtered) + lead_max
 
             s_for_state = float(self.s)
 
             self._last_path_projection = {
                 "s": s_for_state,
-                "s_proj": float(s_proj),
+                "s_proj": float(s_proj_filtered),
+                "s_proj_raw": float(s_proj),
                 "closest_point": closest_point,
                 "path_error": path_error,
                 "endpoint_error": endpoint_error,
                 "lead_max": lead_max,
+                "backtrack_tol": backtrack_tol,
             }
 
         if len(x_current) == 16:

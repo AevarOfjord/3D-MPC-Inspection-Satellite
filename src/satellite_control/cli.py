@@ -123,7 +123,10 @@ def run(
         if "segments" in mission_data and "start_pose" in mission_data:
             console.print("[cyan]Detected unified mission format (v2)...[/cyan]")
 
-            from src.satellite_control.mission.unified_mission import MissionDefinition
+            from src.satellite_control.mission.unified_mission import (
+                MissionDefinition,
+                SegmentType,
+            )
             from src.satellite_control.mission.unified_compiler import (
                 compile_unified_mission_path,
             )
@@ -141,6 +144,16 @@ def run(
                 sim_end_pos = tuple(path[-1])
             else:
                 sim_end_pos = sim_start_pos
+
+            # For viewer playback: mark as scan with an object center if available.
+            scan_center = None
+            for seg in mission_def.segments:
+                if seg.type == SegmentType.SCAN and seg.target_pose:
+                    scan_center = tuple(seg.target_pose.position)
+                    break
+            if scan_center is not None:
+                ms.trajectory_type = "scan"
+                ms.trajectory_object_center = scan_center
 
             if mission_def.obstacles:
                 ms.obstacles = [

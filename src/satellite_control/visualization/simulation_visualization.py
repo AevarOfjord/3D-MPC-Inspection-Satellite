@@ -934,6 +934,10 @@ class SimulationVisualizationManager:
         y = get_col("Current_Y")
         z = get_col("Current_Z")
 
+        ref_x_series = get_col("Reference_X")
+        ref_y_series = get_col("Reference_Y")
+        ref_z_series = get_col("Reference_Z")
+
         vx = get_col("Current_VX")
         vy = get_col("Current_VY")
         vz = get_col("Current_VZ")
@@ -1008,6 +1012,7 @@ class SimulationVisualizationManager:
         # Style layout axes (matching PlotStyle)
         COLOR_TRAJECTORY = "#1f77b4"  # Blue
         COLOR_TARGET = "#d62728"  # Red
+        COLOR_TARGET_PATH = "#facc15"  # Yellow
         COLOR_SUCCESS = "#2ca02c"  # Green
         COLOR_AXIS = "#404040"  # Dark Grey axes
         GRID_ALPHA = 0.2
@@ -1034,6 +1039,28 @@ class SimulationVisualizationManager:
         ax_3d.set_ylim(center_y - half_range, center_y + half_range)
         ax_3d.set_zlim(center_z - half_range, center_z + half_range)
 
+        def build_target_path(min_step: float = 0.02):
+            path_x = []
+            path_y = []
+            path_z = []
+            last = None
+            for rx, ry, rz in zip(ref_x_series, ref_y_series, ref_z_series):
+                if last is None:
+                    path_x.append(rx)
+                    path_y.append(ry)
+                    path_z.append(rz)
+                    last = (rx, ry, rz)
+                    continue
+                dx = rx - last[0]
+                dy = ry - last[1]
+                dz = rz - last[2]
+                if (dx * dx + dy * dy + dz * dz) ** 0.5 >= min_step:
+                    path_x.append(rx)
+                    path_y.append(ry)
+                    path_z.append(rz)
+                    last = (rx, ry, rz)
+            return path_x, path_y, path_z
+
         # Configure Info Panel
         ax_info.set_facecolor("#FFFFFF")
         ax_info.axis("off")
@@ -1042,6 +1069,18 @@ class SimulationVisualizationManager:
         ax_info.add_patch(rect)
 
         # Initial Plotting
+        target_path_x, target_path_y, target_path_z = build_target_path()
+        if len(target_path_x) > 1:
+            ax_3d.plot(
+                target_path_x,
+                target_path_y,
+                target_path_z,
+                color=COLOR_TARGET_PATH,
+                linewidth=1.2,
+                alpha=0.8,
+                zorder=4,
+            )
+
         ax_3d.plot(
             [reference_x],
             [reference_y],

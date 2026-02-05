@@ -1,0 +1,54 @@
+{
+  "epoch": "2026-02-05T15:30:29.614Z",
+  "start_pose": {
+    "frame": "ECI",
+    "position": [
+      10.0,
+      6765000.0,
+      300000.0
+    ],
+    "orientation": null
+  },
+  "segments": [
+    {
+      "type": "scan",
+      "constraints": {
+        "speed_max": 0.2,
+        "accel_max": 0.03,
+        "angular_rate_max": 0.08
+      },
+      "target_id": "STARLINK-1001",
+      "target_pose": {
+        "frame": "ECI",
+        "position": [
+          0.0,
+          6765000.0,
+          300000.0
+        ],
+        "orientation": [
+          0.9997545120052892,
+          0.022156618087288568,
+          0.0,
+          0.0
+        ]
+      },
+      "scan": {
+        "frame": "LVLH",
+        "axis": "+Z",
+        "standoff": 10.0,
+        "overlap": 0.25,
+        "fov_deg": 60.0,
+        "pitch": null,
+        "revolutions": 4,
+        "direction": "CW",
+        "sensor_axis": "+Y",
+        "pattern": "spiral"
+      },
+      "path_asset": "Starlink_1.0m"
+    }
+  ],
+  "obstacles": [],
+  "overrides": {
+    "spline_controls": []
+  }
+}

@@ -39,6 +39,7 @@ add_library(_cpp_mpc MODULE
     src/satellite_control/cpp/linearizer.cpp
     src/satellite_control/cpp/mpc_controller.cpp
     src/satellite_control/cpp/obstacle.cpp
+    src/satellite_control/cpp/orbital_dynamics.cpp
 )
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)

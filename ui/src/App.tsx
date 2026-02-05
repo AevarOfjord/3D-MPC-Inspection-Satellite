@@ -12,15 +12,15 @@ import { TrajectoryStudioLayout } from './components/TrajectoryStudio/Trajectory
 import { useMissionBuilder } from './hooks/useMissionBuilder';
 import { Monitor, Calculator, ScanLine } from 'lucide-react';
 import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
-import { ORBIT_SCALE } from './data/orbitSnapshot';
+import { ORBIT_SCALE, orbitSnapshot } from './data/orbitSnapshot';
 import { solarSystemBodies, getSolarBodyPosition, SOLAR_SCALE } from './data/solarSystemSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
   const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan'>('viewer');
   const [eventLogOpen, setEventLogOpen] = useState(false);
-  const [orbitVisibility, setOrbitVisibility] = useState<Record<string, boolean>>({});
   const eventCount = useTelemetryStore(s => s.events.length);
+  const latestTelemetry = useTelemetryStore(s => s.latest);
   const scanFocusRef = useRef<string>('');
   
   // Builder Hook (Hoisted State)
@@ -40,10 +40,6 @@ function App() {
   const switchToScanPlanner = () => {
       setAppMode('scan');
       setViewMode('free'); // Free cam for scan planning
-  };
-
-  const toggleOrbitVisibility = (targetId: string) => {
-      setOrbitVisibility(prev => ({ ...prev, [targetId]: !prev[targetId] }));
   };
 
   useEffect(() => {
@@ -185,11 +181,9 @@ function App() {
                             viewMode={viewMode} 
                             builderState={builder.state}
                             builderActions={builder.actions}
-                            orbitVisibility={orbitVisibility}
                         />
                         <OrbitTargetsPanel
                             selectedTargetId={builder.state.selectedOrbitTargetId}
-                            orbitVisibility={orbitVisibility}
                             ownSatellite={{
                               id: 'SATELLITE',
                               name: 'Your Satellite',
@@ -205,13 +199,22 @@ function App() {
                               ],
                             }}
                             solarBodies={[]}
-                            onSelectTarget={(targetId, positionMeters) => {
-                              builder.actions.assignScanTarget(targetId, positionMeters);
+                            onFocusTarget={(targetId, _positionScene, focusDistance) => {
+                              // Match UnifiedViewport floating origin when focusing in Mission Planner.
+                              const originTargetId = builder.state.selectedOrbitTargetId || builder.state.startTargetId;
+                              const originObj = originTargetId
+                                ? orbitSnapshot.objects.find(o => o.id === originTargetId)
+                                : null;
+                              const targetObj = orbitSnapshot.objects.find(o => o.id === targetId);
+                              if (!targetObj) return;
+                              const origin = originObj?.position_m ?? [0, 0, 0];
+                              const scenePos: [number, number, number] = [
+                                (targetObj.position_m[0] - origin[0]) * ORBIT_SCALE,
+                                (targetObj.position_m[1] - origin[1]) * ORBIT_SCALE,
+                                (targetObj.position_m[2] - origin[2]) * ORBIT_SCALE,
+                              ];
+                              useCameraStore.getState().requestFocus(scenePos, focusDistance);
                             }}
-                            onFocusTarget={(_id, positionScene, focusDistance) => {
-                              useCameraStore.getState().requestFocus(positionScene, focusDistance);
-                            }}
-                            onToggleOrbit={toggleOrbitVisibility}
                           />
                     </div>
                 }
@@ -230,7 +233,6 @@ function App() {
                             viewMode={viewMode} 
                             builderState={builder.state}
                             builderActions={builder.actions}
-                            orbitVisibility={orbitVisibility}
                         />
                     </div>
                 }
@@ -242,8 +244,28 @@ function App() {
                     viewMode={viewMode} 
                     builderState={builder.state}
                     builderActions={builder.actions}
-                    orbitVisibility={orbitVisibility}
                 />
+                {appMode === 'viewer' && (
+                  <OrbitTargetsPanel
+                    className="fixed right-6 top-1/2 -translate-y-1/2"
+                    selectedTargetId={null}
+                    ownSatellite={{
+                      id: 'SATELLITE',
+                      name: 'Your Satellite',
+                      positionScene: latestTelemetry
+                        ? [
+                            latestTelemetry.position[0] * ORBIT_SCALE,
+                            latestTelemetry.position[1] * ORBIT_SCALE,
+                            latestTelemetry.position[2] * ORBIT_SCALE,
+                          ]
+                        : [0, 0, 0],
+                      positionMeters: latestTelemetry?.position,
+                    }}
+                    onFocusTarget={(targetId, positionScene, focusDistance) => {
+                      useCameraStore.getState().requestFocus(positionScene, focusDistance);
+                    }}
+                  />
+                )}
                 
                 {/* Overlay (Viewer Mode Only) */}
                 <Overlay />
