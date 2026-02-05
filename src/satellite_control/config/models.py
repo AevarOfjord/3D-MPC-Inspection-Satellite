@@ -278,6 +278,12 @@ class MPCParams(BaseModel):
         le=10000.0,
         description="Progress weight - penalizes deviation from path speed [unitless]",
     )
+    progress_reward: float = Field(
+        constants.Constants.PROGRESS_REWARD,
+        ge=0.0,
+        le=1e6,
+        description="Linear reward for forward progress (auto speed) [unitless]",
+    )
     Q_lag: float = Field(
         0.0,
         ge=0.0,
@@ -385,6 +391,18 @@ class MPCParams(BaseModel):
         gt=0.0,
         le=1.0,
         description="Path speed along reference curve [m/s]",
+    )
+    path_speed_min: float = Field(
+        constants.Constants.PATH_SPEED_MIN,
+        ge=0.0,
+        le=1.0,
+        description="Minimum path speed [m/s]",
+    )
+    path_speed_max: float = Field(
+        constants.Constants.PATH_SPEED_MAX,
+        gt=0.0,
+        le=1.0,
+        description="Maximum path speed [m/s]",
     )
     progress_taper_distance: float = Field(
         0.0,

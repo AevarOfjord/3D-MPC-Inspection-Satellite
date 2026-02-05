@@ -75,6 +75,7 @@ def create_default_app_config() -> AppConfig:
         # MPCC Weights
         Q_contour=constants.Constants.Q_CONTOUR,
         Q_progress=constants.Constants.Q_PROGRESS,
+        progress_reward=constants.Constants.Q_PROGRESS * timing.DEFAULT_PATH_SPEED,
         Q_lag=0.0,
         Q_smooth=constants.Constants.Q_SMOOTH,
         Q_attitude=0.0,
@@ -91,7 +92,9 @@ def create_default_app_config() -> AppConfig:
         thruster_type=constants.Constants.THRUSTER_TYPE,
         verbose_mpc=False,
         # Path Following
-        path_speed=timing.DEFAULT_PATH_SPEED,
+        path_speed=constants.Constants.PATH_SPEED_MAX,
+        path_speed_min=constants.Constants.PATH_SPEED_MIN,
+        path_speed_max=constants.Constants.PATH_SPEED_MAX,
         progress_taper_distance=0.0,
         progress_slowdown_distance=0.0,
     )

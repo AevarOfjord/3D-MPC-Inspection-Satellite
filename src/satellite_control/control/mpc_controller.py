@@ -93,6 +93,8 @@ class MPCController(Controller):
 
         mpc_params.Q_contour = self.Q_contour
         mpc_params.Q_progress = self.Q_progress
+        if hasattr(mpc_params, "progress_reward"):
+            mpc_params.progress_reward = float(self.progress_reward)
         if hasattr(mpc_params, "Q_lag"):
             mpc_params.Q_lag = self.Q_lag
         mpc_params.Q_smooth = self.Q_smooth
@@ -117,6 +119,10 @@ class MPCController(Controller):
             mpc_params.coast_min_speed = float(self.coast_min_speed)
         if hasattr(mpc_params, "path_speed"):
             mpc_params.path_speed = self.path_speed
+        if hasattr(mpc_params, "path_speed_min"):
+            mpc_params.path_speed_min = float(self.path_speed_min)
+        if hasattr(mpc_params, "path_speed_max"):
+            mpc_params.path_speed_max = float(self.path_speed_max)
         if hasattr(mpc_params, "progress_taper_distance"):
             mpc_params.progress_taper_distance = self.progress_taper_distance
         if hasattr(mpc_params, "progress_slowdown_distance"):
@@ -431,11 +437,14 @@ class MPCController(Controller):
         self.mode_path_following = True  # Always True now
         self.Q_contour = mpc.Q_contour
         self.Q_progress = mpc.Q_progress
+        self.progress_reward = getattr(mpc, "progress_reward", 0.0)
         self.Q_smooth = mpc.Q_smooth
         self.Q_lag = getattr(mpc, "Q_lag", 0.0)
         self.Q_terminal_pos = getattr(mpc, "Q_terminal_pos", 0.0)
         self.Q_terminal_s = getattr(mpc, "Q_terminal_s", 0.0)
         self.path_speed = mpc.path_speed
+        self.path_speed_min = getattr(mpc, "path_speed_min", 0.0)
+        self.path_speed_max = getattr(mpc, "path_speed_max", 0.0)
         self.progress_taper_distance = getattr(mpc, "progress_taper_distance", 0.0)
         self.progress_slowdown_distance = getattr(
             mpc, "progress_slowdown_distance", 0.0

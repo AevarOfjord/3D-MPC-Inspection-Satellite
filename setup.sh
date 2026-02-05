@@ -31,6 +31,10 @@ python3.11 -m venv .venv311
 # Activate environment
 source .venv311/bin/activate
 
+# Prefer Makefiles to avoid missing ninja during build isolation
+export CMAKE_GENERATOR="Unix Makefiles"
+export SKBUILD_GENERATOR="Unix Makefiles"
+
 # Upgrade pip
 echo "Upgrading pip..."
 python -m pip install --upgrade pip
@@ -39,9 +43,13 @@ python -m pip install --upgrade pip
 echo "Installing Python dependencies..."
 python -m pip install -r requirements-dev.txt
 
+# Install build tools required for C++ extension
+echo "Installing build tools (ninja)..."
+python -m pip install ninja
+
 # Install the package (builds C++ extension)
-echo "Installing satellite_control package (showing build progress)..."
-python -m pip install -v -e .
+echo "Installing satellite_control package (showing build progress, no build isolation)..."
+python -m pip install -v --no-build-isolation -e .
 
 # Install frontend dependencies
 echo "Installing frontend dependencies..."

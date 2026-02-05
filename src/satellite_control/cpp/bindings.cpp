@@ -62,9 +62,12 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         // Path Following (V4.0.1) - General Path MPCC
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
+        .def_readwrite("progress_reward", &MPCParams::progress_reward)
         .def_readwrite("Q_lag", &MPCParams::Q_lag)
         .def_readwrite("Q_smooth", &MPCParams::Q_smooth)
         .def_readwrite("path_speed", &MPCParams::path_speed)
+        .def_readwrite("path_speed_min", &MPCParams::path_speed_min)
+        .def_readwrite("path_speed_max", &MPCParams::path_speed_max)
         .def_readwrite("Q_terminal_pos", &MPCParams::Q_terminal_pos)
         .def_readwrite("Q_terminal_s", &MPCParams::Q_terminal_s)
         .def_readwrite("progress_taper_distance", &MPCParams::progress_taper_distance)
