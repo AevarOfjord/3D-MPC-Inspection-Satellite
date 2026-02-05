@@ -73,6 +73,8 @@ class TrajectoryState:
     start_orientation: Optional[Tuple[float, float, float]] = None
     end_orientation: Optional[Tuple[float, float, float]] = None
     object_center: Optional[Tuple[float, float, float]] = None
+    scan_axis: Tuple[float, float, float] = (0.0, 0.0, 1.0)
+    scan_direction: str = "CW"
     end_pos_tolerance: float = constants.Constants.POSITION_TOLERANCE
     end_ang_tolerance_deg: float = math.degrees(constants.Constants.ANGLE_TOLERANCE)
 
@@ -370,6 +372,22 @@ class MissionState:
     @trajectory_object_center.setter
     def trajectory_object_center(self, value: Optional[Tuple[float, float, float]]):
         self.trajectory.object_center = value
+
+    @property
+    def trajectory_scan_axis(self) -> Tuple[float, float, float]:
+        return self.trajectory.scan_axis
+
+    @trajectory_scan_axis.setter
+    def trajectory_scan_axis(self, value: Tuple[float, float, float]):
+        self.trajectory.scan_axis = value
+
+    @property
+    def trajectory_scan_direction(self) -> str:
+        return self.trajectory.scan_direction
+
+    @trajectory_scan_direction.setter
+    def trajectory_scan_direction(self, value: str):
+        self.trajectory.scan_direction = value
 
     @property
     def trajectory_end_pos_tolerance(self) -> float:

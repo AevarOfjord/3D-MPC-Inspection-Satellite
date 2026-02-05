@@ -117,6 +117,11 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("set_path_data", &MPCControllerCpp::set_path_data,
              py::arg("path_data"),
              "Set path data for general path following. path_data is list of [s, x, y, z] arrays.")
+        .def("set_scan_attitude_context", &MPCControllerCpp::set_scan_attitude_context,
+             py::arg("center"), py::arg("axis"), py::arg("direction"),
+             "Set scan attitude context (center, axis, optional direction hint).")
+        .def("clear_scan_attitude_context", &MPCControllerCpp::clear_scan_attitude_context,
+             "Disable scan attitude context.")
         .def("project_onto_path", &MPCControllerCpp::project_onto_path,
              py::arg("position"),
              "Project a position onto the current path. Returns (s, point, distance, endpoint_error).")

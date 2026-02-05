@@ -566,7 +566,25 @@ class UnifiedVisualizationGenerator:
 
             print("CSV data validation successful")
             if self.dt is not None:
-                print(f"Time range: 0.0s to {self._get_len() * float(self.dt):.1f}s")
+                actual_time = None
+                if self._data_backend == "pandas" and self.data is not None:
+                    if "Time" in self.data.columns and len(self.data) > 0:
+                        try:
+                            actual_time = float(self.data["Time"].iloc[-1])
+                        except Exception:
+                            actual_time = None
+                elif self._col_data is not None and "Time" in self._col_data:
+                    try:
+                        actual_time = float(self._col("Time")[-1])
+                    except Exception:
+                        actual_time = None
+
+                if actual_time is not None:
+                    print(f"Time range: 0.0s to {actual_time:.1f}s")
+                else:
+                    print(
+                        f"Time range: 0.0s to {self._get_len() * float(self.dt):.1f}s"
+                    )
                 print(f"Detected timestep (dt): {self.dt:.3f}s")
             if self.fps is not None:
                 print(f"Calculated frame rate: {self.fps:.1f} FPS")

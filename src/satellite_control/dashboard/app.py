@@ -53,6 +53,17 @@ MISSIONS_DEV_DIR = MISSIONS_DIR / "dev"
 MISSIONS_EXAMPLES_DIR = MISSIONS_DIR / "examples"
 
 
+def _axis_to_vector(axis_value: Any) -> tuple[float, float, float]:
+    axis = str(axis_value or "+Z").strip().upper()
+    sign = -1.0 if axis.startswith("-") else 1.0
+    letter = axis[-1] if axis and axis[-1] in ("X", "Y", "Z") else "Z"
+    if letter == "X":
+        return (sign, 0.0, 0.0)
+    if letter == "Y":
+        return (0.0, sign, 0.0)
+    return (0.0, 0.0, sign)
+
+
 def _resolve_mission_file(mission_name: str) -> Path:
     candidate_name = mission_name
     if not candidate_name.endswith(".json"):
@@ -330,13 +341,19 @@ class SimulationManager:
         sim_config.mission_state.mesh_scan_mode_active = False
 
         scan_center = None
+        scan_axis = (0.0, 0.0, 1.0)
+        scan_direction = "CW"
         for seg in mission.segments:
             if seg.type == SegmentType.SCAN and seg.target_pose:
                 scan_center = tuple(seg.target_pose.position)
+                scan_axis = _axis_to_vector(getattr(seg.scan, "axis", "+Z"))
+                scan_direction = str(getattr(seg.scan, "direction", "CW"))
                 break
         if scan_center is not None:
             sim_config.mission_state.trajectory_type = "scan"
             sim_config.mission_state.trajectory_object_center = scan_center
+            sim_config.mission_state.trajectory_scan_axis = scan_axis
+            sim_config.mission_state.trajectory_scan_direction = scan_direction
 
         start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
         end_pos = tuple(path[-1]) if path else start_pos

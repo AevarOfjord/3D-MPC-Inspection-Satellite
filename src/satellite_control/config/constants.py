@@ -131,12 +131,13 @@ class Constants:
     MPC_SOLVER_TIME_LIMIT = 0.04  # Default solver limit (50ms - 10ms margin)
     MPC_SOLVER_TYPE = "OSQP"
 
-    Q_CONTOUR = 1000.0
+    Q_CONTOUR = 2000.0
     Q_PROGRESS = 100.0
     PROGRESS_REWARD = 0.0
     PATH_SPEED_MIN = 0.01
     PATH_SPEED_MAX = 0.1
     Q_SMOOTH = 10.0
+    Q_ATTITUDE = 50.0
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1
     R_RW_TORQUE = 0.1

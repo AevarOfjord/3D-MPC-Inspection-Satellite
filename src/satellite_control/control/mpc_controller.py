@@ -192,6 +192,23 @@ class MPCController(Controller):
 
         logger.info(f"Path set with {len(path_points)} points, total length: {s:.3f}m")
 
+    def set_scan_attitude_context(
+        self,
+        center: Optional[tuple[float, float, float]],
+        axis: Optional[tuple[float, float, float]],
+        direction: str = "CW",
+    ) -> None:
+        """Configure scan attitude context for stable object-facing camera alignment."""
+        if center is None or axis is None:
+            if hasattr(self._cpp_controller, "clear_scan_attitude_context"):
+                self._cpp_controller.clear_scan_attitude_context()
+            return
+
+        if hasattr(self._cpp_controller, "set_scan_attitude_context"):
+            c = np.array(center, dtype=float)
+            a = np.array(axis, dtype=float)
+            self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
+
     def _project_onto_path(
         self, position: np.ndarray
     ) -> Tuple[float, np.ndarray, float]:

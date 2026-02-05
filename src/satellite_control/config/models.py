@@ -297,7 +297,7 @@ class MPCParams(BaseModel):
         description="Smoothness weight - penalizes velocity changes [unitless]",
     )
     Q_attitude: float = Field(
-        0.0,
+        constants.Constants.Q_ATTITUDE,
         ge=0.0,
         le=1e6,
         description="Attitude tracking weight (align body x-axis with path tangent)",
