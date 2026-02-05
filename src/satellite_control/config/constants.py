@@ -104,7 +104,7 @@ class Constants:
     # TOLERANCES
     # ========================================================================
 
-    POSITION_TOLERANCE = 0.05
+    POSITION_TOLERANCE = 0.1
     ANGLE_TOLERANCE = np.deg2rad(2)
     VELOCITY_TOLERANCE = 0.005
     ANGULAR_VELOCITY_TOLERANCE = np.deg2rad(0.5)

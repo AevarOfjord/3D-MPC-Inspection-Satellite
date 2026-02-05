@@ -177,6 +177,24 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
               Remove Waypoint
             </HudButton>
           </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <HudInput
+              label="Edit Points"
+              type="number"
+              min={10}
+              step={10}
+              value={state.editPointLimit}
+              onChange={(val) => setters.setEditPointLimit(Number(val))}
+            />
+            <HudInput
+              label="Save Multiplier"
+              type="number"
+              min={1}
+              step={1}
+              value={state.savePointMultiplier}
+              onChange={(val) => setters.setSavePointMultiplier(Number(val))}
+            />
+          </div>
           <div className="text-[10px] text-slate-500 mt-2">
             Select a waypoint in the viewport to insert/remove near it.
             Shift/Alt-click a waypoint to delete. Delete key removes selected.
