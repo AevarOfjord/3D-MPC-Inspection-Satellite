@@ -13,7 +13,7 @@ import type {
   UnifiedMission,
 } from '../api/unifiedMission';
 import { useHistory } from './useHistory';
-import { resamplePath } from '../utils/pathResample';
+import { resamplePath, downsamplePath } from '../utils/pathResample';
 import { telemetry } from '../services/telemetry';
 import { orbitSnapshot } from '../data/orbitSnapshot';
 import { API_BASE_URL } from '../config/endpoints';
@@ -131,6 +131,8 @@ export function useMissionBuilder() {
   const [levelSpacing, setLevelSpacing] = useState<number>(0.1);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [pathAssets, setPathAssets] = useState<PathAssetSummary[]>([]);
+  const [editPointLimit, setEditPointLimit] = useState<number>(500);
+  const [savePointMultiplier, setSavePointMultiplier] = useState<number>(10);
 
   // Unified Mission (V2)
   const [epoch, setEpoch] = useState<string>(new Date().toISOString());
@@ -138,6 +140,20 @@ export function useMissionBuilder() {
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
   const [splineControls, setSplineControls] = useState<SplineControl[]>([]);
   const [savedUnifiedMissions, setSavedUnifiedMissions] = useState<string[]>([]);
+
+  const computePathLength = (path: [number, number, number][]) => {
+      if (!path || path.length < 2) return 0;
+      let total = 0;
+      for (let i = 1; i < path.length; i++) {
+          const a = path[i - 1];
+          const b = path[i];
+          const dx = b[0] - a[0];
+          const dy = b[1] - a[1];
+          const dz = b[2] - a[2];
+          total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+      return total;
+  };
   const [selectedOrbitTargetId, setSelectedOrbitTargetId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -231,13 +247,14 @@ export function useMissionBuilder() {
           const res = await trajectoryApi.previewTrajectory(previewConfig);
           
           // New generation resets manual mode and history
-          pathHistory.set(res.path); 
+          const editablePath = downsamplePath(res.path, editPointLimit);
+          pathHistory.set(editablePath); 
           setIsManualMode(false);
           
           setStats({
               duration: res.estimated_duration,
               length: res.path_length,
-              points: res.points
+              points: editablePath.length
           });
       } catch (err) {
           console.error(err);
@@ -294,7 +311,7 @@ export function useMissionBuilder() {
       if (levelSpacing > 0) {
           meshScanPayload.level_spacing = levelSpacing;
       }
-      const densePath = resamplePath(previewPath, 10);
+      const densePath = resamplePath(previewPath, savePointMultiplier);
       const payload = {
           name: trimmed,
           obj_path: config.obj_path,
@@ -311,13 +328,14 @@ export function useMissionBuilder() {
   const loadPathAsset = async (assetId: string) => {
       const asset = await pathAssetsApi.get(assetId);
       if (asset.path && asset.path.length > 0) {
-          pathHistory.set(asset.path);
+          const editablePath = downsamplePath(asset.path, editPointLimit);
+          pathHistory.set(editablePath);
           setIsManualMode(true);
           const speed = config.speed_max > 0 ? config.speed_max : 0.1;
           setStats({
               duration: asset.path_length > 0 ? asset.path_length / speed : 0,
               length: asset.path_length,
-              points: asset.points,
+              points: editablePath.length,
           });
       }
       if (asset.obj_path) {
@@ -407,6 +425,7 @@ export function useMissionBuilder() {
   // --- Manual Path Editing ---
   const handleWaypointMove = (idx: number, newPos: [number, number, number]) => {
       if (!isManualMode) setIsManualMode(true);
+      if (idx === 0) return;
 
       if (!previewPath || previewPath.length === 0) return;
       const current = previewPath[idx];
@@ -459,6 +478,9 @@ export function useMissionBuilder() {
       const s0 = arc[idx];
 
       const nextPath = previewPath.map((p, i) => {
+          if (i === 0) {
+              return [p[0], p[1], p[2]] as [number, number, number];
+          }
           const d = Math.abs(arc[i] - s0);
           const t = radius > 0 ? Math.max(0, 1 - d / radius) : 0;
           const w = t * t;
@@ -521,6 +543,7 @@ export function useMissionBuilder() {
               ? parseInt(selectedObjectId.split('-')[1], 10)
               : null;
       if (typeof selectedIdx !== 'number' || Number.isNaN(selectedIdx)) return;
+      if (selectedIdx === 0) return;
       if (selectedIdx < 0 || selectedIdx >= previewPath.length) return;
       const nextPath = previewPath.filter((_, i) => i !== selectedIdx);
       pathHistory.set(nextPath);
@@ -531,6 +554,7 @@ export function useMissionBuilder() {
   const removeWaypointAtIndex = (idx: number) => {
       if (previewPath.length <= 2) return;
       if (!Number.isFinite(idx) || idx < 0 || idx >= previewPath.length) return;
+      if (idx === 0) return;
       const nextPath = previewPath.filter((_, i) => i !== idx);
       pathHistory.set(nextPath);
       setIsManualMode(true);
@@ -651,6 +675,73 @@ export function useMissionBuilder() {
     return unifiedMissionApi.saveMission(name, mission);
   };
 
+  const saveEditedPathToAsset = async () => {
+    if (!previewPath.length) return;
+
+    const activeIdx =
+      typeof selectedSegmentIndex === 'number'
+        ? selectedSegmentIndex
+        : null;
+    let assetId: string | null = null;
+
+    if (activeIdx !== null) {
+      const seg = segments[activeIdx];
+      if (seg && seg.type === 'scan' && seg.path_asset) {
+        assetId = seg.path_asset;
+      }
+    }
+    if (!assetId) {
+      const firstScan = segments.find(
+        (seg) => seg.type === 'scan' && (seg as ScanSegment).path_asset
+      ) as ScanSegment | undefined;
+      assetId = firstScan?.path_asset ?? null;
+    }
+    if (!assetId) return;
+
+    let existing: Awaited<ReturnType<typeof pathAssetsApi.get>> | null = null;
+    try {
+      existing = await pathAssetsApi.get(assetId);
+    } catch {
+      existing = null;
+    }
+
+    const densePath = resamplePath(previewPath, savePointMultiplier);
+    // Auto-rebase to relative if points look like absolute ECI coords.
+    let finalPath = densePath;
+    let relativeToObj = existing?.relative_to_obj ?? true;
+    const maxAbs = densePath.reduce((acc, p) => {
+      const v = Math.max(Math.abs(p[0]), Math.abs(p[1]), Math.abs(p[2]));
+      return Math.max(acc, v);
+    }, 0);
+    if (maxAbs > 10000) {
+      const activeSeg =
+        (typeof selectedSegmentIndex === 'number' && segments[selectedSegmentIndex]) || null;
+      const scanSeg =
+        (activeSeg && activeSeg.type === 'scan' ? (activeSeg as ScanSegment) : null) ||
+        (segments.find((seg) => seg.type === 'scan') as ScanSegment | undefined);
+      const origin = scanSeg?.target_pose?.position;
+      if (origin) {
+        finalPath = densePath.map((p) => [
+          p[0] - origin[0],
+          p[1] - origin[1],
+          p[2] - origin[2],
+        ]) as [number, number, number][];
+        relativeToObj = true;
+      }
+    }
+    const payload = {
+      name: existing?.name ?? assetId,
+      obj_path: existing?.obj_path || config.obj_path || '',
+      path: finalPath,
+      open: existing?.open ?? true,
+      relative_to_obj: relativeToObj,
+      mesh_scan: existing?.mesh_scan,
+      notes: existing?.notes ?? null,
+    };
+
+    await pathAssetsApi.save(payload);
+  };
+
   const handleSaveUnifiedMission = async () => {
     const validationError = validateScanSegments();
     if (validationError) {
@@ -660,6 +751,7 @@ export function useMissionBuilder() {
     const name = prompt('Enter mission name (e.g. Starlink_Scan_M01):');
     if (!name) return;
     try {
+      await saveEditedPathToAsset();
       await saveUnifiedMission(name);
       await refreshUnifiedMissions();
       setSavedMissionName(name);
@@ -715,11 +807,12 @@ export function useMissionBuilder() {
         const mission = buildUnifiedMission();
         const preview = await unifiedMissionApi.previewMission(mission);
         if (preview.path && preview.path.length > 0) {
-          pathHistory.set(preview.path);
+          const editablePath = downsamplePath(preview.path, editPointLimit);
+          pathHistory.set(editablePath);
           setStats({
             duration: preview.path_speed > 0 ? preview.path_length / preview.path_speed : 0,
             length: preview.path_length,
-            points: preview.path.length,
+            points: editablePath.length,
           });
         } else {
           pathHistory.set([]);
@@ -893,6 +986,29 @@ export function useMissionBuilder() {
   };
 
   useEffect(() => {
+    if (previewPath.length === 0) return;
+    const nextPath = downsamplePath(previewPath, editPointLimit);
+    if (nextPath.length === previewPath.length) return;
+    pathHistory.set(nextPath);
+    if (stats) {
+      setStats({ ...stats, points: nextPath.length });
+    }
+    setSelectedObjectId(null);
+  }, [editPointLimit]);
+
+  useEffect(() => {
+    if (!isManualMode) return;
+    if (!previewPath || previewPath.length === 0) return;
+    const length = computePathLength(previewPath);
+    const speed = config.speed_max > 0 ? config.speed_max : 0.1;
+    setStats({
+      duration: speed > 0 ? length / speed : 0,
+      length,
+      points: previewPath.length,
+    });
+  }, [isManualMode, previewPath, config.speed_max]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       const active = document.activeElement;
@@ -928,6 +1044,8 @@ export function useMissionBuilder() {
         levelSpacing,
         availableModels,
         pathAssets,
+        editPointLimit,
+        savePointMultiplier,
         epoch,
         segments,
         selectedSegmentIndex,
@@ -949,6 +1067,8 @@ export function useMissionBuilder() {
         setTransformMode,
         setConfig,
         setLevelSpacing,
+        setEditPointLimit,
+        setSavePointMultiplier,
         setEpoch,
         setSelectedSegmentIndex,
         setSegments

@@ -604,6 +604,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                         selectedId={builderState.selectedObjectId}
                         sceneScale={ORBIT_SCALE}
                         sceneOrigin={sceneOrigin}
+                        fixedAnchor={scaleToScene(builderState.referencePosition)}
                     />
 
                     <ConstraintVisualizer points={builderState.previewPath.map(scaleToScene)} />

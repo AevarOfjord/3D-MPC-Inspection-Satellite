@@ -2,6 +2,19 @@ import { CatmullRomCurve3, Vector3 } from 'three';
 
 export type Vec3 = [number, number, number];
 
+export function downsamplePath(points: Vec3[], targetCount: number): Vec3[] {
+  if (!points || points.length === 0) return [];
+  if (targetCount <= 0 || points.length <= targetCount) {
+    return [...points];
+  }
+  const step = Math.ceil(points.length / targetCount);
+  const out = points.filter((_, i) => i % step === 0);
+  if (out[out.length - 1] !== points[points.length - 1]) {
+    out.push(points[points.length - 1]);
+  }
+  return out;
+}
+
 export function resamplePath(points: Vec3[], multiplier = 10): Vec3[] {
   if (!points || points.length < 2 || multiplier <= 1) {
     return points ? [...points] : [];
