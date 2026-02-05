@@ -183,6 +183,16 @@ class SimulationIO:
             "scan_object": scan_object,
         }
 
+        planned_path = getattr(mission_state, "mpcc_path_waypoints", None)
+        if not planned_path:
+            planned_path = getattr(self.sim, "planned_path", None)
+
+        if planned_path:
+            try:
+                metadata["planned_path"] = [list(p) for p in planned_path]
+            except Exception as exc:
+                logger.warning(f"Failed to serialize planned_path for metadata: {exc}")
+
         metadata_path = self.sim.data_save_path / "mission_metadata.json"
         try:
             metadata_path.write_text(json.dumps(metadata, indent=2))

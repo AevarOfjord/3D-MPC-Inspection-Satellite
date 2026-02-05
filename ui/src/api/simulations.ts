@@ -17,6 +17,7 @@ export interface SimulationListResponse {
 export interface SimulationTelemetryResponse {
   run_id: string;
   telemetry: TelemetryData[];
+  planned_path?: [number, number, number][];
 }
 
 export const simulationsApi = {

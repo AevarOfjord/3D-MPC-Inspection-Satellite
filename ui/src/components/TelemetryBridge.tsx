@@ -32,14 +32,16 @@ export function TelemetryBridge() {
       }
       angOk.current = angOkNow;
 
-      const pathLen = data.planned_path?.length ?? 0;
-      if (pathLen > 0 && pathLen !== lastPathLen.current) {
-        addEvent('info', `Path replanned (${pathLen} waypoints)`, data.time);
+      if (data.planned_path !== undefined) {
+        const pathLen = data.planned_path.length;
+        if (pathLen > 0 && pathLen !== lastPathLen.current) {
+          addEvent('info', `Path replanned (${pathLen} waypoints)`, data.time);
+        }
+        if (pathLen === 0 && lastPathLen.current > 0) {
+          addEvent('warn', 'Planner returned no valid path', data.time);
+        }
+        lastPathLen.current = pathLen;
       }
-      if (pathLen === 0 && lastPathLen.current > 0) {
-        addEvent('warn', 'Planner returned no valid path', data.time);
-      }
-      lastPathLen.current = pathLen;
 
       const solveMs = (data.solve_time ?? 0) * 1000;
       if (solveMs > SOLVE_WARN_MS && data.time - lastSolveWarn.current > 1.0) {

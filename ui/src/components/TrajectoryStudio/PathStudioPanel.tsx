@@ -179,6 +179,7 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
           </div>
           <div className="text-[10px] text-slate-500 mt-2">
             Select a waypoint in the viewport to insert/remove near it.
+            Shift/Alt-click a waypoint to delete. Delete key removes selected.
           </div>
         </HudSection>
 

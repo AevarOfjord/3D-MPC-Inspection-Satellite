@@ -1,16 +1,14 @@
 import { useMemo } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
 import { orbitSnapshot, ORBIT_SCALE } from '../data/orbitSnapshot';
 
 interface OrbitTargetsPanelProps {
   selectedTargetId?: string | null;
-  orbitVisibility?: Record<string, boolean>;
+  className?: string;
   onSelectTarget?: (
     targetId: string,
     positionMeters: [number, number, number],
     positionScene: [number, number, number]
   ) => void;
-  onToggleOrbit?: (targetId: string) => void;
   ownSatellite?: {
     id?: string;
     name?: string;
@@ -33,9 +31,8 @@ const formatPosition = (pos: [number, number, number]) =>
 
 export function OrbitTargetsPanel({
   selectedTargetId,
-  orbitVisibility,
+  className,
   onSelectTarget,
-  onToggleOrbit,
   ownSatellite,
   onFocusTarget,
   solarBodies,
@@ -53,10 +50,12 @@ export function OrbitTargetsPanel({
     []
   );
 
+  const positionClass = className ?? 'fixed left-6 top-20';
+
   return (
-    <div className="fixed left-6 top-20 z-40 w-64 rounded border border-cyan-400/30 bg-slate-900/90 backdrop-blur shadow-[0_0_30px_rgba(15,23,42,0.65)] pointer-events-auto">
+    <div className={`${positionClass} z-40 w-64 rounded border border-cyan-400/30 bg-slate-900/90 backdrop-blur shadow-[0_0_30px_rgba(15,23,42,0.65)] pointer-events-auto`}>
       <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-300">
-        Orbit Targets
+        Orbital Targets
       </div>
       <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
         {ownSatellite && (
@@ -81,7 +80,6 @@ export function OrbitTargetsPanel({
         )}
         {targets.map((obj) => {
           const isSelected = selectedTargetId === obj.id;
-          const orbitOn = orbitVisibility?.[obj.id] ?? false;
           const focusDistance = obj.real_span_m ? Math.max(obj.real_span_m * 5, 10) : undefined;
           return (
             <div
@@ -107,21 +105,6 @@ export function OrbitTargetsPanel({
                 <span className="truncate">{obj.name}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase text-slate-400">{obj.type}</span>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onToggleOrbit?.(obj.id);
-                    }}
-                    className={`p-1 rounded border ${
-                      orbitOn
-                        ? 'border-cyan-400/40 text-cyan-200 bg-cyan-500/10'
-                        : 'border-slate-700 text-slate-400 hover:text-slate-200'
-                    }`}
-                    title={orbitOn ? 'Hide orbit' : 'Show orbit'}
-                  >
-                    {orbitOn ? <Eye size={12} /> : <EyeOff size={12} />}
-                  </button>
                 </div>
               </div>
               <div className="mt-1 text-[10px] text-slate-400">

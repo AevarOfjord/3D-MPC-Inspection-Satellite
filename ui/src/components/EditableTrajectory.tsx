@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Line, useCursor, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
+import { resamplePath } from '../utils/pathResample';
 
 interface EditableTrajectoryProps {
     points: [number, number, number][];
@@ -9,14 +10,19 @@ interface EditableTrajectoryProps {
     builderActions: ReturnType<typeof useMissionBuilder>['actions'];
     selectedId: string | null;
     sceneScale?: number;
+    sceneOrigin?: [number, number, number];
 }
 
-export function EditableTrajectory({ points, onHover, builderActions, selectedId, sceneScale = 1 }: EditableTrajectoryProps) {
+export function EditableTrajectory({ points, onHover, builderActions, selectedId, sceneScale = 1, sceneOrigin = [0, 0, 0] }: EditableTrajectoryProps) {
     const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
     useCursor(typeof highlightIndex === 'number');
 
-    if (!points || points.length === 0) return null;
-    const vectors = points.map(p => new THREE.Vector3(...p));
+    const safePoints = points ?? [];
+    const smoothPoints = useMemo(() => resamplePath(safePoints, 10), [safePoints]);
+    const linePoints = smoothPoints.length >= 2 ? smoothPoints : safePoints;
+
+    if (!safePoints || safePoints.length === 0) return null;
+    const vectors = safePoints.map(p => new THREE.Vector3(...p));
     const markerRadius = Math.max(0.000005, 0.15 * sceneScale);
     const selectedIndex =
         selectedId && selectedId.startsWith('waypoint-')
@@ -25,18 +31,16 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
 
     return (
         <group>
-            {/* Native GL Line for precision at orbital scales */}
-            <line renderOrder={10}>
-                <bufferGeometry>
-                    <bufferAttribute
-                        attach="attributes-position"
-                        count={vectors.length}
-                        array={new Float32Array(points.flatMap(p => p))}
-                        itemSize={3}
-                    />
-                </bufferGeometry>
-                <lineBasicMaterial color="#22d3ee" linewidth={2} opacity={0.95} transparent depthTest={false} depthWrite={false} />
-            </line>
+            {/* Smoothed preview line for real-time shape feedback */}
+            <Line
+                points={linePoints}
+                color="#22d3ee"
+                lineWidth={2}
+                opacity={0.95}
+                transparent
+                depthTest={false}
+                depthWrite={false}
+            />
 
             {/* Interactive Waypoints (Invisible until hovered or selected) */}
             {vectors.map((vec, i) => (
@@ -46,6 +50,10 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                         onPointerOut={() => { setHighlightIndex(null); onHover?.(null); }}
                         onClick={(e) => { 
                             e.stopPropagation(); 
+                            if (e.shiftKey || e.altKey) {
+                                builderActions.removeWaypointAtIndex?.(i);
+                                return;
+                            }
                             builderActions.setSelectedObjectId(`waypoint-${i}`); 
                         }}
                     >
@@ -73,10 +81,11 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                     onObjectChange={(e: any) => {
                         const obj = e?.target?.object as THREE.Object3D;
                         if (!obj) return;
+                        const base = sceneOrigin ?? [0, 0, 0];
                         const next: [number, number, number] = [
-                            obj.position.x / sceneScale,
-                            obj.position.y / sceneScale,
-                            obj.position.z / sceneScale,
+                            obj.position.x / sceneScale + base[0],
+                            obj.position.y / sceneScale + base[1],
+                            obj.position.z / sceneScale + base[2],
                         ];
                         builderActions.handleWaypointMove(selectedIndex, next);
                     }}
