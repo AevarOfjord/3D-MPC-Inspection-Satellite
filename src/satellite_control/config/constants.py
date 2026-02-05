@@ -133,6 +133,9 @@ class Constants:
 
     Q_CONTOUR = 1000.0
     Q_PROGRESS = 100.0
+    PROGRESS_REWARD = 0.0
+    PATH_SPEED_MIN = 0.01
+    PATH_SPEED_MAX = 0.1
     Q_SMOOTH = 10.0
     Q_ANGULAR_VELOCITY = 1000.0
     R_THRUST = 0.1

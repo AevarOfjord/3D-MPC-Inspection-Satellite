@@ -48,14 +48,20 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     control_lower_.resize(nu_);
     control_upper_.resize(nu_);
     
+    double v_s_min = std::max(0.0, mpc_params_.path_speed_min);
+    double v_s_max = mpc_params_.path_speed_max;
+    if (v_s_max <= 0.0) {
+        v_s_max = mpc_params_.path_speed;
+    }
+    if (v_s_min > v_s_max) {
+        std::swap(v_s_min, v_s_max);
+    }
     control_lower_ << VectorXd::Constant(sat_params_.num_rw, -1.0),
                       VectorXd::Zero(sat_params_.num_thrusters),
-                      VectorXd::Constant(1, 0.0); // v_s >= 0 (no backtracking)
-                      
-    double v_s_max = std::max(0.1, 2.0 * mpc_params_.path_speed);
+                      VectorXd::Constant(1, v_s_min); // v_s >= min speed
     control_upper_ << VectorXd::Constant(sat_params_.num_rw, 1.0),
                       VectorXd::Ones(sat_params_.num_thrusters),
-                      VectorXd::Constant(1, v_s_max); // v_s max scaled to path speed
+                      VectorXd::Constant(1, v_s_max); // v_s max bound
     
     // Initialize quaternion tracking
     prev_quat_ << -999, -999, -999, -999;
@@ -926,7 +932,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     // ==========================================================================
 
     double Q_c = mpc_params_.Q_contour;   // Contouring weight
-    double Q_p = mpc_params_.Q_progress;  // Progress weight
+    double Q_p = mpc_params_.Q_progress;  // Progress weight (quadratic)
+    double progress_reward = mpc_params_.progress_reward; // Linear reward for v_s
     double Q_v = mpc_params_.Q_progress;  // Velocity alignment weight (reuse progress)
     double Q_l = mpc_params_.Q_lag;       // Lag weight (along tangent)
     if (Q_l <= 0.0) {
@@ -935,7 +942,13 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     double Q_s_anchor = std::max(Q_p, 0.5 * Q_c);  // Anchor s to progress reference
     double Q_att = mpc_params_.Q_attitude; // Attitude tracking weight
     // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
-    double v_ref = mpc_params_.path_speed;  // Path speed reference
+    double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
+    if (mpc_params_.path_speed_max > 0.0) {
+        v_ref = std::min(v_ref, mpc_params_.path_speed_max);
+    }
+    if (mpc_params_.path_speed_min > 0.0) {
+        v_ref = std::max(v_ref, mpc_params_.path_speed_min);
+    }
     double slowdown_dist = mpc_params_.progress_slowdown_distance;
     double Q_term_pos = mpc_params_.Q_terminal_pos;
     double Q_term_s = mpc_params_.Q_terminal_s;
@@ -981,6 +994,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         end_scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
     }
     double v_ref_base = v_ref * speed_scale * end_scale;
+    bool auto_progress = progress_reward > 0.0;
 
     // Coasting bias: if we're already on the path and moving along it,
     // match the reference speed to the current along-track speed to avoid braking.
@@ -1144,6 +1158,9 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         if (k < static_cast<int>(path_vel_P_indices_.size())) {
             // Use same tapering as progress to slow near the endpoint.
             double v_ref_k = v_ref_base;
+            if (auto_progress) {
+                v_ref_k = 0.0;
+            }
             double remaining = path_total_length_ - s_bar;
             if (taper_dist > 1e-9) {
                 double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
@@ -1181,7 +1198,12 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                 v_ref_k = v_ref_k * scale;
             }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
-            q_(u_idx) = -2.0 * Q_p * v_ref_k;
+            if (auto_progress) {
+                double progress_scale = speed_scale * end_scale;
+                q_(u_idx) = -2.0 * progress_reward * progress_scale;
+            } else {
+                q_(u_idx) = -2.0 * Q_p * v_ref_k;
+            }
 
             // Fuel bias: linear penalty on thruster usage to promote coasting.
             if (mpc_params_.thrust_l1_weight > 0.0) {

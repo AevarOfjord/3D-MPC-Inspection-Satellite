@@ -32,6 +32,7 @@ struct MPCParams {
     // Weights (MPCC)
     double Q_contour = 1000.0;          ///< Weight for contouring error (stay on path)
     double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
+    double progress_reward = 0.0;       ///< Reward for forward progress (auto speed)
     double Q_lag = 0.0;                 ///< Weight for lag error (along tangent, 0 = auto)
     double Q_smooth = 10.0;             ///< Weight for velocity smoothness
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
@@ -53,6 +54,8 @@ struct MPCParams {
 
     // Path Following (V4.0.0) - General Path MPCC
     double path_speed = 0.1;           ///< Path speed along reference [m/s]
+    double path_speed_min = 0.01;      ///< Minimum path speed [m/s]
+    double path_speed_max = 0.1;       ///< Maximum path speed [m/s]
 
     // Terminal handling (MPCC)
     // If set to 0, controller will auto-scale from Q_contour/Q_progress.
