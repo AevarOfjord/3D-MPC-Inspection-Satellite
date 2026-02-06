@@ -4,7 +4,6 @@ Verifies that the simulation can run using the _cpp_sim backend.
 """
 
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest

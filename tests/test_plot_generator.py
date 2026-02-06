@@ -4,7 +4,6 @@ Unit tests for PlotGenerator module.
 Tests the plotting functionality extracted from unified_visualizer.py.
 """
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np

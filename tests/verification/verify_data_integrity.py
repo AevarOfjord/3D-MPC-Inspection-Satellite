@@ -65,7 +65,7 @@ def verify_csv(file_path, time_col):
             # 3D Check
             if "Current_Z" in row:
                 try:
-                    z_val = float(row["Current_Z"])
+                    float(row["Current_Z"])
                 except ValueError:
                     print(f"FAILED: Invalid Z value at row {i+2}")
                     return False

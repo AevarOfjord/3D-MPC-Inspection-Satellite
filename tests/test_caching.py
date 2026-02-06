@@ -4,7 +4,6 @@ Tests for caching utilities.
 Tests caching decorators and utilities.
 """
 
-import pytest
 
 from src.satellite_control.config import physics as physics_cfg
 

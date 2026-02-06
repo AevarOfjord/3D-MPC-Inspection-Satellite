@@ -8,14 +8,9 @@ Tests the full control loop:
 3. Closed-loop attitude and translation control
 """
 
-from pathlib import Path
 import sys
 
 import numpy as np
-
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.config.simulation_config import SimulationConfig
@@ -181,7 +176,7 @@ def run_reaction_wheel_control() -> bool:
     pos_ok = pos_error < 0.35  # 35cm
     progress_ok = pos_error < (0.9 * initial_error)  # must improve by 10%
 
-    print(f"\nTargets:")
+    print("\nTargets:")
     print(f"  Position ≤35cm: {'✓ PASS' if pos_ok else '✗ FAIL'}")
     print(f"  Progress ≥10%: {'✓ PASS' if progress_ok else '✗ FAIL'}")
     print("  Angle tracking: skipped (MPCC does not penalize quaternion).")

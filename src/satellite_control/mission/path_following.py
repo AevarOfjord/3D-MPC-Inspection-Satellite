@@ -72,7 +72,8 @@ def _effective_obstacle_radius(
     safety_margin: float,
     turning_margin: float,
 ) -> float:
-    return float(max(radius + safety_margin + turning_margin, 1e-6))
+    # Small geometric buffer to absorb discretization/interpolation error.
+    return float(max(radius + safety_margin + turning_margin + 2e-3, 1e-6))
 
 
 def _segment_distance_and_t(
@@ -241,6 +242,47 @@ def _densify_path(
     return dense
 
 
+def _enforce_obstacle_clearance(
+    path: List[Tuple[float, float, float]],
+    obstacles: List[Tuple[np.ndarray, float]],
+    safety_margin: float,
+    turning_margin: float,
+) -> List[Tuple[float, float, float]]:
+    if not path or not obstacles:
+        return path
+
+    adjusted: List[Tuple[float, float, float]] = []
+    points = [np.array(p, dtype=float) for p in path]
+
+    for i, point in enumerate(points):
+        corrected = point.copy()
+        for center, radius in obstacles:
+            r_eff = _effective_obstacle_radius(radius, safety_margin, turning_margin)
+            delta = corrected - center
+            dist = float(np.linalg.norm(delta))
+            if dist >= r_eff:
+                continue
+
+            # Recover a direction if exactly at center.
+            if dist < 1e-9:
+                if i > 0:
+                    delta = corrected - points[i - 1]
+                elif i + 1 < len(points):
+                    delta = points[i + 1] - corrected
+                else:
+                    delta = np.array([1.0, 0.0, 0.0], dtype=float)
+                dist = float(np.linalg.norm(delta))
+                if dist < 1e-9:
+                    delta = np.array([1.0, 0.0, 0.0], dtype=float)
+                    dist = 1.0
+
+            corrected = center + (delta / dist) * (r_eff + 1e-6)
+
+        adjusted.append(tuple(map(float, corrected)))
+
+    return adjusted
+
+
 def build_point_to_point_path(
     waypoints: Sequence[Iterable[float]],
     obstacles: Optional[Sequence[Tuple[float, float, float, float]]] = None,
@@ -340,7 +382,12 @@ def build_point_to_point_path(
 
         path.extend(segment_path[1:])
 
-    return path
+    return _enforce_obstacle_clearance(
+        path,
+        normalized_obstacles,
+        safety_margin=safety_margin,
+        turning_margin=turning_margin,
+    )
 
 
 def build_point_to_point_trajectory(

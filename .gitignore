@@ -35,6 +35,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # IDEs
 .vscode/

@@ -154,7 +154,6 @@ def slice_mesh_at_z(
     return np.vstack(points)
 
 
-from scipy.spatial import ConvexHull
 
 
 def offset_polygon(points: np.ndarray, distance: float) -> np.ndarray:
@@ -698,8 +697,6 @@ def build_mesh_scan_trajectory(
     z_max = vertices_aligned[:, 2].max()
 
     levels = max(int(levels), 1)
-    z_min_adj = float(z_min)
-    z_max_adj = float(z_max)
 
     # Smart Level Placement (Center-Aligned)
     # Instead of scanning exactly at the edges (z_min, z_max) which are often problematic/degenerate,
@@ -763,15 +760,7 @@ def build_mesh_scan_trajectory(
                     local_verts = vertices_aligned[mask]
                     # Project these onto the SAME PCA axes as the slice (using center/vecs from slice)
                     # Note: Using slice center might be slightly off if local_verts shift, but it's safe.
-                    # Better: Just compute extents of local_verts relative to slice center.
-
-                    lv_centered = (
-                        local_verts[:, :2] - center_xy
-                    )  # center_xy is GLOBAL aligned XY center
-                    # Wait, 'center_xy' variable from line 647 is the mean of ALL vertices.
-                    # 'mean' (line 700) is mean of SLICE.
-                    # We should probably use the SLICE mean to center the local window to align them.
-
+                    # Compute extents relative to the current slice center.
                     lv_centered_slice = (
                         local_verts[:, :2] - mean
                     )  # Center relative to slice

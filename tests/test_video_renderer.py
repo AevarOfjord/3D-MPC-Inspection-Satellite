@@ -4,7 +4,6 @@ Unit tests for VideoRenderer module.
 Tests the video rendering functionality extracted from unified_visualizer.py.
 """
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np

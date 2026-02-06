@@ -26,7 +26,6 @@ import osqp
 import scipy.sparse as sp
 
 from src.satellite_control.config.actuator_config import ActuatorConfig, ActuatorMode
-from src.satellite_control.config.reaction_wheel_config import ReactionWheelArrayConfig
 from src.satellite_control.core.error_handling import with_error_context
 from src.satellite_control.core.exceptions import OptimizationError
 
@@ -311,9 +310,7 @@ class ReactionWheelMPCController(Controller):
         # Dynamics constraints: equality (0 = 0)
         # (already initialized to 0)
 
-        # Initial state: will be set each solve
-        init_start = n_dynamics
-        # (will be set in get_control_action)
+        # Initial state bounds are set in get_control_action.
 
         # State bounds (loose for now)
         state_start = n_dynamics + n_init

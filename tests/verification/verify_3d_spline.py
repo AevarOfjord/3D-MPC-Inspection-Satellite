@@ -7,7 +7,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.satellite_control.utils.spline_path import (
     create_obstacle_avoidance_spline,
-    ObstacleAvoidanceSpline,
 )
 
 

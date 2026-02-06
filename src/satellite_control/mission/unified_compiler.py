@@ -414,14 +414,6 @@ def compile_unified_mission_path(
                 target_orientation = list(segment.target_pose.orientation)
             obj_path = _resolve_target_obj_path(segment.target_id)
 
-            v_max = (
-                float(segment.constraints.speed_max)
-                if segment.constraints and segment.constraints.speed_max
-                else float(sim_config.app_config.mpc.path_speed)
-            )
-            v_min = max(0.05, v_max * 0.25)
-            lateral_accel = float(sim_config.mission_state.mesh_scan_lateral_accel)
-            dt = float(sim_config.app_config.mpc.dt)
             scan_path: List[Tuple[float, float, float]] = []
             apply_orientation = False
             asset_id = getattr(segment, "path_asset", None)

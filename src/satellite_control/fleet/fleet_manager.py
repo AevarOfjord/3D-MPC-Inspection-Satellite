@@ -7,7 +7,7 @@ Coordinates waypoints, timing, and collision avoidance.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 

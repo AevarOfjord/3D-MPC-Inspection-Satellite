@@ -8,7 +8,7 @@ Provides a web-based dashboard for real-time monitoring, analysis, and control.
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -19,9 +19,6 @@ from plotly.subplots import make_subplots
 # Core imports - must be at top level for Streamlit
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.io import ConfigIO
-from src.satellite_control.visualization.unified_visualizer import (
-    UnifiedVisualizationGenerator,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -1266,7 +1263,7 @@ def main():
                         marker=dict(size=3, opacity=0.6),
                         hovertemplate=f"<b>{y_col}</b><br>"
                         + f"{x_col}: %{{x}}<br>"
-                        + f"Value: %{{y}}<br>"
+                        + "Value: %{y}<br>"
                         + "<extra></extra>",
                     )
                 )

@@ -5,11 +5,7 @@ Tests PerformanceMonitor and PerformanceMetrics classes.
 """
 
 import json
-import tempfile
-from pathlib import Path
 
-import numpy as np
-import pytest
 
 from src.satellite_control.core.performance_monitor import (
     PerformanceMetrics,

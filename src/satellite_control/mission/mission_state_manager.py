@@ -854,8 +854,6 @@ class MissionStateManager:
             # Tolerances
             pos_tol = 0.05  # 5 cm
             ang_tol_deg = 2.0  # 2 degrees
-            vel_tol = 0.02  # 2 cm/s
-            angvel_tol_deg = 2.0  # 2 deg/s
             stabilize_hold = 5.0  # 5 seconds
 
             # Initialize approach target on first call
@@ -896,10 +894,6 @@ class MissionStateManager:
                 # Angle error - use identity as target for now
                 current_euler = quat_wxyz_to_euler_xyz(current_quat)
                 ang_error = float(np.degrees(np.linalg.norm(current_euler)))
-
-                # Velocity check (need current state)
-                vel_error = 0.0  # Will need to get from caller
-                angvel_error = 0.0
 
                 tolerances_met = (
                     pos_error < pos_tol and ang_error < ang_tol_deg

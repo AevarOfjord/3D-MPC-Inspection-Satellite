@@ -724,7 +724,7 @@ class MissionCLI:
                 print("Invalid input. Numeric values required.")
 
         # Configure obstacles (V3.0.0: always uses mission_state)
-        obstacles = self.configure_obstacles(mission_state=mission_state)
+        self.configure_obstacles(mission_state=mission_state)
 
         # Preserve full roll/pitch/yaw tuples; convert yaw-only to 3D tuple
         waypoint_angles = [

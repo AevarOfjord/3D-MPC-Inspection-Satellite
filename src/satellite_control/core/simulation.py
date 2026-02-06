@@ -34,12 +34,11 @@ Configuration:
 - Consistent with real hardware configuration
 """
 
-import logging
 
 import time
 
 # time, asyncio removed
-from typing import Any, Dict, Optional, List, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 from pathlib import Path
 
 import numpy as np
@@ -60,7 +59,6 @@ from src.satellite_control.utils.navigation_utils import (
     point_to_line_distance,
 )
 from src.satellite_control.utils.orientation_utils import (
-    euler_xyz_to_quat_wxyz,
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
     quat_wxyz_from_basis,
@@ -871,7 +869,10 @@ class SatelliteMPCLinearizedSimulation:
         pos_tol = float(getattr(self, "position_tolerance", 0.05))
         progress_ok = path_s >= (path_len - pos_tol)
 
-        # Require full state tolerances when reference is available.
+        pos_ok = endpoint_error <= pos_tol
+
+        # Prefer full-state tolerances when reference is available, but do not
+        # block completion if endpoint position is reached.
         state_ok = None
         if hasattr(self, "state_validator") and self.state_validator is not None:
             try:
@@ -889,8 +890,9 @@ class SatelliteMPCLinearizedSimulation:
 
         # Fallback to endpoint position check if validator/reference is unavailable.
         if state_ok is None:
-            pos_ok = endpoint_error <= pos_tol
             state_ok = pos_ok
+        else:
+            state_ok = bool(state_ok or pos_ok)
 
         return bool(progress_ok and state_ok)
 

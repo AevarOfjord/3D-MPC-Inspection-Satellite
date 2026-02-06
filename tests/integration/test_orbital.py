@@ -8,15 +8,9 @@ Tests:
 3. Approach maneuver with controlled deceleration
 """
 
-from pathlib import Path
 import sys
 
 import numpy as np
-
-# Add project root to path
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.config.simulation_config import SimulationConfig

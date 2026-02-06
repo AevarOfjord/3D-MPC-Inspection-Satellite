@@ -11,10 +11,6 @@ import logging
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from src.satellite_control.mission import (
     Mission,
     create_flyby_mission,
@@ -133,7 +129,7 @@ def run_flyby_mission() -> bool:
     final_error = _run_mission_segment(mission, waypoint_idx=0, duration=10.0)
     success = final_error < 0.5
 
-    print(f"\nResult:")
+    print("\nResult:")
     print(f"  Success: {success}")
     print(f"  Final error: {final_error * 100:.2f}cm")
 
@@ -164,7 +160,7 @@ def run_circumnavigation_mission() -> bool:
     final_error = _run_mission_segment(mission, waypoint_idx=0, duration=12.0)
     success = final_error < 0.75
 
-    print(f"\nResult:")
+    print("\nResult:")
     print(f"  Success: {success}")
     print(f"  Final error: {final_error * 100:.2f}cm")
 
@@ -195,7 +191,7 @@ def run_station_keeping_mission() -> bool:
     final_error = _run_mission_segment(mission, waypoint_idx=0, duration=10.0)
     success = final_error < 0.5
 
-    print(f"\nResult:")
+    print("\nResult:")
     print(f"  Success: {success}")
     print(f"  Final error: {final_error * 100:.2f}cm")
 

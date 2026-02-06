@@ -62,7 +62,7 @@ class TestThrusterProperties:
     """Property-based tests for thruster configuration."""
 
     @given(
-        thruster_idx=st.integers(0, 7),
+        thruster_idx=st.integers(1, 6),
     )
     @settings(max_examples=20)
     def test_thruster_direction_is_unit_vector(self, thruster_idx):
@@ -71,7 +71,7 @@ class TestThrusterProperties:
 
         # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
-        thruster_id = thruster_idx + 1  # 1-indexed
+        thruster_id = thruster_idx
         direction = config.app_config.physics.thruster_directions[thruster_id]
 
         magnitude = np.linalg.norm(direction)

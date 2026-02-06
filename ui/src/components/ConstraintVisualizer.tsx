@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface ConstraintVisualizerProps {
@@ -8,8 +7,6 @@ interface ConstraintVisualizerProps {
 }
 
 export function ConstraintVisualizer({ points, maxCurvature = 1.0 }: ConstraintVisualizerProps) {
-    if (!points || points.length < 3) return null;
-
     // Analyze path for curvature
     const analysis = useMemo(() => {
         const violations: THREE.Vector3[][] = [];
@@ -42,6 +39,8 @@ export function ConstraintVisualizer({ points, maxCurvature = 1.0 }: ConstraintV
 
         return { violations, totalLinearDist, totalAngularDist };
     }, [points, maxCurvature]);
+
+    if (!points || points.length < 3) return null;
 
     return (
         <group>

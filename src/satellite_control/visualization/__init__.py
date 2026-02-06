@@ -29,4 +29,8 @@ __all__ = [
     "LinearizedVisualizationGenerator",
     "PlotStyle",
     "create_simulation_visualizer",
+    "get_demo_shape",
+    "load_dxf_shape",
+    "make_offset_path",
+    "transform_shape",
 ]

@@ -5,7 +5,6 @@ Tests Bezier spline generation for obstacle avoidance.
 """
 
 import numpy as np
-import pytest
 
 from src.satellite_control.utils.spline_path import ObstacleAvoidanceSpline
 
