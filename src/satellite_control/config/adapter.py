@@ -30,10 +30,10 @@ class SatelliteConfigAdapter:
         if name == "PATH_WAYPOINTS":
             return self.mission_state.mpcc_path_waypoints if self.mission_state else []
         if name == "PATH_LENGTH":
-            return (
-                getattr(self.mission_state, "dxf_path_length", 0.0)
-                if self.mission_state
-                else 0.0
+            if not self.mission_state:
+                return 0.0
+            return self.mission_state.get_resolved_path_length(
+                compute_if_missing=True
             )
         if name == "OBSTACLES_ENABLED":
             return self.mission_state.obstacles_enabled if self.mission_state else False

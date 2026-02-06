@@ -180,14 +180,13 @@ class SimulationInitializer:
                     )
                 )
             )
-            mission_state.mpcc_path_waypoints = path
-            mission_state.dxf_shape_path = path
-            mission_state.dxf_path_length = path_length
-            mission_state.dxf_path_speed = float(app_config.mpc.path_speed)
+            mission_state.path_waypoints = path
+            mission_state.path_length = path_length
+            mission_state.path_speed = float(app_config.mpc.path_speed)
 
         # Disable non-path modes
         mission_state.trajectory_mode_active = False
-        mission_state.dxf_shape_mode_active = False
+        mission_state.path_following_active = False
 
         if (
             hasattr(self.simulation.mpc_controller, "set_path")
@@ -285,9 +284,15 @@ class SimulationInitializer:
             )
             logger.info("C++ Physics Engine initialized successfully.")
         except ImportError as e:
+            err_text = str(e)
+            guidance = ""
+            if "Python version mismatch" in err_text:
+                # cpp_satellite already includes targeted ABI mismatch guidance.
+                guidance = ""
+            else:
+                guidance = " Build the extension with 'pip install -e .'."
             raise RuntimeError(
-                f"C++ Physics Engine required but not found: {e}. "
-                "Please run 'pip install -e .' to compile."
+                f"C++ Physics Engine unavailable: {e}.{guidance}"
             ) from e
 
         self.simulation.satellite.external_simulation_mode = True

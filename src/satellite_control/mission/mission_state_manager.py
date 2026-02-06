@@ -216,11 +216,11 @@ class MissionStateManager:
 
     def _get_dxf_shape_path(self) -> List[Tuple[float, float, float]]:
         """Get DXF shape path from mission_state (V4.0.0: required)."""
-        return self.mission_state.dxf_shape_path
+        return self.mission_state.path_waypoints
 
     def _get_dxf_target_speed(self) -> float:
         """Get DXF target speed from mission_state (V4.0.0: required)."""
-        return self.mission_state.dxf_target_speed
+        return self.mission_state.path_speed
 
     def _get_dxf_closest_point_index(self) -> int:
         """Get DXF closest point index from mission_state (V4.0.0: required)."""
@@ -228,7 +228,7 @@ class MissionStateManager:
 
     def _get_dxf_path_length(self) -> float:
         """Get DXF path length from mission_state (V4.0.0: required)."""
-        return self.mission_state.dxf_path_length
+        return self.mission_state.path_length
 
     def _get_dxf_tracking_start_time(self) -> Optional[float]:
         """Get DXF tracking start time from mission_state (V4.0.0: required)."""
@@ -236,21 +236,21 @@ class MissionStateManager:
 
     def _get_dxf_positioning_start_time(self) -> Optional[float]:
         """Get DXF positioning start time from mission_state (V4.0.0: required)."""
-        return getattr(self.mission_state, "dxf_positioning_start_time", None)
+        return self.mission_state.dxf_positioning_start_time
 
     def _set_dxf_positioning_start_time(self, value: float) -> None:
         """Set DXF positioning start time in mission_state (V4.0.0: no SatelliteConfig)."""
-        setattr(self.mission_state, "dxf_positioning_start_time", value)
+        self.mission_state.dxf_positioning_start_time = value
 
     def _get_dxf_current_target_position(self) -> Optional[Tuple[float, float, float]]:
         """Get DXF current target position from mission_state (V4.0.0: required)."""
-        return getattr(self.mission_state, "dxf_current_target_position", None)
+        return self.mission_state.dxf_current_target_position
 
     def _set_dxf_current_target_position(
         self, value: Optional[Tuple[float, float, float]]
     ) -> None:
         """Set DXF current target position in mission_state (V4.0.0: no SatelliteConfig)."""
-        setattr(self.mission_state, "dxf_current_target_position", value)
+        self.mission_state.dxf_current_target_position = value
 
     def _get_dxf_final_position(self) -> Optional[Tuple[float, float, float]]:
         """Get DXF final position from mission_state (V4.0.0: required)."""
@@ -272,11 +272,11 @@ class MissionStateManager:
 
     def _get_dxf_target_start_distance(self) -> float:
         """Get DXF target start distance from mission_state (V4.0.0: required)."""
-        return getattr(self.mission_state, "dxf_target_start_distance", 0.0)
+        return self.mission_state.dxf_target_start_distance
 
     def _set_dxf_target_start_distance(self, value: float) -> None:
         """Set DXF target start distance in mission_state (V4.0.0: no SatelliteConfig)."""
-        setattr(self.mission_state, "dxf_target_start_distance", value)
+        self.mission_state.dxf_target_start_distance = value
 
     def _get_dxf_has_return(self) -> bool:
         """Get DXF has return flag from mission_state (V4.0.0: required)."""
@@ -421,11 +421,11 @@ class MissionStateManager:
         trajectory_out: np.ndarray,
     ) -> None:
         """Helper to predict trajectory for DXF shape following/tracking."""
-        path = self.mission_state.dxf_shape_path
+        path = self.mission_state.path_waypoints
         phase = self.mission_state.dxf_shape_phase
         start_time = self.mission_state.dxf_tracking_start_time
-        speed = self.mission_state.dxf_target_speed
-        path_len = max(self.mission_state.dxf_path_length, 1e-9)
+        speed = self.mission_state.path_speed
+        path_len = max(self.mission_state.path_length, 1e-9)
         closest_point_idx = self.mission_state.dxf_closest_point_index
 
         traj = self._get_dxf_trajectory_array()
@@ -544,7 +544,7 @@ class MissionStateManager:
 
         # Determine active mode (V4.0.0: mission_state required)
         is_dxf = (
-            self.mission_state.dxf_shape_mode_active
+            self.mission_state.path_following_active
             or self.mission_state.mesh_scan_mode_active
         )
         is_traj = (
@@ -824,7 +824,7 @@ class MissionStateManager:
 
         # DXF shape mode (V4.0.0: mission_state required)
         is_dxf = (
-            self.mission_state.dxf_shape_mode_active
+            self.mission_state.path_following_active
             or self.mission_state.mesh_scan_mode_active
         )
 
@@ -1234,10 +1234,10 @@ class MissionStateManager:
             return None
 
         # Initialize mission start time (V4.0.0: mission_state required)
-        path = self.mission_state.dxf_shape_path
+        path = self.mission_state.path_waypoints
         if path and len(path[0]) < 3:
             path = [(p[0], p[1], 0.0) for p in path]
-            self.mission_state.dxf_shape_path = path
+            self.mission_state.path_waypoints = path
         mission_start_time = self.mission_state.dxf_mission_start_time
 
         if mission_start_time is None:
@@ -1265,7 +1265,7 @@ class MissionStateManager:
                     np.linalg.norm(np.array(path[next_idx]) - np.array(path[idx]))
                 )
 
-            self.mission_state.dxf_path_length = total_length
+            self.mission_state.path_length = total_length
 
             logger.info(f" PROFILE FOLLOWING MISSION STARTED at t={current_time:.2f}s")
             cx, cy = closest_point[0], closest_point[1]
@@ -1277,7 +1277,7 @@ class MissionStateManager:
             logger.info(f" Profile path length: {total_length:.3f} m")
 
         # Get path and phase from mission_state (V4.0.0: required)
-        dxf_path = self.mission_state.dxf_shape_path
+        dxf_path = self.mission_state.path_waypoints
         phase = self._get_dxf_phase()
 
         # Phase 1: POSITIONING
@@ -1332,11 +1332,6 @@ class MissionStateManager:
             target_pos_arr = np.pad(
                 target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant"
             )
-        target_pos_arr = np.array(target_pos, dtype=float)
-        if target_pos_arr.shape[0] < 3:
-            target_pos_arr = np.pad(
-                target_pos_arr, (0, 3 - target_pos_arr.shape[0]), "constant"
-            )
         target_orientation = get_path_tangent_orientation(
             path, 0.0, self._get_dxf_closest_point_index()
         )
@@ -1369,7 +1364,6 @@ class MissionStateManager:
                 if stabilization_time >= stab_time:
                     self._update_dxf_phase("TRACKING")
                     self.mission_state.dxf_tracking_start_time = current_time
-                    self.mission_state.dxf_target_start_distance = 0.0
                     self._set_dxf_target_start_distance(0.0)
                     logger.info(" Satellite stable! Starting profile tracking...")
                     speed = self._get_dxf_target_speed()
@@ -1409,7 +1403,6 @@ class MissionStateManager:
                     if self.final_waypoint_stabilization_start_time is None:
                         self.final_waypoint_stabilization_start_time = current_time
                         self._update_dxf_phase("PATH_STABILIZATION")
-                        self.mission_state.dxf_final_position = current_path_position
                         self._set_dxf_final_position(current_path_position)
                         stab_time = self._get_shape_positioning_stabilization_time()
                         logger.info(
@@ -1418,8 +1411,6 @@ class MissionStateManager:
                         )
                     return None
                 self._update_dxf_phase("STABILIZING")
-                if self.mission_state is not None:
-                    self.mission_state.dxf_final_position = current_path_position
                 self._set_dxf_stabilization_start_time(current_time)
                 self._set_dxf_final_position(current_path_position)
                 logger.info(
@@ -1467,7 +1458,6 @@ class MissionStateManager:
                 if self.final_waypoint_stabilization_start_time is None:
                     self.final_waypoint_stabilization_start_time = current_time
                     self._update_dxf_phase("PATH_STABILIZATION")
-                    self.mission_state.dxf_final_position = current_path_position
                     self._set_dxf_final_position(current_path_position)
                     stab_time = self._get_shape_positioning_stabilization_time()
                     logger.info(
@@ -1479,9 +1469,6 @@ class MissionStateManager:
                 return None
             else:
                 self._update_dxf_phase("STABILIZING")
-                if self.mission_state is not None:
-                    self.mission_state.dxf_final_position = current_path_position
-                # Backward compatibility
                 self._set_dxf_stabilization_start_time(current_time)
                 self._set_dxf_final_position(current_path_position)
                 logger.info(
@@ -1535,12 +1522,10 @@ class MissionStateManager:
         if is_end_stabilization:
             # Stabilizing at END of path (before returning)
             target_pos = self.mission_state.dxf_final_position
-            path_s = self.mission_state.dxf_path_length
+            path_s = self.mission_state.path_length
         else:
             # Stabilizing at START of path (before tracking begins)
-            target_pos = getattr(
-                self.mission_state, "dxf_current_target_position", None
-            )
+            target_pos = self.mission_state.dxf_current_target_position
             path_s = 0.0
 
         if target_pos is None:
@@ -1583,9 +1568,7 @@ class MissionStateManager:
                     if stabilization_time >= stab_time:
                         # V4.0.0: Update mission_state only (no SatelliteConfig)
                         self.mission_state.dxf_shape_phase = "RETURNING"
-                        return_pos = getattr(
-                            self.mission_state, "dxf_return_position", None
-                        )
+                        return_pos = self.mission_state.dxf_return_position
                         logger.info(" Path stabilization complete!")
                         if return_pos is not None:
                             rx, ry = return_pos[0], return_pos[1]
@@ -1611,10 +1594,8 @@ class MissionStateManager:
                 stab_time = self._get_shape_positioning_stabilization_time()
                 if stabilization_time >= stab_time:
                     self._update_dxf_phase("TRACKING")
-                    if self.mission_state is not None:
-                        self.mission_state.dxf_tracking_start_time = current_time
-                        self.mission_state.dxf_target_start_distance = 0.0
-                        self._set_dxf_target_start_distance(0.0)
+                    self.mission_state.dxf_tracking_start_time = current_time
+                    self._set_dxf_target_start_distance(0.0)
                     logger.info(
                         " Path stabilization complete! Starting profile tracking..."
                     )
@@ -1647,7 +1628,7 @@ class MissionStateManager:
         # Determine target orientation: use return angle if at return position,
         # otherwise use path tangent
         has_return = self.mission_state.dxf_has_return
-        return_pos = getattr(self.mission_state, "dxf_return_position", None)
+        return_pos = self.mission_state.dxf_return_position
         final_pos_arr = np.array(final_pos, dtype=float)
         if final_pos_arr.shape[0] < 3:
             final_pos_arr = np.pad(
@@ -1669,14 +1650,16 @@ class MissionStateManager:
 
         if at_return_position:
             # Stabilizing at return position - use return angle
-            target_orientation = getattr(
-                self.mission_state, "dxf_return_angle", (0.0, 0.0, 0.0)
-            ) or (0.0, 0.0, 0.0)
+            target_orientation = self.mission_state.dxf_return_angle or (
+                0.0,
+                0.0,
+                0.0,
+            )
             if isinstance(target_orientation, (int, float)):
                 target_orientation = (0.0, 0.0, float(target_orientation))
         else:
             # Stabilizing at end of path - use path tangent
-            end_s = self.mission_state.dxf_path_length
+            end_s = self.mission_state.path_length
             target_orientation = get_path_tangent_orientation(
                 path, end_s, self.mission_state.dxf_closest_point_index
             )
@@ -1714,15 +1697,13 @@ class MissionStateManager:
         current_time: float,
     ) -> Optional[np.ndarray]:
         """Handle DXF returning phase (V4.0.0: use mission_state only)."""
-        return_pos = getattr(self.mission_state, "dxf_return_position", (0.0, 0.0, 0.0))
+        return_pos = self.mission_state.dxf_return_position or (0.0, 0.0, 0.0)
         return_pos_arr = np.array(return_pos, dtype=float)
         if return_pos_arr.shape[0] < 3:
             return_pos_arr = np.pad(
                 return_pos_arr, (0, 3 - return_pos_arr.shape[0]), "constant"
             )
-        return_angle = getattr(
-            self.mission_state, "dxf_return_angle", (0.0, 0.0, 0.0)
-        ) or (0.0, 0.0, 0.0)
+        return_angle = self.mission_state.dxf_return_angle or (0.0, 0.0, 0.0)
         if isinstance(return_angle, (int, float)):
             return_angle = (0.0, 0.0, float(return_angle))
 

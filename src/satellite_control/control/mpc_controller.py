@@ -6,6 +6,7 @@ The entire control loop runs in C++ for maximum performance.
 """
 
 import logging
+import sys
 from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -14,14 +15,24 @@ import numpy as np
 from src.satellite_control.config.models import AppConfig
 
 # C++ Backend (required)
-from src.satellite_control.cpp._cpp_mpc import (
-    SatelliteParams,
-    MPCParams as CppMPCParams,
-    MPCControllerCpp,
-    Obstacle,
-    ObstacleSet,
-    ObstacleType,
-)
+_CPP_IMPORT_ERROR: Optional[ImportError] = None
+try:
+    from src.satellite_control.cpp._cpp_mpc import (
+        SatelliteParams,
+        MPCParams as CppMPCParams,
+        MPCControllerCpp,
+        Obstacle,
+        ObstacleSet,
+        ObstacleType,
+    )
+except ImportError as exc:  # pragma: no cover - depends on local runtime env
+    _CPP_IMPORT_ERROR = exc
+    SatelliteParams = None  # type: ignore[assignment]
+    CppMPCParams = None  # type: ignore[assignment]
+    MPCControllerCpp = None  # type: ignore[assignment]
+    Obstacle = None  # type: ignore[assignment]
+    ObstacleSet = None  # type: ignore[assignment]
+    ObstacleType = None  # type: ignore[assignment]
 from src.satellite_control.mission.mission_types import (
     Obstacle as MissionObstacle,
     ObstacleType as MissionObstacleType,
@@ -30,6 +41,26 @@ from src.satellite_control.mission.mission_types import (
 from .base import Controller
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_cpp_binding_import_error() -> None:
+    """Raise a detailed error when C++ MPC bindings cannot be imported."""
+    assert _CPP_IMPORT_ERROR is not None
+
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    message = (
+        "Failed to import C++ MPC bindings (`src.satellite_control.cpp._cpp_mpc`). "
+        f"Running interpreter: Python {py_ver}. Original error: {_CPP_IMPORT_ERROR}"
+    )
+
+    if "Python version mismatch" in str(_CPP_IMPORT_ERROR):
+        message += (
+            " Detected ABI mismatch between the active Python interpreter and the compiled "
+            "extension. Rebuild the extension with the same interpreter used to run the app/tests "
+            "(for this repo, Python 3.11 is the supported development target)."
+        )
+
+    raise RuntimeError(message) from _CPP_IMPORT_ERROR
 
 
 class MPCController(Controller):
@@ -47,6 +78,9 @@ class MPCController(Controller):
         Args:
             cfg: Configuration object. Can be AppConfig (preferred) or OmegaConf/Dict (legacy).
         """
+        if _CPP_IMPORT_ERROR is not None:
+            _raise_cpp_binding_import_error()
+
         # Determine config type and extract parameters
         if isinstance(cfg, AppConfig):
             self._extract_params_from_app_config(cfg)

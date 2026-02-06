@@ -1,12 +1,26 @@
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import logging
+import sys
 
+_CPP_SIM_IMPORT_ERROR: Optional[ImportError] = None
 try:
-    from satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
-except ImportError:
-    # Allow import without compiled module for typing/testing if optional
+    from src.satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
+except ImportError as exc_src:
+    try:
+        from satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
+    except ImportError as exc_installed:
+        _CPP_SIM_IMPORT_ERROR = (
+            exc_src
+            if "Python version mismatch" in str(exc_src)
+            else exc_installed
+        )
+        # Allow import without compiled module for typing/testing if optional
+        SimulationEngine = None  # type: ignore
+        SatelliteParams = None  # type: ignore
+except Exception as exc:  # pragma: no cover - import-time runtime mismatch details
+    _CPP_SIM_IMPORT_ERROR = ImportError(str(exc))
     SimulationEngine = None  # type: ignore
     SatelliteParams = None  # type: ignore
 
@@ -18,6 +32,24 @@ from src.satellite_control.config.orbital_config import OrbitalConfig
 from src.satellite_control.config.timing import SIMULATION_DT
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_cpp_sim_binding_import_error() -> None:
+    """Raise a detailed error when C++ simulation bindings cannot be imported."""
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    original = _CPP_SIM_IMPORT_ERROR or ImportError("Unknown _cpp_sim import error")
+    message = (
+        "Failed to import C++ simulation bindings (`src.satellite_control.cpp._cpp_sim`). "
+        f"Running interpreter: Python {py_ver}. Original error: {original}"
+    )
+    if "Python version mismatch" in str(original):
+        message += (
+            " Detected ABI mismatch between the active Python interpreter and the compiled "
+            "extension. Rebuild `_cpp_sim` with the same interpreter used to run the app/tests "
+            "(for this repo, Python 3.11 is the supported development target)."
+        )
+
+    raise ImportError(message) from original
 
 
 class CppSatelliteSimulator:
@@ -36,10 +68,7 @@ class CppSatelliteSimulator:
             app_config: Application configuration (Hydra DictConfig)
         """
         if SimulationEngine is None:
-            raise ImportError(
-                "C++ Simulation Engine module (_cpp_sim) not found. "
-                "Please compile with 'pip install -e .'"
-            )
+            _raise_cpp_sim_binding_import_error()
 
         self.app_config = app_config
         # Get physics dt from simulation config (preferred) then mpc, then fallback

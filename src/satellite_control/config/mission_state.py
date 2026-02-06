@@ -100,6 +100,24 @@ class MissionState:
     scan: ScanState = field(default_factory=ScanState)
     trajectory: TrajectoryState = field(default_factory=TrajectoryState)
     obstacle_state: ObstacleState = field(default_factory=ObstacleState)
+    # Legacy shape-following runtime fields (formerly dynamic `dxf_*` attrs).
+    dxf_shape_center: Optional[Tuple[float, float, float]] = None
+    dxf_base_shape: List[Tuple[float, float, float]] = field(default_factory=list)
+    dxf_shape_phase: str = "POSITIONING"
+    dxf_closest_point_index: int = 0
+    dxf_estimated_duration: float = 0.0
+    dxf_mission_start_time: Optional[float] = None
+    dxf_tracking_start_time: Optional[float] = None
+    dxf_positioning_start_time: Optional[float] = None
+    dxf_stabilization_start_time: Optional[float] = None
+    dxf_current_target_position: Optional[Tuple[float, float, float]] = None
+    dxf_final_position: Optional[Tuple[float, float, float]] = None
+    dxf_target_start_distance: float = 0.0
+    dxf_has_return: bool = False
+    dxf_return_position: Optional[Tuple[float, float, float]] = None
+    dxf_return_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    dxf_trajectory: Optional[Any] = None
+    dxf_trajectory_dt: float = timing.CONTROL_DT
 
     # =========================================================================
     # BACKWARD COMPATIBILITY PROPERTIES
@@ -163,6 +181,47 @@ class MissionState:
     @path_speed.setter
     def path_speed(self, value: float):
         self.path.path_speed = value
+
+    # --- Legacy DXF aliases (mapped to canonical path state) ---
+    @property
+    def dxf_shape_path(self) -> List[Tuple[float, float, float]]:
+        return self.path.waypoints
+
+    @dxf_shape_path.setter
+    def dxf_shape_path(self, value: List[Tuple[float, float, float]]):
+        self.path.waypoints = value
+
+    @property
+    def dxf_path_length(self) -> float:
+        return self.path.path_length
+
+    @dxf_path_length.setter
+    def dxf_path_length(self, value: float):
+        self.path.path_length = value
+
+    @property
+    def dxf_path_speed(self) -> float:
+        return self.path.path_speed
+
+    @dxf_path_speed.setter
+    def dxf_path_speed(self, value: float):
+        self.path.path_speed = value
+
+    @property
+    def dxf_target_speed(self) -> float:
+        return self.path.path_speed
+
+    @dxf_target_speed.setter
+    def dxf_target_speed(self, value: float):
+        self.path.path_speed = value
+
+    @property
+    def dxf_shape_mode_active(self) -> bool:
+        return self.path.active
+
+    @dxf_shape_mode_active.setter
+    def dxf_shape_mode_active(self, value: bool):
+        self.path.active = value
 
     # --- Scan Mission ---
     @property
@@ -430,6 +489,23 @@ class MissionState:
         self.scan = ScanState()
         self.trajectory = TrajectoryState()
         self.obstacle_state = ObstacleState()
+        self.dxf_shape_center = None
+        self.dxf_base_shape = []
+        self.dxf_shape_phase = "POSITIONING"
+        self.dxf_closest_point_index = 0
+        self.dxf_estimated_duration = 0.0
+        self.dxf_mission_start_time = None
+        self.dxf_tracking_start_time = None
+        self.dxf_positioning_start_time = None
+        self.dxf_stabilization_start_time = None
+        self.dxf_current_target_position = None
+        self.dxf_final_position = None
+        self.dxf_target_start_distance = 0.0
+        self.dxf_has_return = False
+        self.dxf_return_position = None
+        self.dxf_return_angle = (0.0, 0.0, 0.0)
+        self.dxf_trajectory = None
+        self.dxf_trajectory_dt = timing.CONTROL_DT
 
     def get_current_mission_type(self) -> str:
         """
@@ -447,6 +523,36 @@ class MissionState:
             return "SCAN"
         else:
             return "NONE"
+
+    def get_resolved_path_waypoints(self) -> List[Tuple[float, float, float]]:
+        """Return canonical mission path waypoints."""
+        return self.path.waypoints
+
+    def get_resolved_path_length(self, compute_if_missing: bool = True) -> float:
+        """
+        Return path length with optional waypoint fallback.
+
+        Args:
+            compute_if_missing: If True, compute polyline length from waypoints
+                when explicit length is not set.
+        """
+        path_length = float(self.path.path_length or 0.0)
+        if path_length > 0.0:
+            return path_length
+
+        path = self.path.waypoints
+        if compute_if_missing and path and len(path) > 1:
+            total = 0.0
+            for i in range(1, len(path)):
+                x0, y0, z0 = path[i - 1]
+                x1, y1, z1 = path[i]
+                dx = float(x1) - float(x0)
+                dy = float(y1) - float(y0)
+                dz = float(z1) - float(z0)
+                total += math.sqrt(dx * dx + dy * dy + dz * dz)
+            return total
+
+        return 0.0
 
 
 def create_mission_state() -> MissionState:

@@ -256,6 +256,53 @@ class SatelliteMPCLinearizedSimulation:
         """Calculate distance from point to line segment (navigation_utils)."""
         return point_to_line_distance(point, line_start, line_end)
 
+    def _get_mission_state(self) -> Optional[Any]:
+        """Safely get mission state from simulation config."""
+        if self.simulation_config is None:
+            return None
+        return getattr(self.simulation_config, "mission_state", None)
+
+    def _get_mission_path_waypoints(self) -> list:
+        """Get mission path waypoints using canonical mission-state accessors."""
+        mission_state = self._get_mission_state()
+        if mission_state is None:
+            return []
+
+        path = mission_state.get_resolved_path_waypoints()
+        return list(path) if path else []
+
+    def _get_mission_path_length(self, compute_if_missing: bool = False) -> float:
+        """Get best-available path length (MPC cache first, then mission state)."""
+        if hasattr(self, "mpc_controller") and self.mpc_controller is not None:
+            if hasattr(self.mpc_controller, "_path_length"):
+                try:
+                    path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+                    if path_len > 0.0:
+                        return path_len
+                except (TypeError, ValueError):
+                    pass
+
+        mission_state = self._get_mission_state()
+        if mission_state is None:
+            return 0.0
+
+        path_len = float(
+            mission_state.get_resolved_path_length(
+                compute_if_missing=compute_if_missing
+            )
+            or 0.0
+        )
+        if path_len > 0.0:
+            return path_len
+
+        if compute_if_missing:
+            path = self._get_mission_path_waypoints()
+            if len(path) > 1:
+                path_arr = np.array(path, dtype=float)
+                return float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
+
+        return 0.0
+
     # OBSTACLE AVOIDANCE METHODS
 
     def log_physics_step(self):
@@ -472,7 +519,7 @@ class SatelliteMPCLinearizedSimulation:
         speed_scale = 1.0
         remaining = None
         try:
-            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+            path_len = self._get_mission_path_length(compute_if_missing=True)
             s_val = float(getattr(self.mpc_controller, "s", 0.0) or 0.0)
             if path_len > 0.0:
                 remaining = max(0.0, path_len - s_val)
@@ -684,22 +731,7 @@ class SatelliteMPCLinearizedSimulation:
         status_msg = f"Following Path (t={self.simulation_time:.1f}s)"
 
         path_s = getattr(self.mpc_controller, "s", None)
-        path_len = None
-        if hasattr(self.mpc_controller, "_path_length"):
-            try:
-                path_len = float(
-                    getattr(self.mpc_controller, "_path_length", 0.0) or 0.0
-                )
-            except (TypeError, ValueError):
-                path_len = 0.0
-        if path_len is None or path_len <= 0.0:
-            if self.simulation_config is not None:
-                path_len = float(
-                    getattr(
-                        self.simulation_config.mission_state, "dxf_path_length", 0.0
-                    )
-                    or 0.0
-                )
+        path_len = self._get_mission_path_length(compute_if_missing=True)
         if path_s is not None and path_len:
             status_msg = f"Following Path (s={path_s:.2f}/{path_len:.2f}m, t={self.simulation_time:.1f}s)"
 
@@ -833,14 +865,7 @@ class SatelliteMPCLinearizedSimulation:
             return False
 
         # Always in path following mode
-        path_len = 0.0
-        if hasattr(self.mpc_controller, "_path_length"):
-            path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
-        if path_len <= 0.0 and self.simulation_config is not None:
-            path_len = float(
-                getattr(self.simulation_config.mission_state, "dxf_path_length", 0.0)
-                or 0.0
-            )
+        path_len = self._get_mission_path_length(compute_if_missing=True)
         if path_len <= 0.0:
             return False
         pos = None
@@ -861,7 +886,8 @@ class SatelliteMPCLinearizedSimulation:
                 endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
         elif pos is not None:
             try:
-                end_pt = np.array(self.simulation_config.mission_state.mpcc_path_waypoints[-1], dtype=float)
+                path = self._get_mission_path_waypoints()
+                end_pt = np.array(path[-1], dtype=float)
                 endpoint_error = float(np.linalg.norm(pos - end_pt))
             except Exception:
                 endpoint_error = float("inf")

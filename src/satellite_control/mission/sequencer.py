@@ -148,7 +148,7 @@ class MissionSequencer:
         """
         # Reset relevant flags
         self.mission_state.enable_waypoint_mode = False
-        self.mission_state.dxf_shape_mode_active = False
+        self.mission_state.path_following_active = False
 
         if stage.type == "goto":
             self._setup_goto_stage(stage)
@@ -189,10 +189,10 @@ class MissionSequencer:
             z = center[2]
             path.append((x, y, z))
 
-        self.mission_state.dxf_shape_mode_active = True
-        self.mission_state.dxf_shape_path = path
-        self.mission_state.dxf_target_speed = speed
-        self.mission_state.dxf_path_length = 2 * np.pi * radius
+        self.mission_state.path_following_active = True
+        self.mission_state.path_waypoints = path
+        self.mission_state.path_speed = speed
+        self.mission_state.path_length = 2 * np.pi * radius
         self.mission_state.dxf_shape_phase = "POSITIONING"  # Start by going to start
 
         # Reset internal DXF state
@@ -245,8 +245,8 @@ class MissionSequencer:
                 return elapsed >= duration
 
             # Check logic for loops (approximate based on path length and speed)
-            path_len = self.mission_state.dxf_path_length
-            speed = self.mission_state.dxf_target_speed
+            path_len = self.mission_state.path_length
+            speed = self.mission_state.path_speed
             if speed > 0 and path_len > 0:
                 loop_time = path_len / speed
                 # Add some buffer for positioning phase

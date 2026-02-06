@@ -107,10 +107,9 @@ def run(
 
         mpc_cfg = simulation_config.app_config.mpc
         ms = simulation_config.mission_state
-        ms.mpcc_path_waypoints = path
-        ms.dxf_shape_path = path
-        ms.dxf_path_length = path_length
-        ms.dxf_path_speed = mpc_cfg.path_speed
+        ms.path_waypoints = path
+        ms.path_length = path_length
+        ms.path_speed = mpc_cfg.path_speed
         ms.trajectory_mode_active = False
 
     elif mission_file:
@@ -180,12 +179,11 @@ def run(
                 ms.obstacles_enabled = True
 
             simulation_config.app_config.mpc.path_speed = float(path_speed)
-            ms.mpcc_path_waypoints = path
-            ms.dxf_shape_path = path
-            ms.dxf_path_length = float(path_length)
-            ms.dxf_path_speed = float(path_speed)
+            ms.path_waypoints = path
+            ms.path_length = float(path_length)
+            ms.path_speed = float(path_speed)
             ms.trajectory_mode_active = False
-            ms.dxf_shape_mode_active = False
+            ms.path_following_active = False
             ms.mesh_scan_mode_active = False
 
             console.print(
@@ -253,14 +251,13 @@ def run(
             mpc_cfg = simulation_config.app_config.mpc
             mpc_cfg.path_speed = speed
 
-            ms.mpcc_path_waypoints = path
-            ms.dxf_shape_path = path
-            ms.dxf_path_length = path_length
-            ms.dxf_path_speed = speed
+            ms.path_waypoints = path
+            ms.path_length = path_length
+            ms.path_speed = speed
             ms.trajectory_hold_end = float(path_cfg.get("hold_end", 0.0) or 0.0)
             ms.trajectory_mode_active = False
             ms.trajectory_type = "path"
-            ms.dxf_shape_mode_active = False
+            ms.path_following_active = False
             ms.mesh_scan_mode_active = False
 
             console.print(
@@ -321,10 +318,9 @@ def run(
 
                 ms.mesh_scan_mode_active = True
                 ms.mesh_scan_obj_path = mesh_scan.get("obj_path")
-                ms.dxf_shape_path = path
-                ms.dxf_path_length = path_length
-                ms.dxf_path_speed = scan_speed
-                ms.mpcc_path_waypoints = path
+                ms.path_length = path_length
+                ms.path_speed = scan_speed
+                ms.path_waypoints = path
                 ms.trajectory_mode_active = False
                 ms.trajectory_type = "scan"
 
@@ -378,10 +374,9 @@ def run(
                 mpc_cfg = simulation_config.app_config.mpc
                 mpc_cfg.path_speed = speed
 
-                ms.mpcc_path_waypoints = path
-                ms.dxf_shape_path = path
-                ms.dxf_path_length = path_length
-                ms.dxf_path_speed = speed
+                ms.path_waypoints = path
+                ms.path_length = path_length
+                ms.path_speed = speed
                 ms.trajectory_hold_end = hold_end
                 ms.trajectory_mode_active = False
 

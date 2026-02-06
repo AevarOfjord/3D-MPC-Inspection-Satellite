@@ -242,12 +242,43 @@ class ConfigIO:
             ObstacleState,
         )
 
+        def _apply_legacy_dxf_fields(ms: MissionState) -> MissionState:
+            # Preserve legacy DXF runtime fields when present in serialized data.
+            legacy_keys = (
+                "dxf_shape_mode_active",
+                "dxf_shape_path",
+                "dxf_path_length",
+                "dxf_path_speed",
+                "dxf_target_speed",
+                "dxf_shape_center",
+                "dxf_base_shape",
+                "dxf_shape_phase",
+                "dxf_closest_point_index",
+                "dxf_estimated_duration",
+                "dxf_mission_start_time",
+                "dxf_tracking_start_time",
+                "dxf_positioning_start_time",
+                "dxf_stabilization_start_time",
+                "dxf_current_target_position",
+                "dxf_final_position",
+                "dxf_target_start_distance",
+                "dxf_has_return",
+                "dxf_return_position",
+                "dxf_return_angle",
+                "dxf_trajectory",
+                "dxf_trajectory_dt",
+            )
+            for key in legacy_keys:
+                if key in mission_state_dict:
+                    setattr(ms, key, mission_state_dict[key])
+            return ms
+
         # 1. Attempt to load as new nested structure first
         if any(
             key in mission_state_dict
             for key in ("path", "scan", "trajectory", "obstacle_state")
         ):
-            return MissionState(
+            ms = MissionState(
                 path=PathFollowingState(**mission_state_dict.get("path", {})),
                 scan=ScanState(**mission_state_dict.get("scan", {})),
                 trajectory=TrajectoryState(**mission_state_dict.get("trajectory", {})),
@@ -255,23 +286,42 @@ class ConfigIO:
                     **mission_state_dict.get("obstacle_state", {})
                 ),
             )
+            return _apply_legacy_dxf_fields(ms)
 
         # 2. Fallback: Map legacy flat keys to new structure
         ms = MissionState()
 
         # Path Following (path-only)
-        path_points = mission_state_dict.get("mpcc_path_waypoints", []) or mission_state_dict.get(
-            "path_waypoints", []
+        path_points = (
+            mission_state_dict.get("mpcc_path_waypoints", [])
+            or mission_state_dict.get("path_waypoints", [])
+            or mission_state_dict.get("dxf_shape_path", [])
         )
         if path_points:
             ms.path.waypoints = path_points
         ms.path.path_speed = mission_state_dict.get(
-            "mpcc_path_speed", mission_state_dict.get("path_speed", ms.path.path_speed)
+            "mpcc_path_speed",
+            mission_state_dict.get(
+                "path_speed",
+                mission_state_dict.get(
+                    "dxf_path_speed",
+                    mission_state_dict.get("dxf_target_speed", ms.path.path_speed),
+                ),
+            ),
         )
         ms.path.path_length = mission_state_dict.get(
-            "mpcc_path_length", mission_state_dict.get("path_length", ms.path.path_length)
+            "mpcc_path_length",
+            mission_state_dict.get(
+                "path_length",
+                mission_state_dict.get("dxf_path_length", ms.path.path_length),
+            ),
         )
-        ms.path.active = mission_state_dict.get("path_following_active", ms.path.active)
+        ms.path.active = mission_state_dict.get(
+            "path_following_active",
+            mission_state_dict.get("dxf_shape_mode_active", ms.path.active),
+        )
+        if path_points and "path_following_active" not in mission_state_dict and "dxf_shape_mode_active" not in mission_state_dict:
+            ms.path.active = True
 
         # Scan
         ms.scan.active = mission_state_dict.get("mesh_scan_mode_active", False)
@@ -286,7 +336,7 @@ class ConfigIO:
         ms.obstacle_state.enabled = mission_state_dict.get("obstacles_enabled", False)
         ms.obstacle_state.obstacles = mission_state_dict.get("obstacles", [])
 
-        return ms
+        return _apply_legacy_dxf_fields(ms)
 
     @staticmethod
     def _migrate_config(

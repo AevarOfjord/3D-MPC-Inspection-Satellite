@@ -356,12 +356,11 @@ class SimulationManager:
                 for o in mission.obstacles
             ]
             sim_config.mission_state.obstacles_enabled = True
-        sim_config.mission_state.mpcc_path_waypoints = path
-        sim_config.mission_state.dxf_shape_path = path
-        sim_config.mission_state.dxf_path_length = float(path_length)
-        sim_config.mission_state.dxf_path_speed = float(path_speed)
+        sim_config.mission_state.path_waypoints = path
+        sim_config.mission_state.path_length = float(path_length)
+        sim_config.mission_state.path_speed = float(path_speed)
         sim_config.mission_state.trajectory_mode_active = False
-        sim_config.mission_state.dxf_shape_mode_active = False
+        sim_config.mission_state.path_following_active = False
         sim_config.mission_state.mesh_scan_mode_active = False
 
         scan_center = None
@@ -488,8 +487,8 @@ class SimulationManager:
         if self.current_mission_config and self.current_mission_config.mesh_scan:
             self._configure_mesh_scan(sim_config, self.current_mission_config.mesh_scan)
             # Update end_pos if mesh scan set a path start
-            if sim_config.mission_state.dxf_shape_path:
-                end_pos = tuple(sim_config.mission_state.dxf_shape_path[0])
+            if sim_config.mission_state.path_waypoints:
+                end_pos = tuple(sim_config.mission_state.path_waypoints[0])
 
         # Initialize Instance
         self.sim_instance = SatelliteMPCLinearizedSimulation(
@@ -560,11 +559,10 @@ class SimulationManager:
         ms.mesh_scan_lateral_accel = mesh_scan.lateral_accel
         ms.mesh_scan_z_margin = mesh_scan.z_margin
 
-        ms.dxf_shape_mode_active = False
-        ms.dxf_shape_path = path
-        ms.dxf_path_length = path_length
-        ms.dxf_path_speed = mesh_scan.speed_max
-        ms.mpcc_path_waypoints = path
+        ms.path_following_active = False
+        ms.path_length = path_length
+        ms.path_speed = mesh_scan.speed_max
+        ms.path_waypoints = path
         ms.trajectory_mode_active = False
 
     def _get_telemetry_dict(self) -> Dict[str, Any]:
