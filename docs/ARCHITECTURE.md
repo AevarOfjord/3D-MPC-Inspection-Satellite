@@ -29,7 +29,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   ├── mission/             # Mission management (16 files)
 │   ├── physics/             # Orbital dynamics (2 files)
 │   ├── planning/            # Path planning (2 files)
-│   ├── visualization/       # Plotting & video (9 files)
+│   ├── visualization/       # Plotting & video (14 files)
 │   ├── dashboard/           # FastAPI backend (2 files)
 │   ├── utils/               # Utilities (11 files)
 │   ├── fleet/               # Multi-satellite (2 files)
@@ -219,7 +219,6 @@ Pydantic-based configuration with comprehensive validation:
 | `constants.py` | 170 | System-wide constants |
 | `adapter.py` | 210 | Hydra ↔ Pydantic conversion |
 | `orbital_config.py` | 110 | Orbital parameters |
-| `actuator_config.py` | 150 | Thruster/RW configuration |
 | `reaction_wheel_config.py` | 150 | Reaction wheel parameters |
 | `thruster_config.py` | 75 | Thruster parameters |
 | `timing.py` | 135 | Timing constants |
@@ -239,7 +238,7 @@ AppConfig
 │   ├── prediction_horizon, control_horizon, dt
 │   ├── Q weights (position, velocity, angle, angular_velocity)
 │   ├── R weights (thrust, rw_torque)
-│   └── collision_avoidance settings
+│   └── path progress and tracking weights
 └── simulation: SimulationParams
     ├── dt, max_duration, headless
     └── timing parameters
@@ -247,22 +246,24 @@ AppConfig
 
 ---
 
-## src/satellite_control/mission/ (11 files)
+## src/satellite_control/mission/ (current core files)
 
 Mission configuration and execution:
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `interactive_cli.py` | 1230 | Rich-based interactive menus |
-| `mission_report_generator.py` | 900 | PDF/HTML report generation |
-| `trajectory_utils.py` | 195 | Spline trajectory generation |
-| `mesh_scan.py` | 210 | 3D object scanning missions |
-| `mission_types.py` | 165 | Mission, Waypoint, Phase dataclasses |
-| `mission_factory.py` | 155 | Mission creation helpers |
-| `path_following.py` | 110 | DXF/shape following |
-| `starlink_orbit.py` | 180 | Starlink inspection path generation |
-| `mission_logic.py` | 220 | Path/shape generation helpers |
-| `__init__.py` | - | Module exports |
+| File | Description |
+|------|-------------|
+| `mission_state_manager.py` | Runtime mission state machine for path tracking and waypoint logic |
+| `path_following.py` | Path building and path-following helpers |
+| `repository.py` | Mission discovery/loading from `missions_unified/` |
+| `runtime_loader.py` | Shared unified mission parse/compile runtime pipeline (CLI + dashboard) |
+| `unified_mission.py` | Unified mission schema |
+| `unified_compiler.py` | Compiles unified mission segments into executable paths |
+| `mission_types.py` | Mission-related dataclasses and types |
+| `trajectory_utils.py` | Trajectory generation utilities |
+| `mesh_scan.py` | Mesh scan mission path generation |
+| `path_assets.py` | Path asset loading |
+| `mission_report_generator.py` | Mission run reporting |
+| `__init__.py` | Module exports |
 
 ---
 
@@ -289,52 +290,46 @@ class CWDynamics:
 
 ---
 
-## src/satellite_control/planning/ (2 files)
+## src/satellite_control/planning/ (legacy/non-runtime)
 
-### rrt_star.py (274 lines)
-
-RRT* path planner for obstacle avoidance:
-
-```python
-class RRTStarPlanner:
-    """Rapidly-exploring Random Tree Star."""
-    
-    def plan(
-        start: np.ndarray,      # [x, y, z]
-        goal: np.ndarray,       # [x, y, z]
-        obstacles: List[Obstacle]
-    ) -> List[np.ndarray]:
-        """Returns collision-free waypoint list."""
-```
-
-### trajectory_generator.py (45 lines)
-
-Converts waypoints to time-parameterized trajectories.
+The active runtime path is compiled in `mission/unified_compiler.py` and
+tracked by the path-based MPC in `control/mpc_controller.py`.
+Any standalone planning modules in `src/satellite_control/planning/` are not
+on the default simulation entry path (`make sim` / CLI unified mission flow).
 
 ---
 
-## src/satellite_control/visualization/ (9 files)
+## src/satellite_control/visualization/ (current core files)
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `unified_visualizer.py` | 3050 | Post-processor, generates all plots & videos |
-| `plot_generator.py` | 2500 | 16+ plot types (position, velocity, thrusters) |
-| `dashboard.py` | 1340 | Deprecated matplotlib dashboard |
-| `video_renderer.py` | 810 | FFmpeg-based MP4 generation |
-| `simulation_visualization.py` | 920 | 3D trajectory animation |
-| `satellite_2d_diagram.py` | 310 | Thruster layout diagram |
-| `shape_utils.py` | 160 | DXF parsing utilities |
-| `__init__.py` | - | Module exports |
+| File | Description |
+|------|-------------|
+| `unified_visualizer.py` | Post-processor entrypoint that loads CSV data and orchestrates plot/video generation |
+| `plot_generator.py` | Plot orchestration layer; delegates to focused helper modules |
+| `plot_style.py` | Shared style constants and figure save helpers |
+| `trajectory_plots.py` | Trajectory and 3D path plot helpers |
+| `actuator_plots.py` | Thruster, PWM, actuator-limit, impulse plotting helpers |
+| `state_plots.py` | Constraint, coupling, phase, velocity plotting helpers |
+| `diagnostics_plots.py` | Solver, timing, waypoint progress, MPC performance helpers |
+| `plot_data_utils.py` | Shared dataframe/time-axis/series extraction helpers |
+| `command_utils.py` | Shared thruster-count and command-vector parsing helpers |
+| `video_renderer.py` | MP4/GIF frame rendering backend |
+| `simulation_visualization.py` | Runtime simulation visualization manager |
+| `__init__.py` | Module exports |
 
 ### Post-Processing Pipeline
 
 ```
 simulation.py
     └── SimulationLoop.run()
-        └── _save_data()
-            └── UnifiedVisualizationGenerator.generate_all()
-                ├── plot_generator.py → 16 PNG plots
-                └── video_renderer.py → animation.mp4
+        └── auto_generate_visualizations()
+            ├── UnifiedVisualizationGenerator.load_csv_data()
+            ├── UnifiedVisualizationGenerator.generate_performance_plots()
+            │   └── PlotGenerator
+            │       ├── trajectory_plots.py
+            │       ├── actuator_plots.py
+            │       ├── state_plots.py
+            │       └── diagnostics_plots.py
+            └── SimulationVisualizationManager.save_trajectory_animation()
 ```
 
 ---
@@ -360,7 +355,7 @@ async def websocket_live(websocket: WebSocket)
 
 ---
 
-## src/satellite_control/utils/ (11 files)
+## src/satellite_control/utils/ (10 files)
 
 | File | Lines | Description |
 |------|-------|-------------|
@@ -371,44 +366,8 @@ async def websocket_live(websocket: WebSocket)
 | `logging_config.py` | 180 | Logging setup |
 | `navigation_utils.py` | 165 | Angle normalization, distance |
 | `caching.py` | 160 | LRU caching decorators |
-| `state_converter.py` | 100 | State vector conversion |
 | `orientation_utils.py` | 60 | Quaternion ↔ Euler conversion |
 | `__init__.py` | - | Module exports |
-
----
-
-## src/satellite_control/fleet/ (2 files)
-
-### fleet_manager.py (220 lines)
-
-Multi-satellite coordination (experimental):
-
-```python
-class FleetManager:
-    """Manages multiple satellite instances."""
-    satellites: Dict[str, SatelliteHandle]
-    
-    def add_satellite(name: str, config: AppConfig) -> None
-    def step_all(dt: float) -> None
-```
-
----
-
-## src/satellite_control/testing/ (2 files)
-
-### monte_carlo.py (470 lines)
-
-Statistical validation framework:
-
-```python
-class MonteCarloRunner:
-    """Run N simulations with parameter variations."""
-    
-    def run(
-        n_trials: int,
-        parameter_ranges: Dict[str, Tuple[float, float]],
-    ) -> MonteCarloResults
-```
 
 ---
 
@@ -437,7 +396,7 @@ config/
 
 | Category | Files |
 |----------|-------|
-| **Unit Tests** | `test_config.py`, `test_caching.py`, `test_navigation_utils.py`, `test_orientation_utils.py`, `test_shape_utils.py`, `test_state_converter.py` |
+| **Unit Tests** | `test_config.py`, `test_caching.py`, `test_navigation_utils.py`, `test_orientation_utils.py` |
 | **Component Tests** | `test_mpc_controller.py`, `test_thruster_manager.py`, `test_simulation_loop.py`, `test_simulation_logger.py`, `test_simulation_io.py`, `test_simulation_initialization.py`, `test_simulation_context.py`, `test_simulation_state_validator.py`, `test_data_logger.py`, `test_performance_monitor.py`, `test_video_renderer.py`, `test_plot_generator.py`, `test_spline_path.py` |
 | **Mission Tests** | `test_mission_state_refactor.py`, `test_presets.py` |
 | **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
