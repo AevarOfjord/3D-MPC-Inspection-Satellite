@@ -1,13 +1,14 @@
 # Simulation Guide
 
-Complete guide to running simulations, understanding mission types, and the simulation loop architecture.
+Complete guide to running the path-based unified mission simulation and the
+simulation loop architecture.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Mission Types](#mission-types)
+- [Mission Flow](#mission-flow)
 - [Simulation Loop Architecture](#simulation-loop-architecture)
 - [Timing & Frequency](#timing--frequency)
 - [Mission Configuration](#mission-configuration)
@@ -19,114 +20,37 @@ Complete guide to running simulations, understanding mission types, and the simu
 
 ## Overview
 
-The satellite control system supports **two primary mission types**, each with flexible configuration through an interactive CLI menu. The simulation uses a high-fidelity custom C++ physics engine with Model Predictive Control (MPC) running at different rates for optimal performance.
+The active runtime is **path-based MPC only** using unified mission v2 JSON
+files. Missions are authored in the web UI, saved to `missions_unified/`, then
+run from the terminal (`make sim` or `python run_simulation.py --mission ...`).
+The simulation uses a high-fidelity custom C++ physics engine with MPC running
+at different rates for optimal performance.
 
 **Quick Start:**
 
 ```bash
-python run_simulation.py
+make sim
 ```
 
 ---
 
-## Mission Types
+## Mission Flow
 
-### Mission 1: Waypoint Navigation
+**Follow a saved 3D unified mission path using the path-based MPC controller**
 
-**Navigate to single or multiple waypoints in sequence**
+**How missions are defined and run:**
 
-**Features:**
+1. Build mission path/segments in the web UI
+2. Save unified mission v2 JSON to `missions_unified/`
+3. Run in terminal and choose from saved mission files
 
-- Single point-to-point navigation
-- Multiple waypoint sequential navigation (up to 10 waypoints)
-- Customizable position and orientation for each waypoint
-- Automatic navigation with obstacle avoidance (optional)
-- Configurable stabilization criteria
+**Runtime phases:**
 
-**Use Cases:**
-
-- Simple point-to-point maneuvers
-- Multi-stop inspection routes
-- Sequential target acquisition
-- Formation flying waypoint missions
-
-**Presets Available:**
-
-1. **Simple Translation** - Move 1m in X direction
-2. **Diagonal Movement** - 45° diagonal path
-3. **Rotation Test** - Pure rotation maneuver
-4. **Multi-Waypoint Tour** - Sequential navigation through 4 waypoints
-5. **Obstacle Course** - Navigate around obstacles
-6. **Custom** - Full manual configuration
-
-**Mission Phases:**
-
-1. **APPROACHING** - Moving toward waypoint target
-2. **STABILIZING** - Holding at waypoint (3s for intermediate, 10s for final)
-
----
-
-### Mission 2: Shape Following
-
-**Follow a moving target along predefined geometric paths**
-
-**Available Shapes:**
-
-1. **Circle** - Smooth circular path
-2. **Rectangle** - Rectangular path with configurable dimensions
-3. **Triangle** - Equilateral triangle path
-4. **Hexagon** - Regular hexagon path
-5. **Star** - Star-shaped path
-6. **Custom DXF** - Import CAD shapes from DXF files
-
-**Features:**
-
-- Moving target follows the shape path at configurable speed
-- Configurable shape center, rotation, and offset distance from path
-- Real-time path visualization in terminal dashboard
-- Adaptive velocity control based on target distance
-
-**Use Cases:**
-
-- Perimeter inspection patterns
-- Formation flying around targets
-- Orbital surveillance paths
-- Custom path following from CAD designs
-
-**Mission Phases (without return):**
-
-1. **POSITIONING** - Moving to closest point on path
-2. **PATH_STABILIZATION** - Stabilizing at start waypoint (5s)
-3. **TRACKING** - Following moving target along path
-4. **STABILIZING** - Holding at final path position (15s)
-
-**Mission Phases (with return):**
-
-1. **POSITIONING** - Moving to closest point on path
-2. **PATH_STABILIZATION** - Stabilizing at start waypoint (5s)
-3. **TRACKING** - Following moving target along path
-4. **PATH_STABILIZATION** - Stabilizing at final waypoint (5s)
-5. **RETURNING** - Moving to return position
-6. **STABILIZING** - Holding at return position (15s)
-
-### Custom DXF Shape Import
-
-Load custom paths from CAD software:
-
-**Supported Features:**
-
-- Polylines and line segments
-- Closed and open paths
-- Automatic path conversion to waypoints
-- Configurable point density along curves
-
-**Usage:**
-
-1. Export CAD design as DXF file (ASCII format, R12/R2000)
-2. Launch: `python run_simulation.py`
-3. Select "Shape Following" → "Custom DXF"
-4. Provide file path
-5. Configure center, rotation, offset, and speed
+1. **POSITIONING** - Move to nearest point on the mission path
+2. **PATH_STABILIZATION** - Stabilize before tracking
+3. **TRACKING** - Follow the mission path reference
+4. **STABILIZING** - Stabilize at mission end
+5. **RETURNING** (optional) - Return to configured return pose
 
 ---
 
@@ -177,7 +101,7 @@ MPCC derives the reference state from the configured path:
 
 **Inputs:**
 
-- `mission_state.mpcc_path_waypoints` - Path waypoints
+- `mission_state.path_waypoints` - Path waypoints
 - Path progress state `s` and virtual speed `v_s`
 
 **Outputs:**
@@ -191,20 +115,22 @@ Runs at **16.67 Hz** (every 60ms):
 
 **Input:**
 
-- Current state: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
-- Target state: [x_target, y_target, z_target, qw, qx, qy, qz, 0, 0, 0, 0, 0, 0]
+- Current state (position, attitude quaternion, linear/angular velocity)
+- Path progress state (`s`) and path reference at the projected point
 
 **Computation:**
 
 - Formulates Quadratic Program (QP) with:
-  - N = 50 prediction steps (3.0 seconds ahead)
-  - 13 states + 11 controls per step (3 reaction-wheel torques + 8 thrusters)
-  - Cost function: minimize position/velocity/attitude error + control effort
+  - Prediction horizon from `app_config.mpc.prediction_horizon`
+  - MPCC augmented state (includes path progress `s`)
+  - Controls: 3 reaction-wheel torques + configured face thrusters + virtual progress control
+  - Cost function: minimize contour/lag/path-speed tracking error + control effort
 - Solves using **OSQP** (typical: 1-2ms)
 
 **Output:**
 
-- 8 thruster PWM duty cycles: u ∈ [0, 1]
+- Thruster duty cycles for configured thruster count (default cube layout: 6)
+- Reaction wheel torque commands for 3 axes
 - Only first control action applied (receding horizon)
 
 **3. Physics & Actuation** (`cpp_satellite.py`)
@@ -301,22 +227,6 @@ SIMULATION_DT = 0.005  # 200 Hz physics integration
 
 ## Mission Configuration
 
-### InteractiveCLI
-
-Modern menu system using `questionary` with arrow-key navigation:
-
-```bash
-python run_simulation.py
-```
-
-**Features:**
-
-- ✓ Arrow-key navigation
-- ✓ Input validation with helpful error messages
-- ✓ Real-time parameter preview
-- ✓ Visual mission summary before launch
-- ✓ Color-coded status updates
-
 ### Command-Line Options
 
 Quick launch without interactive menu:
@@ -331,8 +241,6 @@ python run_simulation.py --duration 30.0
 # Headless mode (no animation)
 python run_simulation.py --no-anim
 
-# Classic text menu (legacy)
-python run_simulation.py --classic
 ```
 
 ### Timing Parameters
@@ -344,7 +252,7 @@ python run_simulation.py --classic
 - Angle tolerance: 3° (orientation accuracy)
 - Waypoint hold time: Configurable
 
-**Shape Following Mission:**
+**Path Following Mission:**
 
 - Positioning phase: Approach nearest point
 - Tracking phase: Variable (path_length / target_speed)
@@ -414,11 +322,11 @@ python run_simulation.py
 
 **Workflow:**
 
-1. Select mission type (Waypoint or Shape Following)
-2. Choose preset or custom configuration
-3. Configure parameters with real-time validation
-4. Preview mission summary
-5. Confirm and launch
+1. Launch the simulation from terminal
+2. Choose a saved mission file
+3. Confirm run parameters
+4. Execute simulation
+5. Review generated plots and animation
 
 ### Execution Flow Example
 
@@ -499,7 +407,7 @@ The simulation provides:
 ✅ **Efficient computation** by separating control and physics rates  
 ✅ **Comprehensive logging** for post-analysis  
 ✅ **Real-time visualization** via terminal dashboard  
-✅ **Flexible missions** with waypoint and shape following modes
+✅ **Path-based missions** created in web UI and executed in terminal
 
 This design mirrors real embedded control systems where controllers run at lower rates than sensor/actuator updates.
 

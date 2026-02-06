@@ -9,7 +9,7 @@ Model Predictive Control system for satellite thruster control with a custom C++
 
    ARCHITECTURE
    DEVELOPMENT_GUIDE
-   TESTING_GUIDE
+   TESTING
    TROUBLESHOOTING
 
 .. toctree::
@@ -24,7 +24,6 @@ Model Predictive Control system for satellite thruster control with a custom C++
 
    SIMULATION
    VISUALIZATION
-   PHYSICS_ENGINE
    MATHEMATICS
 
 
@@ -41,8 +40,8 @@ Installation
    cd SatelliteProject
 
    # Create virtual environment
-   python -m venv venv
-   source venv/bin/activate
+   python3.11 -m venv .venv311
+   source .venv311/bin/activate
 
    # Install dependencies
    pip install -e ".[dev]"
@@ -59,15 +58,11 @@ Key Components
 --------------
 
 **MPC Controllers**
-   - ``PWMMPC``: Continuous PWM controller with L1 fuel-optimal mode
-   - ``BinaryMPC``: Binary (on/off) thruster controller
+   - ``MPCController``: Path-following MPC with OSQP solver
 
 **Simulation**
    - ``SatelliteMPCLinearizedSimulation``: Main simulation class
    - ``ThrusterManager``: Thruster valve physics
-
-**Testing**
-   - ``MonteCarloRunner``: Statistical analysis framework
 
 
 Indices and tables
