@@ -1,12 +1,6 @@
 Testing Module
 ==============
 
-Testing utilities and Monte Carlo analysis.
+Testing utilities.
 
-Monte Carlo Runner
-------------------
-
-.. automodule:: src.satellite_control.testing.monte_carlo
-   :members:
-   :undoc-members:
-   :show-inheritance:
+(Monte Carlo runner removed — not used by active runtime paths.)

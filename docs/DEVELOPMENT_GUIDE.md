@@ -30,9 +30,9 @@ This guide provides technical details for developers and engineers interested in
 git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel.git
 cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 
-# Create virtual environment (highly recommended)
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Create virtual environment (Python 3.11 required)
+python3.11 -m venv .venv311
+source .venv311/bin/activate  # On Windows: .venv311\Scripts\activate
 
 # Install all dependencies
 pip install -r requirements.txt
@@ -46,9 +46,6 @@ python run_simulation.py
 
 # Run tests
 pytest tests/
-
-# Run verification suite
-python run_simulation.py verify
 
 # Check code quality
 flake8 src/
@@ -260,14 +257,14 @@ pytest tests/e2e/ -v
 pytest -m "not slow"
 ```
 
-### Using the CLI verify Command
+### Recommended Validation Commands
 
 ```bash
-# Run quick verification tests
-python run_simulation.py verify
+# Focused fast suite
+pytest -m "not slow"
 
-# Run full test suite (slower)
-python run_simulation.py verify --full
+# Full suite
+pytest tests/
 ```
 
 ### Writing Tests
@@ -378,33 +375,19 @@ simulation_config = SimulationConfig.create_default()
 mission_state = simulation_config.mission_state
 
 path = [(float(px), float(py), 0.0) for px, py in zip(x, y)]
-mission_state.mpcc_path_waypoints = path
-mission_state.dxf_shape_path = path
-mission_state.dxf_target_speed = speed
+mission_state.path_waypoints = path
+mission_state.path_speed = speed
 ```
 
-#### Step 3: Add CLI Menu Option
+#### Step 3: Wire into Mission Loading
 
-Update `src/satellite_control/mission/interactive_cli.py`:
+Integrate the mission into the saved-mission flow used by terminal simulation:
 
 ```python
-def show_mission_menu(self) -> str:
-    """Show main mission menu."""
-    choice = questionary.select(
-        "Select mission type:",
-        choices=[
-            "Waypoint Navigation",
-            "Shape Following",
-            "Figure-8 Navigation",  # New option
-            "Exit"
-        ],
-        style=CUSTOM_STYLE,
-        qmark=QMARK
-    ).ask()
+from src.satellite_control.mission.repository import list_mission_entries
 
-    if choice == "Figure-8 Navigation":
-        return "figure8"
-    # ... handle other choices
+entries = list_mission_entries(source_priority=("unified", "dev"))
+# Add your mission JSON and select it when running `python run_simulation.py`
 ```
 
 #### Step 4: Add Configuration
@@ -419,11 +402,11 @@ FIGURE8_DEFAULT_SPEED = 0.5  # m/s
 
 #### Step 5: Add Visualization Support
 
-Update `src/satellite_control/visualization/unified_visualizer.py` to draw figure-8 path overlay.
+Use the existing auto-generated plots/video pipeline (no mission-specific overlay required).
 
 #### Step 6: Write Tests
 
-Add tests in `tests/unit/test_mission_logic.py`:
+Add a test for the new path in `tests/`:
 
 ```python
 def test_figure8_mission_generation():
@@ -876,8 +859,6 @@ python run_simulation.py --auto
 # Run without animation (faster)
 python run_simulation.py --no-anim
 
-# Use classic text menu instead of interactive
-python run_simulation.py --classic
 ```
 
 ### Generating Visualizations Only
@@ -902,7 +883,7 @@ python run_simulation.py
 # Results saved to Data/Simulation/<timestamp-1>/
 
 # Modify parameters in config/
-# Edit config/mpc_params.py or config/physics.py
+# Edit src/satellite_control/config/models.py or constants in src/satellite_control/config/
 
 # Run with new parameters
 python run_simulation.py
@@ -976,7 +957,7 @@ mypy src/satellite_control/control/mpc_controller.py
 result = external_function()  # type: ignore
 
 # Add type: ignore comment with reason
-result = legacy_code()  # type: ignore  # TODO: add types to legacy module
+result = external_dependency()  # type: ignore  # third-party lib has no stubs
 ```
 
 ### C++ Extension Build Issues
