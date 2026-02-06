@@ -191,10 +191,7 @@ class MissionReportGenerator:
             f"  Starting orientation:    {self._format_euler_deg(quat_wxyz_to_euler_xyz(q))}\n\n"
         )
 
-        path = (
-            self.mission_state.mpcc_path_waypoints
-            or getattr(self.mission_state, "dxf_shape_path", [])
-        )
+        path = self.mission_state.get_resolved_path_waypoints()
         if path:
             start_pt = path[0]
             end_pt = path[-1]
@@ -203,21 +200,11 @@ class MissionReportGenerator:
             end_pt = reference_state[:3]
 
         path_length = float(
-            getattr(self.mission_state, "mpcc_path_length", 0.0)
-            or getattr(self.mission_state, "dxf_path_length", 0.0)
-            or 0.0
+            self.mission_state.get_resolved_path_length(compute_if_missing=True)
         )
-        if path_length <= 0.0 and path and len(path) > 1:
-            path_arr = np.array(path, dtype=float)
-            path_length = float(
-                np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1))
-            )
 
-        path_speed = float(
-            getattr(self.mission_state, "dxf_path_speed", 0.0)
-            or self.app_config.mpc.path_speed
-        )
-        hold_end = float(getattr(self.mission_state, "trajectory_hold_end", 0.0) or 0.0)
+        path_speed = float(self.mission_state.path_speed or self.app_config.mpc.path_speed)
+        hold_end = float(self.mission_state.trajectory_hold_end or 0.0)
 
         f.write("PATH CONFIGURATION:\n")
         f.write(
@@ -496,10 +483,7 @@ class MissionReportGenerator:
         final_state = state_history[-1]
         initial_pos = initial_state[:3]
         final_pos = final_state[:3]
-        path = (
-            self.mission_state.mpcc_path_waypoints
-            or getattr(self.mission_state, "dxf_shape_path", [])
-        )
+        path = self.mission_state.get_resolved_path_waypoints()
         if path:
             path_end = np.array(path[-1], dtype=float)
         else:

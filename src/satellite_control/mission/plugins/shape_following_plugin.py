@@ -53,11 +53,11 @@ class ShapeFollowingMissionPlugin(MissionPlugin):
     def get_required_parameters(self) -> List[str]:
         """Get required parameters."""
         return [
-            "dxf_shape_mode_active",
-            "dxf_shape_path",
+            "path_following_active",
+            "path_waypoints",
+            "path_speed",
+            "path_length",
             "dxf_shape_phase",
-            "dxf_target_speed",
-            "dxf_path_length",
             "dxf_closest_point_index",
         ]
     
@@ -75,7 +75,7 @@ class ShapeFollowingMissionPlugin(MissionPlugin):
             Configured MissionState for shape following mission
         """
         # Use existing manager to configure shape following mission
-        result = self.manager.run_dxf_shape_mode(return_simulation_config=True)
+        result = self.manager.run_shape_following_mode(return_simulation_config=True)
         
         if result and "simulation_config" in result:
             return result["simulation_config"].mission_state
@@ -104,11 +104,11 @@ class ShapeFollowingMissionPlugin(MissionPlugin):
             Target state vector [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
         """
         # Check if shape following mode is enabled
-        if not mission_state.dxf_shape_mode_active:
+        if not mission_state.path_following_active:
             return current_state  # No shape following mission active
         
         # Get shape path
-        if not mission_state.dxf_shape_path or len(mission_state.dxf_shape_path) == 0:
+        if not mission_state.path_waypoints or len(mission_state.path_waypoints) == 0:
             return current_state  # No shape path configured
         
         # The actual target calculation is complex and handled by MissionStateManager
@@ -134,7 +134,7 @@ class ShapeFollowingMissionPlugin(MissionPlugin):
         Returns:
             True if mission is complete, False otherwise
         """
-        if not mission_state.dxf_shape_mode_active:
+        if not mission_state.path_following_active:
             return False
         
         # Check if shape phase indicates completion

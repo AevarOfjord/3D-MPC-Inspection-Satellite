@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.animation import FuncAnimation
 
 # V4.0.0: Legacy imports removed - using dependency injection
@@ -338,80 +337,7 @@ class SimulationLoop:
     def _check_path_following_completion(self) -> bool:
         """Terminate when path progress reaches the end of the path."""
         mission_state = self._get_mission_state()
-        path_length = 0.0
-        if hasattr(self.simulation.mpc_controller, "_path_length"):
-            try:
-                path_length = float(
-                    getattr(self.simulation.mpc_controller, "_path_length", 0.0) or 0.0
-                )
-            except (TypeError, ValueError):
-                path_length = 0.0
-        if path_length <= 0.0:
-            path_length = float(getattr(mission_state, "dxf_path_length", 0.0) or 0.0)
-        if path_length <= 0.0:
-            path = getattr(mission_state, "mpcc_path_waypoints", None)
-            if path and len(path) > 1:
-                path_arr = np.array(path, dtype=float)
-                path_length = float(
-                    np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1))
-                )
-        if path_length <= 0.0:
-            return False
-        pos = None
-        if hasattr(self.simulation.satellite, "position"):
-            pos = np.array(self.simulation.satellite.position, dtype=float)
-        else:
-            try:
-                pos = self.simulation.get_current_state()[:3]
-            except Exception:
-                pos = None
-
-        path_s = getattr(self.simulation.mpc_controller, "s", None)
-        endpoint_error = float("inf")
-        if hasattr(self.simulation.mpc_controller, "get_path_progress") and pos is not None:
-            metrics = self.simulation.mpc_controller.get_path_progress(pos)
-            if isinstance(metrics, dict):
-                path_s = metrics.get("s", path_s)
-                endpoint_error = metrics.get("endpoint_error", endpoint_error)
-        elif pos is not None:
-            try:
-                end_pt = np.array(mission_state.mpcc_path_waypoints[-1], dtype=float)
-                endpoint_error = float(np.linalg.norm(pos - end_pt))
-            except Exception:
-                endpoint_error = float("inf")
-
-        if path_s is None:
-            return False
-
-        pos_tol = float(getattr(self.simulation, "position_tolerance", 0.05))
-        progress_ok = float(path_s) >= (path_length - pos_tol)
-
-        pos_ok = endpoint_error <= pos_tol
-
-        # Prefer full-state tolerances when reference is available, but do not
-        # block completion if endpoint position is reached.
-        state_ok = None
-        if hasattr(self.simulation, "state_validator") and self.simulation.state_validator:
-            try:
-                current_state = self.simulation.get_current_state()[:13]
-                reference_state = (
-                    self.simulation.reference_state
-                    if self.simulation.reference_state is not None
-                    else np.zeros(13)
-                )
-                state_ok = self.simulation.state_validator.check_reference_reached(
-                    current_state, reference_state
-                )
-            except Exception:
-                state_ok = None
-
-        # Fallback to endpoint position check if validator/reference unavailable.
-        if state_ok is None:
-            state_ok = pos_ok
-        else:
-            state_ok = bool(state_ok or pos_ok)
-
-        if not (progress_ok and state_ok):
+        if not self.simulation.check_path_complete():
             self.simulation.trajectory_endpoint_reached_time = None
             return False
 

@@ -84,13 +84,13 @@ class MissionManager:
         elif mode_choice == "shape_following":
             if self.cli.confirm_mission("Shape Following"):
                 # V3.0.0: Always request simulation_config
-                return self.run_dxf_shape_mode(return_simulation_config=True)
+                return self.run_shape_following_mode(return_simulation_config=True)
         return None
 
-    def run_dxf_shape_mode(
+    def run_shape_following_mode(
         self, return_simulation_config: bool = False
     ) -> Dict[str, Any]:
-        """Mode 2: Shape Following (Refactored).
+        """Mode 2: Shape Following (Refactored, canonical entrypoint).
 
         Args:
             return_simulation_config: If True, includes SimulationConfig in returned dict.
@@ -336,15 +336,15 @@ class MissionManager:
         self.cli.configure_obstacles(mission_state=mission_state)
 
         # Update MissionState (v2.0.0)
-        mission_state.dxf_shape_mode_active = True
+        mission_state.path_following_active = True
         mission_state.dxf_shape_center = shape_center
         mission_state.dxf_base_shape = transformed_shape
-        mission_state.dxf_shape_path = upscaled_path
-        mission_state.dxf_target_speed = target_speed_mps
+        mission_state.path_waypoints = upscaled_path
+        mission_state.path_speed = target_speed_mps
         mission_state.dxf_estimated_duration = estimated_duration
         mission_state.dxf_mission_start_time = None
         mission_state.dxf_shape_phase = "POSITIONING"
-        mission_state.dxf_path_length = path_length
+        mission_state.path_length = path_length
         mission_state.dxf_has_return = has_return
         if return_pos:
             mission_state.dxf_return_position = return_pos
@@ -386,6 +386,14 @@ class MissionManager:
             config["simulation_config"] = simulation_config
 
         return config
+
+    def run_dxf_shape_mode(
+        self, return_simulation_config: bool = False
+    ) -> Dict[str, Any]:
+        """Backward-compatible alias for legacy DXF naming."""
+        return self.run_shape_following_mode(
+            return_simulation_config=return_simulation_config
+        )
 
 
 if __name__ == "__main__":

@@ -249,6 +249,33 @@ class TestSimulationLoopTermination:
         assert result is False
         assert mock_simulation.is_running is True
 
+    def test_path_completion_delegates_to_simulation_check(self, mock_simulation):
+        """Test that path completion logic delegates to simulation helper."""
+        loop = SimulationLoop(mock_simulation)
+        mock_simulation.check_path_complete = MagicMock(return_value=False)
+        mock_simulation.trajectory_endpoint_reached_time = None
+
+        result = loop._check_path_following_completion()
+
+        assert result is False
+        mock_simulation.check_path_complete.assert_called_once()
+        assert mock_simulation.trajectory_endpoint_reached_time is None
+
+    def test_path_completion_without_hold_stops_immediately(self, mock_simulation):
+        """Test that no hold requirement stops simulation immediately on completion."""
+        loop = SimulationLoop(mock_simulation)
+        mock_simulation.is_running = True
+        mock_simulation.simulation_time = 2.5
+        mock_simulation.check_path_complete = MagicMock(return_value=True)
+        mock_simulation.simulation_config.mission_state.trajectory_hold_end = 0.0
+
+        result = loop._check_path_following_completion()
+
+        assert result is True
+        assert mock_simulation.is_running is False
+        assert mock_simulation.trajectory_endpoint_reached_time == pytest.approx(2.5)
+        mock_simulation.print_performance_summary.assert_called_once()
+
 
 class TestSimulationLoopDataSaving:
     """Test data saving functionality."""

@@ -354,12 +354,11 @@ class InteractiveMissionCLI:
                 ms.trajectory_scan_axis = scan_axis
                 ms.trajectory_scan_direction = scan_direction
 
-            ms.mpcc_path_waypoints = path
-            ms.dxf_shape_path = path
-            ms.dxf_path_length = float(path_length)
-            ms.dxf_path_speed = float(path_speed)
+            ms.path_waypoints = path
+            ms.path_length = float(path_length)
+            ms.path_speed = float(path_speed)
             ms.trajectory_mode_active = False
-            ms.dxf_shape_mode_active = False
+            ms.path_following_active = False
             ms.mesh_scan_mode_active = False
 
             start_pos = tuple(path[0]) if path else (0.0, 0.0, 0.0)
@@ -422,7 +421,7 @@ class InteractiveMissionCLI:
                 ms.mesh_scan_mode_active = True
                 ms.mesh_scan_obj_path = mesh_scan.get("obj_path")
                 ms.trajectory_mode_active = False
-                ms.mpcc_path_waypoints = path
+                ms.path_waypoints = path
             except Exception as e:
                 console.print(
                     f"[yellow]Warning: Failed to rebuild scan path: {e}[/yellow]"
@@ -535,7 +534,7 @@ class InteractiveMissionCLI:
                 step_size=0.1,
             )
             # path_length calculation removed as it is unused
-            mission_state.mpcc_path_waypoints = path
+            mission_state.path_waypoints = path
 
     def get_position_interactive(
         self,
@@ -726,7 +725,7 @@ class InteractiveMissionCLI:
         if z_vals and (max(z_vals) - min(z_vals)) > 1e-3:
             simulation_config.app_config.mpc.Q_attitude = 50.0
         # Store path waypoints for MPC initialization
-        mission_state.mpcc_path_waypoints = path  # Pass to simulation for set_path()
+        mission_state.path_waypoints = path  # Pass to simulation for set_path()
 
         return {
             "mission_type": "path_following",
@@ -862,7 +861,7 @@ class InteractiveMissionCLI:
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
         mission_state.trajectory_hold_end = 5.0
-        mission_state.mpcc_path_waypoints = path
+        mission_state.path_waypoints = path
 
         return {
             "mission_type": "scan_object",
@@ -980,10 +979,9 @@ class InteractiveMissionCLI:
         mission_state.trajectory_hold_end = 5.0
         mission_state.mesh_scan_mode_active = True
         mission_state.mesh_scan_obj_path = str(obj_path)
-        mission_state.dxf_shape_path = path
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
-        mission_state.mpcc_path_waypoints = path
+        mission_state.path_waypoints = path
 
         simulation_config.app_config.mpc.path_speed = speed
 
@@ -1063,10 +1061,9 @@ class InteractiveMissionCLI:
         mission_state.mesh_scan_mode_active = False
         mission_state.obstacles = obstacles
         mission_state.obstacles_enabled = obstacles_enabled
-        mission_state.mpcc_path_waypoints = path
-        mission_state.dxf_shape_path = path
-        mission_state.dxf_path_length = path_length
-        mission_state.dxf_path_speed = speed
+        mission_state.path_waypoints = path
+        mission_state.path_length = path_length
+        mission_state.path_speed = speed
 
         start_pos = tuple(path[0]) if path else (0.0, 0.0, 0.0)
         start_angle = (0.0, 0.0, 0.0)
@@ -1254,7 +1251,7 @@ class InteractiveMissionCLI:
         )
 
         # Update MissionState (path-following)
-        mission_state.mpcc_path_waypoints = path
+        mission_state.path_waypoints = path
 
         return {
             "mission_type": "path_following",
