@@ -4,7 +4,7 @@ Waypoint Navigation Mission Plugin
 V4.0.0: Phase 2 - Mission Plugin System
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Optional
 import numpy as np
 
 from src.satellite_control.mission.plugin import MissionPlugin

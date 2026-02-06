@@ -44,7 +44,6 @@ def main():
     print("\nInitializing Simulation...")
     
     # Handle duration override (v3.0.0: should be passed via config_overrides)
-    config_overrides = None
     if args.duration:
         if simulation_config is None:
             simulation_config = SimulationConfig.create_default()

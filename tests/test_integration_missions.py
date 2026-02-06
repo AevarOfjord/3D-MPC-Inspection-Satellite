@@ -20,7 +20,6 @@ from matplotlib.animation import FuncAnimation
 from pathlib import Path
 
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
-from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 # Suppress matplotlib animation GC warnings triggered during headless tests

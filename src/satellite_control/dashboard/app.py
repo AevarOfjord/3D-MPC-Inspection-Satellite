@@ -47,10 +47,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "Data" / "Simulation"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
 MISSIONS_DIR = Path("missions")
 MISSIONS_DEV_DIR = MISSIONS_DIR / "dev"
 MISSIONS_EXAMPLES_DIR = MISSIONS_DIR / "examples"
+MODEL_ALLOWED_ROOTS = (
+    (PROJECT_ROOT / "OBJ_files").resolve(),
+    (PROJECT_ROOT / "ui" / "public" / "OBJ_files").resolve(),
+)
 
 
 def _axis_to_vector(axis_value: Any) -> tuple[float, float, float]:
@@ -75,6 +80,25 @@ def _resolve_mission_file(mission_name: str) -> Path:
             return mission_file
 
     raise HTTPException(status_code=404, detail=f"Mission not found: {mission_name}")
+
+
+def _resolve_allowed_model_path(path_value: str) -> Path:
+    """
+    Resolve a model path while restricting access to known model roots.
+    """
+    candidate = Path(path_value)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+
+    resolved = candidate.resolve()
+    for allowed_root in MODEL_ALLOWED_ROOTS:
+        if resolved == allowed_root or allowed_root in resolved.parents:
+            return resolved
+
+    raise HTTPException(
+        status_code=400,
+        detail="Model path must be inside OBJ_files or ui/public/OBJ_files",
+    )
 
 
 # --- Data Models ---
@@ -963,11 +987,7 @@ async def get_simulation_video(run_id: str):
 @app.get("/api/models/serve")
 async def serve_model_file(path: str):
     """Serve a model file from the filesystem."""
-    file_path = Path(path)
-
-    # If relative path, resolve from project root (where server runs)
-    if not file_path.is_absolute():
-        file_path = Path.cwd() / file_path
+    file_path = _resolve_allowed_model_path(path)
 
     logger.info(f"[MODEL SERVE] Requested: {path}, Resolved to: {file_path}")
 
@@ -983,10 +1003,9 @@ async def serve_model_file(path: str):
 @app.get("/api/models/list")
 async def list_model_files():
     """List available OBJ models in the repository."""
-    root = Path(__file__).resolve().parents[3]
     search_dirs = [
-        root / "OBJ_files",
-        root / "OBJ_files" / "uploads",
+        PROJECT_ROOT / "OBJ_files",
+        PROJECT_ROOT / "OBJ_files" / "uploads",
     ]
     models: List[Dict[str, str]] = []
     for base in search_dirs:
@@ -994,7 +1013,7 @@ async def list_model_files():
             continue
         for obj_file in sorted(base.rglob("*.obj")):
             try:
-                rel_path = obj_file.relative_to(root)
+                rel_path = obj_file.relative_to(PROJECT_ROOT)
             except ValueError:
                 rel_path = obj_file
             models.append(
@@ -1015,9 +1034,7 @@ async def get_model_bounds(path: str):
         compute_mesh_bounds,
     )
 
-    file_path = Path(path)
-    if not file_path.is_absolute():
-        file_path = Path.cwd() / file_path
+    file_path = _resolve_allowed_model_path(path)
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail=f"Model file not found: {path}")

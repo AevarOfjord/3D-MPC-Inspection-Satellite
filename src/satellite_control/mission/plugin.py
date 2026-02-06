@@ -334,7 +334,7 @@ class MissionPluginRegistry:
             # Validate before registering
             validation_errors = self._validate_plugin(plugin)
             if validation_errors:
-                error_msg = f"Plugin validation failed: " + "; ".join(validation_errors)
+                error_msg = "Plugin validation failed: " + "; ".join(validation_errors)
                 logger.error(f"{file_path}: {error_msg}")
                 return None
             

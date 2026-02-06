@@ -4,14 +4,13 @@ Shape Following Mission Plugin
 V4.0.0: Phase 2 - Mission Plugin System
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Optional
 import numpy as np
 
 from src.satellite_control.mission.plugin import MissionPlugin
 from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.config.mission_state import MissionState, create_mission_state
 from src.satellite_control.mission.mission_manager import MissionManager
-from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
 
 class ShapeFollowingMissionPlugin(MissionPlugin):

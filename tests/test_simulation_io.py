@@ -48,7 +48,6 @@ class TestSimulationIODirectories:
     @patch("src.satellite_control.core.simulation_io.datetime")
     def test_create_data_directories(self, mock_datetime, simulation_io, tmp_path):
         """Test that data directories are created correctly."""
-        from datetime import datetime
 
         mock_datetime.now.return_value.strftime.return_value = "01-01-2026_12-00-00"
 
@@ -71,8 +70,6 @@ class TestSimulationIODirectories:
         with patch("src.satellite_control.core.simulation_io.Path") as mock_path_class:
             # Create a real path structure
             base_path = tmp_path / "Data"
-            sim_path = base_path / "Simulation"
-            timestamped_path = sim_path / "01-01-2026_12-00-00"
 
             # Mock Path constructor to return our paths
             def path_side_effect(path_str):
@@ -85,7 +82,6 @@ class TestSimulationIODirectories:
             with patch(
                 "src.satellite_control.core.simulation_io.datetime"
             ) as mock_datetime:
-                from datetime import datetime
 
                 mock_datetime.now.return_value.strftime.return_value = (
                     "01-01-2026_12-00-00"
@@ -153,7 +149,6 @@ class TestSimulationIOMissionSummary:
         mock_simulation.control_history = []
 
         # Mock CSV data
-        import pandas as pd
 
         mock_df = MagicMock()
         mock_df.columns = [
@@ -189,7 +184,6 @@ class TestSimulationIOLoadHistory:
     @patch("pandas.read_csv")
     def test_load_history_from_csv_3d(self, mock_read_csv, simulation_io, tmp_path):
         """Test loading 3D history from CSV."""
-        import pandas as pd
 
         # Create mock DataFrame with 3D columns
         mock_df = MagicMock()

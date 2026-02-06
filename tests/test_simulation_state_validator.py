@@ -13,7 +13,6 @@ from src.satellite_control.utils.simulation_state_validator import (
     SimulationStateValidator,
     create_state_validator_from_config,
 )
-from unittest.mock import patch
 
 
 def make_state(
@@ -456,7 +455,6 @@ class TestSensorNoise:
 
         # V4.0.0: Patch app_config.physics instead of SatelliteConfig
         # Create a mock app_config with noise parameters
-        from src.satellite_control.config.models import AppConfig, SatellitePhysicalParams
         from unittest.mock import MagicMock
         
         mock_physics = MagicMock()

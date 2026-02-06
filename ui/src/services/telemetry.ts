@@ -9,6 +9,8 @@ export interface TelemetryData {
   reference_position: [number, number, number];
   reference_orientation: [number, number, number];
   reference_quaternion?: [number, number, number, number];
+  target_position?: [number, number, number];
+  target_quaternion?: [number, number, number, number];
   scan_object?: {
     type: 'cylinder' | 'starlink' | 'mesh';
     position: [number, number, number];
@@ -147,7 +149,7 @@ class TelemetryService {
       position: add(data.position) as [number, number, number],
       reference_position: add(data.reference_position) as [number, number, number],
       planned_path: addPath(data.planned_path),
-      obstacles: addObstacles(data.obstacles),
+      obstacles: addObstacles(data.obstacles) ?? [],
       scan_object,
       frame: 'ECI',
     };

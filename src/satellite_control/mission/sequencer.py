@@ -162,7 +162,6 @@ class MissionSequencer:
     def _setup_goto_stage(self, stage: MissionStage) -> None:
         """Configure Waypoint Mode for 'goto' stage."""
         target = stage.params.get("target", [0, 0, 0])
-        hold_time = stage.params.get("hold_time", 5.0)
 
         # Set up single-point "multi-point" mission
         self.mission_state.enable_multi_point_mode = True

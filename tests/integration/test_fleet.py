@@ -8,14 +8,9 @@ Tests:
 3. Keep-out zone - all inspectors stay >2m from target
 """
 
-from pathlib import Path
 import sys
 
 import numpy as np
-
-ROOT = Path(__file__).resolve().parent.parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from src.satellite_control.control.mpc_controller import MPCController
 from src.satellite_control.config.simulation_config import SimulationConfig
@@ -46,7 +41,7 @@ def run_fleet_formation() -> bool:
 
     # Create fleet manager
     fleet = create_fleet_manager(num_inspectors=3, formation_radius=5.0)
-    print(f"\nFormation targets:")
+    print("\nFormation targets:")
     for i in range(3):
         target = fleet.get_formation_target(i)
         print(f"  Inspector {i}: ({target[0]:.2f}, {target[1]:.2f}, {target[2]:.2f})")
@@ -166,12 +161,12 @@ def run_fleet_formation() -> bool:
     min_separation = min(valid_separations) if valid_separations else 0
     min_to_target = min(valid_to_target) if valid_to_target else 0
 
-    print(f"\nFormation Errors:")
+    print("\nFormation Errors:")
     for i in range(3):
         print(f"  Inspector {i}: {final_errors[i] * 100:.2f} cm")
     print(f"  Average: {avg_final_error * 100:.2f} cm")
 
-    print(f"\nSafety Margins:")
+    print("\nSafety Margins:")
     print(f"  Min inter-inspector separation: {min_separation:.2f} m (target: >1m)")
     print(f"  Min distance to target: {min_to_target:.2f} m (target: >2m)")
 
@@ -180,7 +175,7 @@ def run_fleet_formation() -> bool:
     separation_ok = min_separation > 1.0  # 1m
     keepout_ok = min_to_target > 2.0  # 2m
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Formation ±50cm: {'✓ PASS' if formation_ok else '✗ FAIL'}")
     print(f"  Inter-inspector >1m: {'✓ PASS' if separation_ok else '✗ FAIL'}")
     print(f"  Target keep-out >2m: {'✓ PASS' if keepout_ok else '✗ FAIL'}")

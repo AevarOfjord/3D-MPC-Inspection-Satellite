@@ -94,9 +94,9 @@ class ExampleHoverMissionPlugin(MissionPlugin):
             self.target_position = (x, y, z)
             self.target_orientation = (0.0, 0.0, 0.0)  # Default: no rotation
             
-            print(f"\nHover mission configured:")
+            print("\nHover mission configured:")
             print(f"  Target position: ({x:.2f}, {y:.2f}, {z:.2f}) m")
-            print(f"  Target orientation: (0.0°, 0.0°, 0.0°)")
+            print("  Target orientation: (0.0°, 0.0°, 0.0°)")
             
         except (ValueError, KeyboardInterrupt) as e:
             print(f"\nConfiguration cancelled or invalid: {e}")

@@ -6,7 +6,6 @@ Uses Hill-Clohessy-Wiltshire (CW) relative motion model.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 

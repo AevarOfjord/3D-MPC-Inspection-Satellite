@@ -502,9 +502,6 @@ class SimulationVisualizationManager:
 
         COLOR_LABEL = "#404040"
         COLOR_VALUE = "#000000"  # Black for values
-        COLOR_VALUE_CYAN = (
-            "#000080"  # Navy Blue for active values (high contrast on white)
-        )
         COLOR_GREEN = "#008000"  # Darker green for visibility
         COLOR_BAR_BG = "#E0E0E0"
         COLOR_BAR_FILL = "#000080"
@@ -534,15 +531,10 @@ class SimulationVisualizationManager:
         if self.reference_state is not None:
             reference_pos = self.reference_state[0:3]
             pos_err = pos - reference_pos
-            pos_err_norm = np.linalg.norm(pos_err)
-
-            # Approx angular error (last_ang_error is computed in simulation loop)
         else:
             pos_err = np.zeros(3)
-            pos_err_norm = 0.0
 
-        # Speed and Range
-        speed = np.linalg.norm(vel)
+        # Approx angular error is computed in the simulation loop.
 
         # --- SECTION 1: TELEMETRY ---
         y_cursor = 0.96
@@ -903,8 +895,7 @@ class SimulationVisualizationManager:
         """
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
-        from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
-        from mpl_toolkits.mplot3d import Axes3D
+        from matplotlib.animation import FuncAnimation
         import pandas as pd
 
         csv_path = output_dir / "control_data.csv"
@@ -1181,7 +1172,6 @@ class SimulationVisualizationManager:
             # Colors
             C_VAL = "#000000"
             C_LBL = "#404040"
-            C_CYAN = "#000080"
             C_GRN = "#008000"
             C_BAR_BG = "#E0E0E0"
             C_BAR_FILL = "#000080"

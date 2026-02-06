@@ -2,11 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from pathlib import Path
 import json
-import shutil
 import os
 
 from src.satellite_control.dashboard.app import app
-from src.satellite_control.dashboard.app import MissionConfigModel
 
 client = TestClient(app)
 
@@ -86,7 +84,7 @@ def test_preview_trajectory():
         # However, checking if it hits the endpoint is enough for "wiring" check.
         # If 500, it means it tried to execute logic.
         assert response.status_code in [200, 500]
-    except:
+    except Exception:
         pass
 
 

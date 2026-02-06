@@ -57,10 +57,31 @@ cd ui && npm install && cd ..
 
 # 2. Start the Backend Simulation Server (Term 1)
 python run_dashboard.py
+# Server binds to localhost (127.0.0.1:8000)
 
 # 3. Start the Mission Control UI (Term 2)
 cd ui && npm run dev
 # Open http://localhost:5173
+```
+
+## 🧭 Local-Only Usage Model
+
+This project is intended to be cloned and run on a local machine from terminal sessions.
+It is not configured as an internet-facing hosted service by default.
+
+## ✅ Known-Good Local Verification
+
+```bash
+# Backend lint (high-signal correctness checks)
+.venv311/bin/python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
+
+# Backend tests
+.venv311/bin/python -m pytest -q
+
+# Frontend quality/build checks
+cd ui
+npm run lint
+npm run build
 ```
 
 ## 🧪 Tests
