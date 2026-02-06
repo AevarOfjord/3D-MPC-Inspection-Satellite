@@ -332,7 +332,7 @@ python run_simulation.py
 
 #### Step 1: Define Mission Logic
 
-Add to `src/satellite_control/mission/mission_logic.py`:
+Create a helper in `src/satellite_control/mission/` (e.g., `figure8.py`):
 
 ```python
 def configure_figure8_mission(
@@ -430,7 +430,7 @@ Update [README.md](../README.md) with new mission type description.
 
 ```bash
 # Run tests
-pytest tests/unit/test_mission_logic.py
+pytest tests/
 
 # Test in simulation
 python run_simulation.py

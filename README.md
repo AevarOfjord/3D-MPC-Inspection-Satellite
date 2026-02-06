@@ -1,6 +1,6 @@
 # Orbital Inspector Satellite Control System
 
-[![Python 3.9-3.12](https://img.shields.io/badge/python-3.9--3.12-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Optimization: OSQP](https://img.shields.io/badge/Optimization-OSQP-green.svg)](https://osqp.org/)
 
@@ -14,10 +14,9 @@
 | -------------------------- | ------------------------------------------------------ |
 | **Reaction Wheel Control** | 3-axis attitude control with 0.18° precision           |
 | **Orbital Dynamics**       | Hill-Clohessy-Wiltshire gravity gradient model         |
-| **Multi-Satellite Fleet**  | 3 inspectors with collision avoidance                  |
 | **Obstacle Avoidance**     | Dynamic hard constraints for environment obstacles     |
 | **Mission Designer UI**    | Three.js web interface for trajectory planning         |
-| **Mission System**         | Pre-built flyby, circumnavigation, inspection missions |
+| **Mission System**         | Unified mission JSON with scan, transfer, hold segments |
 
 ## 🛠️ Technology Stack
 
@@ -35,14 +34,14 @@
 │   ├── control/                # MPC controllers
 │   ├── core/                   # Simulation loop + C++ engine bindings
 │   ├── config/                 # Orbital & actuator configs
-│   ├── fleet/                  # Multi-satellite coordination
 │   ├── mission/                # Mission types & helpers
+│   ├── dashboard/              # FastAPI backend + route modules
 │   └── physics/                # Orbital dynamics (CW equations)
 ├── missions/                   # Sample mission JSON files
 │   ├── examples/               # Curated example missions
 │   └── dev/                    # User-saved and scratch missions
 ├── ui/                         # Web-based mission designer
-├── missions_unified/           # Unified mission drafts/previews
+├── missions_unified/           # Saved unified missions
 └── scripts/                    # Test scripts
 ```
 
@@ -88,7 +87,7 @@ npm run build
 
 | Test      | Command                |
 | --------- | ---------------------- |
-| All tests | `python -m pytest`     |
+| All tests | `.venv311/bin/python -m pytest` |
 
 ## 📊 Performance
 
@@ -98,11 +97,10 @@ npm run build
 | Attitude control      | ±0.18° |
 | MPC solve time        | <1ms   |
 | Station-keeping error | 0.00cm |
-| Formation separation  | 8.66m  |
 
 ## 📋 Mission Types
 
-Mission definitions live in `missions/examples/` (curated) and `missions/dev/` (saved)
+Mission definitions live in `missions_unified/` (saved)
 and drive the path-following MPC setup.
 
 ## 📄 License
