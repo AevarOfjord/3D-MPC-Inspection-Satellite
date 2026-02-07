@@ -371,9 +371,27 @@ class SimulationInitializer:
         self.simulation.mpc_solve_times: List[float] = []
         self.simulation.mpc_info_history: List[dict] = []
 
+        history_max_steps = int(
+            getattr(self.simulation_config.app_config.simulation, "history_max_steps", 0)
+            or 0
+        )
+        history_downsample_stride = int(
+            getattr(
+                self.simulation_config.app_config.simulation,
+                "history_downsample_stride",
+                1,
+            )
+            or 1
+        )
+        self.simulation.history_max_steps = history_max_steps
+        self.simulation.history_downsample_stride = max(1, history_downsample_stride)
+        self.simulation.history_trimmed = False
+
         # Logging stride counters
         self.simulation._physics_log_counter = 0
         self.simulation._control_log_counter = 0
+        self.simulation._history_downsample_counter = 0
+        self.simulation._control_history_downsample_counter = 0
 
         # Previous command for rate limiting
         self.simulation.previous_command: Optional[np.ndarray] = None
@@ -388,13 +406,16 @@ class SimulationInitializer:
 
     def _initialize_data_logging(self) -> None:
         """Initialize data loggers."""
+        history_max_steps = int(getattr(self.simulation, "history_max_steps", 0) or 0)
         self.simulation.data_logger = create_data_logger(
             mode="simulation",
             filename="control_data.csv",
+            max_terminal_entries=history_max_steps,
         )
         self.simulation.physics_logger = create_data_logger(
             mode="physics",
             filename="physics_data.csv",
+            max_terminal_entries=history_max_steps,
         )
 
         # V4.0.0: Pass simulation_config to report generator

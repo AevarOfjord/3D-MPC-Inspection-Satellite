@@ -529,6 +529,22 @@ class SimulationParams(BaseModel):
         description="Log every N control steps (1 = log all)",
     )
 
+    history_max_steps: int = Field(
+        50000,
+        ge=0,
+        le=2000000,
+        description=(
+            "Max in-memory history entries (0 = unbounded). "
+            "Applies to state/control histories used for summaries and plots."
+        ),
+    )
+    history_downsample_stride: int = Field(
+        1,
+        ge=1,
+        le=1000,
+        description="Keep every Nth history entry in memory (1 = keep all)",
+    )
+
 
 class AppConfig(BaseModel):
     """

@@ -30,6 +30,7 @@ class DataLogger:
         mode: str = "simulation",
         buffer_size: int = 1,
         filename: str = "control_data.csv",
+        max_terminal_entries: int = 0,
     ):
         """
         Initialize data logger.
@@ -44,6 +45,7 @@ class DataLogger:
             raise ValueError("Mode must be 'simulation' or 'physics'")
         self.filename = filename
         self.buffer_size = buffer_size
+        self.max_terminal_entries = max(0, int(max_terminal_entries or 0))
 
         # Internal state
         self.detailed_log_data: List[Dict[str, Any]] = []
@@ -148,6 +150,12 @@ class DataLogger:
                 pos_error, ang_error, thrusters, solve_time, next_update (optional)
         """
         self.terminal_log_data.append(message_data)
+        if self.max_terminal_entries and len(self.terminal_log_data) > self.max_terminal_entries:
+            overflow = len(self.terminal_log_data) - self.max_terminal_entries
+            if overflow == 1:
+                self.terminal_log_data.pop(0)
+            else:
+                del self.terminal_log_data[:overflow]
 
     def save_csv_data(self) -> bool:
         """
@@ -607,7 +615,9 @@ class DataLogger:
 
 
 def create_data_logger(
-    mode: str = "simulation", filename: str = "control_data.csv"
+    mode: str = "simulation",
+    filename: str = "control_data.csv",
+    max_terminal_entries: int = 0,
 ) -> DataLogger:
     """
     Factory function to create a data logger.
@@ -619,4 +629,8 @@ def create_data_logger(
     Returns:
         Configured DataLogger instance
     """
-    return DataLogger(mode=mode, filename=filename)
+    return DataLogger(
+        mode=mode,
+        filename=filename,
+        max_terminal_entries=max_terminal_entries,
+    )

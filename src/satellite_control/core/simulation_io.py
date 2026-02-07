@@ -72,11 +72,11 @@ class SimulationIO:
             logger.warning("Cannot save mission summary: No data save path set")
             return
 
-        # Attempt to load state history from CSV if not in memory
+        # Attempt to load state history from CSV if not in memory or trimmed
         history_for_report: Union[List[np.ndarray], np.ndarray] = self.sim.state_history
         control_history_for_report: List[np.ndarray] = self.sim.control_history
 
-        if not history_for_report:
+        if not history_for_report or getattr(self.sim, "history_trimmed", False):
             loaded_history = self._load_history_from_csv()
             if loaded_history is not None:
                 history_for_report = loaded_history
