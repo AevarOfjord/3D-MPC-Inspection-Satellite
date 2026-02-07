@@ -7,7 +7,7 @@ This directory is for unit tests and integration tests for the Satellite Thruste
 Once tests are added, you can run them with:
 
 ```bash
-.venv311/bin/python -m pytest tests/
+.venv311/bin/python -m pytest
 ```
 
 ## Test Structure
@@ -22,5 +22,5 @@ Once tests are added, you can run them with:
 ## Testing Tools
 
 For manual testing and verification:
-- Use `run_simulation.py` (or `make sim`) to run missions in the simulator
-- Inspect generated outputs under `Data/Simulation/` for validation
+- Use `python run_simulation.py run` (or `make sim`) to run missions in the simulator
+- Inspect generated outputs under `Data/Simulation/<timestamp>/` for validation

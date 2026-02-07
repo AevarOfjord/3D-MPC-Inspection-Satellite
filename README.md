@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Optimization: OSQP](https://img.shields.io/badge/Optimization-OSQP-green.svg)](https://osqp.org/)
 
-**A 6-DOF orbital inspection satellite simulation with Model Predictive Control, reaction wheels, and multi-satellite coordination.**
+**A 6-DOF orbital inspection satellite simulation with path-based MPC, reaction wheels, and a web mission builder.**
 
 ---
 
@@ -24,7 +24,7 @@
 | ----------- | ---------------------------------- |
 | **Solver**  | OSQP (<5ms solve times)            |
 | **Physics** | Custom C++ engine                  |
-| **Control** | 16-state MPC with 9 control inputs |
+| **Control** | 13-state MPC with thrusters + reaction wheels |
 | **UI**      | Three.js 3D visualization          |
 
 ## 📁 Project Structure

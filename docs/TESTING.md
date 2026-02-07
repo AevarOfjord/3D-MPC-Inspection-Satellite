@@ -29,7 +29,7 @@ pip install pytest pytest-cov
 
 ```bash
 # Run full pytest test suite
-.venv311/bin/python -m pytest tests/
+.venv311/bin/python -m pytest
 
 # Run with coverage
 .venv311/bin/python -m pytest --cov=src/satellite_control --cov-report=html
@@ -38,7 +38,7 @@ pip install pytest pytest-cov
 ### Run Your First Simulation Test
 
 ```bash
-python run_simulation.py
+python run_simulation.py run
 ```
 
 Select a saved unified mission from `missions_unified/` to run a basic test.
@@ -50,7 +50,7 @@ Select a saved unified mission from `missions_unified/` to run a basic test.
 ### Interactive Mode
 
 ```bash
-python run_simulation.py
+python run_simulation.py run
 ```
 
 **Use Cases:**
@@ -63,13 +63,13 @@ python run_simulation.py
 
 ```bash
 # Default auto mode
-python run_simulation.py --auto
+python run_simulation.py run --auto
 
 # Custom duration
-python run_simulation.py --auto --duration 30.0
+python run_simulation.py run --auto --duration 30.0
 
 # Headless (no visualization)
-python run_simulation.py --no-anim --auto
+python run_simulation.py run --no-anim --auto
 ```
 
 ### Mission Flow for Testing
@@ -93,56 +93,50 @@ Tests unified mission compile/hydration and path tracking runtime behavior.
 tests/
 ├── __init__.py
 ├── conftest.py              # Shared fixtures
-├── unit/                    # Unit tests
-│   ├── test_config.py
-│   ├── test_mpc_controller.py
-│   ├── test_model.py
-│   └── test_navigation_utils.py
+├── benchmarks/              # Benchmark tests
+├── e2e/                     # End-to-end tests
 ├── integration/             # Integration tests
-│   ├── test_mpc_physics.py
-│   └── test_mission_state.py
-└── e2e/                    # End-to-end tests
-    └── test_simulation_runner.py
+├── physics/                 # Physics unit tests
+├── test_*.py                # Unit/component tests at repo root
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-pytest
+.venv311/bin/python -m pytest
 
 # Run specific category
-pytest tests/unit/
-pytest tests/integration/
-pytest tests/e2e/
+.venv311/bin/python -m pytest tests/integration/
+.venv311/bin/python -m pytest tests/e2e/
 
 # Run specific file
-pytest tests/unit/test_mpc_controller.py
+.venv311/bin/python -m pytest tests/test_mpc_controller.py
 
 # Run specific test
-pytest tests/unit/test_mpc_controller.py::test_mpc_converges_to_target
+.venv311/bin/python -m pytest tests/test_mpc_controller.py::test_mpc_converges_to_target
 
 # Run with verbose output
-pytest -v
+.venv311/bin/python -m pytest -v
 
 # Run with print statements visible
-pytest -s
+.venv311/bin/python -m pytest -s
 
 # Stop at first failure
-pytest -x
+.venv311/bin/python -m pytest -x
 
 # Run tests matching pattern
-pytest -k "mpc"
+.venv311/bin/python -m pytest -k "mpc"
 ```
 
 ### Test Markers
 
 ```bash
 # Run only fast tests (skip slow E2E)
-pytest -m "not slow"
+.venv311/bin/python -m pytest -m "not slow"
 
 # Run tests by custom marker
-pytest -m "integration"
+.venv311/bin/python -m pytest -m "integration"
 ```
 
 ### Understanding Test Results
@@ -171,9 +165,8 @@ tests/test_mpc.py::test_solve_time PASSED                [20%]
 ### Basic Test Structure
 
 ```python
-# tests/unit/test_example.py
+# tests/test_example.py
 import pytest
-from src.satellite_control.config import SatelliteConfig
 
 class TestPhysics:
     """Test suite for physics calculations."""
@@ -320,10 +313,10 @@ Q_ANGULAR_VELOCITY = 2000.0      # Increase from 1500
 Every simulation creates:
 
 ```
-Data/YYYY-MM-DD_HH-MM-SS/
-├── physics_data.csv          # State history (200 Hz)
-├── control_data.csv          # MPC commands (16.67 Hz)
-└── Simulation_animation.mp4  # Visual playback
+Data/Simulation/DD-MM-YYYY_HH-MM-SS/
+├── physics_data.csv           # State history (200 Hz)
+├── control_data.csv           # MPC commands (16.67 Hz)
+└── simulation_animation.mp4   # Visual playback
 ```
 
 **Analyze Results:**
@@ -332,11 +325,11 @@ Data/YYYY-MM-DD_HH-MM-SS/
 import pandas as pd
 import numpy as np
 
-physics = pd.read_csv('Data/<timestamp>/physics_data.csv')
-control = pd.read_csv('Data/<timestamp>/control_data.csv')
+physics = pd.read_csv('Data/Simulation/<timestamp>/physics_data.csv')
+control = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 
 # Position error over time
-pos_error = np.sqrt(physics['x']**2 + physics['y']**2)
+pos_error = np.sqrt(physics['Current_X']**2 + physics['Current_Y']**2)
 print(f"Mean error: {pos_error.mean():.4f} m")
 print(f"Final error: {pos_error.iloc[-1]:.4f} m")
 
@@ -358,7 +351,7 @@ for q_pos in q_positions:
         # Update config (or use environment variables)
         # Run simulation
         subprocess.run([
-            'python', 'run_simulation.py',
+            'python', 'run_simulation.py', 'run',
             '--auto', '--no-anim', '--duration', '20'
         ])
         # Collect and analyze results
@@ -409,7 +402,7 @@ breakpoint()
 
 ```bash
 # Run tests with print output visible
-pytest tests/unit/test_mpc_controller.py -v -s
+.venv311/bin/python -m pytest tests/test_mpc_controller.py -v -s
 
 # -v: verbose test names
 # -s: show print statements
@@ -512,36 +505,36 @@ pwd  # Should show project root
 pip install pytest pytest-cov
 
 # Run from project root
-pytest tests/
+.venv311/bin/python -m pytest
 ```
 
 #### Tests Timeout
 
 ```bash
 # Set timeout for slow tests
-pytest --timeout=10
+.venv311/bin/python -m pytest --timeout=10
 
 # Run only fast tests
-pytest -m "not slow"
+.venv311/bin/python -m pytest -m "not slow"
 
-# Skip integration tests
-pytest tests/unit/
+# Run integration tests only
+.venv311/bin/python -m pytest tests/integration/
 ```
 
 ### Quick Reference
 
 ```bash
 # Interactive test
-python run_simulation.py
+python run_simulation.py run
 
 # Fast automated test
-python run_simulation.py --auto --no-anim --duration 10
+python run_simulation.py run --auto --no-anim --duration 10
 
 # Run pytest suite
-.venv311/bin/python -m pytest tests/ -v
+.venv311/bin/python -m pytest -v
 
 # Smoke-check CLI wiring with a saved mission
-python run_simulation.py --mission missions_unified/<YourMission>.json --no-anim
+python run_simulation.py run --mission missions_unified/<YourMission>.json --no-anim
 
 # Generate plots from existing data
 python -m src.satellite_control.visualization.unified_visualizer
@@ -559,4 +552,4 @@ After testing:
 4. **Document Changes** - Update parameter files with comments
 5. **Performance Baseline** - Record metrics for comparison
 
-See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for contributing guidelines and [QUICKSTART.md](QUICKSTART.md) for getting started.
+See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for contributing guidelines and [README.md](../README.md) for getting started.
