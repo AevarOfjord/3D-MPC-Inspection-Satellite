@@ -42,14 +42,14 @@ pip install -r requirements.txt
 
 ```bash
 # Run the simulation with default settings
-python run_simulation.py
+python run_simulation.py run
 
 # Run tests
-pytest tests/
+.venv311/bin/python -m pytest
 
 # Check code quality
-flake8 src/
-mypy src/
+python -m ruff check src tests
+python -m black --check src tests
 ```
 
 ---
@@ -62,8 +62,8 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 
 1. **Centralized Configuration**: All parameters in `src/satellite_control/config/` package
 
-   - Never hardcode parameters in other files
-   - Import configuration using `SatelliteConfig`
+    - Never hardcode parameters in other files
+    - Import configuration using `SimulationConfig`
 
 2. **Modular Architecture**: Each module has a single responsibility
 
@@ -73,15 +73,9 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 
 3. **Type Hints**: All functions use comprehensive type hints
 
-   - Enables static analysis and IDE support
-   - Catch errors before runtime with `mypy`
+    - Enables static analysis and IDE support
 
-4. **Protocol-Based Interfaces**: Clean component boundaries
-
-   - Defined in `core/interfaces.py`
-   - Enables mocking and testing
-
-5. **Docstrings**: Google-style docstrings for all classes and functions
+4. **Docstrings**: Google-style docstrings for all classes and functions
 
    ```python
    def my_function(x: float, y: float) -> float:
@@ -108,25 +102,19 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 
 ### Automated Formatting
 
-We use `black` for code formatting, `isort` for import sorting, and `flake8` for linting.
+We use `black` for formatting and `ruff` for linting/import checks.
 
 ```bash
 # Auto-format code
 black src/ tests/
 
-# Sort imports
-isort src/ tests/
-
-# Check style
-flake8 src/ tests/
-
-# Type check
-mypy src/
+# Check style and imports
+ruff check src tests
 ```
 
 ### Style Rules
 
-- **Line length**: Maximum 100 characters (configured in `.flake8`)
+- **Line length**: 88 characters (configured in `pyproject.toml`)
 - **Naming**:
 
   - Classes: `PascalCase` (e.g., `SatelliteConfig`, `MPCController`)
@@ -134,11 +122,11 @@ mypy src/
   - Constants: `UPPER_CASE` (e.g., `CONTROL_DT`, `MAX_FORCE`)
   - Private: Leading underscore (e.g., `_helper_function`, `_internal_state`)
 
-- **Imports**: Group in standard order (enforced by `isort`):
+- **Imports**: Group in standard order (checked by `ruff`):
 
   1. Standard library (`import os`, `import sys`)
-  2. Third-party (`import numpy`, `import osqp`)
-  3. Local (`from src.satellite_control.config import SatelliteConfig`)
+    2. Third-party (`import numpy`, `import osqp`)
+    3. Local (`from src.satellite_control.config.simulation_config import SimulationConfig`)
 
 - **Functions**: Keep < 50 lines when possible
 
@@ -168,19 +156,15 @@ The simulation produces several CSV files:
 **Physics Data**: `physics_data.csv`
 
 - Raw simulation state at every physics timestep (high frequency, ~200 Hz)
-- Columns: Time, X_Pos, Y_Pos, Z_Pos, X_Vel, Y_Vel, Z_Vel, Quat_W, Quat_X, Quat_Y, Quat_Z, etc.
+- Columns include `Current_X`, `Current_Y`, `Current_Z`, `Current_VX`, `Current_VY`, `Current_VZ`,
+  `Current_Roll`, `Current_Pitch`, `Current_Yaw`, and tracking error fields
 
 **Control Data**: `control_data.csv`
 
 - Controller decisions and commands at control frequency (lower frequency, ~20-50 Hz)
-- Columns: Time, Control_Step, Target_X, Target_Y, Target_Yaw, Thruster_Commands, MPC_Solve_Time, etc.
+- Columns include `Control_Time`, `Current_*`, `Target_*`, `Command_Vector`, `MPC_Solve_Time`, and solver status fields
 
-**Terminal Log**: `simulation_terminal_log.csv`
-
-- Human-readable status messages with mission phase information
-- 8 columns: Timestamp, Sim_Time, Phase, Pos_Error, Ang_Error, Active_Thrusters, etc.
-
-For complete column definitions, see [VISUALIZATION.md - CSV Format Appendix](VISUALIZATION.md#appendix-csv-data-format-reference).
+For complete column definitions, see [VISUALIZATION.md](VISUALIZATION.md).
 
 ### Using the DataLogger
 
@@ -198,9 +182,10 @@ logger = DataLogger(
 # Log physics data
 logger.log_physics_state({
     "Time": current_time,
-    "X_Pos": x_position,
-    "Y_Pos": y_position,
-    "Yaw": yaw_angle,
+    "Current_X": x_position,
+    "Current_Y": y_position,
+    "Current_Z": z_position,
+    "Current_Yaw": yaw_angle,
     # ... other columns
 })
 
@@ -208,7 +193,7 @@ logger.log_physics_state({
 logger.log_control_step({
     "Control_Step": step_count,
     "MPC_Solve_Time": solve_time,
-    "Thruster_Commands": command_vector,
+    "Command_Vector": command_vector,
     # ... other columns
 })
 
@@ -224,8 +209,8 @@ To change the CSV format:
 
 1. **Update DataLogger**: Edit `_get_physics_headers()` or `_get_control_headers()` in `utils/data_logger.py`
 2. **Update visualization**: Modify `visualization/unified_visualizer.py` to read new columns
-3. **Update documentation**: Reflect changes in [VISUALIZATION.md](VISUALIZATION.md) CSV format appendix
-4. **Update tests**: Verify new format in `tests/unit/test_data_logger.py`
+3. **Update documentation**: Reflect changes in [VISUALIZATION.md](VISUALIZATION.md) CSV reference
+4. **Update tests**: Verify new format in `tests/test_data_logger.py`
 
 ---
 
@@ -235,36 +220,36 @@ To change the CSV format:
 
 ```bash
 # Run all tests
-pytest
+.venv311/bin/python -m pytest
 
 # Run specific test file
-pytest tests/unit/test_mpc_controller.py
+.venv311/bin/python -m pytest tests/test_mpc_controller.py
 
 # Run specific test function
-pytest tests/unit/test_mpc_controller.py::test_mpc_solve_time
+.venv311/bin/python -m pytest tests/test_mpc_controller.py::test_mpc_solve_time
 
 # Run with verbose output
-pytest -v
+.venv311/bin/python -m pytest -v
 
 # Run with coverage report
-pytest --cov=src --cov-report=html
+.venv311/bin/python -m pytest --cov=src --cov-report=html
 # Open htmlcov/index.html to view coverage
 
 # Run E2E tests only
-pytest tests/e2e/ -v
+.venv311/bin/python -m pytest tests/e2e/ -v
 
 # Run fast tests (skip slow E2E)
-pytest -m "not slow"
+.venv311/bin/python -m pytest -m "not slow"
 ```
 
 ### Recommended Validation Commands
 
 ```bash
 # Focused fast suite
-pytest -m "not slow"
+.venv311/bin/python -m pytest -m "not slow"
 
 # Full suite
-pytest tests/
+.venv311/bin/python -m pytest
 ```
 
 ### Writing Tests
@@ -272,10 +257,10 @@ pytest tests/
 Create tests following existing patterns:
 
 ```python
-# tests/unit/test_myfeature.py
+# tests/test_myfeature.py
 import pytest
 import numpy as np
-from src.satellite_control.config import SatelliteConfig
+from src.satellite_control.config.simulation_config import SimulationConfig
 from src.satellite_control.mymodule import my_function
 
 
@@ -295,7 +280,7 @@ class TestMyFeature:
     @pytest.fixture
     def sample_config(self):
         """Provide sample configuration for tests."""
-        return SatelliteConfig.get_app_config()
+        return SimulationConfig.create_default().app_config
 
     def test_with_fixture(self, sample_config):
         """Test using fixture."""
@@ -310,15 +295,13 @@ class TestMyFeature:
 
 # 2. Format and check
 black src/ tests/
-isort src/ tests/
-flake8 src/ tests/
-mypy src/
+ruff check src tests
 
 # 3. Run tests to catch regressions
 pytest
 
 # 4. Test in simulation
-python run_simulation.py
+python run_simulation.py run
 # Select mission and verify behavior
 ```
 
@@ -387,7 +370,7 @@ Integrate the mission into the saved-mission flow used by terminal simulation:
 from src.satellite_control.mission.repository import list_mission_entries
 
 entries = list_mission_entries(source_priority=("unified", "dev"))
-# Add your mission JSON and select it when running `python run_simulation.py`
+# Add your mission JSON and select it when running `python run_simulation.py run`
 ```
 
 #### Step 4: Add Configuration
@@ -430,10 +413,10 @@ Update [README.md](../README.md) with new mission type description.
 
 ```bash
 # Run tests
-pytest tests/
+.venv311/bin/python -m pytest
 
 # Test in simulation
-python run_simulation.py
+python run_simulation.py run
 # Select: Figure-8 Navigation
 # Verify trajectory follows expected path
 ```
@@ -448,14 +431,16 @@ All parameters are in `src/satellite_control/config/`:
 
 ```
 config/
-├── satellite_config.py   # Main config interface
+├── models.py             # Pydantic validation models
+├── simulation_config.py  # Top-level configuration wrapper
+├── mission_state.py      # Mission parameters
+├── defaults.py           # Default factories
 ├── physics.py            # Mass, inertia, thruster specs
 ├── timing.py             # Control rate, timesteps
-├── mpc_params.py         # MPC horizons, weights, constraints
-├── mission_state.py      # Mission parameters
 ├── constants.py          # System constants
+├── presets.py            # FAST/BALANCED/STABLE/PRECISION presets
 ├── thruster_config.py    # Thruster configuration
-└── models.py             # Pydantic validation models
+└── reaction_wheel_config.py # Reaction wheel configuration
 ```
 
 ### Guidelines
@@ -464,9 +449,9 @@ config/
 
    ```python
    # Good
-   from src.satellite_control.config import SatelliteConfig
-   config = SatelliteConfig.get_app_config()
-   mass = config.physics.mass
+    from src.satellite_control.config import SimulationConfig
+    config = SimulationConfig.create_default()
+    mass = config.app_config.physics.total_mass
 
    # Bad
    mass = 12.5  # Hardcoded!
@@ -475,10 +460,10 @@ config/
 2. **Group related parameters**
 
    ```python
-   # Good - related parameters together in mpc_params.py
-   PREDICTION_HORIZON = 15
-   CONTROL_HORIZON = 10
-   SOLVER_TIME_LIMIT = 0.04  # seconds
+    # Good - related parameters together in models.py (AppConfig.mpc)
+    prediction_horizon = 15
+    control_horizon = 10
+    solver_time_limit = 0.04  # seconds
    ```
 
 3. **Use descriptive names with units**
@@ -515,8 +500,8 @@ config/
 1. Add to appropriate config file:
 
    ```python
-   # In config/physics.py
-   NEW_DAMPING_COEFFICIENT = 0.05  # N⋅s/m
+    # In config/models.py (PhysicsParams)
+    linear_damping_coeff = 0.05  # N⋅s/m
    ```
 
 2. If using Pydantic models, add to the model:
@@ -531,20 +516,20 @@ config/
 3. Access in your code:
 
    ```python
-   from src.satellite_control.config import SatelliteConfig
+    from src.satellite_control.config.simulation_config import SimulationConfig
 
-   config = SatelliteConfig.get_app_config()
-   damping = config.physics.damping_coefficient
+    config = SimulationConfig.create_default()
+    damping = config.app_config.physics.damping_coefficient
    ```
 
 ### Configuration Validation
 
 ```bash
-# Validate configuration
-python run_simulation.py config
+Configuration is validated at simulation startup. Use a short run to sanity check:
 
-# Dump full configuration as JSON
-python run_simulation.py config --dump
+```bash
+python run_simulation.py run --auto --no-anim --duration 2
+```
 ```
 
 ---
@@ -595,7 +580,7 @@ breakpoint()
 
 ```bash
 # Run tests with print output visible
-pytest tests/unit/test_mpc_controller.py -v -s
+.venv311/bin/python -m pytest tests/test_mpc_controller.py -v -s
 
 # -v: verbose test names
 # -s: show print statements and logs
@@ -698,14 +683,12 @@ into new thruster_manager.py for better separation of concerns.
 ```bash
 # Format code
 black src/ tests/
-isort src/ tests/
 
 # Run linters
-flake8 src/ tests/
-mypy src/
+ruff check src/ tests/
 
 # Run tests
-pytest
+.venv311/bin/python -m pytest
 
 # If all pass, commit
 git add .
@@ -729,9 +712,7 @@ pre-commit install
 The project includes a `.pre-commit-config.yaml` that runs:
 
 - `black` (formatting)
-- `isort` (import sorting)
-- `flake8` (linting)
-- `mypy` (type checking)
+- `ruff` (linting)
 
 ---
 
@@ -745,13 +726,13 @@ When working on your own fork, maintain these quality standards:
 
 Before committing:
 
-- [ ] Code follows PEP 8 style (checked by `flake8`)
-- [ ] All code formatted with `black` and `isort`
+- [ ] Code follows style checks (checked by `ruff`)
+- [ ] All code formatted with `black`
 - [ ] All functions have docstrings (Google style)
 - [ ] Type hints on all function signatures
 - [ ] Tests written for new functionality
-- [ ] All tests pass (`pytest`)
-- [ ] No new warnings from `flake8` or `mypy`
+- [ ] All tests pass (`.venv311/bin/python -m pytest`)
+- [ ] No new warnings from `ruff`
 - [ ] Documentation updated if needed
 - [ ] Commit messages follow conventional commits
 
@@ -762,12 +743,12 @@ For every new feature or bug fix:
 1. **Write test first** (TDD approach)
 2. **Implement feature/fix** until test passes
 3. **Add edge case tests** for robustness
-4. **Verify coverage** with `pytest --cov`
+4. **Verify coverage** with `.venv311/bin/python -m pytest --cov`
 
 Example test structure:
 
 ```python
-# tests/unit/test_new_feature.py
+# tests/test_new_feature.py
 import pytest
 from src.satellite_control.mymodule import MyClass
 
@@ -804,7 +785,7 @@ When making significant changes:
 - **ARCHITECTURE.md**: Update for design/structure changes
 - **Docstrings**: Keep inline with code changes
 - **This guide**: Update for development process changes
-- **VISUALIZATION.md**: Update CSV format appendix if data format changes
+- **VISUALIZATION.md**: Update CSV reference details if data format changes
 
 ### Reporting Bugs
 
@@ -830,13 +811,13 @@ If you discover bugs in the original project:
 
 ```bash
 # Run with specific duration
-python run_simulation.py --duration 60
+python run_simulation.py run --duration 60
 
 # Run in auto mode (skip menu)
-python run_simulation.py --auto
+python run_simulation.py run --auto
 
 # Run without animation (faster)
-python run_simulation.py --no-anim
+python run_simulation.py run --no-anim
 
 ```
 
@@ -858,14 +839,14 @@ viz = UnifiedVisualizationGenerator(
 
 ```bash
 # Run baseline
-python run_simulation.py
+python run_simulation.py run
 # Results saved to Data/Simulation/<timestamp-1>/
 
 # Modify parameters in config/
 # Edit src/satellite_control/config/models.py or constants in src/satellite_control/config/
 
 # Run with new parameters
-python run_simulation.py
+python run_simulation.py run
 # Results saved to Data/Simulation/<timestamp-2>/
 
 # Compare results by examining mission_summary.txt in each folder
@@ -882,7 +863,7 @@ python run_simulation.py
 
 # Solution 1: Always run from project root
 cd /path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
-python run_simulation.py
+python run_simulation.py run
 
 # Solution 2: Install package in editable mode
 pip install -e .
@@ -899,26 +880,17 @@ export PYTHONPATH="${PYTHONPATH}:/path/to/Satellite_3D_PWM-Continuous_Thrusters_
 touch tests/__init__.py
 
 # Run with explicit test directory
-pytest tests/
+.venv311/bin/python -m pytest
 
 # Debug test discovery
-pytest --collect-only -v
+.venv311/bin/python -m pytest --collect-only -v
 ```
 
-### Type Checking Issues
+### Linting Issues
 
 ```bash
-# Install type stubs for dependencies
-pip install types-numpy types-setuptools
-
-# Check specific module
-mypy src/satellite_control/control/mpc_controller.py
-
-# Ignore specific line if needed
-result = external_function()  # type: ignore
-
-# Add type: ignore comment with reason
-result = external_dependency()  # type: ignore  # third-party lib has no stubs
+# Re-run ruff to see detailed output
+ruff check src/ tests/
 ```
 
 ### C++ Extension Build Issues
@@ -974,7 +946,6 @@ This guide complements other important documents:
 
 - **[README.md](../README.md)** - Project overview and quick start
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and component relationships
-- **[QUICKSTART.md](QUICKSTART.md)** - Getting started guide for new users
 - **[VISUALIZATION.md](VISUALIZATION.md)** - Output analysis and CSV format reference
 - **[MATHEMATICS.md](MATHEMATICS.md)** - Mathematical formulation of the MPC problem
 - **[TESTING.md](TESTING.md)** - Comprehensive testing and simulation validation guide

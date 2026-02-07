@@ -30,7 +30,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   ├── physics/             # Orbital dynamics (2 files)
 │   ├── visualization/       # Plotting & video (11 files)
 │   ├── dashboard/           # FastAPI backend + route modules (7 files)
-│   └── utils/               # Utilities (8 files)
+│   └── utils/               # Utilities (6 files)
 ├── ui/                      # React + Three.js web interface
 ├── tests/                   # pytest test suite
 ├── docs/                    # Documentation
@@ -61,8 +61,6 @@ def run(
     auto: bool,          # Auto mode with defaults
     duration: float,     # Max simulation time
     no_anim: bool,       # Headless mode
-    classic: bool,       # Text-based menu
-    engine: str,         # 'cpp'
     mission_file: str,   # Mission JSON path
 ): ...
 ```

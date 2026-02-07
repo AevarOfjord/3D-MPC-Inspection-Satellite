@@ -9,13 +9,13 @@ This guide explains how to run and interpret performance benchmarks for the Sate
 pip install -e ".[dev]"
 
 # Run all benchmarks
-pytest tests/benchmarks/ --benchmark-only
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only
 
 # Run with comparison (requires previous benchmark data)
-pytest tests/benchmarks/ --benchmark-compare
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-compare
 
 # Generate JSON report
-pytest tests/benchmarks/ --benchmark-json=benchmarks.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-json=benchmarks.json
 ```
 
 ## Benchmark Categories
@@ -25,7 +25,7 @@ pytest tests/benchmarks/ --benchmark-json=benchmarks.json
 Tests MPC solver performance:
 
 ```bash
-pytest tests/test_benchmark.py::TestMPCBenchmarks --benchmark-only
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCBenchmarks --benchmark-only
 ```
 
 **Key Metrics:**
@@ -38,7 +38,7 @@ pytest tests/test_benchmark.py::TestMPCBenchmarks --benchmark-only
 Tests physics step performance:
 
 ```bash
-pytest tests/benchmarks/test_physics_benchmarks.py --benchmark-only
+.venv311/bin/python -m pytest tests/benchmarks/test_physics_benchmarks.py --benchmark-only
 ```
 
 **Key Metrics:**
@@ -51,7 +51,7 @@ pytest tests/benchmarks/test_physics_benchmarks.py --benchmark-only
 Tests that detect performance regressions:
 
 ```bash
-pytest tests/test_benchmark.py::TestMPCRegressionDetection -v
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCRegressionDetection -v
 ```
 
 **Thresholds:**
@@ -65,13 +65,13 @@ pytest tests/test_benchmark.py::TestMPCRegressionDetection -v
 
 ```bash
 # Run all benchmarks
-pytest tests/benchmarks/ --benchmark-only
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only
 
 # Run specific benchmark
-pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only
 
 # Run with verbose output
-pytest tests/benchmarks/ --benchmark-only -v
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only -v
 ```
 
 ### Benchmark Comparison
@@ -80,20 +80,20 @@ Compare current benchmarks against previous runs:
 
 ```bash
 # First run (creates baseline)
-pytest tests/benchmarks/ --benchmark-only --benchmark-json=baseline.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only --benchmark-json=baseline.json
 
 # Later run (compares against baseline)
-pytest tests/benchmarks/ --benchmark-compare=baseline.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-compare=baseline.json
 ```
 
 ### Generating Reports
 
 ```bash
 # JSON report
-pytest tests/benchmarks/ --benchmark-json=benchmarks.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-json=benchmarks.json
 
 # HTML report (requires pytest-html)
-pytest tests/benchmarks/ --benchmark-only --html=benchmark_report.html
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only --html=benchmark_report.html
 ```
 
 ## Interpreting Results
@@ -133,7 +133,7 @@ Benchmarks run automatically in CI but don't fail the build:
 ```yaml
 # .github/workflows/ci.yml
 - name: Run benchmarks
-  run: pytest tests/benchmarks/ --benchmark-only --benchmark-json=benchmarks.json
+  run: .venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only --benchmark-json=benchmarks.json
   continue-on-error: true
 ```
 
@@ -143,37 +143,37 @@ Benchmarks run automatically in CI but don't fail the build:
 
 ```bash
 # Before committing
-pytest tests/benchmarks/ --benchmark-only
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only
 
 # Before releases
-pytest tests/benchmarks/ --benchmark-compare=baseline.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-compare=baseline.json
 ```
 
 ### 2. Track Performance Over Time
 
 ```bash
 # Save baseline
-pytest tests/benchmarks/ --benchmark-json=baseline_$(date +%Y%m%d).json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-json=baseline_$(date +%Y%m%d).json
 
 # Compare against baseline
-pytest tests/benchmarks/ --benchmark-compare=baseline_20260107.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-compare=baseline_20260107.json
 ```
 
 ### 3. Isolate Performance Issues
 
 ```bash
 # Run specific benchmark
-pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only
 
 # Run with profiling
-pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only --profile
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCBenchmarks::test_mpc_solve_time --benchmark-only --profile
 ```
 
 ### 4. Monitor Memory Usage
 
 ```bash
 # Run memory stability test
-pytest tests/test_benchmark.py::TestMPCRegressionDetection::test_mpc_memory_stability_long_run -v
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCRegressionDetection::test_mpc_memory_stability_long_run -v
 ```
 
 ## Troubleshooting
@@ -227,28 +227,28 @@ def pytest_benchmark_update_machine_info(config, machine_info):
 
 ```bash
 # Profile with cProfile
-pytest tests/benchmarks/ --benchmark-only --profile
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only --profile
 
 # Profile with line_profiler
-pytest tests/benchmarks/ --benchmark-only --profile --profile-svg
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only --profile --profile-svg
 ```
 
 ## Example Workflow
 
 ```bash
 # 1. Run benchmarks before changes
-pytest tests/benchmarks/ --benchmark-json=before.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-json=before.json
 
 # 2. Make code changes
 
 # 3. Run benchmarks after changes
-pytest tests/benchmarks/ --benchmark-json=after.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-json=after.json
 
 # 4. Compare results
-pytest tests/benchmarks/ --benchmark-compare=before.json --benchmark-compare=after.json
+.venv311/bin/python -m pytest tests/benchmarks/ --benchmark-compare=before.json --benchmark-compare=after.json
 
 # 5. Check for regressions
-pytest tests/test_benchmark.py::TestMPCRegressionDetection -v
+.venv311/bin/python -m pytest tests/test_benchmark.py::TestMPCRegressionDetection -v
 ```
 
 ## Resources

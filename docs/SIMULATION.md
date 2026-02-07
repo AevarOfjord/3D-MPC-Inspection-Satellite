@@ -16,13 +16,11 @@ simulation loop architecture.
 - [Running Simulations](#running-simulations)
 - [Troubleshooting](#troubleshooting)
 
----
-
 ## Overview
 
 The active runtime is **path-based MPC only** using unified mission v2 JSON
 files. Missions are authored in the web UI, saved to `missions_unified/`, then
-run from the terminal (`make sim` or `python run_simulation.py --mission ...`).
+run from the terminal (`make sim` or `python run_simulation.py run --mission ...`).
 The simulation uses a high-fidelity custom C++ physics engine with MPC running
 at different rates for optimal performance.
 
@@ -30,6 +28,8 @@ at different rates for optimal performance.
 
 ```bash
 make sim
+# Or
+python run_simulation.py run --auto
 ```
 
 ---
@@ -69,12 +69,12 @@ flowchart TD
         Loop -- Yes --> MissionLogic["1. Mission Logic Update"]
         MissionLogic --> ControlCheck{"Control Interval?<br/>(60 ms)"}
 
-        subgraph MPC_Cycle ["2. Control Cycle (MPC)"]
-            ControlCheck -- Yes --> GetState["Get State from C++ Engine"]
-            GetState --> AddNoise["Add Sensor Noise<br/>(If Enabled)"]
-            AddNoise --> SolveMPC["Solve MPC Optimization<br/>(OSQP - QP Solver)"]
-            SolveMPC --> QueueCmds["Queue Thruster Commands<br/>(PWM Duty Cycles)"]
-        end
+    subgraph MPC_Cycle ["2. Control Cycle (MPC)"]
+      ControlCheck -- Yes --> GetState["Get State from C++ Engine"]
+      GetState --> AddNoise["Add Sensor Noise<br/>(If Enabled)"]
+      AddNoise --> SolveMPC["Solve MPC Optimization<br/>(OSQP - QP Solver)"]
+      SolveMPC --> QueueCmds["Queue Thruster Commands<br/>(PWM Duty Cycles)"]
+    end
 
         ControlCheck -- No --> ProcCmds["Process Command Queue"]
         QueueCmds --> ProcCmds
@@ -84,9 +84,9 @@ flowchart TD
             ApplyForce --> StepPhysics["Step Physics (C++ Engine)<br/>(dt = 5 ms)"]
         end
 
-        StepPhysics --> LogData["4. Log Data (CSV)"]
-        LogData --> UpdateVis["5. Update Dashboard"]
-    end
+    StepPhysics --> LogData["4. Log Data (CSV)"]
+    LogData --> UpdateVis["5. Update Dashboard"]
+  end
 
     UpdateVis --> Loop
     Loop -- No --> SaveData["Save Data & Generate Plots"]
@@ -233,13 +233,13 @@ Quick launch without interactive menu:
 
 ```bash
 # Auto mode with defaults
-python run_simulation.py --auto
+python run_simulation.py run --auto
 
 # Custom duration
-python run_simulation.py --duration 30.0
+python run_simulation.py run --duration 30.0
 
 # Headless mode (no animation)
-python run_simulation.py --no-anim
+python run_simulation.py run --no-anim
 
 ```
 
@@ -317,7 +317,7 @@ All constants modifiable in `src/satellite_control/config/timing.py`.
 ### Interactive Mode (Default)
 
 ```bash
-python run_simulation.py
+python run_simulation.py run
 ```
 
 **Workflow:**
@@ -349,10 +349,11 @@ t=0.060s: MPC Solve (new state after 12 physics steps)
 
 ```
 Data/
-└── YYYY-MM-DD_HH-MM-SS/
+└── Simulation/
+  └── DD-MM-YYYY_HH-MM-SS/
     ├── physics_data.csv
     ├── control_data.csv
-    └── Simulation_animation.mp4
+    └── simulation_animation.mp4
 ```
 
 ---
@@ -364,7 +365,7 @@ Data/
 **Check:**
 
 1. MPC solve times in `control_data.csv`
-2. Disable visualization: `python run_simulation.py --no-anim`
+2. Disable visualization: `python run_simulation.py run --no-anim`
 3. Reduce horizon: Set `MPC_PREDICTION_HORIZON = 30`
 
 ### Physics Instability
@@ -413,6 +414,6 @@ This design mirrors real embedded control systems where controllers run at lower
 
 **Next Steps:**
 
-- See [QUICKSTART.md](QUICKSTART.md) for getting started
+-- See [README.md](../README.md) for getting started
 - See [TESTING.md](TESTING.md) for validation and testing
 - See [VISUALIZATION.md](VISUALIZATION.md) for understanding output

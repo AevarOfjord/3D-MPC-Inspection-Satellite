@@ -11,14 +11,14 @@ After each simulation run, the system automatically generates comprehensive visu
 ### Running a Simulation
 
 ```bash
-python run_simulation.py
+python run_simulation.py run
 ```
 
 After the simulation completes, find your results:
 
 ```bash
-ls Data/  # Lists timestamped directories
-cd Data/2026-01-06_10-30-45  # Navigate to latest run
+ls Data/Simulation/  # Lists timestamped directories
+cd Data/Simulation/2026-01-06_10-30-45  # Navigate to latest run
 ```
 
 ### What Gets Generated
@@ -37,11 +37,14 @@ After running a simulation, you'll find:
 
 ```
 Data/
-└── 2026-01-06_10-30-45/           # Timestamp: YYYY-MM-DD_HH-MM-SS
-    ├── physics_data.csv           # Position, velocity, acceleration
-    ├── control_data.csv          # Thruster commands, MPC performance
-    ├── Simulation_animation.mp4  # Animated mission playback
-    └── (plots generated on demand)
+└── Simulation/
+   └── 06-01-2026_10-30-45/           # Timestamp: DD-MM-YYYY_HH-MM-SS
+      ├── physics_data.csv           # Position, velocity, acceleration
+      ├── control_data.csv           # Thruster commands, MPC performance
+      ├── simulation_animation.mp4   # Matplotlib animation
+      ├── mission_metadata.json      # Planned path for UI
+      ├── mission_summary.txt        # Run summary
+      └── Plots/                     # Generated on demand
 ```
 
 ---
@@ -76,7 +79,7 @@ Time,Current_X,Current_Y,Current_Z,Current_Roll,Current_Pitch,Current_Yaw,...,Th
 
 ```python
 import pandas as pd
-df = pd.read_csv('Data/2026-01-06_10-30-45/physics_data.csv')
+df = pd.read_csv('Data/Simulation/06-01-2026_10-30-45/physics_data.csv')
 print(df.describe())
 ```
 
@@ -106,7 +109,7 @@ Control_Time,Current_X,Current_Y,Current_Z,...,Command_Vector,Total_Active_Thrus
 
 ```python
 import pandas as pd
-df = pd.read_csv('Data/2026-01-06_10-30-45/control_data.csv')
+df = pd.read_csv('Data/Simulation/06-01-2026_10-30-45/control_data.csv')
 
 # Average solve time
 print(f"Avg MPC solve time: {df['mpc_solve_time'].mean()*1000:.2f} ms")
@@ -120,7 +123,7 @@ print(f"Total thrust effort: {total_effort:.2f}")
 
 ## 2. Animated Mission Playback (MP4)
 
-### Simulation_animation.mp4
+### simulation_animation.mp4
 
 **What it shows:**
 
@@ -152,13 +155,13 @@ print(f"Total thrust effort: {total_effort:.2f}")
 
 ```bash
 # macOS
-open Data/2026-01-06_10-30-45/Simulation_animation.mp4
+open Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
 
 # Linux
-xdg-open Data/2026-01-06_10-30-45/Simulation_animation.mp4
+xdg-open Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
 
 # Windows
-start Data/2026-01-06_10-30-45/Simulation_animation.mp4
+start Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
 ```
 
 ---
@@ -171,7 +174,7 @@ Generate detailed static plots on demand:
 python -m src.satellite_control.visualization.unified_visualizer
 ```
 
-This creates multiple PNG plots in the same `Data/<timestamp>/` directory.
+This creates multiple PNG plots in the same `Data/Simulation/<timestamp>/Plots/` directory.
 
 ---
 
@@ -389,7 +392,7 @@ For rendering quality and style changes, update `video_renderer.py` and
 ```python
 from src.satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
 
-viz = UnifiedVisualizationGenerator(data_directory="Data")
+viz = UnifiedVisualizationGenerator(data_directory="Data/Simulation")
 viz.load_csv_data()
 
 # Generate the full static plot suite
@@ -418,8 +421,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load two different runs
-run1 = pd.read_csv('Data/2026-01-06_10-00-00/physics_data.csv')
-run2 = pd.read_csv('Data/2026-01-06_10-30-00/physics_data.csv')
+run1 = pd.read_csv('Data/Simulation/06-01-2026_10-00-00/physics_data.csv')
+run2 = pd.read_csv('Data/Simulation/06-01-2026_10-30-00/physics_data.csv')
 
 # Compare position error
 plt.figure(figsize=(10, 6))
@@ -441,18 +444,18 @@ plt.savefig('comparison.png')
 ```python
 from src.satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
 
-viz = UnifiedVisualizationGenerator(data_directory="Data")
+viz = UnifiedVisualizationGenerator(data_directory="Data/Simulation")
 viz.load_csv_data()
 
 # Export full static plot suite (high quality controlled by PlotStyle.DPI)
 viz.generate_performance_plots()
-# Saved under Data/<timestamp>/Plots/
+# Saved under Data/Simulation/<timestamp>/Plots/
 
 # Convert to PDF for LaTeX/presentations
 import subprocess
 subprocess.run([
     'convert',
-    'Data/<timestamp>/Plots/01_trajectory_2d.png',
+   'Data/Simulation/<timestamp>/Plots/01_trajectory_2d.png',
     'trajectory_plot.pdf'
 ])
 ```
@@ -466,7 +469,7 @@ subprocess.run([
 **Convert MP4 to GIF (smaller for web):**
 
 ```bash
-ffmpeg -i Simulation_animation.mp4 -vf "fps=15,scale=800:-1" output.gif
+ffmpeg -i simulation_animation.mp4 -vf "fps=15,scale=800:-1" output.gif
 ```
 
 ---
@@ -478,7 +481,7 @@ ffmpeg -i Simulation_animation.mp4 -vf "fps=15,scale=800:-1" output.gif
 **Check:**
 
 1. Simulation completed successfully
-2. CSV files exist in `Data/<timestamp>/`
+2. CSV files exist in `Data/Simulation/<timestamp>/`
 3. Run the visualizer manually:
    ```bash
    python -m src.satellite_control.visualization.unified_visualizer
@@ -557,7 +560,7 @@ After each simulation, you get:
 | ---------------------------- | ------------------ | ---------------------------------- |
 | **physics_data.csv**         | Raw state data     | Import to custom analysis tools    |
 | **control_data.csv**         | Control & MPC data | Solver performance, thruster usage |
-| **Simulation_animation.mp4** | Visual playback    | See actual mission execution       |
+| **simulation_animation.mp4** | Visual playback    | See actual mission execution       |
 | **trajectory_plot.png**      | Path analysis      | Verify smooth navigation           |
 | **velocity_profile.png**     | Speed analysis     | Check damping and limits           |
 | **thruster_activity.png**    | Control effort     | Identify inefficiencies            |
@@ -566,178 +569,16 @@ After each simulation, you get:
 
 **Next Steps:**
 
-- Run a simulation: `python run_simulation.py`
-- Find your data: `ls Data/`
+- Run a simulation: `python run_simulation.py run`
+- Find your data: `ls Data/Simulation/`
 - Review the animation and plots
 - Iterate on MPC parameters if needed
 - See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for tuning tips
 
 ---
 
-## Appendix: CSV Data Format Reference
+## CSV Data Reference
 
-Both simulation and real hardware produce identical CSV format for easy comparison.
-
-### Output Files
-
-Each mission run generates two CSV files:
-
-1. **physics_data.csv** (or `simulation_data.csv` in legacy format)
-
-   - Full control loop data with all state variables, MPC info, and commands
-   - 45+ columns per row
-   - **Identical format for both simulation and real hardware**
-
-2. **control_data.csv** (or `simulation_terminal_log.csv` in legacy format)
-   - Control commands and MPC performance metrics
-   - Logged at control frequency (16.67 Hz)
-
-### physics_data.csv Column Definitions
-
-#### Timing & Control
-
-| Column        | Unit    | Description                                           |
-| ------------- | ------- | ----------------------------------------------------- |
-| time          | seconds | Simulation time                                       |
-| step          | -       | Control iteration number                              |
-| mission_phase | -       | Current phase (APPROACHING/STABILIZING/TRACKING etc.) |
-
-#### Current State
-
-| Column | Unit    | Description               |
-| ------ | ------- | ------------------------- |
-| x      | meters  | X position in world frame |
-| y      | meters  | Y position in world frame |
-| theta  | radians | Yaw angle in world frame  |
-| vx     | m/s     | Velocity in X direction   |
-| vy     | m/s     | Velocity in Y direction   |
-| omega  | rad/s   | Angular velocity          |
-
-#### Target State
-
-| Column       | Unit    | Description             |
-| ------------ | ------- | ----------------------- |
-| target_x     | meters  | Target X position       |
-| target_y     | meters  | Target Y position       |
-| target_theta | radians | Target yaw angle        |
-| target_vx    | m/s     | Target velocity in X    |
-| target_vy    | m/s     | Target velocity in Y    |
-| target_omega | rad/s   | Target angular velocity |
-
-#### Tracking Error
-
-| Column      | Unit    | Description                           |
-| ----------- | ------- | ------------------------------------- |
-| error_x     | meters  | Position error in X                   |
-| error_y     | meters  | Position error in Y                   |
-| error_theta | radians | Yaw error (shortest angular distance) |
-| error_vx    | m/s     | Velocity error in X                   |
-| error_vy    | m/s     | Velocity error in Y                   |
-| error_omega | rad/s   | Angular velocity error                |
-
-### control_data.csv Column Definitions
-
-#### Thruster Commands (8 columns)
-
-| Column                   | Unit | Description                            |
-| ------------------------ | ---- | -------------------------------------- |
-| thruster_1 to thruster_8 | -    | PWM duty cycle [0-1] for each thruster |
-
-#### MPC Performance
-
-| Column               | Unit    | Description                                     |
-| -------------------- | ------- | ----------------------------------------------- |
-| mpc_solve_time       | seconds | Time spent in MPC solver                        |
-| mpc_status           | -       | Solver status (OPTIMAL, SUBOPTIMAL, TIME_LIMIT) |
-| mpc_cost             | -       | Objective function value                        |
-| num_active_thrusters | -       | Count of thrusters currently firing             |
-
-### Unit Consistency
-
-**SI Units (Internal):**
-
-- Position: meters
-- Angle: radians
-- Velocity: m/s
-- Angular velocity: rad/s
-- Time: seconds
-
-**Telemetry Units (if using hardware):**
-
-- Position: millimeters (matches OptiTrack output)
-- Angle: degrees (matches OptiTrack output)
-
-### Mission Phases
-
-**Waypoint Navigation:**
-
-1. **APPROACHING** - Moving toward waypoint target
-2. **STABILIZING** - Holding at waypoint (configurable duration)
-
-**Path Following (without return):**
-
-1. **POSITIONING** - Moving to closest point on path
-2. **PATH_STABILIZATION** - Stabilizing before tracking begins
-3. **TRACKING** - Following moving target along path
-4. **STABILIZING** - Holding at final position
-
-**Path Following (with return):**
-
-1. **POSITIONING** - Moving to closest point on path
-2. **PATH_STABILIZATION** - Stabilizing at start waypoint
-3. **TRACKING** - Following moving target
-4. **PATH_STABILIZATION** - Stabilizing at final waypoint
-5. **RETURNING** - Moving to return position
-6. **STABILIZING** - Holding at return position
-
-### Data Analysis Examples
-
-**Load and analyze CSV data:**
-
-```python
-import pandas as pd
-import numpy as np
-
-# Load files
-physics = pd.read_csv('Data/<timestamp>/physics_data.csv')
-control = pd.read_csv('Data/<timestamp>/control_data.csv')
-
-# Calculate position error over time
-pos_error = np.sqrt(physics['error_x']**2 + physics['error_y']**2)
-print(f"Mean error: {pos_error.mean():.4f} m")
-print(f"Final error: {pos_error.iloc[-1]:.4f} m")
-
-# MPC performance summary
-print(f"Avg solve time: {control['mpc_solve_time'].mean()*1000:.2f} ms")
-print(f"Max solve time: {control['mpc_solve_time'].max()*1000:.2f} ms")
-
-# Solver success rate
-optimal_count = (control['mpc_status'] == 'OPTIMAL').sum()
-total_count = len(control)
-print(f"Optimal solutions: {optimal_count}/{total_count} ({100*optimal_count/total_count:.1f}%)")
-```
-
-**Plot trajectory:**
-
-```python
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(10, 10))
-plt.plot(physics['x'], physics['y'], 'b-', label='Actual path')
-plt.plot(physics['target_x'], physics['target_y'], 'r--', label='Target path')
-plt.xlabel('X (m)')
-plt.ylabel('Y (m)')
-plt.legend()
-plt.grid(True)
-plt.axis('equal')
-plt.savefig('trajectory.png')
-```
-
-### Comparison Notes
-
-When comparing simulation to real hardware:
-
-1. **Telemetry**: Simulation is noiseless, real has measurement noise
-2. **MPC timing**: Faster in simulation (no hardware communication overhead)
-3. **Command execution**: Instantaneous in simulation, valve delays in real hardware
-4. **State estimation**: Perfect in simulation, filtered/estimated in real hardware
+The CSV headers are the source of truth for available fields. Use the column list
+in the file header to drive analysis scripts, and prefer the `control_data.csv`
+and `physics_data.csv` exports under `Data/Simulation/<timestamp>/`.

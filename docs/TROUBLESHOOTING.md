@@ -147,7 +147,7 @@ MPC_SOLVER_TIME_LIMIT = 0.08  # Increase from 0.05s
 # After simulation, check control_data.csv
 python -c "
 import pandas as pd
-df = pd.read_csv('Data/<timestamp>/control_data.csv')
+df = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 print(f'Avg: {df[\"mpc_solve_time\"].mean()*1000:.2f}ms')
 print(f'Max: {df[\"mpc_solve_time\"].max()*1000:.2f}ms')
 "
@@ -215,10 +215,10 @@ cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pwd  # Should show project root
 
 # Run from project root
-python run_simulation.py
+python run_simulation.py run
 
 # If using pytest
-pytest tests/
+.venv311/bin/python -m pytest
 
 # If needed, add to PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
@@ -238,7 +238,7 @@ u_opt = np.clip(u_opt, 0.0, 1.0)
 
 # Check control_data.csv for invalid values
 import pandas as pd
-df = pd.read_csv('Data/<timestamp>/control_data.csv')
+df = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 for i in range(1, 9):
     col = f'thruster_{i}'
     print(f"{col}: min={df[col].min()}, max={df[col].max()}")
@@ -256,7 +256,7 @@ for i in range(1, 9):
 
 ```bash
 # Check final errors in physics_data.csv
-tail Data/<timestamp>/physics_data.csv
+tail Data/Simulation/<timestamp>/physics_data.csv
 ```
 
 **Solutions**:
@@ -322,7 +322,7 @@ MAX_VELOCITY = 0.6     # Increase from 0.5 m/s
 
 ### Animation Not Generated
 
-**Problem**: No `Simulation_animation.mp4` file after simulation
+**Problem**: No `simulation_animation.mp4` file after simulation
 
 **Solutions**:
 
@@ -352,8 +352,8 @@ python -m src.satellite_control.visualization.unified_visualizer
 
 # Check CSV data integrity
 import pandas as pd
-physics = pd.read_csv('Data/<timestamp>/physics_data.csv')
-control = pd.read_csv('Data/<timestamp>/control_data.csv')
+physics = pd.read_csv('Data/Simulation/<timestamp>/physics_data.csv')
+control = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 
 print(physics.info())  # Check for NaN or inf values
 print(control.info())
@@ -374,10 +374,10 @@ pip install --upgrade rich
 
 # Use basic mode if terminal incompatible
 export TERM=dumb
-python run_simulation.py
+python run_simulation.py run
 
 # Or run headless
-python run_simulation.py --no-anim
+python run_simulation.py run --no-anim
 ```
 
 ### Video Quality Poor
@@ -410,11 +410,11 @@ pip install pytest pytest-cov
 
 # Run from project root
 cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
-pytest tests/
+.venv311/bin/python -m pytest
 
 # If module import errors, check __init__.py files
 touch tests/__init__.py
-touch tests/unit/__init__.py
+touch tests/integration/__init__.py
 touch tests/e2e/__init__.py
 ```
 
@@ -432,7 +432,7 @@ pytest --timeout=10
 pytest -m "not slow"
 
 # Skip integration tests
-pytest tests/unit/
+.venv311/bin/python -m pytest tests/integration/
 ```
 
 ### Flaky Tests
@@ -467,14 +467,14 @@ np.random.seed(42)
 
 ```bash
 # List available data directories
-ls -lt Data/ | head
+ls -lt Data/Simulation/ | head
 
 # Use most recent
-DATA_DIR=$(ls -t Data/ | head -1)
-echo "Latest data: Data/$DATA_DIR"
+DATA_DIR=$(ls -t Data/Simulation/ | head -1)
+echo "Latest data: Data/Simulation/$DATA_DIR"
 
 # Check files exist
-ls -lh Data/$DATA_DIR/
+ls -lh Data/Simulation/$DATA_DIR/
 ```
 
 ### CSV Contains NaN Values
@@ -485,7 +485,7 @@ ls -lh Data/$DATA_DIR/
 
 ```python
 import pandas as pd
-df = pd.read_csv('Data/<timestamp>/physics_data.csv')
+df = pd.read_csv('Data/Simulation/<timestamp>/physics_data.csv')
 
 # Check for NaN
 print(df.isna().sum())
@@ -511,7 +511,7 @@ print(np.isinf(df.select_dtypes(include=[np.number])).sum())
 
 ```bash
 # Run longer simulation
-python run_simulation.py --duration 60.0
+python run_simulation.py run --duration 60.0
 
 # Check mission complete criteria
 # May need to adjust tolerances in config/mpc_params.py
@@ -539,25 +539,19 @@ python run_simulation.py --duration 60.0
    logging.basicConfig(level=logging.DEBUG)
    ```
 
-2. **Check config validity**:
-
-   ```bash
-   python run_simulation.py config
-   ```
-
-3. **Run regression tests**:
+2. **Run regression tests**:
 
    ```bash
    .venv311/bin/python -m pytest
    ```
 
-4. **Check MPC solve times**:
+3. **Check MPC solve times**:
 
    ```bash
-   grep "MPC Solve" -r Data/<timestamp>/
+   grep "MPC Solve" -r Data/Simulation/<timestamp>/
    ```
 
-5. **Review simulation logs**:
+4. **Review simulation logs**:
    ```bash
    # Check terminal output or saved logs
    cat simulation.log
@@ -609,7 +603,7 @@ If you can't resolve the issue:
 
 ```bash
 # Check you're using the right command
-python run_simulation.py  # NOT python simulation.py
+python run_simulation.py run  # NOT python simulation.py
 
 # Verify dependencies
 pip install -r requirements.txt
@@ -619,7 +613,7 @@ pip install -r requirements.txt
 
 ```bash
 # Run headless for max speed
-python run_simulation.py --auto --no-anim
+python run_simulation.py run --auto --no-anim
 
 # Reduce horizon
 # Edit mpc_params.py: MPC_PREDICTION_HORIZON = 30
@@ -643,7 +637,7 @@ pip install pytest
 
 # Run from project root
 cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
-pytest tests/
+.venv311/bin/python -m pytest
 ```
 
 ---
