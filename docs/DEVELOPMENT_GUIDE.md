@@ -454,7 +454,6 @@ config/
 ├── mpc_params.py         # MPC horizons, weights, constraints
 ├── mission_state.py      # Mission parameters
 ├── constants.py          # System constants
-├── obstacles.py          # Obstacle definitions
 ├── thruster_config.py    # Thruster configuration
 └── models.py             # Pydantic validation models
 ```

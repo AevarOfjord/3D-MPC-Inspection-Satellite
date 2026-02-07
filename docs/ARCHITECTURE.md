@@ -205,7 +205,7 @@ class MPCControllerCpp {
 
 ---
 
-## src/satellite_control/config/ (17 files)
+## src/satellite_control/config/ (15 files)
 
 Pydantic-based configuration with comprehensive validation:
 
@@ -219,12 +219,10 @@ Pydantic-based configuration with comprehensive validation:
 | `presets.py` | 240 | FAST, BALANCED, STABLE, PRECISION presets |
 | `physics.py` | 240 | Physics parameter defaults |
 | `constants.py` | 170 | System-wide constants |
-| `adapter.py` | 210 | Hydra ↔ Pydantic conversion |
 | `orbital_config.py` | 110 | Orbital parameters |
 | `reaction_wheel_config.py` | 150 | Reaction wheel parameters |
 | `thruster_config.py` | 75 | Thruster parameters |
 | `timing.py` | 135 | Timing constants |
-| `obstacles.py` | 180 | Obstacle definitions |
 | `defaults.py` | 85 | Default value factories |
 | `__init__.py` | - | Module exports |
 
