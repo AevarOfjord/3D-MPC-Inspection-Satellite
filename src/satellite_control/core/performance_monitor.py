@@ -19,11 +19,16 @@ Usage:
 import json
 import time
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
 
 import numpy as np
+
+# Maximum number of timing samples to retain for percentile calculations.
+# 10 000 samples at 16 Hz control = ~10 min of data — sufficient for statistics.
+_MAX_TIMING_SAMPLES = 10_000
 
 
 @dataclass
@@ -36,17 +41,17 @@ class PerformanceMetrics:
     """
 
     # MPC Performance
-    mpc_solve_times: List[float] = field(default_factory=list)
+    mpc_solve_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
     mpc_solve_count: int = 0
     mpc_timeout_count: int = 0
     mpc_failure_count: int = 0
 
     # Physics Performance
-    physics_step_times: List[float] = field(default_factory=list)
+    physics_step_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
     physics_step_count: int = 0
 
     # Control Loop Performance
-    control_loop_times: List[float] = field(default_factory=list)
+    control_loop_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
     control_loop_count: int = 0
     timing_violations: int = 0
 

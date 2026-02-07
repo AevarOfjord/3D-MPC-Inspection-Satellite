@@ -304,7 +304,8 @@ class TestAngleOperations:
         normalized = validator.normalize_angle(angle)
 
         assert -np.pi <= normalized <= np.pi
-        assert normalized == pytest.approx(np.pi)
+        # ±pi represent the same angle; math.remainder may return either
+        assert abs(normalized) == pytest.approx(np.pi)
 
     def test_angle_difference_simple(self):
         """Test simple angle difference."""

@@ -107,6 +107,25 @@ class CppSatelliteSimulator:
         self.thruster_activation_time = {}
         self.thruster_deactivation_time = {}
 
+        # Pre-allocate command arrays as numpy for efficient C++ bridge crossing
+        self._current_thruster_cmds = np.zeros(self._cpp_params.num_thrusters, dtype=np.float64)
+        self._current_rw_torques = np.zeros(3, dtype=np.float64)
+
+        # State cache: avoids repeated engine.get_state() calls within one timestep
+        self._cached_state: Optional[np.ndarray] = None
+        self._cached_state_time: float = -1.0
+
+    def _get_cached_state(self) -> np.ndarray:
+        """Get state, reusing cache if same timestep."""
+        if self._cached_state is None or self._cached_state_time != self.simulation_time:
+            self._cached_state = self.engine.get_state()
+            self._cached_state_time = self.simulation_time
+        return self._cached_state
+
+    def _invalidate_state_cache(self) -> None:
+        """Invalidate state cache (call after any state mutation)."""
+        self._cached_state = None
+
     def set_thruster_level(self, thruster_id: int, level: float):
         """
         Set individual thruster output level.
@@ -116,14 +135,7 @@ class CppSatelliteSimulator:
             thruster_id: 1-based index (1-N)
             level: Output level [0.0, 1.0]
         """
-        if not hasattr(self, "_current_thruster_cmds"):
-            self._current_thruster_cmds = [0.0] * self._cpp_params.num_thrusters
-
-        # Ensure list is long enough
-        while len(self._current_thruster_cmds) < thruster_id:
-            self._current_thruster_cmds.append(0.0)
-
-        # Update command (0-indexed internally)
+        # Direct numpy array indexing — no hasattr, no list growth guard
         self._current_thruster_cmds[thruster_id - 1] = level
 
     def _create_satellite_params(self, cfg: Any):
@@ -214,18 +226,19 @@ class CppSatelliteSimulator:
     @property
     def position(self) -> np.ndarray:
         """Get position [x, y, z]."""
-        return self.engine.get_state()[0:3]
+        return self._get_cached_state()[0:3]
 
     @position.setter
     def position(self, value: np.ndarray):
         s = self.engine.get_state()
         s[0:3] = value
         self.engine.reset(s)
+        self._invalidate_state_cache()
 
     @property
     def quaternion(self) -> np.ndarray:
         """Get quaternion [w, x, y, z]."""
-        return self.engine.get_state()[3:7]
+        return self._get_cached_state()[3:7]
 
     @property
     def angle(self) -> Tuple[float, float, float]:
@@ -240,22 +253,24 @@ class CppSatelliteSimulator:
         s = self.engine.get_state()
         s[3:7] = q
         self.engine.reset(s)
+        self._invalidate_state_cache()
 
     @property
     def velocity(self) -> np.ndarray:
         """Get velocity [vx, vy, vz]."""
-        return self.engine.get_state()[7:10]
+        return self._get_cached_state()[7:10]
 
     @velocity.setter
     def velocity(self, value: np.ndarray):
         s = self.engine.get_state()
         s[7:10] = value
         self.engine.reset(s)
+        self._invalidate_state_cache()
 
     @property
     def angular_velocity(self) -> np.ndarray:
         """Get body angular velocity [wx, wy, wz]."""
-        return self.engine.get_state()[10:13]
+        return self._get_cached_state()[10:13]
 
     @angular_velocity.setter
     def angular_velocity(self, value: Union[float, Tuple[float, float, float]]):
@@ -267,6 +282,7 @@ class CppSatelliteSimulator:
         s = self.engine.get_state()
         s[10:13] = w
         self.engine.reset(s)
+        self._invalidate_state_cache()
 
     @property
     def wheel_speeds(self) -> np.ndarray:
@@ -279,30 +295,22 @@ class CppSatelliteSimulator:
         Legacy Python simulator applied forces during integration.
         Here we store them for update_physics.
         """
-        self._current_thruster_cmds = force
+        self._current_thruster_cmds[:] = force
 
     def set_reaction_wheel_torque(self, torque: np.ndarray):
         """Set reaction wheel torques for the NEXT step."""
-        self._current_rw_torques = torque
+        self._current_rw_torques[:] = torque
 
     def update_physics(self, dt: float):
         """
         Step the physics simulation.
 
         Args:
-            dt: Time to step (must match params.dt usually, or RK4 handles arbitrary?)
-                RK4 handles arbitrary dt.
+            dt: Time to step (RK4 handles arbitrary dt).
         """
-        # Get pending commands (default to zero if not set)
-        if not hasattr(self, "_current_thruster_cmds"):
-            self._current_thruster_cmds = [0.0] * self._cpp_params.num_thrusters
-
-        if not hasattr(self, "_current_rw_torques"):
-            self._current_rw_torques = [0.0] * 3
-
-        # Call Engine Step
         self.engine.step(dt, self._current_thruster_cmds, self._current_rw_torques)
         self.simulation_time += dt
+        self._invalidate_state_cache()
 
     def update_physics_batch(self, steps: int, dt: float):
         """
@@ -315,14 +323,9 @@ class CppSatelliteSimulator:
         if steps <= 0:
             return
 
-        if not hasattr(self, "_current_thruster_cmds"):
-            self._current_thruster_cmds = [0.0] * self._cpp_params.num_thrusters
-
-        if not hasattr(self, "_current_rw_torques"):
-            self._current_rw_torques = [0.0] * 3
-
         self.engine.step_batch(steps, dt, self._current_thruster_cmds, self._current_rw_torques)
         self.simulation_time += dt * steps
+        self._invalidate_state_cache()
 
 
     # Visualization Compat (Headless Mocks)

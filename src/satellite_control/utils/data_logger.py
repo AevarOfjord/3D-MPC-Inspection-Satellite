@@ -28,7 +28,7 @@ class DataLogger:
     def __init__(
         self,
         mode: str = "simulation",
-        buffer_size: int = 1,
+        buffer_size: int = 200,
         filename: str = "control_data.csv",
         max_terminal_entries: int = 0,
     ):
@@ -53,6 +53,13 @@ class DataLogger:
         self.data_save_path: Optional[Path] = None
         self.current_step = 0
         self._headers_written = False
+
+        # Cached headers (computed once per mode)
+        self._cached_sim_headers: Optional[List[str]] = None
+        self._cached_physics_headers: Optional[List[str]] = None
+
+        # Pre-built format dispatch table for _format_value
+        self._format_dispatch = self._build_format_dispatch()
 
         # Incremental stats tracking
         self.stats_solve_times: List[float] = []
@@ -373,9 +380,64 @@ class DataLogger:
             "Next_Update_s",
         ]
 
+    def _build_format_dispatch(self) -> Dict[str, str]:
+        """Build a header -> format-spec lookup table (replaces if/elif chain)."""
+        dispatch: Dict[str, str] = {}
+
+        # Integer columns
+        for h in ["Step", "Waypoint_Number", "Total_Active_Thrusters",
+                   "Thruster_Switches", "MPC_Iterations"]:
+            dispatch[h] = "int"
+
+        # Time values — 4 decimals
+        for h in ["MPC_Start_Time", "Control_Time", "Actual_Time_Interval",
+                   "Command_Sent_Time", "MPC_Computation_Time", "MPC_Solve_Time",
+                   "Total_MPC_Loop_Time"]:
+            dispatch[h] = ".4f"
+
+        # Configuration values — 3 decimals
+        for h in ["CONTROL_DT", "MPC_Solver_Time_Limit"]:
+            dispatch[h] = ".3f"
+
+        # Telemetry positions (mm) — 2 decimals
+        for h in ["Telemetry_X_mm", "Telemetry_Y_mm", "Telemetry_Z_mm"]:
+            dispatch[h] = ".2f"
+
+        # Telemetry angles (degrees) — 2 decimals
+        for h in ["Telemetry_Roll_deg", "Telemetry_Pitch_deg", "Telemetry_Yaw_deg"]:
+            dispatch[h] = ".2f"
+
+        # Position values (meters) — 5 decimals
+        for h in ["Current_X", "Current_Y", "Current_Z",
+                   "Reference_X", "Reference_Y", "Reference_Z",
+                   "Error_X", "Error_Y", "Error_Z"]:
+            dispatch[h] = ".5f"
+
+        # Angle values (radians) — 5 decimals
+        for h in ["Current_Roll", "Current_Pitch", "Current_Yaw",
+                   "Reference_Roll", "Reference_Pitch", "Reference_Yaw",
+                   "Error_Roll", "Error_Pitch", "Error_Yaw"]:
+            dispatch[h] = ".5f"
+
+        # Velocity values — 5 decimals
+        for h in ["Current_VX", "Current_VY", "Current_VZ",
+                   "Current_WX", "Current_WY", "Current_WZ",
+                   "Reference_VX", "Reference_VY", "Reference_VZ",
+                   "Reference_WX", "Reference_WY", "Reference_WZ",
+                   "Error_VX", "Error_VY", "Error_VZ",
+                   "Error_WX", "Error_WY", "Error_WZ"]:
+            dispatch[h] = ".5f"
+
+        # Objective / gap — 3 decimals
+        for h in ["MPC_Objective", "MPC_Optimality_Gap"]:
+            dispatch[h] = ".3f"
+
+        return dispatch
+
     def _format_value(self, header: str, value: Any) -> str:
         """
         Format numeric values with appropriate precision based on column type.
+        Uses pre-built dispatch table for O(1) lookup instead of if/elif chain.
 
         Args:
             header: Column name
@@ -396,109 +458,16 @@ class DataLogger:
         if isinstance(value, str):
             return value
 
-        # Numeric formatting based on column type
+        # Numeric formatting via dispatch table
         try:
             num_value = float(value)
-
-            # Integer columns
-            if header in [
-                "Step",
-                "Waypoint_Number",
-                "Total_Active_Thrusters",
-                "Thruster_Switches",
-                "MPC_Iterations",
-            ]:
-                return str(int(num_value))
-
-            # Time values - 4 decimals (0.1ms precision)
-            elif header in [
-                "MPC_Start_Time",
-                "Control_Time",
-                "Actual_Time_Interval",
-                "Command_Sent_Time",
-                "MPC_Computation_Time",
-                "MPC_Solve_Time",
-                "Total_MPC_Loop_Time",
-            ]:
-                return f"{num_value:.4f}"
-
-            # Configuration values - 3 decimals
-            elif header in ["CONTROL_DT", "MPC_Solver_Time_Limit"]:
-                return f"{num_value:.3f}"
-
-            # Telemetry positions (mm) - 2 decimals (0.01mm precision)
-            elif header in ["Telemetry_X_mm", "Telemetry_Y_mm", "Telemetry_Z_mm"]:
-                return f"{num_value:.2f}"
-
-            # Telemetry angle (degrees) - 2 decimals (0.01 degree precision)
-            elif header in [
-                "Telemetry_Roll_deg",
-                "Telemetry_Pitch_deg",
-                "Telemetry_Yaw_deg",
-            ]:
-                return f"{num_value:.2f}"
-
-            # Position values (meters) - 5 decimals (0.01mm precision)
-            elif header in [
-                "Current_X",
-                "Current_Y",
-                "Current_Z",
-                "Reference_X",
-                "Reference_Y",
-                "Reference_Z",
-                "Error_X",
-                "Error_Y",
-                "Error_Z",
-            ]:
-                return f"{num_value:.5f}"
-
-            # Angle values (radians) - 5 decimals (0.01 degree precision)
-            elif header in [
-                "Current_Roll",
-                "Current_Pitch",
-                "Current_Yaw",
-                "Reference_Roll",
-                "Reference_Pitch",
-                "Reference_Yaw",
-                "Error_Roll",
-                "Error_Pitch",
-                "Error_Yaw",
-            ]:
-                return f"{num_value:.5f}"
-
-            # Velocity values - 5 decimals (0.01mm/s precision)
-            elif header in [
-                "Current_VX",
-                "Current_VY",
-                "Current_VZ",
-                "Current_WX",
-                "Current_WY",
-                "Current_WZ",
-                "Reference_VX",
-                "Reference_VY",
-                "Reference_VZ",
-                "Reference_WX",
-                "Reference_WY",
-                "Reference_WZ",
-                "Error_VX",
-                "Error_VY",
-                "Error_VZ",
-                "Error_WX",
-                "Error_WY",
-                "Error_WZ",
-            ]:
-                return f"{num_value:.5f}"
-
-            # Objective value and optimality gap - 3 decimals
-            elif header in ["MPC_Objective", "MPC_Optimality_Gap"]:
-                return f"{num_value:.3f}"
-
-            # Default: 6 decimals for unknown numeric columns
-            else:
+            fmt = self._format_dispatch.get(header)
+            if fmt is None:
                 return f"{num_value:.6f}"
-
+            if fmt == "int":
+                return str(int(num_value))
+            return format(num_value, fmt)
         except (ValueError, TypeError):
-            # If conversion fails, return as-is
             return str(value)
 
     def _format_terminal_value(self, header: str, value: Any) -> str:

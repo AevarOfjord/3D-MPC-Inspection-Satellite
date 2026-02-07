@@ -28,7 +28,7 @@ def update_mpc_control_step(sim: Any) -> None:
 
     current_state = sim.get_current_state()
     mpc_start_sim_time = sim.simulation_time
-    mpc_start_wall_time = time.time()
+    mpc_start_wall_time = time.perf_counter()
 
     # Compute action
     (
@@ -50,20 +50,24 @@ def update_mpc_control_step(sim: Any) -> None:
     max_rw_torque = getattr(sim.mpc_controller, "max_rw_torque", 0.0)
     if rw_torque_norm is not None and max_rw_torque:
         rw_torque_cmd[: len(rw_torque_norm)] = rw_torque_norm * max_rw_torque
-    if hasattr(sim.satellite, "set_reaction_wheel_torque"):
+    # Cache the capability check for set_reaction_wheel_torque
+    if not hasattr(sim, "_sat_has_rw_torque"):
+        sim._sat_has_rw_torque = hasattr(sim.satellite, "set_reaction_wheel_torque")
+    if sim._sat_has_rw_torque:
         sim.satellite.set_reaction_wheel_torque(rw_torque_cmd)
 
     # Update simulation state
     sim.last_control_update = sim.simulation_time
     sim.next_control_simulation_time += sim.control_update_interval
     sim.last_control_output = np.concatenate([thruster_action, rw_torque_cmd])
-    sim.previous_thrusters = thruster_action.copy()
+    thruster_copy = thruster_action.copy()
+    sim.previous_thrusters = thruster_copy
     history_stride = int(getattr(sim, "history_downsample_stride", 1) or 1)
     if not hasattr(sim, "_control_history_downsample_counter"):
         sim._control_history_downsample_counter = 0
     sim._control_history_downsample_counter += 1
     if history_stride <= 1 or (sim._control_history_downsample_counter % history_stride) == 0:
-        sim._append_capped_history(sim.control_history, thruster_action.copy())
+        sim._append_capped_history(sim.control_history, thruster_copy)
     sim.set_thruster_pattern(thruster_action)
 
     # Log data

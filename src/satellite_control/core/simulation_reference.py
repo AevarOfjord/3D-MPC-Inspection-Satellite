@@ -5,6 +5,7 @@ Extracted from SatelliteMPCLinearizedSimulation.update_path_reference_state
 to reduce simulation.py size while keeping the public API unchanged.
 """
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,6 +16,15 @@ if TYPE_CHECKING:
     from src.satellite_control.core.simulation import (
         SatelliteMPCLinearizedSimulation,
     )
+
+
+def _norm3(v: np.ndarray) -> float:
+    """Fast Euclidean norm for 3-element vectors (avoids numpy dispatch overhead)."""
+    return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+
+# Module-level buffer to avoid per-call allocation of np.zeros(13)
+_REF_BUF = np.zeros(13, dtype=np.float64)
 
 
 def update_path_reference_state(
@@ -40,57 +50,60 @@ def update_path_reference_state(
 
     # Always MPCC mode
     pos_ref, tangent = sim.mpc_controller.get_path_reference()
-    reference_state = np.zeros(13, dtype=float)
+    reference_state = _REF_BUF
+    reference_state[:] = 0.0
     reference_state[0:3] = pos_ref
 
-    if np.linalg.norm(tangent) > 1e-6:
-        x_axis = tangent / np.linalg.norm(tangent)
+    tangent_norm = _norm3(tangent)
+    if tangent_norm > 1e-6:
+        x_axis = tangent / tangent_norm
         up = np.array([0.0, 0.0, 1.0], dtype=float)
         if abs(float(np.dot(x_axis, up))) > 0.95:
             up = np.array([0.0, 1.0, 0.0], dtype=float)
         z_axis = up - np.dot(up, x_axis) * x_axis
-        if np.linalg.norm(z_axis) > 1e-6:
-            z_axis = z_axis / np.linalg.norm(z_axis)
+        z_norm = _norm3(z_axis)
+        if z_norm > 1e-6:
+            z_axis = z_axis / z_norm
         else:
             z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
         y_axis = np.cross(z_axis, x_axis)
-        if np.linalg.norm(y_axis) > 1e-6:
-            y_axis = y_axis / np.linalg.norm(y_axis)
+        y_norm = _norm3(y_axis)
+        if y_norm > 1e-6:
+            y_axis = y_axis / y_norm
         else:
             y_axis = np.array([0.0, 1.0, 0.0], dtype=float)
         z_axis = np.cross(x_axis, y_axis)
-        if np.linalg.norm(z_axis) > 1e-6:
-            z_axis = z_axis / np.linalg.norm(z_axis)
+        z_norm2 = _norm3(z_axis)
+        if z_norm2 > 1e-6:
+            z_axis = z_axis / z_norm2
 
         reference_state[3:7] = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
     else:
         # Maintain current orientation if stationary
         reference_state[3:7] = current_state[3:7]
 
-    # --- Read MPC config ---
-    path_speed = 0.0
-    taper_dist = 0.0
-    coast_pos_tol = 0.0
-    coast_vel_tol = 0.0
-    coast_min_speed = 0.0
-    if sim.simulation_config is not None:
-        path_speed = float(sim.simulation_config.app_config.mpc.path_speed)
-        taper_dist = float(
-            getattr(sim.simulation_config.app_config.mpc, "progress_taper_distance", 0.0)
-            or 0.0
-        )
-        coast_pos_tol = float(
-            getattr(sim.simulation_config.app_config.mpc, "coast_pos_tolerance", 0.0)
-            or 0.0
-        )
-        coast_vel_tol = float(
-            getattr(sim.simulation_config.app_config.mpc, "coast_vel_tolerance", 0.0)
-            or 0.0
-        )
-        coast_min_speed = float(
-            getattr(sim.simulation_config.app_config.mpc, "coast_min_speed", 0.0)
-            or 0.0
-        )
+    # --- Read MPC config (cached on sim to avoid repeated getattr per step) ---
+    if not hasattr(sim, "_ref_config_cached"):
+        sim._ref_config_cached = True
+        if sim.simulation_config is not None:
+            mpc_cfg = sim.simulation_config.app_config.mpc
+            sim._ref_path_speed = float(mpc_cfg.path_speed)
+            sim._ref_taper_dist = float(getattr(mpc_cfg, "progress_taper_distance", 0.0) or 0.0)
+            sim._ref_coast_pos_tol = float(getattr(mpc_cfg, "coast_pos_tolerance", 0.0) or 0.0)
+            sim._ref_coast_vel_tol = float(getattr(mpc_cfg, "coast_vel_tolerance", 0.0) or 0.0)
+            sim._ref_coast_min_speed = float(getattr(mpc_cfg, "coast_min_speed", 0.0) or 0.0)
+        else:
+            sim._ref_path_speed = 0.0
+            sim._ref_taper_dist = 0.0
+            sim._ref_coast_pos_tol = 0.0
+            sim._ref_coast_vel_tol = 0.0
+            sim._ref_coast_min_speed = 0.0
+
+    path_speed = sim._ref_path_speed
+    taper_dist = sim._ref_taper_dist
+    coast_pos_tol = sim._ref_coast_pos_tol
+    coast_vel_tol = sim._ref_coast_vel_tol
+    coast_min_speed = sim._ref_coast_min_speed
 
     # --- Taper speed near path end ---
     speed_scale = 1.0
@@ -113,14 +126,14 @@ def update_path_reference_state(
 
     # Coasting bias: match reference speed to current along-track speed when on-path.
     v_ref = path_speed * speed_scale
-    if (not at_path_end) and coast_pos_tol > 0.0 and np.linalg.norm(tangent) > 1e-6:
-        pos_err = float(np.linalg.norm(current_state[:3] - pos_ref))
+    if (not at_path_end) and coast_pos_tol > 0.0 and tangent_norm > 1e-6:
+        pos_err = _norm3(current_state[:3] - pos_ref)
         v_curr = current_state[7:10]
         v_along = float(np.dot(v_curr, tangent))
         v_perp = v_curr - v_along * tangent
         if (
             pos_err <= coast_pos_tol
-            and np.linalg.norm(v_perp) <= coast_vel_tol
+            and _norm3(v_perp) <= coast_vel_tol
             and v_along >= 0.0
         ):
             v_ref = max(coast_min_speed, v_along)
@@ -134,4 +147,4 @@ def update_path_reference_state(
     if at_path_end:
         reference_state[3:7] = current_state[3:7]
 
-    sim.reference_state = reference_state
+    sim.reference_state = reference_state.copy()
