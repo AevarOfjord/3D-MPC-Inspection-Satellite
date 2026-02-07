@@ -602,26 +602,6 @@ pytest tests/unit/test_mpc_controller.py -v -s
 # -s: show print statements and logs
 ```
 
-### Performance Profiling
-
-The project includes built-in profiling via `utils/profiler.py`:
-
-```python
-from src.satellite_control.utils.profiler import PerformanceProfiler
-
-# In simulation code
-profiler = PerformanceProfiler()
-
-with profiler.measure("mpc_solve"):
-    solution = mpc.solve(state, target)
-
-with profiler.measure("physics_step"):
-    physics.step(dt)
-
-# Print statistics
-profiler.print_summary()
-```
-
 ### Live Simulation Debugging
 
 The rich terminal dashboard shows real-time telemetry. To add custom debug info:
@@ -890,24 +870,6 @@ python run_simulation.py
 # Results saved to Data/Simulation/<timestamp-2>/
 
 # Compare results by examining mission_summary.txt in each folder
-```
-
-### Profiling Performance
-
-```python
-# In your code
-from src.satellite_control.utils.profiler import PerformanceProfiler
-
-profiler = PerformanceProfiler()
-
-# Wrap code to profile
-with profiler.measure("section_name"):
-    # Code to profile
-    pass
-
-# View results
-profiler.print_summary()
-profiler.plot_histogram("section_name")
 ```
 
 ---

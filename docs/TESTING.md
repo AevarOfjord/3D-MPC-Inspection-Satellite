@@ -379,24 +379,6 @@ On modern hardware (2020+ laptop):
 | Angle error        | <2°    | <5°        | >10°  |
 | Settling time (1m) | <15s   | <30s       | >45s  |
 
-### Performance Profiling
-
-Built-in profiler tracks MPC and physics timing:
-
-```python
-from src.satellite_control.utils.profiler import PerformanceProfiler
-
-profiler = PerformanceProfiler()
-
-with profiler.measure("mpc_solve"):
-    solution = mpc.solve(state, target)
-
-with profiler.measure("physics_step"):
-    physics.step(dt)
-
-profiler.print_summary()
-```
-
 ---
 
 ## Debugging
