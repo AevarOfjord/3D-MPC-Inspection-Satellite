@@ -1,4 +1,4 @@
-.PHONY: run run-backend run-frontend sim install install-dev venv clean check-python
+.PHONY: run run-backend run-frontend sim build clean-build install install-dev venv clean check-python
 
 VENV_DIR ?= .venv311
 PYTHON ?= python3.11
@@ -7,6 +7,8 @@ VENV_PY := $(VENV_BIN)/python
 VENV_PIP := $(VENV_BIN)/pip
 REQS_FILE ?= requirements.txt
 DEV_REQS_FILE ?= requirements-dev.txt
+CMAKE_GENERATOR ?= Ninja
+CMAKE_MAKE_PROGRAM ?= $(VENV_BIN)/ninja
 
 check-python:
 	@$(PYTHON) -c "import sys; v=sys.version_info[:2]; raise SystemExit(0 if v==(3, 11) else f'Python 3.11.x is required, got {sys.version.split()[0]}')"
@@ -28,6 +30,11 @@ frontend:
 sim:
 	$(VENV_PY) run_simulation.py
 
+build: clean-build install
+
+clean-build:
+	@rm -rf build/cp3*
+
 venv: check-python
 	@$(PYTHON) -m venv $(VENV_DIR)
 	@$(VENV_PIP) install --upgrade pip
@@ -36,12 +43,14 @@ venv: check-python
 
 install: venv
 	@$(VENV_PIP) install -r $(REQS_FILE)
-	@$(VENV_PIP) install --no-build-isolation -e .
+	@CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
+		$(VENV_PIP) install --no-build-isolation -e .
 	@cp build/cp3*-cp3*-macosx_*_arm64/*.so src/satellite_control/cpp/ || echo "Warning: Could not auto-copy .so files"
 
 install-dev: venv
 	@$(VENV_PIP) install -r $(DEV_REQS_FILE)
-	@$(VENV_PIP) install --no-build-isolation -e .
+	@CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
+		$(VENV_PIP) install --no-build-isolation -e .
 	@cp build/cp3*-cp3*-macosx_*_arm64/*.so src/satellite_control/cpp/ || echo "Warning: Could not auto-copy .so files"
 
 clean:
