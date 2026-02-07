@@ -22,7 +22,7 @@ make frontend   # Start web interface (Vite dev server)
 Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 ├── src/satellite_control/    # Main Python package
 │   ├── cli.py               # Entry point (single 'run' command)
-│   ├── core/                # Simulation engine (19 files)
+│   ├── core/                # Simulation engine (18 files)
 │   ├── control/             # MPC controller (3 files)
 │   ├── cpp/                 # C++ backend (18 files)
 │   ├── config/              # Configuration system (15 files)
@@ -69,7 +69,7 @@ def run(
 
 ---
 
-## src/satellite_control/core/ (19 files)
+## src/satellite_control/core/ (18 files)
 
 The simulation engine with modular components:
 
@@ -83,7 +83,6 @@ The simulation engine with modular components:
 | `simulation_io.py` | File I/O operations |
 | `simulation_logger.py` | CSV/JSON data logging |
 | `simulation_context.py` | Shared simulation context |
-| `simulation_runner.py` | High-level run interface |
 | `control_loop.py` | MPC control update step |
 | `path_completion.py` | Path-progress completion check |
 | `mpc_runner.py` | MPC computation wrapper |

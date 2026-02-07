@@ -13,7 +13,6 @@ import { useMissionBuilder } from './hooks/useMissionBuilder';
 import { Monitor, Calculator, ScanLine } from 'lucide-react';
 import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
 import { ORBIT_SCALE, orbitSnapshot } from './data/orbitSnapshot';
-import { solarSystemBodies, getSolarBodyPosition, SOLAR_SCALE } from './data/solarSystemSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');

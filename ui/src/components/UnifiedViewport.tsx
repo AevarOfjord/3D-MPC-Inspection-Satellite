@@ -15,12 +15,7 @@ import { SatelliteModel } from './SatelliteModel';
 import { ReferenceMarker } from './Earth';
 import { Trajectory } from './Trajectory';
 import { PlannedPath } from './PlannedPath';
-// FinalStateMarker and Obstacles are not exported from Viewport.tsx, so we don't import them.
-// LiveObstaclesRender handles obstacles internally now.
-// Note: Created duplicate export for Obstacles in Viewport.tsx or extracting it? 
-// For now, I'll assume Viewport.tsx exports its internal components or I replicate them.
-// Actually, Viewport.tsx defines them internally. I should probably move them to separate files or duplicate logic.
-// Let's duplicate logic for LiveObstacles here for safety/cleanliness or assume Viewport Refactor.
+// LiveObstaclesRender handles obstacles internally.
 // To save time, I will reimplement LiveObstacles here using telemetry.
 
 // --- Live Telemetry Components ---
