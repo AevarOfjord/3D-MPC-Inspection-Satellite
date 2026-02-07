@@ -9,6 +9,7 @@ Encapsulates the high-level control loop logic:
 
 import logging
 import time
+from collections import deque
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -64,17 +65,14 @@ class MPCRunner:
         )
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
-        self.command_history: list = []
+        self.command_history: deque = deque(
+            maxlen=self.max_command_history if self.max_command_history else None
+        )
         self.call_count = 0
 
     def _append_command_history(self, entry: np.ndarray) -> None:
+        """Append to command history deque (O(1) bounded via maxlen)."""
         self.command_history.append(entry)
-        if self.max_command_history and len(self.command_history) > self.max_command_history:
-            overflow = len(self.command_history) - self.max_command_history
-            if overflow == 1:
-                self.command_history.pop(0)
-            else:
-                del self.command_history[:overflow]
 
     def compute_control_action(
         self,
@@ -103,7 +101,7 @@ class MPCRunner:
             measured_state = true_state
 
         # 2. Run Controller
-        start_compute_time = time.time()
+        start_compute_time = time.perf_counter()
         mpc_info: Dict[str, Any] = {}
 
         try:
@@ -117,7 +115,7 @@ class MPCRunner:
                 measured_state, previous_thrusters
             )
 
-        end_compute_time = time.time()
+        end_compute_time = time.perf_counter()
         mpc_computation_time = end_compute_time - start_compute_time
         command_sent_time = end_compute_time
 
@@ -146,19 +144,22 @@ class MPCRunner:
                 rw_torque = np.zeros(self.rw_axes, dtype=np.float64)
                 thruster_action = np.zeros(self.thruster_count, dtype=np.float64)
             else:
-                # Enforce bounds
-                thruster_action = np.clip(thruster_action, 0.0, 1.0).astype(np.float64)
+                # Enforce bounds (in-place clip avoids extra allocation)
+                np.clip(thruster_action, 0.0, 1.0, out=thruster_action)
+                thruster_action = thruster_action.astype(np.float64, copy=False)
                 if self.rw_axes:
-                    rw_torque = np.clip(rw_torque, -1.0, 1.0).astype(np.float64)
+                    np.clip(rw_torque, -1.0, 1.0, out=rw_torque)
+                    rw_torque = rw_torque.astype(np.float64, copy=False)
         else:
             # Fallback if controller failed completely (should return
             # fallback though)
             thruster_action = np.zeros(self.thruster_count, dtype=np.float64)
             logger.error("Controller returned None! Defaulting to zero thrust.")
 
-        # Update internal state
-        self.previous_thrusters = thruster_action.copy()
-        self._append_command_history(thruster_action.copy())
+        # Update internal state (share one copy for both)
+        thruster_copy = thruster_action.copy()
+        self.previous_thrusters = thruster_copy
+        self._append_command_history(thruster_copy)
         self.call_count += 1
 
         return (

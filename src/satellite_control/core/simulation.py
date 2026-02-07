@@ -38,8 +38,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 from pathlib import Path
 
 import numpy as np
-import matplotlib.pyplot as plt
-# Axes3D removed (unused at top level)
 
 # V4.0.0: SatelliteConfig removed - use SimulationConfig only
 # V4.0.0: Strict Configuration
@@ -71,8 +69,22 @@ from src.satellite_control.utils.orientation_utils import (
 logger = setup_logging(__name__, log_file=None, simple_format=True)
 
 
-# Use centralized FFMPEG path from Constants (handles all platforms)
-plt.rcParams["animation.ffmpeg_path"] = Constants.FFMPEG_PATH
+def _get_plt():
+    """Lazy-import matplotlib.pyplot (saves ~200ms when not needed)."""
+    import matplotlib.pyplot as plt
+    return plt
+
+
+# Defer rcParams until matplotlib is actually needed
+_plt_configured = False
+
+
+def _ensure_plt_configured():
+    global _plt_configured
+    if not _plt_configured:
+        plt = _get_plt()
+        plt.rcParams["animation.ffmpeg_path"] = Constants.FFMPEG_PATH
+        _plt_configured = True
 
 try:
     from src.satellite_control.visualization.unified_visualizer import (
@@ -175,20 +187,22 @@ class SatelliteMPCLinearizedSimulation:
         )
 
     def get_current_state(self) -> np.ndarray:
-        """Get current satellite state [pos(3), quat(4), vel(3), ang_vel(3)]."""
+        """Get current satellite state [pos(3), quat(4), vel(3), ang_vel(3), wheel(3)]."""
         s = self.satellite
-        # [x, y, z]
-        pos = s.position
-        # [w, x, y, z]
-        quat = s.quaternion
-        # [vx, vy, vz]
-        vel = s.velocity
-        # [wx, wy, wz]
-        ang_vel = s.angular_velocity
-        # [wrx, wry, wrz]
-        wheel_speeds = getattr(s, "wheel_speeds", np.zeros(3))
-
-        return np.concatenate([pos, quat, vel, ang_vel, wheel_speeds])
+        # Pre-allocated buffer avoids np.concatenate allocation each call
+        if not hasattr(self, "_state_buffer"):
+            self._state_buffer = np.empty(16, dtype=np.float64)
+        buf = self._state_buffer
+        buf[0:3] = s.position
+        buf[3:7] = s.quaternion
+        buf[7:10] = s.velocity
+        buf[10:13] = s.angular_velocity
+        wheel = getattr(s, "wheel_speeds", None)
+        if wheel is not None:
+            buf[13:16] = wheel
+        else:
+            buf[13:16] = 0.0
+        return buf
 
     # Backward-compatible properties delegating to ThrusterManager
     @property
@@ -296,10 +310,7 @@ class SatelliteMPCLinearizedSimulation:
         max_len = int(getattr(self, "history_max_steps", 0) or 0)
         if max_len and len(history) > max_len:
             overflow = len(history) - max_len
-            if overflow == 1:
-                history.pop(0)
-            else:
-                del history[:overflow]
+            del history[:overflow]
             self.history_trimmed = True
 
     # OBSTACLE AVOIDANCE METHODS
@@ -360,6 +371,7 @@ class SatelliteMPCLinearizedSimulation:
         Returns:
             Path to saved MP4 file or None if save failed
         """
+        _ensure_plt_configured()
         return self._io.save_animation_mp4(fig, ani)
 
     def set_thruster_pattern(self, thruster_pattern: np.ndarray) -> None:
@@ -598,7 +610,7 @@ class SatelliteMPCLinearizedSimulation:
         Clean up simulation resources.
         """
         # Close matplotlib figures if any
-        plt.close("all")
+        _get_plt().close("all")
 
         # Close visualizer if it supports it
         if hasattr(self, "visualizer") and hasattr(self.visualizer, "close"):

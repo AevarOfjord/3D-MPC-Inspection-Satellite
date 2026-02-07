@@ -1,0 +1,30 @@
+{
+  "start_position": [
+    10.0,
+    0.0,
+    0.0
+  ],
+  "target_position": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "target_orientation": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "obstacles": [],
+  "mesh_scan": {
+    "obj_path": "OBJ_files/uploads/starlink.obj",
+    "standoff": 0.5,
+    "levels": 8,
+    "level_spacing": 0.5,
+    "points_per_circle": 72,
+    "speed_max": 0.05,
+    "speed_min": 0.05,
+    "lateral_accel": 0.05,
+    "z_margin": 0.0,
+    "scan_axis": "Y"
+  }
+}

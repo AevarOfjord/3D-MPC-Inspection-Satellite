@@ -13,7 +13,6 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from src.satellite_control.mission.repository import (
     MISSIONS_UNIFIED_DIR,
     list_mission_entries,
@@ -234,6 +233,8 @@ def run(
 
     # Initialize Simulation (Pydantic config only - no Hydra)
     try:
+        from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=sim_start_pos,
             end_pos=sim_end_pos,

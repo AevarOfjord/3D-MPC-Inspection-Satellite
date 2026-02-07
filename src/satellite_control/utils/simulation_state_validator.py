@@ -25,6 +25,7 @@ Key features:
 - Integration with navigation_utils for consistency
 """
 
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -358,43 +359,38 @@ class SimulationStateValidator:
 
         noisy_state = true_state.copy()
 
-        # Get noise parameters from app_config if available, otherwise fallback
-        if self.app_config and self.app_config.physics:
-            physics = self.app_config.physics
-            position_noise_std = getattr(physics, "position_noise_std", 0.0)
-            velocity_noise_std = getattr(physics, "velocity_noise_std", 0.0)
-            angle_noise_std = getattr(physics, "angle_noise_std", 0.0)
-            angular_velocity_noise_std = getattr(
-                physics, "angular_velocity_noise_std", 0.0
-            )
-        else:
-            # V4.0.0: Use default config if not provided (no noise by default)
-            default_config = SimulationConfig.create_default()
-            physics = default_config.app_config.physics
-            position_noise_std = getattr(physics, "position_noise_std", 0.0)
-            velocity_noise_std = getattr(physics, "velocity_noise_std", 0.0)
-            angle_noise_std = getattr(physics, "angle_noise_std", 0.0)
-            angular_velocity_noise_std = getattr(
-                physics, "angular_velocity_noise_std", 0.0
-            )
+        # Cache noise parameters on first call to avoid repeated getattr
+        if not hasattr(self, "_noise_params_cached"):
+            if self.app_config and self.app_config.physics:
+                physics = self.app_config.physics
+            else:
+                default_config = SimulationConfig.create_default()
+                physics = default_config.app_config.physics
+            self._noise_pos_std = float(getattr(physics, "position_noise_std", 0.0))
+            self._noise_vel_std = float(getattr(physics, "velocity_noise_std", 0.0))
+            self._noise_ang_std = float(getattr(physics, "angle_noise_std", 0.0))
+            self._noise_angvel_std = float(getattr(physics, "angular_velocity_noise_std", 0.0))
+            self._noise_params_cached = True
 
-        # Position noise (OptiTrack position uncertainty ~0.1-1mm)
-        noisy_state[0] += np.random.normal(0, position_noise_std)
-        noisy_state[1] += np.random.normal(0, position_noise_std)
-        noisy_state[2] += np.random.normal(0, position_noise_std)
+        position_noise_std = self._noise_pos_std
+        velocity_noise_std = self._noise_vel_std
+        angle_noise_std = self._noise_ang_std
+        angular_velocity_noise_std = self._noise_angvel_std
 
-        # Velocity noise (from numerical differentiation + filtering)
-        # [7,8,9]
-        noisy_state[7] += np.random.normal(0, velocity_noise_std)
-        noisy_state[8] += np.random.normal(0, velocity_noise_std)
-        noisy_state[9] += np.random.normal(0, velocity_noise_std)
+        # Position noise — single vectorized call for 3 components
+        if position_noise_std > 0.0:
+            noisy_state[0:3] += np.random.normal(0, position_noise_std, 3)
+
+        # Velocity noise — single vectorized call for 3 components
+        if velocity_noise_std > 0.0:
+            noisy_state[7:10] += np.random.normal(0, velocity_noise_std, 3)
 
         # Orientation noise (small random 3D rotation)
         if angle_noise_std > 0.0:
             angle_noise = np.random.normal(0, angle_noise_std)
             if abs(angle_noise) > 0.0:
                 axis = np.random.normal(0.0, 1.0, 3)
-                axis_norm = np.linalg.norm(axis)
+                axis_norm = math.sqrt(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2])
                 if axis_norm > 1e-12:
                     axis /= axis_norm
                     half = angle_noise / 2.0
@@ -423,10 +419,9 @@ class SimulationStateValidator:
                     if norm > 0.0:
                         noisy_state[3:7] = np.array([nw, nx, ny, nz]) / norm
 
-        # Angular velocity noise (10,11,12)
-        noisy_state[10] += np.random.normal(0, angular_velocity_noise_std)
-        noisy_state[11] += np.random.normal(0, angular_velocity_noise_std)
-        noisy_state[12] += np.random.normal(0, angular_velocity_noise_std)
+        # Angular velocity noise — single vectorized call for 3 components
+        if angular_velocity_noise_std > 0.0:
+            noisy_state[10:13] += np.random.normal(0, angular_velocity_noise_std, 3)
 
         return noisy_state
 

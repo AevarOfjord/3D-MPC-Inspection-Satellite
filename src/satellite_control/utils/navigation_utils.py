@@ -18,14 +18,20 @@ Key features:
 - Shared between simulation and hardware for consistency
 """
 
+import math
 from typing import List, Tuple
 
 import numpy as np
+
+_TWO_PI = 2.0 * math.pi
 
 
 def normalize_angle(angle: float) -> float:
     """
     Normalize angle to [-pi, pi] range.
+
+    Uses math.remainder (IEEE 754) for O(1) performance regardless of
+    input magnitude, replacing the previous while-loop approach.
 
     Args:
         angle: Angle in radians (any range)
@@ -33,17 +39,16 @@ def normalize_angle(angle: float) -> float:
     Returns:
         Normalized angle in [-pi, pi] range
     """
-    while angle > np.pi:
-        angle -= 2 * np.pi
-    while angle < -np.pi:
-        angle += 2 * np.pi
-    return angle
+    return math.remainder(angle, _TWO_PI)
 
 
 def angle_difference(reference_angle: float, current_angle: float) -> float:
     """
     Calculate the shortest angular difference between reference and current angles.
     This prevents the 270° transition issue by always taking the shortest path.
+
+    Uses a single math.remainder call, which directly computes the shortest-path
+    difference in [-pi, pi].
 
     Args:
         reference_angle: Reference orientation in radians
@@ -52,20 +57,7 @@ def angle_difference(reference_angle: float, current_angle: float) -> float:
     Returns:
         Angle difference in [-pi, pi] range, positive = CCW rotation needed
     """
-    # Normalize both angles first
-    reference = normalize_angle(reference_angle)
-    current = normalize_angle(current_angle)
-
-    # Calculate raw difference
-    diff = reference - current
-
-    # Ensure we take the shortest path around the circle
-    if diff > np.pi:
-        diff -= 2 * np.pi
-    elif diff < -np.pi:
-        diff += 2 * np.pi
-
-    return diff
+    return math.remainder(reference_angle - current_angle, _TWO_PI)
 
 
 def point_to_line_distance(

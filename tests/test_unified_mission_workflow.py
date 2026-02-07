@@ -87,7 +87,8 @@ def test_cli_runs_unified_mission_file_path(isolated_mission_repo, monkeypatch):
             type(self).close_called = True
 
     monkeypatch.setattr(
-        cli_module, "SatelliteMPCLinearizedSimulation", DummySimulation
+        "src.satellite_control.core.simulation.SatelliteMPCLinearizedSimulation",
+        DummySimulation,
     )
 
     runner = CliRunner()

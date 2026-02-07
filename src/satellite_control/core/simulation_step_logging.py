@@ -1,5 +1,6 @@
 """Control-step logging logic for simulation runtime."""
 
+import math
 from typing import Any, Dict, Optional
 import logging
 
@@ -9,6 +10,29 @@ from src.satellite_control.utils.orientation_utils import (
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
 )
+
+
+def _norm3(v: np.ndarray) -> float:
+    """Fast Euclidean norm for 3-element vectors."""
+    return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+
+def _fmt_position_mm(state: np.ndarray) -> str:
+    """Format position as millimeters string."""
+    x_mm = state[0] * 1000
+    y_mm = state[1] * 1000
+    z_mm = state[2] * 1000
+    return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
+
+
+def _fmt_angles_deg(state: np.ndarray) -> str:
+    """Format quaternion from state as Euler angles in degrees."""
+    q = np.array(state[3:7], dtype=float)
+    if q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] == 0:
+        q = np.array([1.0, 0.0, 0.0, 0.0])
+    roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
+    roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
+    return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
 
 
 def log_simulation_step(
@@ -81,7 +105,7 @@ def log_simulation_step(
     )
 
     # Print status with timing information.
-    pos_error = np.linalg.norm(current_state[:3] - sim.reference_state[:3])
+    pos_error = _norm3(current_state[:3] - sim.reference_state[:3])
     ang_error = quat_angle_error(sim.reference_state[3:7], current_state[3:7])
 
     # Expose metrics for external telemetry.
@@ -111,22 +135,8 @@ def log_simulation_step(
     if record_history:
         sim._append_capped_history(sim.command_history, active_thruster_ids)
 
-    def fmt_position_mm(state: np.ndarray) -> str:
-        x_mm = state[0] * 1000
-        y_mm = state[1] * 1000
-        z_mm = state[2] * 1000
-        return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
-
-    def fmt_angles_deg(state: np.ndarray) -> str:
-        q = np.array(state[3:7], dtype=float)
-        if np.linalg.norm(q) == 0:
-            q = np.array([1.0, 0.0, 0.0, 0.0])
-        roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
-        roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
-        return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
-
     safe_reference = sim.reference_state if sim.reference_state is not None else np.zeros(13)
-    if safe_reference.shape[0] >= 7 and np.linalg.norm(safe_reference[3:7]) == 0:
+    if safe_reference.shape[0] >= 7 and (safe_reference[3] * safe_reference[3] + safe_reference[4] * safe_reference[4] + safe_reference[5] * safe_reference[5] + safe_reference[6] * safe_reference[6]) == 0:
         safe_reference = safe_reference.copy()
         safe_reference[3] = 1.0
 
@@ -134,8 +144,8 @@ def log_simulation_step(
     vel_error = 0.0
     ang_vel_error = 0.0
     if current_state.shape[0] >= 13 and safe_reference.shape[0] >= 13:
-        vel_error = float(np.linalg.norm(current_state[7:10] - safe_reference[7:10]))
-        ang_vel_error = float(np.linalg.norm(current_state[10:13] - safe_reference[10:13]))
+        vel_error = _norm3(current_state[7:10] - safe_reference[7:10])
+        ang_vel_error = _norm3(current_state[10:13] - safe_reference[10:13])
     ang_vel_err_deg = np.degrees(ang_vel_error)
     solve_ms = mpc_info.get("solve_time", 0) * 1000 if mpc_info else 0.0
     next_upd = sim.next_control_simulation_time
@@ -153,10 +163,10 @@ def log_simulation_step(
             f"t = {sim.simulation_time:.1f}s: {status_msg}\n"
             f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
             f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
-            f"Position = {fmt_position_mm(current_state)}\n"
-            f"Angle = {fmt_angles_deg(current_state)}\n"
-            f"Reference Pos = {fmt_position_mm(safe_reference)}\n"
-            f"Reference Ang = {fmt_angles_deg(safe_reference)}\n"
+            f"Position = {_fmt_position_mm(current_state)}\n"
+            f"Angle = {_fmt_angles_deg(current_state)}\n"
+            f"Reference Pos = {_fmt_position_mm(safe_reference)}\n"
+            f"Reference Ang = {_fmt_angles_deg(safe_reference)}\n"
             f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
             f"Thrusters = {active_thruster_ids}\n"
             f"Thruster Output = {thr_out}\n"
