@@ -22,21 +22,17 @@ make frontend   # Start web interface (Vite dev server)
 Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 ├── src/satellite_control/    # Main Python package
 │   ├── cli.py               # Entry point (single 'run' command)
-│   ├── core/                # Simulation engine (14 files)
+│   ├── core/                # Simulation engine (19 files)
 │   ├── control/             # MPC controller (3 files)
 │   ├── cpp/                 # C++ backend (18 files)
-│   ├── config/              # Configuration system (17 files)
-│   ├── mission/             # Mission management (16 files)
+│   ├── config/              # Configuration system (15 files)
+│   ├── mission/             # Mission management (11 files)
 │   ├── physics/             # Orbital dynamics (2 files)
-│   ├── planning/            # Path planning (2 files)
-│   ├── visualization/       # Plotting & video (14 files)
-│   ├── dashboard/           # FastAPI backend (2 files)
-│   ├── utils/               # Utilities (11 files)
-│   ├── fleet/               # Multi-satellite (2 files)
-│   └── testing/             # Monte Carlo (2 files)
+│   ├── visualization/       # Plotting & video (11 files)
+│   ├── dashboard/           # FastAPI backend + route modules (7 files)
+│   └── utils/               # Utilities (8 files)
 ├── ui/                      # React + Three.js web interface
-├── config/                  # Hydra YAML configs
-├── tests/                   # pytest test suite (31 files)
+├── tests/                   # pytest test suite
 ├── docs/                    # Documentation
 ├── run_simulation.py        # Simulation entry point
 ├── run_dashboard.py         # Dashboard entry point
@@ -73,25 +69,32 @@ def run(
 
 ---
 
-## src/satellite_control/core/ (14 files)
+## src/satellite_control/core/ (19 files)
 
 The simulation engine with modular components:
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `simulation.py` | 1115 | `SatelliteMPCLinearizedSimulation` - main orchestrator |
-| `simulation_loop.py` | 675 | `SimulationLoop` - animation/batch execution |
-| `simulation_initialization.py` | 520 | `SimulationInitializer` - setup logic |
-| `cpp_satellite.py` | 210 | `CppSatelliteSimulator` - C++ physics backend |
-| `thruster_manager.py` | 340 | Valve delays, PWM modulation |
-| `performance_monitor.py` | 290 | Timing statistics, metrics |
-| `simulation_logger.py` | 280 | CSV/JSON data logging |
-| `simulation_io.py` | 220 | File I/O operations |
-| `mpc_runner.py` | 170 | MPC computation wrapper |
-| `simulation_runner.py` | 90 | High-level run interface |
-| `simulation_context.py` | 35 | Context manager |
-| `backend.py` | 50 | Backend selection |
-| `__init__.py` | - | Module exports |
+| File | Description |
+|------|-------------|
+| `simulation.py` | `SatelliteMPCLinearizedSimulation` — main orchestrator |
+| `simulation_loop.py` | `SimulationLoop` — animation/batch execution |
+| `simulation_initialization.py` | `SimulationInitializer` — setup logic |
+| `simulation_reference.py` | Path-following reference state computation |
+| `simulation_step_logging.py` | Per-step control/telemetry logging |
+| `simulation_io.py` | File I/O operations |
+| `simulation_logger.py` | CSV/JSON data logging |
+| `simulation_context.py` | Shared simulation context |
+| `simulation_runner.py` | High-level run interface |
+| `control_loop.py` | MPC control update step |
+| `path_completion.py` | Path-progress completion check |
+| `mpc_runner.py` | MPC computation wrapper |
+| `cpp_satellite.py` | `CppSatelliteSimulator` — C++ physics backend |
+| `thruster_manager.py` | Valve delays, PWM modulation |
+| `performance_monitor.py` | Timing statistics, metrics |
+| `backend.py` | Backend selection |
+| `error_handling.py` | Error utilities |
+| `exceptions.py` | Custom exception types |
+| `model.py` | Satellite model dataclass |
+| `__init__.py` | Module exports |
 
 ### Key Class: SatelliteMPCLinearizedSimulation
 
@@ -290,15 +293,6 @@ class CWDynamics:
 
 ---
 
-## src/satellite_control/planning/ (legacy/non-runtime)
-
-The active runtime path is compiled in `mission/unified_compiler.py` and
-tracked by the path-based MPC in `control/mpc_controller.py`.
-Any standalone planning modules in `src/satellite_control/planning/` are not
-on the default simulation entry path (`make sim` / CLI unified mission flow).
-
----
-
 ## src/satellite_control/visualization/ (current core files)
 
 | File | Description |
@@ -334,28 +328,23 @@ simulation.py
 
 ---
 
-## src/satellite_control/dashboard/ (2 files)
+## src/satellite_control/dashboard/ (7 files)
 
-### app.py (630 lines)
+FastAPI backend for the web UI. Routes are split by concern:
 
-FastAPI backend for web 3D visualization:
-
-```python
-app = FastAPI()
-
-@app.get("/api/simulations")
-def list_simulations() -> List[SimulationInfo]
-
-@app.get("/api/simulation/{sim_id}/data")
-def get_simulation_data(sim_id: str) -> SimulationData
-
-@app.websocket("/ws/live")
-async def websocket_live(websocket: WebSocket)
-```
+| File | Description |
+|------|-------------|
+| `app.py` | Thin bootstrapping: FastAPI creation, middleware, lifespan, router registration |
+| `models.py` | Pydantic request/response models shared across routes |
+| `simulation_manager.py` | Live-simulation state machine, WebSocket connection manager |
+| `routes/simulations.py` | Simulation browser, telemetry, video, live control, WebSocket |
+| `routes/missions.py` | Mission CRUD, preview, subprocess run |
+| `routes/assets.py` | Model serving, OBJ upload, mesh-scan preview, path assets |
+| `routes/__init__.py` | Package marker |
 
 ---
 
-## src/satellite_control/utils/ (10 files)
+## src/satellite_control/utils/ (8 files)
 
 | File | Lines | Description |
 |------|-------|-------------|
@@ -371,28 +360,7 @@ async def websocket_live(websocket: WebSocket)
 
 ---
 
-## Configuration Files
-
-### config/ (Hydra YAML)
-
-```
-config/
-├── main.yaml              # Root config
-├── control/
-│   └── mpc/
-│       └── default.yaml   # MPC parameters
-├── vehicle/
-│   ├── cube_sat_6u.yaml   # 6U CubeSat config
-│   └── test_3_thruster.yaml
-└── missions/
-    ├── maze.yaml
-    ├── flyby_demo.json
-    └── obstacle_demo.json
-```
-
 ## Test Suite
-
-### tests/ (31 test files)
 
 | Category | Files |
 |----------|-------|
@@ -402,7 +370,7 @@ config/
 | **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
 | **Property-Based** | `test_property_based.py` |
 | **Benchmarks** | `test_benchmark.py` |
-| **Subdirectories** | `benchmarks/`, `e2e/`, `integration/`, `physics/`, `planning/`, `verification/` |
+| **Subdirectories** | `benchmarks/`, `e2e/`, `integration/`, `physics/`, `verification/` |
 
 ---
 

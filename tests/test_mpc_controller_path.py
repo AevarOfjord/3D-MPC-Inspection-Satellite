@@ -41,7 +41,6 @@ def create_default_app_config(path_speed=0.1) -> AppConfig:
             r_thrust=0.1,
             r_rw_torque=0.1,
             path_speed=path_speed,
-            enable_collision_avoidance=False,
             obstacle_margin=0.5,
         ),
         simulation=SimulationParams(

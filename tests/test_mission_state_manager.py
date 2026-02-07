@@ -21,7 +21,7 @@ class TestMissionStateManagerInitialization:
         assert manager.position_tolerance == 0.05
         assert manager.angle_tolerance == 0.05
         assert manager.current_nav_waypoint_idx == 0
-        assert manager.dxf_completed is False
+        assert manager.path_tracking_completed is False
         assert manager.multi_point_target_reached_time is None
 
     def test_custom_tolerances(self):
@@ -125,8 +125,8 @@ class TestMissionStateTracking:
 
         assert manager.multi_point_target_reached_time is None
 
-    def test_dxf_shape_state_initialization(self):
-        """Test DXF shape mission state is properly initialized."""
+    def test_path_tracking_state_initialization(self):
+        """Test path-tracking mission state is properly initialized."""
         manager = MissionStateManager()
 
         assert manager.shape_stabilization_start_time is None
@@ -168,8 +168,8 @@ class TestMultiPointMission:
         assert manager.multi_point_target_reached_time == 5.0
 
 
-class TestDXFShapeMission:
-    """Test DXF shape following mission logic."""
+class TestPathTrackingMission:
+    """Test path-tracking mission logic."""
 
     def test_shape_stabilization_timing(self):
         """Test shape stabilization timing."""

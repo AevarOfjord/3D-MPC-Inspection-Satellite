@@ -1,4 +1,4 @@
-.PHONY: run run-backend run-frontend sim install install-dev venv clean
+.PHONY: run run-backend run-frontend sim install install-dev venv clean check-python
 
 VENV_DIR ?= .venv311
 PYTHON ?= python3.11
@@ -7,6 +7,9 @@ VENV_PY := $(VENV_BIN)/python
 VENV_PIP := $(VENV_BIN)/pip
 REQS_FILE ?= requirements.txt
 DEV_REQS_FILE ?= requirements-dev.txt
+
+check-python:
+	@$(PYTHON) -c "import sys; v=sys.version_info[:2]; raise SystemExit(0 if v==(3, 11) else f'Python 3.11.x is required, got {sys.version.split()[0]}')"
 
 run:
 	@$(MAKE) -j2 backend frontend
@@ -25,7 +28,7 @@ frontend:
 sim:
 	$(VENV_PY) run_simulation.py
 
-venv:
+venv: check-python
 	@$(PYTHON) -m venv $(VENV_DIR)
 	@$(VENV_PIP) install --upgrade pip
 	@echo "Virtual environment created."

@@ -21,22 +21,12 @@ try:
         SatelliteParams,
         MPCParams as CppMPCParams,
         MPCControllerCpp,
-        Obstacle,
-        ObstacleSet,
-        ObstacleType,
     )
 except ImportError as exc:  # pragma: no cover - depends on local runtime env
     _CPP_IMPORT_ERROR = exc
     SatelliteParams = None  # type: ignore[assignment]
     CppMPCParams = None  # type: ignore[assignment]
     MPCControllerCpp = None  # type: ignore[assignment]
-    Obstacle = None  # type: ignore[assignment]
-    ObstacleSet = None  # type: ignore[assignment]
-    ObstacleType = None  # type: ignore[assignment]
-from src.satellite_control.mission.mission_types import (
-    Obstacle as MissionObstacle,
-    ObstacleType as MissionObstacleType,
-)
 
 from .base import Controller
 
@@ -720,94 +710,3 @@ class MPCController(Controller):
             "path_s_pred": self._last_path_projection.get("s_pred"),
         }
         return u_phys, extras
-
-    def set_obstacles(self, mission_obstacles: list) -> None:
-        """
-        Set collision avoidance obstacles.
-
-        Args:
-            mission_obstacles: List of mission_types.Obstacle objects
-        """
-        logger.info("MPC is path-focused; obstacles are ignored in this controller.")
-        normalized: list[MissionObstacle] = []
-
-        for obs in mission_obstacles:
-            if isinstance(obs, MissionObstacle):
-                normalized.append(obs)
-                continue
-
-            if isinstance(obs, dict):
-                try:
-                    normalized.append(MissionObstacle.from_dict(obs))
-                    continue
-                except Exception:
-                    pass
-
-            if isinstance(obs, (list, tuple)):
-                if len(obs) >= 4:
-                    pos = np.array(obs[:3], dtype=float)
-                    radius = float(obs[3])
-                elif len(obs) == 3:
-                    pos = np.array(obs[:3], dtype=float)
-                    radius = 0.5
-                else:
-                    continue
-                normalized.append(
-                    MissionObstacle(position=pos, radius=radius)
-                )
-                continue
-
-            if hasattr(obs, "position") and hasattr(obs, "radius"):
-                try:
-                    pos = np.array(getattr(obs, "position"), dtype=float)
-                    radius = float(getattr(obs, "radius"))
-                    size = np.array(getattr(obs, "size", [1.0, 1.0, 1.0]), dtype=float)
-                    name = str(getattr(obs, "name", "obstacle"))
-                    type_val = getattr(obs, "type", MissionObstacleType.SPHERE)
-                    if isinstance(type_val, str):
-                        type_val = MissionObstacleType(type_val)
-                    normalized.append(
-                        MissionObstacle(
-                            type=type_val,
-                            position=pos,
-                            radius=radius,
-                            size=size,
-                            name=name,
-                        )
-                    )
-                except Exception:
-                    continue
-
-        if not normalized:
-            self._cpp_controller.clear_obstacles()
-            return
-
-        cpp_obstacle_set = ObstacleSet()
-
-        for obs in normalized:
-            cpp_obs = Obstacle()
-            # Map parameters
-            cpp_obs.position = np.array(obs.position)
-            cpp_obs.radius = float(obs.radius)
-            cpp_obs.size = np.array(obs.size)
-            cpp_obs.name = str(obs.name)
-
-            # Map type (string value from enum to C++ enum)
-            type_val = obs.type.value if hasattr(obs.type, "value") else str(obs.type)
-
-            if type_val == "sphere":
-                cpp_obs.type = ObstacleType.SPHERE
-            elif type_val == "cylinder":
-                cpp_obs.type = ObstacleType.CYLINDER
-                # Default Z-axis for cylinder if not specified
-                cpp_obs.axis = np.array([0.0, 0.0, 1.0])
-            elif type_val == "box":
-                cpp_obs.type = ObstacleType.BOX
-
-            cpp_obstacle_set.add(cpp_obs)
-
-        self._cpp_controller.set_obstacles(cpp_obstacle_set)
-
-    def clear_obstacles(self) -> None:
-        """Clear all collision avoidance obstacles."""
-        self._cpp_controller.clear_obstacles()

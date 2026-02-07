@@ -12,7 +12,7 @@ client = TestClient(app)
 @pytest.fixture
 def clean_missions():
     """Cleanup missions directory before and after tests."""
-    missions_dir = Path("missions/dev")
+    missions_dir = Path("missions_unified")
     missions_dir.mkdir(parents=True, exist_ok=True)
 
     # Backup existing
@@ -30,14 +30,14 @@ def clean_missions():
 
 def test_save_mission(clean_missions):
     config = {
-        "start_position": [1.0, 2.0, 3.0],
-        "end_position": [0.0, 0.0, 0.0],
-        "end_orientation": [0.0, 0.0, 0.0],
+        "epoch": "2026-01-01T00:00:00Z",
+        "start_pose": {"frame": "ECI", "position": [1.0, 2.0, 3.0]},
+        "segments": [{"type": "hold", "duration": 1.0}],
         "obstacles": [],
     }
 
     response = client.post(
-        "/save_mission", json={"name": "Test Mission 1!", "config": config}
+        "/save_mission_v2", json={"name": "Test Mission 1!", "config": config}
     )
 
     assert response.status_code == 200
@@ -45,23 +45,23 @@ def test_save_mission(clean_missions):
     assert response.json()["filename"] == "TestMission1.json"
 
     # Verify file exists
-    assert Path("missions/dev/TestMission1.json").exists()
+    assert Path("missions_unified/TestMission1.json").exists()
 
     # Verify content
-    saved = json.loads(Path("missions/dev/TestMission1.json").read_text())
-    assert saved["start_position"] == [1.0, 2.0, 3.0]
+    saved = json.loads(Path("missions_unified/TestMission1.json").read_text())
+    assert saved["start_pose"]["position"] == [1.0, 2.0, 3.0]
 
 
 def test_list_saved_missions(clean_missions):
     # create dummy file
-    Path("missions/dev/DevAlpha.json").touch()
-    Path("missions/dev/DevBeta.json").touch()
+    Path("missions_unified/UnifiedAlpha.json").touch()
+    Path("missions_unified/UnifiedBeta.json").touch()
 
-    response = client.get("/saved_missions")
+    response = client.get("/saved_missions_v2")
     assert response.status_code == 200
     missions = response.json()["missions"]
-    assert "DevAlpha.json" in missions
-    assert "DevBeta.json" in missions
+    assert "UnifiedAlpha.json" in missions
+    assert "UnifiedBeta.json" in missions
 
 
 def test_preview_trajectory():

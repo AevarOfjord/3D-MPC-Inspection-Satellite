@@ -7,7 +7,7 @@ This directory is for unit tests and integration tests for the Satellite Thruste
 Once tests are added, you can run them with:
 
 ```bash
-python3 -m pytest tests/
+.venv311/bin/python -m pytest tests/
 ```
 
 ## Test Structure

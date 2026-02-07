@@ -14,7 +14,7 @@ A high-fidelity satellite control simulation using Model Predictive Control (MPC
 
 - OSQP-based MPC solver (~1-2ms solve times)
 - C++ physics engine (200 Hz integration)
-- Waypoint navigation and shape following missions
+- Path-based MPC mission tracking with web-authored mission paths
 - Real-time visualization and comprehensive telemetry
 
 ### Is this a real satellite or simulation?
@@ -36,7 +36,7 @@ A high-fidelity satellite control simulation using Model Predictive Control (MPC
 
 ### What Python version do I need?
 
-**Python 3.9, 3.10, 3.11, or 3.12**
+**Python 3.11.x (required)**
 
 Check yours:
 
@@ -97,7 +97,7 @@ See [QUICKSTART.md](QUICKSTART.md) for full walkthrough.
 | Mission Type            | Description                      | Use Case                    |
 | ----------------------- | -------------------------------- | --------------------------- |
 | **Waypoint Navigation** | Move to fixed points in sequence | Point-to-point maneuvering  |
-| **Shape Following**     | Track moving target along path   | Inspection patterns, orbits |
+| **Path Following**      | Track a saved mission path       | Inspection patterns, orbits |
 
 ### How long do simulations take?
 
@@ -105,7 +105,7 @@ See [QUICKSTART.md](QUICKSTART.md) for full walkthrough.
 
 - Simple waypoint: 10-30 seconds
 - Multi-waypoint: 30-60 seconds
-- Shape following: 30-90 seconds
+- Path following: 30-90 seconds
 
 **Real-time factor:** Usually 2-5× faster than real-time (headless mode).
 

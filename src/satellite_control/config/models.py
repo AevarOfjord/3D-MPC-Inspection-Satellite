@@ -373,11 +373,6 @@ class MPCParams(BaseModel):
         description="Enable verbose MPC solver output",
     )
 
-    # Collision Avoidance (V3.0.0)
-    enable_collision_avoidance: bool = Field(
-        False,
-        description="Enable collision avoidance constraints",
-    )
     obstacle_margin: float = Field(
         constants.Constants.OBSTACLE_SAFETY_MARGIN,
         ge=0.0,
@@ -548,7 +543,7 @@ class AppConfig(BaseModel):
 
     input_file_path: Optional[str] = Field(
         None,
-        description="Path to input file (e.g., DXF file)",
+        description="Path to input path/mesh file",
     )
 
     @model_validator(mode="after")

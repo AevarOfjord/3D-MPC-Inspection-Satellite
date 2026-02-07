@@ -27,7 +27,7 @@ Common issues and solutions for the Satellite Control System.
 # Check your Python version
 python --version
 
-# Recommended: Python 3.9, 3.10, 3.11, or 3.12
+# Required: Python 3.11.x
 # Download from https://www.python.org/downloads/
 
 # Using pyenv for version management
@@ -103,15 +103,15 @@ ffmpeg -version
 
 ```bash
 # Create fresh virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3.11 -m venv .venv311
+source .venv311/bin/activate  # On Windows: .venv311\Scripts\activate
 
 # Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 
 # Verify you're using venv Python
-which python  # Should show venv/bin/python
+which python  # Should show .venv311/bin/python
 ```
 
 ---

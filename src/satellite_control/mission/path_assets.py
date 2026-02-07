@@ -71,7 +71,6 @@ def save_path_asset(data: Dict[str, Any]) -> Dict[str, Any]:
         "path": path,
         "open": bool(data.get("open", True)),
         "relative_to_obj": bool(data.get("relative_to_obj", True)),
-        "mesh_scan": data.get("mesh_scan"),
         "notes": data.get("notes"),
         "points": int(len(path)),
         "path_length": float(path_length),

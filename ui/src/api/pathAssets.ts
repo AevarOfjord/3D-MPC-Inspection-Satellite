@@ -1,5 +1,4 @@
 import { API_BASE_URL } from '../config/endpoints';
-import type { MeshScanConfig } from './trajectory';
 
 export interface PathAssetSummary {
   id: string;
@@ -15,7 +14,6 @@ export interface PathAssetSummary {
 
 export interface PathAsset extends PathAssetSummary {
   path: [number, number, number][];
-  mesh_scan?: MeshScanConfig;
   notes?: string | null;
 }
 
@@ -25,7 +23,6 @@ export interface PathAssetSaveRequest {
   path: [number, number, number][];
   open?: boolean;
   relative_to_obj?: boolean;
-  mesh_scan?: MeshScanConfig;
   notes?: string | null;
 }
 
