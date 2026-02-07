@@ -42,7 +42,7 @@
 │   └── dev/                    # User-saved and scratch missions
 ├── ui/                         # Web-based mission designer
 ├── missions_unified/           # Saved unified missions
-└── scripts/                    # Test scripts
+└── Data/                       # Simulation outputs
 ```
 
 ## ⚡ Quick Start

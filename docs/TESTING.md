@@ -59,7 +59,7 @@ python run_simulation.py
 - Visual inspection of trajectories
 - Parameter tuning and experimentation
 
-### Automated Mode (for scripts/CI)
+### Automated Mode (for CI)
 
 ```bash
 # Default auto mode

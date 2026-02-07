@@ -545,10 +545,10 @@ python run_simulation.py --duration 60.0
    python run_simulation.py config
    ```
 
-3. **Run verification tests**:
+3. **Run regression tests**:
 
    ```bash
-   python run_simulation.py verify
+   .venv311/bin/python -m pytest
    ```
 
 4. **Check MPC solve times**:

@@ -366,7 +366,7 @@ FastAPI backend for the web UI. Routes are split by concern:
 | **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
 | **Property-Based** | `test_property_based.py` |
 | **Benchmarks** | `test_benchmark.py` |
-| **Subdirectories** | `benchmarks/`, `e2e/`, `integration/`, `physics/`, `verification/` |
+| **Subdirectories** | `benchmarks/`, `e2e/`, `integration/`, `physics/` |
 
 ---
 
