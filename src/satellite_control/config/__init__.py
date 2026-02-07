@@ -12,7 +12,6 @@ Configuration is loaded from YAML files in the `config/` directory.
 from .constants import Constants
 from .mission_state import MissionState
 from .models import AppConfig, MPCParams, SatellitePhysicalParams, SimulationParams
-from .obstacles import ObstacleManager
 from .physics import PhysicsConfig, get_physics_params
 
 from .simulation_config import SimulationConfig
@@ -34,7 +33,6 @@ __all__ = [
     "TimingConfig",
     "MissionState",
     "Constants",
-    "ObstacleManager",
     "get_physics_params",
     "get_timing_params",
     # Validation

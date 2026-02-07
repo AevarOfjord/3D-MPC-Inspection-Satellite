@@ -184,7 +184,7 @@ graph LR
 | Waypoint list     | `mpcc_path_waypoints` array           | `mission_state.py`                                                                                | Path waypoints for MPCC              |
 | Current target    | `target_state`                         | `mpc_controller.py`, `simulation.py`                                                             | Path reference passed to MPC         |
 | Path planner      | `build_point_to_point_path()`         | `path_following.py`                                                                               | Generates straight-line paths        |
-| Obstacles         | `obstacles` list of spheres           | `mission_state.py`, `config/obstacles.py`                                                         | Obstacle data for visualization/MPC  |
+| Obstacles         | `obstacles` list of spheres           | `mission_state.py`                                                                                | Obstacle data for visualization/MPC  |
 | Shape definitions | Mission path arrays                   | `path_following.py`, `unified_compiler.py`                                                        | Builds path waypoints for tracking   |
 | Mission state     | `MissionState` dataclass              | `mission_state.py`                                                                                | Path config, scan config, obstacles  |
 
@@ -195,7 +195,6 @@ graph LR
 | Terminal output    | `logger.info()`                 | `simulation.py` (~1100)       | Simulation prints status to terminal: time, errors, active thrusters |
 | Mission reports    | `MissionReportGenerator` class  | `mission_report_generator.py` | Post-mission analysis with plots                                     |
 | Unified visualizer | `UnifiedVisualizationGenerator` | `unified_visualizer.py`       | Comprehensive post-mission plots and videos                          |
-| Data comparison    | `compare_missions()`            | `comparison.py`               | Compare multiple mission runs                                        |
 
 **Terminal Output Format (Both Systems):**
 

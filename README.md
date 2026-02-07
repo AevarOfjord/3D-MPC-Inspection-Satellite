@@ -37,9 +37,6 @@
 │   ├── mission/                # Mission types & helpers
 │   ├── dashboard/              # FastAPI backend + route modules
 │   └── physics/                # Orbital dynamics (CW equations)
-├── missions/                   # Sample mission JSON files
-│   ├── examples/               # Curated example missions
-│   └── dev/                    # User-saved and scratch missions
 ├── ui/                         # Web-based mission designer
 ├── missions_unified/           # Saved unified missions
 └── Data/                       # Simulation outputs
