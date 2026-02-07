@@ -175,7 +175,7 @@ class SimulationVisualizationManager:
         if not self.data_save_path:
             return
 
-        mp4_path = self.data_save_path / "simulation_animation.mp4"
+        mp4_path = self.data_save_path / "Simulation_3D_Render.mp4"
 
         try:
             # Set up the writer

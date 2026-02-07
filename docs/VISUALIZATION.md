@@ -41,7 +41,7 @@ Data/
    └── 06-01-2026_10-30-45/           # Timestamp: DD-MM-YYYY_HH-MM-SS
       ├── physics_data.csv           # Position, velocity, acceleration
       ├── control_data.csv           # Thruster commands, MPC performance
-      ├── simulation_animation.mp4   # Matplotlib animation
+      ├── Simulation_3D_Render.mp4   # Matplotlib animation
       ├── mission_metadata.json      # Planned path for UI
       ├── mission_summary.txt        # Run summary
       └── Plots/                     # Generated on demand
@@ -123,7 +123,7 @@ print(f"Total thrust effort: {total_effort:.2f}")
 
 ## 2. Animated Mission Playback (MP4)
 
-### simulation_animation.mp4
+### Simulation_3D_Render.mp4
 
 **What it shows:**
 
@@ -155,13 +155,13 @@ print(f"Total thrust effort: {total_effort:.2f}")
 
 ```bash
 # macOS
-open Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
+open Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
 
 # Linux
-xdg-open Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
+xdg-open Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
 
 # Windows
-start Data/Simulation/06-01-2026_10-30-45/simulation_animation.mp4
+start Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
 ```
 
 ---
@@ -469,7 +469,7 @@ subprocess.run([
 **Convert MP4 to GIF (smaller for web):**
 
 ```bash
-ffmpeg -i simulation_animation.mp4 -vf "fps=15,scale=800:-1" output.gif
+ffmpeg -i Simulation_3D_Render.mp4 -vf "fps=15,scale=800:-1" output.gif
 ```
 
 ---
@@ -560,7 +560,7 @@ After each simulation, you get:
 | ---------------------------- | ------------------ | ---------------------------------- |
 | **physics_data.csv**         | Raw state data     | Import to custom analysis tools    |
 | **control_data.csv**         | Control & MPC data | Solver performance, thruster usage |
-| **simulation_animation.mp4** | Visual playback    | See actual mission execution       |
+| **Simulation_3D_Render.mp4** | Visual playback    | See actual mission execution       |
 | **trajectory_plot.png**      | Path analysis      | Verify smooth navigation           |
 | **velocity_profile.png**     | Speed analysis     | Check damping and limits           |
 | **thruster_activity.png**    | Control effort     | Identify inefficiencies            |

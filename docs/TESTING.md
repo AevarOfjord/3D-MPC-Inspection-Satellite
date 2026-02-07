@@ -238,21 +238,23 @@ with pytest.raises(ValueError, match="error message"):
 ```python
 # conftest.py
 import pytest
-from src.satellite_control.config import SatelliteConfig
+from src.satellite_control.config.simulation_config import SimulationConfig
 
 @pytest.fixture
 def satellite_params():
     """Provide standard satellite parameters."""
-    return SatelliteConfig.get_app_config().physics
+    config = SimulationConfig.create_default()
+    return config.app_config.physics
 
 @pytest.fixture
 def mpc_config():
     """Provide standard MPC configuration."""
-    return SatelliteConfig.get_mpc_params()
+    config = SimulationConfig.create_default()
+    return config.app_config.mpc
 
 # Use in test
 def test_with_fixture(satellite_params):
-    assert satellite_params['mass'] > 0
+    assert satellite_params.total_mass > 0
 ```
 
 ### Parametrized Tests
@@ -316,7 +318,7 @@ Every simulation creates:
 Data/Simulation/DD-MM-YYYY_HH-MM-SS/
 ├── physics_data.csv           # State history (200 Hz)
 ├── control_data.csv           # MPC commands (16.67 Hz)
-└── simulation_animation.mp4   # Visual playback
+└── Simulation_3D_Render.mp4   # Visual playback
 ```
 
 **Analyze Results:**

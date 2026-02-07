@@ -66,7 +66,7 @@ class MPCController(Controller):
         Initialize MPC controller with C++ backend.
 
         Args:
-            cfg: Configuration object. Can be AppConfig (preferred) or OmegaConf/Dict (legacy).
+            cfg: Configuration object. Must be AppConfig.
         """
         if _CPP_IMPORT_ERROR is not None:
             _raise_cpp_binding_import_error()

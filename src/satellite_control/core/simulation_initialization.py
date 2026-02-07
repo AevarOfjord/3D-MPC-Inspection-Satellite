@@ -454,7 +454,6 @@ class SimulationInitializer:
             return
 
         # Preferred: Pass AppConfig directly
-        # This avoids the complex round-trip to Hydra OmegaConf
         self.simulation.mpc_controller = MPCController(cfg=app_config)
 
     def _initialize_state_validator(self) -> None:

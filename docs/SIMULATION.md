@@ -353,7 +353,7 @@ Data/
   └── DD-MM-YYYY_HH-MM-SS/
     ├── physics_data.csv
     ├── control_data.csv
-    └── simulation_animation.mp4
+    └── Simulation_3D_Render.mp4
 ```
 
 ---

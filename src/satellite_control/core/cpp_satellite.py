@@ -65,7 +65,7 @@ class CppSatelliteSimulator:
         Initialize the C++ Satellite Simulator.
 
         Args:
-            app_config: Application configuration (Hydra DictConfig)
+            app_config: Application configuration (AppConfig)
         """
         if SimulationEngine is None:
             _raise_cpp_sim_binding_import_error()
@@ -127,7 +127,7 @@ class CppSatelliteSimulator:
         self._current_thruster_cmds[thruster_id - 1] = level
 
     def _create_satellite_params(self, cfg: Any):
-        """Create C++ SatelliteParams from Hydra config."""
+        """Create C++ SatelliteParams from AppConfig."""
         params = SatelliteParams()
         params.dt = self.dt
         params.mass = cfg.physics.total_mass

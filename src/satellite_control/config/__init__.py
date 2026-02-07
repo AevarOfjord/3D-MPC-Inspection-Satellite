@@ -1,12 +1,11 @@
 """
 Configuration Package for Satellite Control System
 
-Hydra-based configuration system (V4.0.0+).
+Pydantic-based configuration system (V4.0.0+).
 
 Primary API:
-    from src.satellite_control.config import SimulationConfig*   config = SimulationConfig.create_default()
-
-Configuration is loaded from YAML files in the `config/` directory.
+    from src.satellite_control.config import SimulationConfig
+    config = SimulationConfig.create_default()
 """
 
 from .constants import Constants

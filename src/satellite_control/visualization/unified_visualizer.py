@@ -1402,15 +1402,10 @@ def select_data_file_interactive() -> tuple:
         print(f" Error: Data directory not found at {data_root.absolute()}")
         return None, None
 
-    # Find all CSV files in Data/Simulation and Data/Real_Test
+    # Find all CSV files in Data/Simulation
     sim_csvs = (
         list((data_root / "Simulation").rglob("simulation_data.csv"))
         if (data_root / "Simulation").exists()
-        else []
-    )
-    real_csvs = (
-        list((data_root / "Real_Test").rglob("real_test_data.csv"))
-        if (data_root / "Real_Test").exists()
         else []
     )
 
@@ -1421,13 +1416,8 @@ def select_data_file_interactive() -> tuple:
         timestamp_dir = csv_path.parent.name
         all_csvs.append(("Simulation", timestamp_dir, csv_path))
 
-    # Add real data
-    for csv_path in sorted(real_csvs, key=lambda p: p.stat().st_mtime, reverse=True):
-        timestamp_dir = csv_path.parent.name
-        all_csvs.append(("Real", timestamp_dir, csv_path))
-
     if not all_csvs:
-        print(" No data files found in Data/Simulation or Data/Real")
+        print(" No data files found in Data/Simulation")
         return None, None
 
     # Display available files
@@ -1468,12 +1458,6 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Generate MPC visualization")
     parser.add_argument(
-        "--mode",
-        choices=["simulation", "real"],
-        default=None,
-        help="Visualization mode (simulation or real)",
-    )
-    parser.add_argument(
         "--data-dir",
         type=str,
         help="Data directory (optional, uses defaults based on mode)",
@@ -1490,29 +1474,20 @@ def main() -> int:
     args = parser.parse_args()
 
     # If no arguments provided, use interactive mode by default
-    if args.data_dir is None and args.mode is None and not args.interactive:
+    if args.data_dir is None and not args.interactive:
         print("No arguments provided - using interactive file selector")
         args.interactive = True
 
     # Interactive file selection
-    if args.interactive or (args.data_dir is None and args.mode is None):
+    if args.interactive or args.data_dir is None:
         data_dir, mode = select_data_file_interactive()
         if data_dir is None:
             return 1
         args.data_dir = data_dir
-        if args.mode is None:
-            args.mode = mode
 
-    # Set default data directory based on mode if still not set
+    # Default to Data/Simulation if still not set
     if args.data_dir is None:
-        if args.mode == "simulation":
-            args.data_dir = "Data/Simulation"
-        else:
-            args.data_dir = "Data/Real"
-
-    # Default mode if not specified
-    if args.mode is None:
-        args.mode = "simulation"
+        args.data_dir = "Data/Simulation"
 
     try:
         # Create visualizer

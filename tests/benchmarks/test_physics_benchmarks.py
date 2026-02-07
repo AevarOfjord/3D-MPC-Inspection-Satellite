@@ -24,9 +24,11 @@ class TestPhysicsBenchmarks:
     @pytest.fixture
     def physics_simulator(self):
         """Create a physics simulator instance."""
-        from src.satellite_control.core.mujoco_satellite import MuJoCoSatellite
+        from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
+        from src.satellite_control.config.defaults import create_default_app_config
 
-        return MuJoCoSatellite()
+        app_config = create_default_app_config()
+        return CppSatelliteSimulator(app_config=app_config)
 
     def test_physics_step_time(self, benchmark, physics_simulator):
         """Benchmark physics step computation time.

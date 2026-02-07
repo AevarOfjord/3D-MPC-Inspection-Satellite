@@ -2,7 +2,7 @@
 Default Configuration Factory
 
 Provides factory functions to create default configuration objects.
-This replaces the implicit defaults in the legacy SatelliteConfig.
+This centralizes all default values for the Pydantic config models.
 """
 
 from src.satellite_control.config import constants, physics, timing

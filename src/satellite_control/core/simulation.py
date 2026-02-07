@@ -120,7 +120,7 @@ class SatelliteMPCLinearizedSimulation:
         Initialize linearized MPC simulation.
 
         Args:
-            cfg: AppConfig object (preferred) or Hydra DictConfig (legacy).
+            cfg: AppConfig object.
             start_pos: Override starting position (x, y, z).
             end_pos: Override end position (x, y, z).
             start_angle: Override starting orientation (roll, pitch, yaw).
