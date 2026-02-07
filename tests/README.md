@@ -22,5 +22,5 @@ Once tests are added, you can run them with:
 ## Testing Tools
 
 For manual testing and verification:
-- Use `simulation.py` for testing different mission scenarios
-- Use `comparison.py` for comparing simulation vs real test data
+- Use `run_simulation.py` (or `make sim`) to run missions in the simulator
+- Inspect generated outputs under `Data/Simulation/` for validation
