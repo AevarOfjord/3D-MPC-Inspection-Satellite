@@ -87,23 +87,9 @@ export const trajectoryApi = {
     });
 
     if (!response.ok) {
-        const err = await response.json().catch(() => ({ detail: 'Preview failed' }));
-        throw new Error(err.detail || 'Preview failed');
+      const err = await response.json().catch(() => ({ detail: 'Preview failed' }));
+      throw new Error(err.detail || 'Preview failed');
     }
     return response.json();
   },
-
-  runMission: async (missionName: string) => {
-      const response = await fetch(`${API_BASE_URL}/run_mission`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mission_name: missionName }),
-      });
-
-      if (!response.ok) {
-          const err = await response.json().catch(() => ({ detail: 'Run failed' }));
-          throw new Error(err.detail || 'Run failed');
-      }
-      return response.json();
-  }
 };
