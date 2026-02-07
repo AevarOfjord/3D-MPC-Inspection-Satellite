@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Satellite MPC Control System"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     # Core numerical
     "numpy>=1.21.0",
@@ -36,7 +36,6 @@ dependencies = [
     "streamlit>=1.25.0",
     "imageio>=2.30.0",
     "imageio-ffmpeg>=0.4.9",
-    "ezdxf>=0.17.0",
     "shapely>=1.8.0",
     
     # Optimization
@@ -72,11 +71,11 @@ build-dir = "build/{wheel_tag}"
 
 [tool.black]
 line-length = 88
-target-version = ["py39"]
+target-version = ["py311"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F"]

@@ -142,17 +142,9 @@ class SimulationInitializer:
         self.simulation.mission_state = self.simulation_config.mission_state
         mission_state = self.simulation.mission_state
 
-        # Configure Obstacles on Controller (V3.0.0)
-        if (
-            hasattr(self.simulation.mpc_controller, "set_obstacles")
-            and mission_state.obstacles_enabled
-        ):
-            logger.info("Configuring MPC Controller with obstacles...")
-            self.simulation.mpc_controller.set_obstacles(mission_state.obstacles)
-
         # Configure Path for Path-Following Mode (Always Active)
         if (
-            not getattr(mission_state, "mpcc_path_waypoints", None)
+            not getattr(mission_state, "path_waypoints", None)
             and start_pos is not None
             and path_end_pos is not None
         ):
@@ -184,37 +176,20 @@ class SimulationInitializer:
             mission_state.path_length = path_length
             mission_state.path_speed = float(app_config.mpc.path_speed)
 
-        # Disable non-path modes
-        mission_state.trajectory_mode_active = False
-        mission_state.path_following_active = False
-
         if (
             hasattr(self.simulation.mpc_controller, "set_path")
-            and hasattr(mission_state, "mpcc_path_waypoints")
-            and mission_state.mpcc_path_waypoints
+            and hasattr(mission_state, "path_waypoints")
+            and mission_state.path_waypoints
         ):
             logger.info(
                 "Configuring MPC Controller with path data for path-following..."
             )
-            self.simulation.mpc_controller.set_path(mission_state.mpcc_path_waypoints)
-            self.simulation.planned_path = list(mission_state.mpcc_path_waypoints)
+            self.simulation.mpc_controller.set_path(mission_state.path_waypoints)
+            self.simulation.planned_path = list(mission_state.path_waypoints)
 
-        # Configure scan-attitude context for stable object-facing attitude.
+        # Path-only runtime: clear optional scan attitude context.
         if hasattr(self.simulation.mpc_controller, "set_scan_attitude_context"):
-            is_scan = str(getattr(mission_state, "trajectory_type", "")).lower() == "scan"
-            center = getattr(mission_state, "trajectory_object_center", None)
-            if is_scan and center is not None:
-                axis = getattr(mission_state, "trajectory_scan_axis", (0.0, 0.0, 1.0))
-                direction = str(
-                    getattr(mission_state, "trajectory_scan_direction", "CW") or "CW"
-                ).upper()
-                self.simulation.mpc_controller.set_scan_attitude_context(
-                    tuple(center),
-                    tuple(axis),
-                    direction,
-                )
-            else:
-                self.simulation.mpc_controller.set_scan_attitude_context(None, None, "CW")
+            self.simulation.mpc_controller.set_scan_attitude_context(None, None, "CW")
 
         # Initialize state validator
         self._initialize_state_validator()

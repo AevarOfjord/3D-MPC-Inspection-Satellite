@@ -28,7 +28,7 @@ class SatelliteConfigAdapter:
         # Mission state attributes
 
         if name == "PATH_WAYPOINTS":
-            return self.mission_state.mpcc_path_waypoints if self.mission_state else []
+            return self.mission_state.path_waypoints if self.mission_state else []
         if name == "PATH_LENGTH":
             if not self.mission_state:
                 return 0.0

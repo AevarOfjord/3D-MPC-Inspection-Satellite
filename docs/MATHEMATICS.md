@@ -180,12 +180,12 @@ graph LR
 
 | Concept           | Code Variable/Class                   | File(s)                                                                                           | Description                          |
 | ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Mission types     | `"path_following"`, `"scan_object"`   | `interactive_cli.py`                                                                              | Path-only mission modes              |
+| Mission types     | `"path_following"`, `"scan_object"`   | `cli.py`, `unified_mission.py`                                                                    | Path-only mission modes              |
 | Waypoint list     | `mpcc_path_waypoints` array           | `mission_state.py`                                                                                | Path waypoints for MPCC              |
 | Current target    | `target_state`                         | `mpc_controller.py`, `simulation.py`                                                             | Path reference passed to MPC         |
 | Path planner      | `build_point_to_point_path()`         | `path_following.py`                                                                               | Generates straight-line paths        |
 | Obstacles         | `obstacles` list of spheres           | `mission_state.py`, `config/obstacles.py`                                                         | Obstacle data for visualization/MPC  |
-| Shape definitions | DXF file parsing                      | `trajectory_utils.py`                                                                             | Reads CAD shapes as paths            |
+| Shape definitions | Mission path arrays                   | `path_following.py`, `unified_compiler.py`                                                        | Builds path waypoints for tracking   |
 | Mission state     | `MissionState` dataclass              | `mission_state.py`                                                                                | Path config, scan config, obstacles  |
 
 ### Visualization and Output
@@ -222,7 +222,7 @@ t= 12.3s: APPROACHING (t=12.3s) pos_err=0.452m, ang_err= 15.3°
 | Integration tests | `tests/test_integration_*.py` | End-to-end mission tests               |
 | Test environment  | `cpp_satellite.py`         | Simplified simulator for fast testing  |
 | Conftest fixtures | `tests/conftest.py`           | Shared test fixtures and utilities     |
-| Test modes        | `interactive_cli.py`          | Pre-configured test scenarios          |
+| Test modes        | `tests/test_*.py`             | Pre-configured test scenarios          |
 
 ### Quick Code Lookup
 

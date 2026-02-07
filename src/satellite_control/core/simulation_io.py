@@ -122,68 +122,9 @@ class SimulationIO:
         if mission_state is None:
             return
 
-        trajectory_type = getattr(mission_state, "trajectory_type", "")
-        mesh_scan_active = getattr(mission_state, "mesh_scan_mode_active", False)
-        obj_path = getattr(mission_state, "mesh_scan_obj_path", None)
+        metadata = {"mission_type": "path_following"}
 
-        logger.info(
-            f"[METADATA DEBUG] trajectory_type={trajectory_type}, mesh_scan_mode_active={mesh_scan_active}, obj_path={obj_path}"
-        )
-
-        is_scan = bool(
-            mesh_scan_active or trajectory_type in ("scan", "starlink_orbit")
-        )
-        if not is_scan:
-            logger.info("[METADATA DEBUG] Not a scan mission, skipping metadata save.")
-            return
-
-        pose = getattr(mission_state, "mesh_scan_object_pose", None)
-        if pose and len(pose) >= 6:
-            pos = [float(pose[0]), float(pose[1]), float(pose[2])]
-            ori = [float(pose[3]), float(pose[4]), float(pose[5])]
-        else:
-            center = getattr(mission_state, "trajectory_object_center", None)
-            pos = [float(val) for val in (center or (0.0, 0.0, 0.0))]
-            ori = [0.0, 0.0, 0.0]
-
-        # Determine scan object type based on trajectory type
-        if trajectory_type == "starlink_orbit":
-            obj_path = getattr(mission_state, "mesh_scan_obj_path", "")
-            scan_object = {
-                "type": "starlink",
-                "position": pos,
-                "orientation": ori,
-                "radius": 1.5,
-                "height": 0.3,
-                "obj_path": obj_path,
-            }
-        elif is_scan and getattr(mission_state, "mesh_scan_obj_path", None):
-            # Generic Mesh Scan
-            obj_path = getattr(mission_state, "mesh_scan_obj_path", "")
-            scan_object = {
-                "type": "mesh",
-                "position": pos,
-                "orientation": ori,
-                "radius": 1.0,  # Placeholder
-                "height": 1.0,  # Placeholder
-                "obj_path": obj_path,
-            }
-        else:
-            # Default cylinder for scan missions
-            scan_object = {
-                "type": "cylinder",
-                "position": pos,
-                "orientation": ori,
-                "radius": 0.25,
-                "height": 3.0,
-            }
-
-        metadata = {
-            "mission_type": trajectory_type if trajectory_type else "scan_object",
-            "scan_object": scan_object,
-        }
-
-        planned_path = getattr(mission_state, "mpcc_path_waypoints", None)
+        planned_path = getattr(mission_state, "path_waypoints", None)
         if not planned_path:
             planned_path = getattr(self.sim, "planned_path", None)
 
@@ -246,18 +187,11 @@ class SimulationIO:
                     state_history = np.column_stack([pos, quat_wxyz, vel, ang_vel])
                     return state_history
                 else:
-                    # Legacy 2D fallback
-                    values: np.ndarray = df[
-                        [
-                            "Current_X",
-                            "Current_Y",
-                            "Current_VX",
-                            "Current_VY",
-                            "Current_Yaw",
-                            "Current_Angular_Vel",
-                        ]
-                    ].values.astype(np.float64)
-                    return values
+                    logger.debug(
+                        "control_data.csv does not contain required 3D state columns; "
+                        "skipping CSV history reload."
+                    )
+                    return None
         except Exception as e:
             logger.debug(f"Could not load history from CSV: {e}")
 

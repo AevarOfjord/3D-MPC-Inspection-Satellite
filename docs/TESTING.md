@@ -29,13 +29,10 @@ pip install pytest pytest-cov
 
 ```bash
 # Run full pytest test suite
-pytest tests/
-
-# Run quick verification
-python run_simulation.py verify
+.venv311/bin/python -m pytest tests/
 
 # Run with coverage
-pytest --cov=src/satellite_control --cov-report=html
+.venv311/bin/python -m pytest --cov=src/satellite_control --cov-report=html
 ```
 
 ### Run Your First Simulation Test
@@ -44,7 +41,7 @@ pytest --cov=src/satellite_control --cov-report=html
 python run_simulation.py
 ```
 
-Select "Waypoint Navigation" → "Simple Translation" to run a basic test.
+Select a saved unified mission from `missions_unified/` to run a basic test.
 
 ---
 
@@ -75,45 +72,16 @@ python run_simulation.py --auto --duration 30.0
 python run_simulation.py --no-anim --auto
 ```
 
-### Mission Types for Testing
+### Mission Flow for Testing
 
-#### 1. Waypoint Navigation
-
-Tests point-to-point control, sequencing, and stabilization.
-
-**Quick presets:**
-
-- Simple Translation
-- Diagonal Movement
-- Multi-Waypoint Tour
-- Rotation Test
+Tests unified mission compile/hydration and path tracking runtime behavior.
 
 **What to validate:**
 
-- Convergence time to waypoints
-- Position accuracy (<0.05m)
-- Angle accuracy (<3°)
-- Smooth velocity profiles
-
-#### 2. Shape Following
-
-Tests dynamic tracking, path following, and moving targets.
-
-**Available shapes:**
-
-- Circle
-- Rectangle
-- Triangle
-- Hexagon
-- Star
-- Custom DXF
-
-**What to validate:**
-
-- Tracking accuracy along path
-- Phase transitions
-- Offset distance maintenance
-- Velocity control
+- Mission save/load (`save_mission_v2`, `saved_missions_v2`)
+- Terminal mission discovery (`make sim` / CLI selection list)
+- Path tracking progress and phase transitions
+- Generated logs/plots/animation outputs
 
 ---
 
@@ -588,10 +556,10 @@ python run_simulation.py
 python run_simulation.py --auto --no-anim --duration 10
 
 # Run pytest suite
-pytest tests/ -v
+.venv311/bin/python -m pytest tests/ -v
 
-# Verify installation
-python run_simulation.py verify
+# Smoke-check CLI wiring with a saved mission
+python run_simulation.py --mission missions_unified/<YourMission>.json --no-anim
 
 # Generate plots from existing data
 python -m src.satellite_control.visualization.unified_visualizer

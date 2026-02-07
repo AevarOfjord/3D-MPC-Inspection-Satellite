@@ -99,7 +99,6 @@ export function useMissionBuilder() {
   const [isManualMode, setIsManualMode] = useState(false);
 
   const [stats, setStats] = useState<{ duration: number; length: number; points: number } | null>(null);
-  const [savedMissionName, setSavedMissionName] = useState<string | null>(null);
   
   // Mission Config State
   // Mission Config State
@@ -307,10 +306,6 @@ export function useMissionBuilder() {
           alert('Generate or load a path before saving');
           return;
       }
-      const meshScanPayload: MeshScanConfig = { ...config };
-      if (levelSpacing > 0) {
-          meshScanPayload.level_spacing = levelSpacing;
-      }
       const densePath = resamplePath(previewPath, savePointMultiplier);
       const payload = {
           name: trimmed,
@@ -318,7 +313,6 @@ export function useMissionBuilder() {
           path: densePath,
           open: true,
           relative_to_obj: true,
-          mesh_scan: meshScanPayload,
       };
       const saved = await pathAssetsApi.save(payload);
       await refreshPathAssets();
@@ -344,32 +338,6 @@ export function useMissionBuilder() {
           setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(asset.obj_path)}`);
       }
       return asset;
-  };
-
-  const handleSave = async () => {
-      const name = prompt("Enter mission name (e.g. Scan_Proxima):");
-      if (!name) return;
-      const missionPayload = {
-          start_position: startPosition,
-          end_position: referencePosition,
-          end_orientation: referenceAngle,
-          obstacles: obstacles.map(o => ({ position: o.position, radius: o.radius })),
-          mesh_scan: { ...config, level_spacing: levelSpacing },
-          // TODO: If isManualMode, we might need a different payload structure or flag
-          // keeping as is for now, assuming backend regenerates unless we send explicit points.
-          // For now, if manual, we heavily rely on backend accepting 'custom_path' or similar if implemented.
-          // Since backend API wasn't changed, we assume saved config regenerates path. 
-          // WARNING: Manual edits won't persist to backend re-generation without API change.
-          // For this MVP, we will only visualize manual edits locally.
-      };
-      try {
-          const res = await trajectoryApi.saveMission(name, missionPayload);
-          setSavedMissionName(name);
-          alert(`Mission saved: ${res.filename}`);
-      } catch (err) {
-          console.error(err);
-          alert("Failed to save mission");
-      }
   };
 
   const handleRun = async (onSuccess?: () => void) => {
@@ -735,7 +703,6 @@ export function useMissionBuilder() {
       path: finalPath,
       open: existing?.open ?? true,
       relative_to_obj: relativeToObj,
-      mesh_scan: existing?.mesh_scan,
       notes: existing?.notes ?? null,
     };
 
@@ -754,7 +721,6 @@ export function useMissionBuilder() {
       await saveEditedPathToAsset();
       await saveUnifiedMission(name);
       await refreshUnifiedMissions();
-      setSavedMissionName(name);
       alert(`Mission saved: ${name}`);
     } catch (err: any) {
       console.error(err);
@@ -1030,7 +996,6 @@ export function useMissionBuilder() {
         previewPath,
         isManualMode,
         stats,
-        savedMissionName,
         startPosition,
         startFrame,
         startTargetId,
@@ -1076,7 +1041,6 @@ export function useMissionBuilder() {
     actions: {
         handleFileUpload,
         handlePreview,
-        handleSave,
         handleRun,
         handleSaveUnifiedMission,
         selectModelPath,

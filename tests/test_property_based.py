@@ -18,13 +18,13 @@ except ImportError:
 
 
 # ============================================================================
-# State Converter Property Tests
+# State Vector Property Tests
 # ============================================================================
 
 
 @pytest.mark.unit
-class TestStateConverterProperties:
-    """Property-based tests for state conversion."""
+class TestStateVectorProperties:
+    """Property-based tests for 3D state validity."""
 
     @given(
         x=st.floats(-5.0, 5.0, allow_nan=False),

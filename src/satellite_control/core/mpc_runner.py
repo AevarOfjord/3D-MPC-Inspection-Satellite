@@ -65,19 +65,6 @@ class MPCRunner:
         self.command_history: list = []
         self.call_count = 0
 
-    def update_obstacles(self, obstacles=None):
-        """Update obstacles in the controller (V3.0.0)."""
-        if obstacles is None:
-            if hasattr(self.mpc, "clear_obstacles"):
-                self.mpc.clear_obstacles()
-            return
-
-        if hasattr(self.mpc, "set_obstacles"):
-            try:
-                self.mpc.set_obstacles(obstacles)
-            except Exception as e:
-                print(f"Failed to set obstacles in MPC controller: {e}")
-
     def compute_control_action(
         self,
         true_state: np.ndarray,

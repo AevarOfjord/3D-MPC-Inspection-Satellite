@@ -67,7 +67,6 @@ def _create_fast_mpc() -> MPCParams:
         path_speed=0.5,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.5,
-        enable_collision_avoidance=False,
         obstacle_margin=0.5,
     )
 
@@ -96,7 +95,6 @@ def _create_balanced_mpc() -> MPCParams:
         path_speed=Constants.PATH_SPEED_MAX,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=Constants.PATH_SPEED_MAX,
-        enable_collision_avoidance=False,
         obstacle_margin=0.5,
     )
 
@@ -125,7 +123,6 @@ def _create_stable_mpc() -> MPCParams:
         path_speed=0.05,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.1,
-        enable_collision_avoidance=False,
         obstacle_margin=0.5,
     )
 
@@ -154,7 +151,6 @@ def _create_precision_mpc() -> MPCParams:
         path_speed=0.02,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.05,
-        enable_collision_avoidance=False,
         obstacle_margin=0.5,
     )
 

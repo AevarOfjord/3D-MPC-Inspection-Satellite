@@ -11,14 +11,6 @@ Data Logger
    :undoc-members:
    :show-inheritance:
 
-State Converter
----------------
-
-.. automodule:: src.satellite_control.utils.state_converter
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Navigation Utils
 ---------------
 

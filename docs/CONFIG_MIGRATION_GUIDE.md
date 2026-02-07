@@ -35,9 +35,6 @@ The new pattern provides:
 | `SatelliteConfig.WAYPOINT_TARGETS` | `mission_state.waypoint_targets` |
 | `SatelliteConfig.WAYPOINT_ANGLES` | `mission_state.waypoint_angles` |
 | `SatelliteConfig.CURRENT_TARGET_INDEX` | `mission_state.current_target_index` |
-| `SatelliteConfig.DXF_SHAPE_MODE_ACTIVE` | `mission_state.dxf_shape_mode_active` |
-| `SatelliteConfig.DXF_SHAPE_CENTER` | `mission_state.dxf_shape_center` |
-| `SatelliteConfig.DXF_SHAPE_PATH` | `mission_state.dxf_shape_path` |
 | `SatelliteConfig.OBSTACLES_ENABLED` | `mission_state.obstacles_enabled` |
 | `SatelliteConfig.OBSTACLES` | `mission_state.obstacles` |
 
@@ -128,23 +125,16 @@ obstacle_manager = ObstacleManager()
 obstacle_manager.set_obstacles([(1.0, 1.0, 0.2), (2.0, 2.0, 0.3)])
 ```
 
-### Step 4: Update DXF Shape Configuration
-
-**Old Way:**
-```python
-SatelliteConfig.DXF_SHAPE_MODE_ACTIVE = True
-SatelliteConfig.DXF_SHAPE_CENTER = (0.0, 0.0)
-SatelliteConfig.DXF_SHAPE_PATH = [(0, 0), (1, 1), (2, 2)]
-```
+### Step 4: Update Path Tracking Configuration
 
 **New Way:**
 ```python
 from src.satellite_control.config import SimulationConfig
 
 config = SimulationConfig.create_default()
-config.mission_state.dxf_shape_mode_active = True
-config.mission_state.dxf_shape_center = (0.0, 0.0)
-config.mission_state.dxf_shape_path = [(0, 0), (1, 1), (2, 2)]
+config.mission_state.path_following_active = True
+config.mission_state.path_tracking_center = (0.0, 0.0, 0.0)
+config.mission_state.path_waypoints = [(0, 0, 0), (1, 1, 0), (2, 2, 0)]
 ```
 
 ## Common Patterns

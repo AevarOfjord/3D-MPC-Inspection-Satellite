@@ -204,7 +204,7 @@ class MissionReportGenerator:
         )
 
         path_speed = float(self.mission_state.path_speed or self.app_config.mpc.path_speed)
-        hold_end = float(self.mission_state.trajectory_hold_end or 0.0)
+        hold_end = float(self.mission_state.path_hold_end or 0.0)
 
         f.write("PATH CONFIGURATION:\n")
         f.write(
@@ -392,7 +392,7 @@ class MissionReportGenerator:
             f"  MAX_SIMULATION_TIME:           {self.app_config.simulation.max_duration:.1f} s\n"
         )
         path_hold_end = float(
-            getattr(self.mission_state, "trajectory_hold_end", 0.0) or 0.0
+            getattr(self.mission_state, "path_hold_end", 0.0) or 0.0
         )
         f.write(f"  PATH_HOLD_END:                {path_hold_end:.1f} s\n")
 

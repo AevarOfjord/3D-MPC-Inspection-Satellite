@@ -22,10 +22,6 @@ export interface PreviewResponse {
   path_length: number;
 }
 
-export interface SavedMissionsResponse {
-  missions: string[];
-}
-
 export interface UploadResponse {
     status: string;
     path: string;
@@ -95,28 +91,6 @@ export const trajectoryApi = {
         throw new Error(err.detail || 'Preview failed');
     }
     return response.json();
-  },
-
-  saveMission: async (name: string, config: any) => {
-    const response = await fetch(`${API_BASE_URL}/save_mission`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, config }),
-    });
-
-    if (!response.ok) {
-        const err = await response.json().catch(() => ({ detail: 'Save failed' }));
-        throw new Error(err.detail || 'Save failed');
-    }
-    return response.json();
-  },
-
-  listSavedMissions: async (): Promise<SavedMissionsResponse> => {
-      const response = await fetch(`${API_BASE_URL}/saved_missions`);
-      if (!response.ok) {
-          throw new Error('Failed to list missions');
-      }
-      return response.json();
   },
 
   runMission: async (missionName: string) => {

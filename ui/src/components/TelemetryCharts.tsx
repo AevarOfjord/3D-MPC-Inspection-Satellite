@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { Activity } from 'lucide-react';
-import { useMissionStore } from '../store/missionStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 
 export function TelemetryCharts() {
   const history = useTelemetryStore(s => s.history);
-  const isEditing = useMissionStore(s => s.isEditing);
   const [timeWindow, setTimeWindow] = useState(30);
   const [visible, setVisible] = useState({
     pos: true,
@@ -23,7 +21,7 @@ export function TelemetryCharts() {
   }, [history, timeWindow]);
 
   return (
-    <div className={`absolute bottom-0 left-0 h-56 bg-black/80 backdrop-blur-md border-t border-white/10 flex flex-col p-4 pl-8 gap-3 z-20 transition-all duration-300 ${isEditing ? 'right-80' : 'right-0'}`}>
+    <div className="absolute bottom-0 left-0 right-0 h-56 bg-black/80 backdrop-blur-md border-t border-white/10 flex flex-col p-4 pl-8 gap-3 z-20 transition-all duration-300">
       <div className="flex items-center justify-between text-xs text-gray-400">
         <div className="flex items-center gap-2">
           <span className="uppercase tracking-wider">Window</span>

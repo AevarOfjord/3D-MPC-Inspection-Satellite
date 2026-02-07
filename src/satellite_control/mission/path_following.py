@@ -287,8 +287,6 @@ def build_point_to_point_path(
     waypoints: Sequence[Iterable[float]],
     obstacles: Optional[Sequence[Tuple[float, float, float, float]]] = None,
     step_size: float = 0.1,
-    rrt_step: float = 0.5,
-    rrt_max_iter: int = 800,
     safety_margin: Optional[float] = None,
     turning_margin: Optional[float] = None,
     max_passes: int = 6,

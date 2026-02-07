@@ -24,7 +24,7 @@ from matplotlib.patches import Circle
 # V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
 from src.satellite_control.config.mission_state import MissionState
 from src.satellite_control.config.models import AppConfig
-from src.satellite_control.visualization.unified_visualizer import PlotStyle
+from src.satellite_control.visualization.plot_style import PlotStyle
 
 # Worker process cache for parallel frame rendering
 _worker_gen_cache: Optional[Any] = None
@@ -70,10 +70,6 @@ class VideoRenderer:
             reference_color: Color of reference
             trajectory_color: Color of trajectory
             thrusters: Dictionary of thruster positions
-            dxf_base_shape: DXF base shape for overlay
-            dxf_offset_path: DXF offset path for overlay
-            dxf_center: DXF center point
-            overlay_dxf: Whether to overlay DXF shape
             frame_title_template: Template for frame titles
             app_config: Optional AppConfig for accessing configuration (v4.0.0: no fallback)
             mission_state: Optional MissionState for accessing mission-specific data (v4.0.0: no fallback)

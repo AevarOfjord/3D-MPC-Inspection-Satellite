@@ -6,7 +6,7 @@ Get your first satellite control simulation running in 5 minutes.
 
 ## Prerequisites
 
-- **Python 3.9+** (check: `python --version`)
+- **Python 3.11.x** (check: `python3.11 --version`)
 - **20 minutes** for full installation
 - **macOS, Linux, or Windows**
 
@@ -24,8 +24,8 @@ cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 ### 2. Create Virtual Environment
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3.11 -m venv .venv311
+source .venv311/bin/activate  # On Windows: .venv311\Scripts\activate
 ```
 
 ### 3. Install Dependencies
@@ -60,14 +60,14 @@ sudo apt update && sudo apt install ffmpeg
 ### Launch Interactive Menu
 
 ```bash
-python run_simulation.py
+make sim
 ```
 
-### Try the "Simple Translation" Preset
+### Run a Saved Mission
 
-1. Select: **Waypoint Navigation**
-2. Choose preset: **Simple Translation**
-3. Press Enter to start
+1. Create and save a unified mission in the web UI (`missions_unified/`)
+2. Run `make sim`
+3. Select your saved mission from the list
 
 **What you'll see:**
 
@@ -115,36 +115,16 @@ print(f"Final position error: {df['error'].iloc[-1]:.4f} m")
 
 ### Try Different Missions
 
-**Waypoint Navigation:**
+Create mission paths in the web UI and save them, then run them from terminal:
 
-- Multi-waypoint tour
-- Diagonal movement
-- Rotation test
-
-**Shape Following:**
-
-- Circle
-- Rectangle
-- Star pattern
-- Custom DXF shapes
-
-### Customize Parameters
-
-Edit MPC weights in `src/satellite_control/config/mpc_params.py`:
-
-```python
-Q_POSITION = 1000.0     # Higher = faster approach
-Q_VELOCITY = 10000.0    # Higher = smoother motion
-```
+- Open Mission Control UI and build/edit a mission path
+- Save unified mission JSON to `missions_unified/`
+- Run `make sim` and choose a saved mission file
 
 ### Run Tests
 
 ```bash
-# Quick verification
-python run_simulation.py verify
-
-# Full test suite
-pytest tests/
+.venv311/bin/python -m pytest tests/
 ```
 
 ---
@@ -156,7 +136,7 @@ pytest tests/
 ```bash
 # Ensure you're in project root and venv is activated
 pwd  # Should show .../Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
-which python  # Should show .../venv/bin/python
+which python  # Should show .../.venv311/bin/python
 ```
 
 ### "ffmpeg not found"
@@ -201,4 +181,4 @@ python run_simulation.py --no-anim --auto
 
 ---
 
-**Ready for more?** Try the shape following missions or customize the control parameters!
+**Ready for more?** Create a new mission path in the web UI and run it through terminal simulation.

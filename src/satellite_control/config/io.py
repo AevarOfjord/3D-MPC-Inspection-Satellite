@@ -226,49 +226,75 @@ class ConfigIO:
 
     @staticmethod
     def _mission_state_to_dict(mission_state: MissionState) -> Dict[str, Any]:
-        """Convert MissionState to dictionary."""
-        from dataclasses import asdict
+        """Convert MissionState to dictionary (path runtime only)."""
+        result: Dict[str, Any] = {
+            "path": {
+                "active": bool(mission_state.path.active),
+                "waypoints": list(mission_state.path.waypoints),
+                "path_speed": float(mission_state.path.path_speed),
+                "path_length": float(mission_state.path.path_length),
+            },
+            "obstacle_state": {
+                "enabled": bool(mission_state.obstacle_state.enabled),
+                "obstacles": list(mission_state.obstacle_state.obstacles),
+            },
+            "path_hold_end": float(mission_state.path_hold_end),
+        }
 
-        return asdict(mission_state)
+        path_tracking_keys = (
+            "path_tracking_center",
+            "path_tracking_base_shape",
+            "path_tracking_phase",
+            "path_tracking_closest_point_index",
+            "path_tracking_estimated_duration",
+            "path_tracking_mission_start_time",
+            "path_tracking_tracking_start_time",
+            "path_tracking_positioning_start_time",
+            "path_tracking_stabilization_start_time",
+            "path_tracking_current_target_position",
+            "path_tracking_final_position",
+            "path_tracking_target_start_distance",
+            "path_tracking_has_return",
+            "path_tracking_return_position",
+            "path_tracking_return_angle",
+            "path_tracking_trajectory",
+            "path_tracking_trajectory_dt",
+        )
+        for key in path_tracking_keys:
+            result[key] = getattr(mission_state, key)
+
+        return result
 
     @staticmethod
     def _dict_to_mission_state(mission_state_dict: Dict[str, Any]) -> MissionState:
-        """Convert dictionary to MissionState, handling both flat(legacy) and nested structures."""
+        """Convert dictionary to MissionState, handling nested and flat path keys."""
         from .mission_state import (
             MissionState,
             PathFollowingState,
-            ScanState,
-            TrajectoryState,
             ObstacleState,
         )
 
-        def _apply_legacy_dxf_fields(ms: MissionState) -> MissionState:
-            # Preserve legacy DXF runtime fields when present in serialized data.
-            legacy_keys = (
-                "dxf_shape_mode_active",
-                "dxf_shape_path",
-                "dxf_path_length",
-                "dxf_path_speed",
-                "dxf_target_speed",
-                "dxf_shape_center",
-                "dxf_base_shape",
-                "dxf_shape_phase",
-                "dxf_closest_point_index",
-                "dxf_estimated_duration",
-                "dxf_mission_start_time",
-                "dxf_tracking_start_time",
-                "dxf_positioning_start_time",
-                "dxf_stabilization_start_time",
-                "dxf_current_target_position",
-                "dxf_final_position",
-                "dxf_target_start_distance",
-                "dxf_has_return",
-                "dxf_return_position",
-                "dxf_return_angle",
-                "dxf_trajectory",
-                "dxf_trajectory_dt",
+        def _apply_path_tracking_fields(ms: MissionState) -> MissionState:
+            path_tracking_keys = (
+                "path_tracking_center",
+                "path_tracking_base_shape",
+                "path_tracking_phase",
+                "path_tracking_closest_point_index",
+                "path_tracking_estimated_duration",
+                "path_tracking_mission_start_time",
+                "path_tracking_tracking_start_time",
+                "path_tracking_positioning_start_time",
+                "path_tracking_stabilization_start_time",
+                "path_tracking_current_target_position",
+                "path_tracking_final_position",
+                "path_tracking_target_start_distance",
+                "path_tracking_has_return",
+                "path_tracking_return_position",
+                "path_tracking_return_angle",
+                "path_tracking_trajectory",
+                "path_tracking_trajectory_dt",
             )
-            for key in legacy_keys:
+            for key in path_tracking_keys:
                 if key in mission_state_dict:
                     setattr(ms, key, mission_state_dict[key])
             return ms
@@ -276,67 +302,52 @@ class ConfigIO:
         # 1. Attempt to load as new nested structure first
         if any(
             key in mission_state_dict
-            for key in ("path", "scan", "trajectory", "obstacle_state")
+            for key in ("path", "obstacle_state", "scan", "trajectory")
         ):
+            trajectory_dict = mission_state_dict.get("trajectory", {})
             ms = MissionState(
                 path=PathFollowingState(**mission_state_dict.get("path", {})),
-                scan=ScanState(**mission_state_dict.get("scan", {})),
-                trajectory=TrajectoryState(**mission_state_dict.get("trajectory", {})),
                 obstacle_state=ObstacleState(
                     **mission_state_dict.get("obstacle_state", {})
                 ),
+                path_hold_end=float(
+                    mission_state_dict.get(
+                        "path_hold_end",
+                        trajectory_dict.get(
+                            "hold_end",
+                            mission_state_dict.get("trajectory_hold_end", 0.0),
+                        ),
+                    )
+                    or 0.0
+                ),
             )
-            return _apply_legacy_dxf_fields(ms)
+            return _apply_path_tracking_fields(ms)
 
-        # 2. Fallback: Map legacy flat keys to new structure
+        # 2. Fallback: Map flat path/obstacle keys to structure
         ms = MissionState()
 
         # Path Following (path-only)
-        path_points = (
-            mission_state_dict.get("mpcc_path_waypoints", [])
-            or mission_state_dict.get("path_waypoints", [])
-            or mission_state_dict.get("dxf_shape_path", [])
-        )
+        path_points = mission_state_dict.get("path_waypoints", [])
         if path_points:
             ms.path.waypoints = path_points
-        ms.path.path_speed = mission_state_dict.get(
-            "mpcc_path_speed",
-            mission_state_dict.get(
-                "path_speed",
-                mission_state_dict.get(
-                    "dxf_path_speed",
-                    mission_state_dict.get("dxf_target_speed", ms.path.path_speed),
-                ),
-            ),
-        )
-        ms.path.path_length = mission_state_dict.get(
-            "mpcc_path_length",
-            mission_state_dict.get(
-                "path_length",
-                mission_state_dict.get("dxf_path_length", ms.path.path_length),
-            ),
-        )
-        ms.path.active = mission_state_dict.get(
-            "path_following_active",
-            mission_state_dict.get("dxf_shape_mode_active", ms.path.active),
-        )
-        if path_points and "path_following_active" not in mission_state_dict and "dxf_shape_mode_active" not in mission_state_dict:
+        ms.path.path_speed = mission_state_dict.get("path_speed", ms.path.path_speed)
+        ms.path.path_length = mission_state_dict.get("path_length", ms.path.path_length)
+        ms.path.active = mission_state_dict.get("path_following_active", ms.path.active)
+        if path_points and "path_following_active" not in mission_state_dict:
             ms.path.active = True
-
-        # Scan
-        ms.scan.active = mission_state_dict.get("mesh_scan_mode_active", False)
-        ms.scan.obj_path = mission_state_dict.get("mesh_scan_obj_path")
-        # Map other scan fields...
-
-        # Trajectory
-        ms.trajectory.active = mission_state_dict.get("trajectory_mode_active", False)
-        # Map other trajectory fields...
 
         # Obstacles
         ms.obstacle_state.enabled = mission_state_dict.get("obstacles_enabled", False)
         ms.obstacle_state.obstacles = mission_state_dict.get("obstacles", [])
+        ms.path_hold_end = float(
+            mission_state_dict.get(
+                "path_hold_end",
+                mission_state_dict.get("trajectory_hold_end", 0.0),
+            )
+            or 0.0
+        )
 
-        return _apply_legacy_dxf_fields(ms)
+        return _apply_path_tracking_fields(ms)
 
     @staticmethod
     def _migrate_config(

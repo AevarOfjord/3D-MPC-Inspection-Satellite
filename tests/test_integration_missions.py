@@ -183,12 +183,12 @@ class TestPathMission:
         from src.satellite_control.config.mission_state import MissionState
 
         mission_state = MissionState()
-        mission_state.mpcc_path_waypoints = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
-        mission_state.mpcc_path_length = 1.0
-        mission_state.mpcc_path_speed = 0.2
+        mission_state.path_waypoints = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+        mission_state.path_length = 1.0
+        mission_state.path_speed = 0.2
 
         assert mission_state.get_current_mission_type() == "PATH_FOLLOWING"
-        assert mission_state.mpcc_path_speed == pytest.approx(0.2)
+        assert mission_state.path_speed == pytest.approx(0.2)
 
 
 class TestMPCSimulationIntegration:
@@ -498,10 +498,10 @@ class TestPathCompletion:
         from src.satellite_control.core.simulation_loop import SimulationLoop
 
         sim = simple_simulation
-        sim.simulation_config.mission_state.dxf_path_length = float(
+        sim.simulation_config.mission_state.path_length = float(
             getattr(sim.mpc_controller, "_path_length", 0.0) or 0.0
         )
-        sim.simulation_config.mission_state.trajectory_hold_end = 0.0
+        sim.simulation_config.mission_state.path_hold_end = 0.0
         sim.satellite.position = np.array([0.0, 0.0, 0.0])
         sim.mpc_controller.s = 1.0
         sim.simulation_time = 1.0

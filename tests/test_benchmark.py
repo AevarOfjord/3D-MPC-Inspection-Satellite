@@ -79,42 +79,13 @@ class TestMPCBenchmarks:
 
     def test_linearization_time(self, benchmark, mpc_controller, sample_state):
         """Benchmark dynamics linearization time."""
-        from src.satellite_control.utils.state_converter import StateConverter
-
-        x_mpc = StateConverter.sim_to_mpc(sample_state)
+        x_mpc = sample_state[:13].copy()
 
         def linearize():
             return mpc_controller.linearize_dynamics(x_mpc)
 
         result = benchmark(linearize)
         assert result is not None
-
-
-@pytest.mark.skipif(not BENCHMARK_AVAILABLE, reason="pytest-benchmark not installed")
-class TestStateConverterBenchmarks:
-    """Benchmark tests for state converter."""
-
-    def test_sim_to_mpc_conversion(self, benchmark):
-        """Benchmark state format conversion."""
-        from src.satellite_control.utils.state_converter import StateConverter
-
-        sim_state = np.array(
-            [1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.0, 0.01, 0.02, 0.03]
-        )
-
-        result = benchmark(StateConverter.sim_to_mpc, sim_state)
-        assert result is not None
-        assert len(result) == 13
-
-    def test_trajectory_conversion(self, benchmark):
-        """Benchmark trajectory conversion (100 points)."""
-        from src.satellite_control.utils.state_converter import StateConverter
-
-        trajectory = np.random.randn(100, 13)
-
-        result = benchmark(StateConverter.sim_to_mpc_trajectory, trajectory)
-        assert result is not None
-        assert result.shape == (100, 13)
 
 
 @pytest.mark.skipif(not BENCHMARK_AVAILABLE, reason="pytest-benchmark not installed")

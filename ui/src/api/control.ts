@@ -17,6 +17,5 @@ export const controlApi = {
   resume: async () => postJson('/control', { action: 'resume' }),
   step: async (steps = 1) => postJson('/control', { action: 'step', steps }),
   setSpeed: async (speed: number) => postJson('/speed', { speed }),
-  replan: async () => postJson('/replan'),
   reset: async () => postJson('/reset'),
 };

@@ -346,7 +346,7 @@ class SimulationLoop:
                 self.simulation.simulation_time
             )
 
-        hold_time_required = float(getattr(mission_state, "trajectory_hold_end", 0.0) or 0.0)
+        hold_time_required = float(getattr(mission_state, "path_hold_end", 0.0) or 0.0)
         if hold_time_required <= 0.0:
             self.simulation.is_running = False
             self.simulation.print_performance_summary()

@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Verify Python runtime baseline
+        run: python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else f'Expected Python 3.11.x, got {sys.version}')"
+
       - name: Install system deps
         run: |
           sudo apt-get update

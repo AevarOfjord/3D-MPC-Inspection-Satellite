@@ -220,8 +220,8 @@ class TestSimulationLoopTermination:
         """Test termination when path progress reaches the end."""
         loop = SimulationLoop(mock_simulation)
         mock_simulation.is_running = True
-        mock_simulation.simulation_config.mission_state.dxf_path_length = 1.0
-        mock_simulation.simulation_config.mission_state.mpcc_path_waypoints = [
+        mock_simulation.simulation_config.mission_state.path_length = 1.0
+        mock_simulation.simulation_config.mission_state.path_waypoints = [
             (0.0, 0.0, 0.0),
             (1.0, 0.0, 0.0),
         ]
@@ -267,7 +267,7 @@ class TestSimulationLoopTermination:
         mock_simulation.is_running = True
         mock_simulation.simulation_time = 2.5
         mock_simulation.check_path_complete = MagicMock(return_value=True)
-        mock_simulation.simulation_config.mission_state.trajectory_hold_end = 0.0
+        mock_simulation.simulation_config.mission_state.path_hold_end = 0.0
 
         result = loop._check_path_following_completion()
 
