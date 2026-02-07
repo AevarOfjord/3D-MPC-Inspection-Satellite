@@ -501,7 +501,7 @@ class SimulationParams(BaseModel):
         description="Require final stabilization hold before terminating missions",
     )
 
-    # Timing parameters (V3.0.0: moved from SatelliteConfig/timing.py)
+    # Timing parameters (V3.0.0: moved to SimulationParams)
     control_dt: float = Field(
         timing.CONTROL_DT,
         gt=0,

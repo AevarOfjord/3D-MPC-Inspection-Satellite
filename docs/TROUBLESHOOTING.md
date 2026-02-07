@@ -128,7 +128,7 @@ which python  # Should show .venv311/bin/python
 
 ```python
 # Option 1: Reduce prediction horizon
-# src/satellite_control/config/mpc_params.py
+# src/satellite_control/config/models.py (MPCParams)
 MPC_PREDICTION_HORIZON = 30  # Reduce from 50
 MPC_CONTROL_HORIZON = 30     # Keep equal to prediction
 
@@ -161,7 +161,7 @@ print(f'Max: {df[\"mpc_solve_time\"].max()*1000:.2f}ms')
 
 ```bash
 # Check velocity cost weight
-grep Q_VELOCITY src/satellite_control/config/mpc_params.py
+grep q_angular_velocity src/satellite_control/config/models.py
 ```
 
 **Solutions**:
@@ -195,7 +195,7 @@ Q_POSITION = 500.0  # Decrease from 1000
 assert abs(target_x) < 3.0 and abs(target_y) < 3.0
 
 # Check velocity limit
-# src/satellite_control/config/mpc_params.py
+# src/satellite_control/config/models.py (MPCParams)
 MAX_VELOCITY = 0.5  # m/s (current default)
 
 # Relax convergence tolerances
@@ -322,7 +322,7 @@ MAX_VELOCITY = 0.6     # Increase from 0.5 m/s
 
 ### Animation Not Generated
 
-**Problem**: No `simulation_animation.mp4` file after simulation
+**Problem**: No `Simulation_3D_Render.mp4` file after simulation
 
 **Solutions**:
 
@@ -514,7 +514,7 @@ print(np.isinf(df.select_dtypes(include=[np.number])).sum())
 python run_simulation.py run --duration 60.0
 
 # Check mission complete criteria
-# May need to adjust tolerances in config/mpc_params.py
+# May need to adjust tolerances in config/models.py (MPCParams)
 ```
 
 ---
@@ -566,7 +566,7 @@ For reference, current defaults:
 TOTAL_MASS = 10.0 kg
 MOMENT_OF_INERTIA = 0.140 kg·m²
 
-# MPC (config/mpc_params.py)
+# MPC (config/models.py — MPCParams)
 MPC_PREDICTION_HORIZON = 50        # 3.0s ahead
 MPC_CONTROL_HORIZON = 50
 Q_POSITION = 1000.0
@@ -616,7 +616,7 @@ pip install -r requirements.txt
 python run_simulation.py run --auto --no-anim
 
 # Reduce horizon
-# Edit mpc_params.py: MPC_PREDICTION_HORIZON = 30
+# Edit config/models.py: prediction_horizon = 30
 ```
 
 ### Can't see visualization

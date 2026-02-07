@@ -95,40 +95,40 @@ graph LR
 
 |  Symbol  | Meaning                     | Code Variable                                                         | File(s)                                     | Default Value                                                 |
 | :------: | --------------------------- | --------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
-|    Q     | State cost matrix (6×6)     | `self.Q`, `Q`                                                         | `mpc_controller.py`, `config/mpc_params.py` | Diagonal: diag([Q_pos, Q_pos, Q_ang, Q_vel, Q_vel, Q_angvel]) |
-|  Q_pos   | Position weight (x, y)      | `SatelliteConfig.Q_POSITION`, `mpc_params["Q_pos"]`                   | `config/mpc_params.py`, `mpc_controller.py` | 1000                                                          |
-|  Q_vel   | Velocity weight (vₓ, vᵧ)    | `SatelliteConfig.Q_VELOCITY`, `mpc_params["Q_vel"]`                   | `config/mpc_params.py`, `mpc_controller.py` | 10000                                                         |
-|   Q_θ    | Angle weight                | `SatelliteConfig.Q_ANGLE`, `mpc_params["Q_ang"]`                      | `config/mpc_params.py`, `mpc_controller.py` | 1000                                                          |
-|   Q_ω    | Angular velocity weight     | `SatelliteConfig.Q_ANGULAR_VELOCITY`, `mpc_params["Q_angvel"]`        | `config/mpc_params.py`, `mpc_controller.py` | 1500                                                          |
-|    R     | Control effort weight (8×8) | `self.R`, `SatelliteConfig.R_THRUST`, `mpc_params["R_thrust"]`        | `mpc_controller.py`, `config/mpc_params.py` | 1.0 × I₈ (identity matrix)                                    |
-| R_switch | Switching penalty           | `self.R_switch`, `SatelliteConfig.R_SWITCH`, `mpc_params["R_switch"]` | `mpc_controller.py`, `config/mpc_params.py` | 0.0 (disabled by default)                                     |
+|    Q     | State cost matrix (6×6)     | `self.Q`, `Q`                                                         | `mpc_controller.py`, `config/models.py`     | Diagonal: diag([Q_pos, Q_pos, Q_ang, Q_vel, Q_vel, Q_angvel]) |
+|  Q_pos   | Position weight (x, y)      | `MPCParams.Q_contour`, `mpc_params["Q_contour"]`                      | `config/models.py`, `mpc_controller.py`     | 1000                                                          |
+|  Q_vel   | Velocity weight (vₓ, vᵧ)    | `MPCParams.Q_smooth`, `mpc_params["Q_smooth"]`                        | `config/models.py`, `mpc_controller.py`     | 10000                                                         |
+|   Q_θ    | Angle weight                | `MPCParams.Q_attitude`, `mpc_params["Q_attitude"]`                    | `config/models.py`, `mpc_controller.py`     | 1000                                                          |
+|   Q_ω    | Angular velocity weight     | `MPCParams.q_angular_velocity`, `mpc_params["q_angular_velocity"]`    | `config/models.py`, `mpc_controller.py`     | 1500                                                          |
+|    R     | Control effort weight (8×8) | `self.R`, `MPCParams.r_thrust`, `mpc_params["r_thrust"]`              | `mpc_controller.py`, `config/models.py`     | 1.0 × I₈ (identity matrix)                                    |
+| R_switch | Switching penalty           | `self.R_switch` (deprecated)                                          | `mpc_controller.py`, `config/models.py`     | 0.0 (disabled by default)                                     |
 
 ### Horizons and Timing
 
 | Symbol | Meaning                       | Code Variable                                                      | File(s)                                                                          | Value                               |
 | :----: | ----------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ----------------------------------- |
-|   N    | Prediction horizon (steps)    | `self.N`, `prediction_horizon`, `mpc_params["prediction_horizon"]` | `mpc_controller.py`, `config/mpc_params.py`                                      | 50 steps = 3.0s                     |
-|   M    | Control horizon (steps)       | `self.M`, `control_horizon`, `mpc_params["control_horizon"]`       | `mpc_controller.py`, `config/mpc_params.py`                                      | 50 steps = 3.0s                     |
-|   Δt   | Control timestep (seconds)    | `self.dt`, `dt`, `CONTROL_DT`, `mpc_params["dt"]`                  | `mpc_controller.py`, `config/mpc_params.py`, `config/timing.py`, `simulation.py` | 0.06s (16.67 Hz)                    |
+|   N    | Prediction horizon (steps)    | `self.N`, `prediction_horizon`, `mpc_params["prediction_horizon"]` | `mpc_controller.py`, `config/models.py`                                          | 50 steps = 3.0s                     |
+|   M    | Control horizon (steps)       | `self.M`, `control_horizon`, `mpc_params["control_horizon"]`       | `mpc_controller.py`, `config/models.py`                                          | 50 steps = 3.0s                     |
+|   Δt   | Control timestep (seconds)    | `self.dt`, `dt`, `CONTROL_DT`, `mpc_params["dt"]`                  | `mpc_controller.py`, `config/models.py`, `config/timing.py`, `simulation.py`     | 0.06s (16.67 Hz)                    |
 | Δt_sim | Simulation timestep (seconds) | `dt`, `SIMULATION_DT`                                              | `simulation.py`, `cpp_satellite.py`, `config/timing.py`                       | 0.005s (200 Hz physics integration) |
 
 ### Physical Parameters
 
 | Symbol | Meaning                        | Code Variable                                                                                                                   | File(s)                                                                                                 | Value                               |
 | :----: | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-|   m    | Satellite mass                 | `self.total_mass`, `satellite_params["mass"]`, `PhysicsConfig.total_mass`, `SatelliteConfig.TOTAL_MASS`                         | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py` | 10.0 kg                             |
-|   I    | Moment of inertia              | `self.moment_of_inertia`, `satellite_params["inertia"]`, `PhysicsConfig.moment_of_inertia`, `SatelliteConfig.MOMENT_OF_INERTIA` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py` | 0.140 kg·m²                         |
-|  c_d   | Linear damping coefficient     | `PhysicsConfig.linear_damping_coeff`, `SatelliteConfig.LINEAR_DAMPING_COEFF`                                                    | `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·s/m (disabled by default)     |
-|  c_r   | Rotational damping coefficient | `PhysicsConfig.rotational_damping_coeff`, `SatelliteConfig.ROTATIONAL_DAMPING_COEFF`                                            | `simulation.py`, `cpp_satellite.py`, `config/physics.py`, `satellite_config.py`                      | 0.0 N·m·s/rad (disabled by default) |
-|   L    | Satellite size                 | `SatelliteConfig.SATELLITE_SIZE`, `satellite_params["size"]`, `PhysicsConfig.satellite_size`                                    | `config/physics.py`, `satellite_config.py`, `simulation_visualization.py`                               | 0.29 m                              |
+|   m    | Satellite mass                 | `self.total_mass`, `satellite_params["mass"]`, `PhysicsConfig.total_mass`                         | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py` | 10.0 kg                             |
+|   I    | Moment of inertia              | `self.moment_of_inertia`, `satellite_params["inertia"]`, `PhysicsConfig.moment_of_inertia` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py` | 0.140 kg·m²                         |
+|  c_d   | Linear damping coefficient     | `PhysicsConfig.linear_damping_coeff`                                                    | `simulation.py`, `cpp_satellite.py`, `config/physics.py`                      | 0.0 N·s/m (disabled by default)     |
+|  c_r   | Rotational damping coefficient | `PhysicsConfig.rotational_damping_coeff`                                            | `simulation.py`, `cpp_satellite.py`, `config/physics.py`                      | 0.0 N·m·s/rad (disabled by default) |
+|   L    | Satellite size                 | `satellite_params["size"]`, `PhysicsConfig.satellite_size`                                    | `config/physics.py`, `simulation_visualization.py`                               | 0.29 m                              |
 
 ### Thruster Configuration
 
 |   Symbol    | Meaning                         | Code Variable                                                                                | File(s)                                                                            | Notes                                        |
 | :---------: | ------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------- |
-|     F_i     | Thruster force magnitude (N)    | `self.thruster_forces`, `THRUSTER_FORCES`, `satellite_params["thruster_forces"]`             | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | Array of 8 calibrated values (0.428-0.484 N) |
-|     𝐫_i     | Thruster position (body frame)  | `self.thruster_positions`, `THRUSTER_POSITIONS`, `satellite_params["thruster_positions"]`    | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | (x, y) in meters, 8×2 array                  |
-|     𝐝_i     | Thruster direction (body frame) | `self.thruster_directions`, `THRUSTER_DIRECTIONS`, `satellite_params["thruster_directions"]` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `satellite_config.py` | Unit vectors, 8×2 array                      |
+|     F_i     | Thruster force magnitude (N)    | `self.thruster_forces`, `THRUSTER_FORCES`, `satellite_params["thruster_forces"]`             | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py` | Array of 8 calibrated values (0.428-0.484 N) |
+|     𝐫_i     | Thruster position (body frame)  | `self.thruster_positions`, `THRUSTER_POSITIONS`, `satellite_params["thruster_positions"]`    | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py` | (x, y) in meters, 8×2 array                  |
+|     𝐝_i     | Thruster direction (body frame) | `self.thruster_directions`, `THRUSTER_DIRECTIONS`, `satellite_params["thruster_directions"]` | `mpc_controller.py`, `simulation.py`, `cpp_satellite.py`, `config/physics.py` | Unit vectors, 8×2 array                      |
 |     τ_i     | Thruster torque (N·m)           | Computed inline: `r_x * F_y - r_y * F_x`                                                     | `mpc_controller.py` (line ~280), `simulation.py`, `cpp_satellite.py`            | τ = r × F (2D cross product)                 |
 | n_thrusters | Number of thrusters             | `8` (hardcoded), `len(thruster_forces)`                                                      | All files with thruster logic                                                      | Always 8 for this satellite                  |
 
@@ -136,9 +136,9 @@ graph LR
 
 |    Symbol    | Meaning                | Code Variable                                                                             | File(s)                                                                      | Value                                                 |
 | :----------: | ---------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------- |
-| x_max, y_max | Position limits        | `self.position_bounds`, `POSITION_BOUNDS`, `mpc_params["position_bounds"]`                | `mpc_controller.py`, `config/mpc_params.py`, `simulation_state_validator.py` | ±3.0 m (simulation boundary)                          |
-|    v_max     | Velocity limit         | `self.max_velocity`, `MAX_VELOCITY`, `mpc_params["max_velocity"]`                         | `mpc_controller.py`, `config/mpc_params.py`, `simulation_state_validator.py` | 0.5 m/s                                               |
-|    ω_max     | Angular velocity limit | `self.max_angular_velocity`, `MAX_ANGULAR_VELOCITY`, `mpc_params["max_angular_velocity"]` | `mpc_controller.py`, `config/mpc_params.py`, `simulation_state_validator.py` | π/2 rad/s ≈ 1.571 rad/s                               |
+| x_max, y_max | Position limits        | `self.position_bounds`, `POSITION_BOUNDS`, `mpc_params["position_bounds"]`                | `mpc_controller.py`, `config/models.py`, `simulation_state_validator.py` | ±3.0 m (simulation boundary)                          |
+|    v_max     | Velocity limit         | `self.max_velocity`, `MAX_VELOCITY`, `mpc_params["max_velocity"]`                         | `mpc_controller.py`, `config/models.py`, `simulation_state_validator.py` | 0.5 m/s                                               |
+|    ω_max     | Angular velocity limit | `self.max_angular_velocity`, `MAX_ANGULAR_VELOCITY`, `mpc_params["max_angular_velocity"]` | `mpc_controller.py`, `config/models.py`, `simulation_state_validator.py` | π/2 rad/s ≈ 1.571 rad/s                               |
 |   θ_bounds   | Angle bounds           | ±2π bounds inside MPC, angles re-wrapped for telemetry/logs                               | `mpc_controller.py` (state bounds), `navigation_utils.py` (normalization)    | Solver clamps θ to ±2π; outputs normalized to [-π, π] |
 |   u_bounds   | Control bounds         | Box constraint in OSQP                                                                    | `mpc_controller.py`                                                          | 0 ≤ u_i ≤ 1                                           |
 
@@ -170,7 +170,7 @@ graph LR
 | Velocity boost near target | Multiply Q_vel by up to 3× when close and still moving | `mpc_controller.py`             | `SatelliteMPCOptimized.get_control_action()` (~520-540) | `DAMPING_ZONE = 0.25 m`, `VELOCITY_THRESHOLD = 0.03 m/s`, capped by `MAX_VELOCITY_WEIGHT = 1000` |
 | Linearization caching      | Quantize θ to 0.01 rad bins to reuse A, B matrices     | `mpc_controller.py`             | `linearize_dynamics()` (~280-310)                       | Cache resolution: 0.01 rad ≈ 0.57°                                                               |
 | Warm starting              | Shift previous solution by 1 timestep                  | `mpc_controller.py`             | `_apply_warm_start()` (~520-560)                        | Copies `u[k+1]` → `u[k]`, sets primal variables for OSQP                                         |
-| Damping zone               | Distance threshold for aggressive damping              | `config/mpc_params.py`          | `DAMPING_ZONE`                                          | 0.25 m from target                                                                               |
+| Damping zone               | Distance threshold for aggressive damping              | `config/models.py`              | `DAMPING_ZONE`                                          | 0.25 m from target                                                                               |
 | Fallback controller        | Simple proportional control if MPC fails               | `mpc_controller.py`             | `_get_fallback_control()` (~700-750)                    | K_p gains tuned for stability                                                                    |
 | State validation           | Check bounds before/after integration                  | `simulation_state_validator.py` | `validate_state()`, `enforce_constraints()`             | Used in `simulation.py`, `cpp_satellite.py`                                                   |
 | Mission state tracking     | Track path config and progress                         | `mission_state.py`              | `MissionState` dataclass                               | Used in `simulation.py`                                                                          |
@@ -239,10 +239,10 @@ t= 12.3s: APPROACHING (t=12.3s) pos_err=0.452m, ang_err= 15.3°
 
 **Configuration:**
 
-- **MPC weights**: `config/mpc_params.py` (Q, R values)
+- **MPC weights**: `config/models.py` (MPCParams: Q, R values)
 - **Physical parameters**: `config/physics.py` (mass, inertia, damping)
-- **Thruster calibration**: `satellite_config.py` (positions, directions, forces)
-- **Constraints**: `config/mpc_params.py` (position/velocity/angular bounds)
+- **Thruster calibration**: `config/physics.py` (positions, directions, forces)
+- **Constraints**: `config/models.py` (position/velocity/angular bounds)
 - **Timing**: `config/timing.py` (dt, horizons)
 
 **Utilities:**
@@ -471,7 +471,7 @@ Where:
 
 - **u_i**: PWM command (0 = off, 1 = full thrust).
 - **F_mag,i**: measured thrust level from calibration.
-- **d_b,i**: unit direction vector in body frame (pulled directly from `satellite_config.py`).
+- **d_b,i**: unit direction vector in body frame (pulled directly from `config/physics.py`).
 
 ### Total Thruster Force in World Frame
 
@@ -578,8 +578,8 @@ For the satellite system the MPC Jacobians operate on the reordered state $\math
 
 | Symbol | Meaning              | Value | Units | Code Reference                      |
 | ------ | -------------------- | ----- | ----- | ----------------------------------- |
-| $m$    | Total satellite mass | 23.09 | kg    | `SatelliteConfig.TOTAL_MASS`        |
-| $I$    | Moment of inertia    | 0.140 | kg·m² | `SatelliteConfig.MOMENT_OF_INERTIA` |
+| $m$    | Total satellite mass | 23.09 | kg    | `PhysicsConfig.total_mass`        |
+| $I$    | Moment of inertia    | 0.140 | kg·m² | `PhysicsConfig.moment_of_inertia` |
 
 **State Matrix $\mathbf{A}_c$:**
 
@@ -661,7 +661,7 @@ where $R(\theta)$ rotates each body-frame direction $\mathbf{d}_{b,i}$ into worl
 
 **Parameters (how each term is built in code):**
 
-- $\phi_i$: discrete body-frame directions pulled from `satellite_config.py`. Each thruster points along one of four axes (left/right/up/down), so the set of headings is {0°, 0°, 90°, 90°, 180°, 180°, 270°, 270°}.
+- $\phi_i$: discrete body-frame directions pulled from `config/physics.py`. Each thruster points along one of four axes (left/right/up/down), so the set of headings is {0°, 0°, 90°, 90°, 180°, 180°, 270°, 270°}.
 - $\theta$: current world-frame yaw angle read from the state vector each MPC cycle.
 - $\theta + \phi_i$: world-frame pointing angle of thruster $i$ after rotating the body-frame direction by the current attitude, and this is what feeds the $\cos$/$\sin$ terms in the velocity rows of $\mathbf{B}$.
 - $\tau_i$: constant torque contribution for thruster $i$, precomputed once from geometry as $\mathbf{r}_i \times (F_i \mathbf{d}_i^b)$ (lever arm × body-frame force). These values live in `self.thruster_torques` so `linearize_dynamics()` can drop them directly into row 6.
@@ -692,7 +692,7 @@ External influences (drag, valve delays, injected gusts, measurement noise) are 
 **Important:** By default, realistic physics effects are **disabled** for ideal simulation:
 
 - **Simulation:** `cpp_satellite.py` can optionally add damping, random forces, torque impulses, valve delay, and measurement noise when `use_realistic_physics=True`. By default this is set to `False` for idealized testing.
-- **Configuration knobs:** `SatelliteConfig.LINEAR_DAMPING_COEFF` (default: 0.0) and `SatelliteConfig.ROTATIONAL_DAMPING_COEFF` (default: 0.0) defined in `config/physics.py`. When realistic physics is enabled, these can be set to non-zero values (e.g., 1.8 N·s/m and 0.3 N·m·s/rad).
+- **Configuration knobs:** `PhysicsConfig.linear_damping_coeff` (default: 0.0) and `PhysicsConfig.rotational_damping_coeff` (default: 0.0) defined in `config/physics.py`. When realistic physics is enabled, these can be set to non-zero values (e.g., 1.8 N·s/m and 0.3 N·m·s/rad).
 
 ---
 
@@ -729,7 +729,7 @@ Where Q is diagonal:
 
 $$\mathbf{Q} = \text{diag}[Q_x, Q_y, Q_\theta, Q_{v_x}, Q_{v_y}, Q_\omega]$$
 
-Default weights (`config/mpc_params.py`):
+Default weights (`config/models.py` — MPCParams):
 
 - **Q_x = Q_y = 1000**: keep waypoint error low.
 - **Q_θ = 1000**: enforce heading alignment before docking.
@@ -962,7 +962,7 @@ The priority is predictable runtime rather than squeezing out the last 0.1% of o
 
 ### Fallback Controller
 
-If the MPC solve fails or exceeds the time limit, we fall back to the heuristic controller implemented in `_get_fallback_control()` inside `mpc_controller.py`. It measures the position, velocity, and angle errors relative to the current target, then fires the thruster pair that reduces the dominant error component (±X, ±Y, or yaw). Thresholds from `config.mpc_params` keep the response conservative—just enough thrust to slow motion and keep heading reasonable until the next MPC solve succeeds.
+If the MPC solve fails or exceeds the time limit, we fall back to the heuristic controller implemented in `_get_fallback_control()` inside `mpc_controller.py`. It measures the position, velocity, and angle errors relative to the current target, then fires the thruster pair that reduces the dominant error component (±X, ±Y, or yaw). Thresholds from `config.models` (MPCParams) keep the response conservative—just enough thrust to slow motion and keep heading reasonable until the next MPC solve succeeds.
 
 ---
 
@@ -1010,7 +1010,7 @@ $$\tau = r_x F_y - r_y F_x$$
 
 $$\tau_1 = 0.145 \cdot 0 - 0.06 \cdot (-F) = 0.06 F$$
 
-Positive $\tau$ corresponds to counter-clockwise rotation, matching the sign convention in `satellite_config.py`.
+Positive $\tau$ corresponds to counter-clockwise rotation, matching the sign convention in `config/physics.py`.
 
 ### Linearized State-Space Model
 

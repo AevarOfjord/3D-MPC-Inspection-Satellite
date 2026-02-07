@@ -202,12 +202,9 @@ class TestModuleImports:
 
     def test_can_import_mission(self):
         """Test that mission module can be imported."""
-        try:
-            import src.satellite_control.mission.mission as mission
+        import src.satellite_control.mission as mission
 
-            assert mission is not None
-        except ImportError:
-            pytest.skip("Mission module not available")
+        assert mission is not None
 
     def test_can_import_logging_config(self):
         """Test that logging_config module can be imported."""

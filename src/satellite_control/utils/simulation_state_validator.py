@@ -552,7 +552,7 @@ def create_state_validator_from_config(
             "angular_velocity_tolerance", Constants.ANGULAR_VELOCITY_TOLERANCE
         )
     else:
-        # V4.0.0: Use SatelliteConfig constants if not in config
+        # V4.0.0: Use Constants defaults if not in config
         position_tolerance = config.get(
             "position_tolerance", Constants.POSITION_TOLERANCE
         )

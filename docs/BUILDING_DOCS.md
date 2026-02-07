@@ -13,7 +13,7 @@ pip install sphinx sphinx-rtd-theme myst-parser
 Or install from `pyproject.toml`:
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[dev]"
 ```
 
 ## Building Documentation

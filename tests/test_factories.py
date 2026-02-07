@@ -38,11 +38,11 @@ class TestSimulationFactory:
             "solver_time_limit": 0.05,
         },
         "simulation": {
-            "max_simulation_time": 10.0,
+            "max_duration": 10.0,
             "control_dt": 0.25,
         },
         "physics": {
-            "USE_REALISTIC_PHYSICS": False,
+            "use_realistic_physics": False,
         },
     }
 

@@ -12,7 +12,6 @@ pyyaml>=6.0.0
 
 # CLI and interactive interface
 typer>=0.9.0
-click>=8.0.0
 rich>=10.0.0
 questionary>=2.0.0
 
@@ -23,7 +22,6 @@ seaborn>=0.11.0
 
 # Visualization
 plotly>=5.0.0
-streamlit>=1.25.0
 imageio>=2.30.0
 imageio-ffmpeg>=0.4.9
 shapely>=1.8.0
@@ -38,16 +36,6 @@ watchfiles>=0.19.0
 httpx>=0.24.0
 python-multipart>=0.0.6
 aiofiles>=23.0.0
-
-# Build dependencies (for C++ extension)
-scikit-build-core>=0.3.3
-pybind11>=2.10.0
-cmake>=3.20
-ninja>=1.10
-
-# Testing
-pytest>=7.0.0
-hypothesis>=6.0.0
 
 # Optional: for enhanced performance
 # ecos>=2.0.0
