@@ -290,6 +290,18 @@ class SatelliteMPCLinearizedSimulation:
 
         return 0.0
 
+    def _append_capped_history(self, history: list, item: Any) -> None:
+        """Append to a history list while enforcing retention limits."""
+        history.append(item)
+        max_len = int(getattr(self, "history_max_steps", 0) or 0)
+        if max_len and len(history) > max_len:
+            overflow = len(history) - max_len
+            if overflow == 1:
+                history.pop(0)
+            else:
+                del history[:overflow]
+            self.history_trimmed = True
+
     # OBSTACLE AVOIDANCE METHODS
 
     def log_physics_step(self):
@@ -503,6 +515,7 @@ class SatelliteMPCLinearizedSimulation:
 
         # 4. Clear Logs (Partial)
         self.state_history = []
+        self.history_trimmed = False
 
         # 4b. Reset Metrics
         self.last_solve_time = 0.0

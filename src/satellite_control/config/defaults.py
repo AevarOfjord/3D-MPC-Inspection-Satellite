@@ -111,6 +111,8 @@ def create_default_app_config() -> AppConfig:
         default_path_speed=timing.DEFAULT_PATH_SPEED,
         physics_log_stride=1,
         control_log_stride=1,
+        history_max_steps=50000,
+        history_downsample_stride=1,
     )
 
     return AppConfig(physics=phys, mpc=mpc, simulation=sim, input_file_path=None)

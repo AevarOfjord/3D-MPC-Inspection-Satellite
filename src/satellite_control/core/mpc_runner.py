@@ -37,6 +37,7 @@ class MPCRunner:
         mpc_controller: MPCController,
         config: Optional["AppConfig"] = None,
         state_validator=None,
+        max_command_history: int = 0,
     ):
         """
         Initialize runner with configuration.
@@ -49,6 +50,7 @@ class MPCRunner:
         self.mpc: MPCController = mpc_controller
         self.config = config  # Stored for potential future use
         self.state_validator = state_validator
+        self.max_command_history = max(0, int(max_command_history or 0))
 
         # Internal state management
         default_thruster_count = THRUSTER_COUNT
@@ -64,6 +66,15 @@ class MPCRunner:
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history: list = []
         self.call_count = 0
+
+    def _append_command_history(self, entry: np.ndarray) -> None:
+        self.command_history.append(entry)
+        if self.max_command_history and len(self.command_history) > self.max_command_history:
+            overflow = len(self.command_history) - self.max_command_history
+            if overflow == 1:
+                self.command_history.pop(0)
+            else:
+                del self.command_history[:overflow]
 
     def compute_control_action(
         self,
@@ -147,7 +158,7 @@ class MPCRunner:
 
         # Update internal state
         self.previous_thrusters = thruster_action.copy()
-        self.command_history.append(thruster_action.copy())
+        self._append_command_history(thruster_action.copy())
         self.call_count += 1
 
         return (

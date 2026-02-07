@@ -23,6 +23,7 @@ def update_mpc_control_step(sim: Any) -> None:
             mpc_controller=sim.mpc_controller,
             config=sim.structured_config,
             state_validator=sim.state_validator,
+            max_command_history=getattr(sim, "history_max_steps", 0),
         )
 
     current_state = sim.get_current_state()
@@ -57,7 +58,12 @@ def update_mpc_control_step(sim: Any) -> None:
     sim.next_control_simulation_time += sim.control_update_interval
     sim.last_control_output = np.concatenate([thruster_action, rw_torque_cmd])
     sim.previous_thrusters = thruster_action.copy()
-    sim.control_history.append(thruster_action.copy())
+    history_stride = int(getattr(sim, "history_downsample_stride", 1) or 1)
+    if not hasattr(sim, "_control_history_downsample_counter"):
+        sim._control_history_downsample_counter = 0
+    sim._control_history_downsample_counter += 1
+    if history_stride <= 1 or (sim._control_history_downsample_counter % history_stride) == 0:
+        sim._append_capped_history(sim.control_history, thruster_action.copy())
     sim.set_thruster_pattern(thruster_action)
 
     # Log data

@@ -56,8 +56,18 @@ def log_simulation_step(
     do_log = stride <= 1 or (sim._control_log_counter % stride) == 0
 
     # Store state history for summaries/plots.
+    record_history = False
     if do_log:
-        sim.state_history.append(current_state.copy())
+        history_stride = int(getattr(sim, "history_downsample_stride", 1) or 1)
+        if not hasattr(sim, "_history_downsample_counter"):
+            sim._history_downsample_counter = 0
+        sim._history_downsample_counter += 1
+        record_history = (
+            history_stride <= 1
+            or (sim._history_downsample_counter % history_stride) == 0
+        )
+        if record_history:
+            sim._append_capped_history(sim.state_history, current_state.copy())
 
     # Record performance metrics.
     solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
@@ -98,7 +108,8 @@ def log_simulation_step(
         display_thrusters = thruster_action
 
     active_thruster_ids = [int(x) for x in np.where(display_thrusters > 0.01)[0] + 1]
-    sim.command_history.append(active_thruster_ids)
+    if record_history:
+        sim._append_capped_history(sim.command_history, active_thruster_ids)
 
     def fmt_position_mm(state: np.ndarray) -> str:
         x_mm = state[0] * 1000
