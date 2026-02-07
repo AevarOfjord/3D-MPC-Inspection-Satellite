@@ -254,7 +254,6 @@ Mission configuration and execution:
 
 | File | Description |
 |------|-------------|
-| `mission_state_manager.py` | Runtime mission state machine for path tracking and waypoint logic |
 | `path_following.py` | Path building and path-following helpers |
 | `repository.py` | Mission discovery/loading from `missions_unified/` |
 | `runtime_loader.py` | Shared unified mission parse/compile runtime pipeline (CLI + dashboard) |
@@ -343,14 +342,12 @@ FastAPI backend for the web UI. Routes are split by concern:
 
 ---
 
-## src/satellite_control/utils/ (8 files)
+## src/satellite_control/utils/ (6 files)
 
 | File | Lines | Description |
 |------|-------|-------------|
 | `simulation_state_validator.py` | 600 | State validation, noise injection |
 | `data_logger.py` | 490 | High-frequency CSV logging |
-| `profiler.py` | 295 | Performance profiling decorators |
-| `spline_path.py` | 190 | Cubic spline interpolation |
 | `logging_config.py` | 180 | Logging setup |
 | `navigation_utils.py` | 165 | Angle normalization, distance |
 | `caching.py` | 160 | LRU caching decorators |
@@ -364,7 +361,7 @@ FastAPI backend for the web UI. Routes are split by concern:
 | Category | Files |
 |----------|-------|
 | **Unit Tests** | `test_config.py`, `test_caching.py`, `test_navigation_utils.py`, `test_orientation_utils.py` |
-| **Component Tests** | `test_mpc_controller.py`, `test_thruster_manager.py`, `test_simulation_loop.py`, `test_simulation_logger.py`, `test_simulation_io.py`, `test_simulation_initialization.py`, `test_simulation_context.py`, `test_simulation_state_validator.py`, `test_data_logger.py`, `test_performance_monitor.py`, `test_video_renderer.py`, `test_plot_generator.py`, `test_spline_path.py` |
+| **Component Tests** | `test_mpc_controller.py`, `test_thruster_manager.py`, `test_simulation_loop.py`, `test_simulation_logger.py`, `test_simulation_io.py`, `test_simulation_initialization.py`, `test_simulation_context.py`, `test_simulation_state_validator.py`, `test_data_logger.py`, `test_performance_monitor.py`, `test_video_renderer.py`, `test_plot_generator.py` |
 | **Mission Tests** | `test_mission_state_refactor.py`, `test_presets.py` |
 | **Integration Tests** | `test_integration_basic.py`, `test_integration_missions.py`, `test_integration_refactored.py`, `test_factories.py` |
 | **Property-Based** | `test_property_based.py` |
