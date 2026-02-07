@@ -26,15 +26,6 @@ export const unifiedMissionApi = {
     return response.json();
   },
 
-  getMission: async (): Promise<UnifiedMission> => {
-    const response = await fetch(`${API_BASE_URL}/mission_v2`);
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: 'Load failed' }));
-      throw new Error(err.detail || 'Load failed');
-    }
-    return response.json();
-  },
-
   saveMission: async (name: string, config: UnifiedMission) => {
     const response = await fetch(`${API_BASE_URL}/save_mission_v2`, {
       method: 'POST',
