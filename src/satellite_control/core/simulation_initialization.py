@@ -18,19 +18,18 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 
-# V4.0.0: SatelliteConfig removed - using SimulationConfig and Constants
-from src.satellite_control.config.constants import Constants
-from src.satellite_control.config.models import AppConfig
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.core.simulation_io import SimulationIO
-from src.satellite_control.core.thruster_manager import ThrusterManager
-from src.satellite_control.mission.mission_report_generator import (
+from satellite_control.config.constants import Constants
+from satellite_control.config.models import AppConfig
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.control.mpc_controller import MPCController
+from satellite_control.core.simulation_io import SimulationIO
+from satellite_control.core.thruster_manager import ThrusterManager
+from satellite_control.mission.mission_report_generator import (
     create_mission_report_generator,
 )
-from src.satellite_control.utils.data_logger import create_data_logger
-from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
-from src.satellite_control.utils.simulation_state_validator import (
+from satellite_control.utils.data_logger import create_data_logger
+from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+from satellite_control.utils.simulation_state_validator import (
     create_state_validator_from_config,
 )
 
@@ -84,10 +83,9 @@ class SimulationInitializer:
             start_vz: Initial Z velocity
             start_omega: Initial angular velocity (scalar yaw or (wx, wy, wz))
         """
-        # V3.0.0: Always require simulation_config
         if self.simulation_config is None:
             raise ValueError(
-                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+                "simulation_config is required."
             )
         app_config = self.simulation_config.app_config
 
@@ -148,7 +146,7 @@ class SimulationInitializer:
             and start_pos is not None
             and path_end_pos is not None
         ):
-            from src.satellite_control.mission.path_following import (
+            from satellite_control.mission.path_following import (
                 build_point_to_point_path,
             )
 
@@ -244,15 +242,15 @@ class SimulationInitializer:
         start_vz: float,
         start_omega: Union[float, Tuple[float, float, float]],
     ) -> None:
-        """Initialize satellite physics object and set initial state (V4.0.0: app_config required)."""
+        """Initialize satellite physics object and set initial state.."""
         if self.simulation_config is None:
             raise ValueError(
-                "simulation_config is required (V4.0.0: no SatelliteConfig fallback)"
+                "simulation_config is required."
             )
 
         logger.info("Initializing C++ Physics Engine...")
         try:
-            from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
+            from satellite_control.core.cpp_satellite import CppSatelliteSimulator
 
             self.simulation.satellite = CppSatelliteSimulator(
                 app_config=self.simulation_config.app_config,
@@ -336,7 +334,6 @@ class SimulationInitializer:
         # Simulates the delay between sending a command and
         # thrusters actually firing
         # Uses Config parameters for realistic physics when enabled
-        # V3.0.0: Use defaults until these are added to SatellitePhysicalParams
         # TODO: Add thruster_valve_delay and thruster_rampup_time to SatellitePhysicalParams
         if app_config.physics.use_realistic_physics:
             self.simulation.VALVE_DELAY = app_config.physics.thruster_valve_delay
@@ -418,7 +415,6 @@ class SimulationInitializer:
             max_terminal_entries=history_max_steps,
         )
 
-        # V4.0.0: Pass simulation_config to report generator
         self.simulation.report_generator = create_mission_report_generator(
             self.simulation_config
         )
@@ -426,14 +422,13 @@ class SimulationInitializer:
 
     def _initialize_performance_monitoring(self) -> None:
         """Initialize performance monitoring."""
-        from src.satellite_control.core.performance_monitor import PerformanceMonitor
+        from satellite_control.core.performance_monitor import PerformanceMonitor
 
         self.simulation.performance_monitor = PerformanceMonitor()
 
     def _initialize_tolerances(self) -> None:
         """Initialize tolerance values."""
-        # V4.0.0: Use Constants class attributes
-        from src.satellite_control.config.constants import Constants
+        from satellite_control.config.constants import Constants
 
         self.simulation.position_tolerance = Constants.POSITION_TOLERANCE
         self.simulation.angle_tolerance = Constants.ANGLE_TOLERANCE
@@ -446,7 +441,6 @@ class SimulationInitializer:
         """Initialize MPC controller."""
         logger.info("Initializing MPC Controller (Mode: PWM/OSQP)...")
 
-        # V4.1.0: Refactored to use AppConfig directly
         # If we have an override cfg (legacy/manual), use it
         cfg_override = getattr(self.simulation, "cfg", None)
         if isinstance(cfg_override, AppConfig):
@@ -476,7 +470,7 @@ class SimulationInitializer:
 
     def _initialize_simulation_context(self) -> None:
         """Initialize simulation context for logging."""
-        from src.satellite_control.core.simulation_context import SimulationContext
+        from satellite_control.core.simulation_context import SimulationContext
 
         self.simulation.context = SimulationContext()
         self.simulation.context.dt = self.simulation.satellite.dt
@@ -540,13 +534,12 @@ class SimulationInitializer:
             logger.info("INFO: Idealized physics (no delays, noise, or damping)")
 
         # Apply obstacle avoidance based on mode
-        # V3.0.0: Get obstacles from mission_state
         mission_state = self.simulation_config.mission_state
         if mission_state.obstacles_enabled and mission_state.obstacles:
             logger.info("Obstacle avoidance enabled.")
 
         # Initialize visualization manager
-        from src.satellite_control.visualization.simulation_visualization import (
+        from satellite_control.visualization.simulation_visualization import (
             create_simulation_visualizer,
         )
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import os
 
-from src.satellite_control.dashboard.app import app
+from satellite_control.dashboard.app import app
 
 client = TestClient(app)
 

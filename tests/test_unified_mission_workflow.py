@@ -7,9 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from src.satellite_control import cli as cli_module
-from src.satellite_control.dashboard.app import app
-from src.satellite_control.mission import repository as mission_repo
+from satellite_control import cli as cli_module
+from satellite_control.dashboard.app import app
+from satellite_control.mission import repository as mission_repo
 
 
 def _sample_unified_mission() -> dict:
@@ -87,7 +87,7 @@ def test_cli_runs_unified_mission_file_path(isolated_mission_repo, monkeypatch):
             type(self).close_called = True
 
     monkeypatch.setattr(
-        "src.satellite_control.core.simulation.SatelliteMPCLinearizedSimulation",
+        "satellite_control.core.simulation.SatelliteMPCLinearizedSimulation",
         DummySimulation,
     )
 
@@ -144,7 +144,7 @@ def test_run_mission_endpoint_spawns_cli_with_saved_mission(
     cmd = captured["cmd"]
     assert "--mission" in cmd
     assert "python" in Path(cmd[0]).name
-    assert cmd[1:4] == ["-m", "src.satellite_control.cli", "--mission"]
+    assert cmd[1:4] == ["-m", "satellite_control.cli", "--mission"]
     assert Path(cmd[4]).name == "RunEndpointMission.json"
     assert cmd[5] == "--no-anim"
     assert captured["start_new_session"] is True

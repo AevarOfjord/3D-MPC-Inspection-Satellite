@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.visualization.video_renderer import VideoRenderer
+from satellite_control.visualization.video_renderer import VideoRenderer
 
 
 @pytest.fixture

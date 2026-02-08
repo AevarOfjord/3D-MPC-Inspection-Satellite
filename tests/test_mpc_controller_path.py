@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from src.satellite_control.config import physics as physics_cfg
+from satellite_control.config import physics as physics_cfg
 
-from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.config.models import (
+from satellite_control.control.mpc_controller import MPCController
+from satellite_control.config.models import (
     AppConfig,
     SatellitePhysicalParams,
     MPCParams,

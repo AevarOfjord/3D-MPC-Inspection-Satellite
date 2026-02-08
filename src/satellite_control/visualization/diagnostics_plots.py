@@ -6,11 +6,11 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.satellite_control.visualization.plot_data_utils import (
+from satellite_control.visualization.plot_data_utils import (
     get_control_time_axis,
     resolve_data_frame_and_columns,
 )
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 
 
 def generate_solver_health_plot(plot_gen: Any, plot_dir: Path) -> None:

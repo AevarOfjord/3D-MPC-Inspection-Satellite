@@ -30,11 +30,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-# V4.0.0: SatelliteConfig removed - use AppConfig only
-from src.satellite_control.config.models import AppConfig
-from src.satellite_control.config.constants import Constants
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.utils.navigation_utils import (
+from satellite_control.config.models import AppConfig
+from satellite_control.config.constants import Constants
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.utils.navigation_utils import (
     angle_difference as _angle_difference,
     normalize_angle as _normalize_angle,
 )
@@ -77,7 +76,6 @@ class SimulationStateValidator:
         self.angular_velocity_tolerance = angular_velocity_tolerance
         self.app_config = app_config
 
-        # V4.0.0: Load bounds from app_config (required, no fallback)
         if position_bounds is None:
             self.position_bounds = 5.0
         else:
@@ -344,11 +342,9 @@ class SimulationStateValidator:
             Noisy state with measurement errors added
         """
         if use_realistic_physics is None:
-            # V4.0.0: Get from app_config (required, no fallback)
             if self.app_config and self.app_config.physics:
                 use_realistic_physics = self.app_config.physics.use_realistic_physics
             else:
-                # V4.0.0: Use default config if not provided
                 default_config = SimulationConfig.create_default()
                 use_realistic_physics = (
                     default_config.app_config.physics.use_realistic_physics
@@ -551,7 +547,6 @@ def create_state_validator_from_config(
             "angular_velocity_tolerance", Constants.ANGULAR_VELOCITY_TOLERANCE
         )
     else:
-        # V4.0.0: Use Constants defaults if not in config
         position_tolerance = config.get(
             "position_tolerance", Constants.POSITION_TOLERANCE
         )
@@ -564,7 +559,6 @@ def create_state_validator_from_config(
             Constants.ANGULAR_VELOCITY_TOLERANCE,
         )
 
-    # V4.0.0: Get bounds from app_config (required, no fallback)
     position_bounds = config.get("position_bounds", 5.0)
     max_velocity = config.get("max_velocity", 1.0)
     max_angular_velocity = config.get("max_angular_velocity", np.pi)

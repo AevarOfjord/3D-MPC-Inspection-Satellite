@@ -8,7 +8,7 @@ Provides pre-configured settings optimized for different use cases:
 - PRECISION: High precision, slower movement, very stable
 
 Usage:
-    from src.satellite_control.config.presets import ConfigPreset, load_preset
+    from satellite_control.config.presets import ConfigPreset, load_preset
 
     # Load a preset
     config = load_preset(ConfigPreset.FAST)
@@ -21,7 +21,7 @@ from typing import Dict, Any
 
 from .models import MPCParams
 from . import timing
-from src.satellite_control.config.constants import Constants
+from satellite_control.config.constants import Constants
 
 
 class ConfigPreset:

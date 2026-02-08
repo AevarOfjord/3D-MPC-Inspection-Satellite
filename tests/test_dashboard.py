@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 def app():
     """Create a fresh FastAPI app for each test."""
     # Import inside fixture to avoid import-time side-effects
-    from src.satellite_control.dashboard.app import app as dashboard_app
+    from satellite_control.dashboard.app import app as dashboard_app
 
     return dashboard_app
 

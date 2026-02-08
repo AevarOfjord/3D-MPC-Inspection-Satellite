@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 
-from src.satellite_control.utils.orientation_utils import (
+from satellite_control.utils.orientation_utils import (
     quat_angle_error,
     quat_wxyz_to_euler_xyz,
 )
@@ -190,7 +190,7 @@ def log_simulation_step(
     if do_log:
         # Delegate to SimulationLogger for control_data.csv output.
         if not hasattr(sim, "logger_helper"):
-            from src.satellite_control.core.simulation_logger import SimulationLogger
+            from satellite_control.core.simulation_logger import SimulationLogger
 
             sim.logger_helper = SimulationLogger(sim.data_logger)
 

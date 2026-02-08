@@ -37,7 +37,7 @@ class TestStateVectorProperties:
     @settings(max_examples=100)
     def test_state_vector_finite(self, x, y, theta, vx, vy, omega):
         """All state components should produce finite results in MPC."""
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
         state = np.zeros(13)
         state[0:3] = np.array([x, y, 0.0])
@@ -67,9 +67,8 @@ class TestThrusterProperties:
     @settings(max_examples=20)
     def test_thruster_direction_is_unit_vector(self, thruster_idx):
         """All thruster directions should be unit vectors."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.simulation_config import SimulationConfig
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         thruster_id = thruster_idx
         direction = config.app_config.physics.thruster_directions[thruster_id]
@@ -83,7 +82,7 @@ class TestThrusterProperties:
     @settings(max_examples=20)
     def test_scaled_forces_remain_positive(self, force_multiplier):
         """Scaled thruster forces should remain positive."""
-        from src.satellite_control.config.physics import THRUSTER_FORCES
+        from satellite_control.config.physics import THRUSTER_FORCES
 
         for tid, force in THRUSTER_FORCES.items():
             scaled = force * force_multiplier
@@ -173,7 +172,7 @@ class TestStateValidationEdgeCases:
     @settings(max_examples=50)
     def test_angle_normalization_always_in_range(self, angle):
         """Normalized angle should always be in [-pi, pi]."""
-        from src.satellite_control.utils.navigation_utils import normalize_angle
+        from satellite_control.utils.navigation_utils import normalize_angle
 
         normalized = normalize_angle(angle)
         assert -np.pi <= normalized <= np.pi
@@ -207,7 +206,7 @@ class TestNavigationUtilsProperties:
     @settings(max_examples=100)
     def test_angle_difference_symmetric(self, angle1, angle2):
         """Angle difference should be symmetric (within sign)."""
-        from src.satellite_control.utils.navigation_utils import angle_difference
+        from satellite_control.utils.navigation_utils import angle_difference
 
         diff1 = angle_difference(angle1, angle2)
         diff2 = angle_difference(angle2, angle1)
@@ -221,7 +220,7 @@ class TestNavigationUtilsProperties:
     @settings(max_examples=100)
     def test_normalize_angle_idempotent(self, angle):
         """Normalizing an already normalized angle should be idempotent."""
-        from src.satellite_control.utils.navigation_utils import normalize_angle
+        from satellite_control.utils.navigation_utils import normalize_angle
 
         normalized_once = normalize_angle(angle)
         normalized_twice = normalize_angle(normalized_once)
@@ -241,7 +240,7 @@ class TestNavigationUtilsProperties:
         self, point_x, point_y, line_x1, line_y1, line_x2, line_y2
     ):
         """Point-to-line distance should always be non-negative."""
-        from src.satellite_control.utils.navigation_utils import point_to_line_distance
+        from satellite_control.utils.navigation_utils import point_to_line_distance
 
         point = np.array([point_x, point_y])
         line_start = np.array([line_x1, line_y1])
@@ -268,7 +267,7 @@ class TestOrientationUtilsProperties:
     @settings(max_examples=100)
     def test_euler_quat_roundtrip(self, roll, pitch, yaw):
         """Euler -> quat -> Euler should preserve rotation."""
-        from src.satellite_control.utils.orientation_utils import (
+        from satellite_control.utils.orientation_utils import (
             euler_xyz_to_quat_wxyz,
             quat_wxyz_to_euler_xyz,
             quat_angle_error,
@@ -290,7 +289,7 @@ class TestOrientationUtilsProperties:
     @settings(max_examples=100)
     def test_quaternion_normalized(self, roll, pitch, yaw):
         """Quaternions from Euler angles should be normalized."""
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
         euler = (roll, pitch, yaw)
         quat = euler_xyz_to_quat_wxyz(euler)
@@ -308,7 +307,7 @@ class TestOrientationUtilsProperties:
     @settings(max_examples=50)
     def test_quat_angle_error_symmetric(self, qw, qx, qy, qz):
         """Quaternion angle error should be symmetric."""
-        from src.satellite_control.utils.orientation_utils import quat_angle_error
+        from satellite_control.utils.orientation_utils import quat_angle_error
 
         # Normalize quaternion
         quat1 = np.array([qw, qx, qy, qz])
@@ -344,10 +343,10 @@ class TestStateValidationProperties:
     @settings(max_examples=50)
     def test_state_validation_deterministic(self, pos_x, pos_y, pos_z):
         """State validation should be deterministic."""
-        from src.satellite_control.utils.simulation_state_validator import (
+        from satellite_control.utils.simulation_state_validator import (
             create_state_validator_from_config,
         )
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
         validator = create_state_validator_from_config()
 
@@ -368,7 +367,7 @@ class TestStateValidationProperties:
     @settings(max_examples=50)
     def test_state_format_validation(self, state_list):
         """State format validation should handle various inputs."""
-        from src.satellite_control.utils.simulation_state_validator import (
+        from satellite_control.utils.simulation_state_validator import (
             create_state_validator_from_config,
         )
 
@@ -395,7 +394,7 @@ class TestCachingProperties:
     @settings(max_examples=20)
     def test_cached_function_deterministic(self, value):
         """Cached functions should return same result for same input."""
-        from src.satellite_control.utils.caching import cached
+        from satellite_control.utils.caching import cached
 
         call_count = [0]
 
@@ -419,7 +418,7 @@ class TestCachingProperties:
     @settings(max_examples=20)
     def test_cached_function_different_inputs(self, value1, value2):
         """Cached functions should handle different inputs correctly."""
-        from src.satellite_control.utils.caching import cached
+        from satellite_control.utils.caching import cached
 
         @cached(maxsize=10)
         def test_func(x):

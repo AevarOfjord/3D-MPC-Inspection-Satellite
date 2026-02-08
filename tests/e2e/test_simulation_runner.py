@@ -1,7 +1,7 @@
 import pytest
 
-from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
-from src.satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+from satellite_control.config.simulation_config import SimulationConfig
 
 
 @pytest.fixture
@@ -110,10 +110,10 @@ def test_config_validation():
     """Verify that Pydantic models validate input correctly."""
     from pydantic import ValidationError
 
-    from src.satellite_control.config.models import SatellitePhysicalParams
+    from satellite_control.config.models import SatellitePhysicalParams
 
     # Create valid thruster configuration (match configured count)
-    from src.satellite_control.config import physics as physics_cfg
+    from satellite_control.config import physics as physics_cfg
 
     thruster_ids = range(1, len(physics_cfg.THRUSTER_POSITIONS) + 1)
     thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in thruster_ids}

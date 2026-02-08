@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.config import SimulationConfig
-from src.satellite_control.core.simulation_initialization import SimulationInitializer
+from satellite_control.config import SimulationConfig
+from satellite_control.core.simulation_initialization import SimulationInitializer
 
 
 @pytest.fixture
@@ -23,7 +23,6 @@ def mock_simulation():
 @pytest.fixture
 def simulation_config():
     """Create a test SimulationConfig."""
-    # V3.0.0: Use SimulationConfig.create_default() instead of SatelliteConfig
     return SimulationConfig.create_default()
 
 
@@ -50,20 +49,20 @@ class TestSimulationInitializerInitialization:
 class TestSimulationInitializerInitialize:
     """Test the initialize method."""
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_satellite_physics(
         self,
         mock_satellite,
@@ -104,20 +103,20 @@ class TestSimulationInitializerInitialize:
         assert mock_simulation.satellite == mock_sat_instance
         assert mock_simulation.satellite.external_simulation_mode is True
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_reference_state(
         self,
         mock_satellite,
@@ -163,20 +162,20 @@ class TestSimulationInitializerInitialize:
         # Check quaternion (should be non-zero for non-zero angle)
         assert np.any(mock_simulation.reference_state[3:7] != 0)
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_simulation_timing(
         self,
         mock_satellite,
@@ -219,20 +218,20 @@ class TestSimulationInitializerInitialize:
         assert hasattr(mock_simulation, "last_control_update")
         assert hasattr(mock_simulation, "next_control_simulation_time")
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_thruster_manager(
         self,
         mock_satellite,
@@ -271,20 +270,20 @@ class TestSimulationInitializerInitialize:
         assert hasattr(mock_simulation, "thruster_manager")
         assert hasattr(mock_simulation, "num_thrusters")
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_mpc_controller(
         self,
         mock_satellite,
@@ -323,20 +322,20 @@ class TestSimulationInitializerInitialize:
         mock_mpc.assert_called_once()
         assert hasattr(mock_simulation, "mpc_controller")
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_default_positions(
         self,
         mock_satellite,
@@ -376,20 +375,20 @@ class TestSimulationInitializerInitialize:
         mock_satellite.assert_called_once()
         assert hasattr(mock_simulation, "satellite")
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_with_velocities(
         self,
         mock_satellite,
@@ -432,20 +431,20 @@ class TestSimulationInitializerInitialize:
         assert mock_sat_instance.velocity is not None
         assert mock_sat_instance.angular_velocity is not None
 
-    @patch("src.satellite_control.core.simulation_initialization.MPCController")
+    @patch("satellite_control.core.simulation_initialization.MPCController")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_state_validator_from_config"
+        "satellite_control.core.simulation_initialization.create_state_validator_from_config"
     )
-    @patch("src.satellite_control.core.simulation_initialization.create_data_logger")
+    @patch("satellite_control.core.simulation_initialization.create_data_logger")
     @patch(
-        "src.satellite_control.core.simulation_initialization.create_mission_report_generator"
+        "satellite_control.core.simulation_initialization.create_mission_report_generator"
     )
-    @patch("src.satellite_control.core.simulation_initialization.SimulationIO")
-    @patch("src.satellite_control.core.simulation_context.SimulationContext")
+    @patch("satellite_control.core.simulation_initialization.SimulationIO")
+    @patch("satellite_control.core.simulation_context.SimulationContext")
     @patch(
-        "src.satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
+        "satellite_control.visualization.simulation_visualization.create_simulation_visualizer"
     )
-    @patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator")
+    @patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator")
     def test_initialize_all_components(
         self,
         mock_satellite,

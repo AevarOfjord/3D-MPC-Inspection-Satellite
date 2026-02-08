@@ -5,7 +5,7 @@ Validates entire configuration system for consistency, safety, and correctness.
 Provides detailed error messages for debugging configuration issues.
 
 Usage:
-    from src.satellite_control.config.validator import ConfigValidator
+    from satellite_control.config.validator import ConfigValidator
 
     validator = ConfigValidator()
     issues = validator.validate_all(config)
@@ -17,7 +17,7 @@ Usage:
 
 from typing import List, Optional
 
-from src.satellite_control.config.models import AppConfig
+from satellite_control.config.models import AppConfig
 
 
 class ConfigValidator:
@@ -262,8 +262,7 @@ def validate_config_at_startup(app_config: Optional[AppConfig] = None) -> None:
         app_config: Optional AppConfig to validate (v4.0.0). If None, uses defaults.
     """
     if app_config is None:
-        # V4.0.0: Use default config if not provided (no SatelliteConfig fallback)
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.simulation_config import SimulationConfig
 
         default_config = SimulationConfig.create_default()
         app_config = default_config.app_config

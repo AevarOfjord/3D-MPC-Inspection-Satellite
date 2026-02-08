@@ -67,7 +67,31 @@ cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 editable.rebuild = true
 build-dir = "build/{wheel_tag}"
 # Exclude non-C++ dirs from source scan (avoids iCloud-duplicated node_modules hanging)
-sdist.exclude = ["ui/", "OBJ_files/", "Data/", "docs/", "tests/", "assets/", "missions/", "missions_unified/", "logs/", "scripts/", ".venv311/"]
+sdist.exclude = [
+    "ui/",
+    "ui/node_modules/",
+    "OBJ_files/",
+    "Data/",
+    "docs/",
+    "tests/",
+    "assets/",
+    "missions/",
+    "missions_unified/",
+    "logs/",
+    "scripts/",
+    ".venv311/",
+    ".github/",
+    ".pytest_cache/",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "e2e: end-to-end tests",
+    "benchmark: performance benchmarks",
+]
 
 [tool.black]
 line-length = 88
@@ -78,7 +102,7 @@ line-length = 88
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["E", "F", "I", "UP"]
 ignore = [
     "E501",  # line length handled by ruff-format; comments/strings may exceed
     "E402",  # module-level imports after try/except C++ blocks are intentional

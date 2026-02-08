@@ -18,9 +18,8 @@ from pathlib import Path
 from typing import Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+    from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
-# V4.0.0: Legacy imports removed - using dependency injection
 # matplotlib is imported lazily inside _run_matplotlib_animation()
 
 logger = logging.getLogger(__name__)
@@ -45,24 +44,24 @@ class SimulationLoop:
         self.simulation = simulation
 
     def _get_mission_state(self):
-        """Get mission_state from simulation_config (V3.0.0: required)."""
+        """Get mission_state from simulation_config.."""
         if (
             not hasattr(self.simulation, "simulation_config")
             or not self.simulation.simulation_config
         ):
             raise ValueError(
-                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+                "simulation_config is required."
             )
         return self.simulation.simulation_config.mission_state
 
     def _get_app_config(self):
-        """Get app_config from simulation_config (V3.0.0: required)."""
+        """Get app_config from simulation_config.."""
         if (
             not hasattr(self.simulation, "simulation_config")
             or not self.simulation.simulation_config
         ):
             raise ValueError(
-                "simulation_config is required (V3.0.0: no SatelliteConfig fallback)"
+                "simulation_config is required."
             )
         return self.simulation.simulation_config.app_config
 
@@ -81,7 +80,6 @@ class SimulationLoop:
         Returns:
             Path to data save directory, or None
         """
-        # V4.0.0: Removed legacy use_structured_config context manager
         return self._run_with_globals(show_animation=show_animation)
 
     def _run_with_globals(self, show_animation: bool = True) -> Optional[Path]:
@@ -106,7 +104,7 @@ class SimulationLoop:
             logger.info("Created data directory: %s", self.simulation.data_save_path)
 
         # Simulation Context
-        from src.satellite_control.core.simulation_context import (
+        from satellite_control.core.simulation_context import (
             SimulationContext,
         )
 
@@ -318,7 +316,6 @@ class SimulationLoop:
         Returns:
             True if simulation should stop, False otherwise
         """
-        # V4.0.0: Continuous Mode override
         if getattr(self.simulation, "continuous_mode", False):
             return False
 

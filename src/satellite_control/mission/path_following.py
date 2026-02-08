@@ -11,8 +11,8 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from src.satellite_control.config.constants import Constants
-from src.satellite_control.mission.trajectory_utils import (
+from satellite_control.config.constants import Constants
+from satellite_control.mission.trajectory_utils import (
     apply_hold_segments,
     build_time_parameterized_trajectory,
     compute_curvature,

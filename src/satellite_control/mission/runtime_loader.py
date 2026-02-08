@@ -9,10 +9,10 @@ from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.mission.mission_types import Obstacle
-from src.satellite_control.mission.unified_compiler import compile_unified_mission_path
-from src.satellite_control.mission.unified_mission import MissionDefinition
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.mission.mission_types import Obstacle
+from satellite_control.mission.unified_compiler import compile_unified_mission_path
+from satellite_control.mission.unified_mission import MissionDefinition
 
 
 @dataclass

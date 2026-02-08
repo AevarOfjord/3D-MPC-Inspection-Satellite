@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.core.simulation_io import SimulationIO
+from satellite_control.core.simulation_io import SimulationIO
 
 
 @pytest.fixture
@@ -45,13 +45,13 @@ class TestSimulationIOInitialization:
 class TestSimulationIODirectories:
     """Test directory creation."""
 
-    @patch("src.satellite_control.core.simulation_io.datetime")
+    @patch("satellite_control.core.simulation_io.datetime")
     def test_create_data_directories(self, mock_datetime, simulation_io, tmp_path):
         """Test that data directories are created correctly."""
 
         mock_datetime.now.return_value.strftime.return_value = "01-01-2026_12-00-00"
 
-        with patch("src.satellite_control.core.simulation_io.Path") as mock_path:
+        with patch("satellite_control.core.simulation_io.Path") as mock_path:
             # Mock Path to return our tmp_path
             mock_base = MagicMock()
             mock_sim = MagicMock()
@@ -67,7 +67,7 @@ class TestSimulationIODirectories:
 
     def test_create_data_directories_creates_structure(self, simulation_io, tmp_path):
         """Test that directory structure is created."""
-        with patch("src.satellite_control.core.simulation_io.Path") as mock_path_class:
+        with patch("satellite_control.core.simulation_io.Path") as mock_path_class:
             # Create a real path structure
             base_path = tmp_path / "Data"
 
@@ -80,7 +80,7 @@ class TestSimulationIODirectories:
             mock_path_class.side_effect = path_side_effect
 
             with patch(
-                "src.satellite_control.core.simulation_io.datetime"
+                "satellite_control.core.simulation_io.datetime"
             ) as mock_datetime:
                 mock_datetime.now.return_value.strftime.return_value = (
                     "01-01-2026_12-00-00"

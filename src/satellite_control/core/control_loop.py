@@ -16,7 +16,7 @@ def update_mpc_control_step(sim: Any) -> None:
 
     # Delegate to MPCRunner
     if not hasattr(sim, "mpc_runner"):
-        from src.satellite_control.core.mpc_runner import MPCRunner
+        from satellite_control.core.mpc_runner import MPCRunner
 
         # Initialize MPC Runner wrapper
         sim.mpc_runner = MPCRunner(

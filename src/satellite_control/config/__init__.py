@@ -1,10 +1,10 @@
 """
 Configuration Package for Satellite Control System
 
-Pydantic-based configuration system (V4.0.0+).
+Pydantic-based configuration system..
 
 Primary API:
-    from src.satellite_control.config import SimulationConfig
+    from satellite_control.config import SimulationConfig
     config = SimulationConfig.create_default()
 """
 
@@ -18,10 +18,9 @@ from .timing import TimingConfig, get_timing_params
 from .validator import ConfigValidator, validate_config_at_startup
 
 # Legacy exports (for backward compatibility during transition)
-# TODO: Remove in V5.0.0
 
 __all__ = [
-    # Primary API (V4.0.0+)
+    # Primary API.
     "SimulationConfig",
     "AppConfig",
     "MPCParams",

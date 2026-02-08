@@ -21,10 +21,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 
-# V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
-from src.satellite_control.config.mission_state import MissionState
-from src.satellite_control.config.models import AppConfig
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.config.mission_state import MissionState
+from satellite_control.config.models import AppConfig
+from satellite_control.visualization.plot_style import PlotStyle
 
 # Worker process cache for parallel frame rendering
 _worker_gen_cache: Optional[Any] = None
@@ -317,7 +316,7 @@ class VideoRenderer:
     def draw_obstacles(self, mission_state: Optional[MissionState] = None) -> None:
         """Draw obstacles if they are configured.
 
-        Supports new V3.0.0 Obstacle objects (Sphere, Cylinder, Box).
+        Supports Obstacle objects (Sphere, Cylinder, Box).
         """
         assert self.ax_xy is not None, "ax_xy must be initialized"
         assert self.ax_xz is not None, "ax_xz must be initialized"
@@ -340,7 +339,7 @@ class VideoRenderer:
 
         for i, obs in enumerate(obstacles, 1):
             # Handle different obstacle formats
-            # 1. New V3.0.0 Object format
+            # 1. Object format
             if hasattr(obs, "type") and hasattr(obs, "position"):
                 pos = obs.position
                 obs_type = getattr(obs.type, "value", obs.type)
@@ -721,12 +720,12 @@ class VideoRenderer:
             "obstacles_enabled": (
                 self.mission_state.obstacles_enabled
                 if self.mission_state
-                else False  # V4.0.0: No fallback
+                else False
             ),
             "obstacles_list": (
                 list(self.mission_state.obstacles)
                 if self.mission_state and self.mission_state.obstacles
-                else []  # V4.0.0: No fallback
+                else []
             ),
             "data_directory": str(
                 getattr(self.data_accessor, "data_directory", Path("."))
@@ -892,7 +891,6 @@ class VideoRenderer:
                     frame_title_template=config["frame_title_template"],
                 )
 
-                # V4.0.0: Config state is passed via config dict only (no global state mutation)
                 # Worker process uses config dict values directly
 
                 renderer.setup_plot()

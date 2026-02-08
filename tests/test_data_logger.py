@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.satellite_control.utils.data_logger import DataLogger, create_data_logger
+from satellite_control.utils.data_logger import DataLogger, create_data_logger
 
 
 class TestDataLoggerInitialization:

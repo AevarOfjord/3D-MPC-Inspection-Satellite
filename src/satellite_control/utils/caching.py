@@ -5,7 +5,7 @@ Provides caching mechanisms for expensive computations.
 Supports config-based caching and LRU caching.
 
 Usage:
-    from src.satellite_control.utils.caching import cache_by_config, cached
+    from satellite_control.utils.caching import cache_by_config, cached
 
     @cached(maxsize=128)
     def expensive_computation(x, y):

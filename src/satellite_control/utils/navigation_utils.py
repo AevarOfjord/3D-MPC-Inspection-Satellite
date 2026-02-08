@@ -177,7 +177,7 @@ def calculate_safe_path_to_waypoint(
                 offset_norm = 1.0
         offset_dir = offset_dir / offset_norm
 
-        from src.satellite_control.config.constants import Constants
+        from satellite_control.config.constants import Constants
 
         clearance = (
             obstacle_radius + safety_radius + Constants.OBSTACLE_AVOIDANCE_SAFETY_MARGIN

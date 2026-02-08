@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
-from src.satellite_control.config.orbital_config import OrbitalConfig
-from src.satellite_control.physics.orbital_dynamics import (
+from satellite_control.config.orbital_config import OrbitalConfig
+from satellite_control.physics.orbital_dynamics import (
     CWDynamics,
     compute_cw_acceleration,
     compute_cw_force,

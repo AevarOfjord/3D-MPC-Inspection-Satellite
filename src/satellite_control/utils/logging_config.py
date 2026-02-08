@@ -168,7 +168,7 @@ def temporary_log_level(logger_name: str, level: int):
     Context manager for temporarily changing log level.
 
     Usage:
-        with temporary_log_level("src.satellite_control.core.mpc_controller", logging.DEBUG):
+        with temporary_log_level("satellite_control.core.mpc_controller", logging.DEBUG):
             # Debug logging enabled here
             mpc_controller.get_control_action(state)
         # Original log level restored
@@ -195,8 +195,8 @@ def configure_module_log_levels(module_levels: Dict[str, int]) -> None:
 
     Example:
         configure_module_log_levels({
-            "src.satellite_control.core.mpc_controller": logging.DEBUG,
-            "src.satellite_control.core.simulation": logging.INFO,
+            "satellite_control.core.mpc_controller": logging.DEBUG,
+            "satellite_control.core.simulation": logging.INFO,
         })
     """
     for module_name, level in module_levels.items():
@@ -206,9 +206,9 @@ def configure_module_log_levels(module_levels: Dict[str, int]) -> None:
 
 # Default module log levels (can be overridden)
 DEFAULT_MODULE_LEVELS: Dict[str, int] = {
-    "src.satellite_control.core.mpc_controller": logging.INFO,
-    "src.satellite_control.core.simulation": logging.INFO,
-    "src.satellite_control.control.mpc_controller": logging.INFO,
+    "satellite_control.core.mpc_controller": logging.INFO,
+    "satellite_control.core.simulation": logging.INFO,
+    "satellite_control.control.mpc_controller": logging.INFO,
 }
 
 # Apply default module levels on import

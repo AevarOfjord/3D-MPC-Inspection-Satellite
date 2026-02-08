@@ -18,7 +18,7 @@ def make_state(
     omega=(0.0, 0.0, 0.0),
     rw_speeds=(0.0, 0.0, 0.0),
 ):
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     state = np.zeros(16)
     state[0:3] = np.array(pos, dtype=float)
@@ -45,8 +45,8 @@ class TestMPCBenchmarks:
     @pytest.fixture
     def mpc_controller(self):
         """Create an MPCController instance for benchmarking."""
-        from src.satellite_control.control.mpc_controller import MPCController
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.control.mpc_controller import MPCController
+        from satellite_control.config.simulation_config import SimulationConfig
 
         sim_config = SimulationConfig.create_default()
         app_config = sim_config.app_config
@@ -97,7 +97,7 @@ class TestThrusterManagerBenchmarks:
     @pytest.fixture
     def thruster_manager(self):
         """Create ThrusterManager instance."""
-        from src.satellite_control.core.thruster_manager import ThrusterManager
+        from satellite_control.core.thruster_manager import ThrusterManager
 
         return ThrusterManager(num_thrusters=8)
 
@@ -133,10 +133,9 @@ class TestMPCRegressionDetection:
 
     @pytest.fixture
     def mpc_controller(self):
-        """Create an MPCController instance (V4.0.0: use SimulationConfig)."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.control.mpc_controller import MPCController
+        """Create an MPCController instance.."""
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.control.mpc_controller import MPCController
 
         config = SimulationConfig.create_default()
         controller = MPCController(config.app_config)

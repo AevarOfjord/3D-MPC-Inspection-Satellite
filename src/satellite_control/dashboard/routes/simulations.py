@@ -10,7 +10,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
-from src.satellite_control.dashboard.models import ControlCommand, SpeedCommand
+from satellite_control.dashboard.models import ControlCommand, SpeedCommand
 
 logger = logging.getLogger("dashboard")
 
@@ -116,7 +116,7 @@ async def get_simulation_telemetry(
             f"[TELEMETRY] No planned_path in metadata for {run_id}, will compute from CSV"
         )
 
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     def to_float(value: Optional[str], default: float = 0.0) -> float:
         try:

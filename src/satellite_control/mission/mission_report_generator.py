@@ -26,10 +26,10 @@ from typing import Any, Callable, List, Optional
 
 import numpy as np
 
-from src.satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.simulation_config import SimulationConfig
 
-from src.satellite_control.config.constants import Constants
-from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
+from satellite_control.config.constants import Constants
+from satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class MissionReportGenerator:
         Initialize report generator.
 
         Args:
-            config: SimulationConfig object (V4.0.0 Architecture)
+            config: SimulationConfig object.
         """
         self.config = config
         self.app_config = config.app_config
@@ -690,7 +690,7 @@ def create_mission_report_generator(config: SimulationConfig) -> MissionReportGe
     Factory function to create a mission report generator.
 
     Args:
-        config: SimulationConfig object (V4.0.0 Architecture)
+        config: SimulationConfig object.
 
     Returns:
         Configured MissionReportGenerator instance

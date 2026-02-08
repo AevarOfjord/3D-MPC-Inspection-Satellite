@@ -16,11 +16,11 @@ import numpy as np
 
 from typing import TYPE_CHECKING
 
-from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.config.physics import THRUSTER_COUNT
+from satellite_control.control.mpc_controller import MPCController
+from satellite_control.config.physics import THRUSTER_COUNT
 
 if TYPE_CHECKING:
-    from src.satellite_control.config.models import AppConfig
+    from satellite_control.config.models import AppConfig
 
 logger = logging.getLogger(__name__)
 

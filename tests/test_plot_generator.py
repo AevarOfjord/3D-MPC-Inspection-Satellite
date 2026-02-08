@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.visualization.plot_generator import PlotGenerator
+from satellite_control.visualization.plot_generator import PlotGenerator
 
 
 @pytest.fixture

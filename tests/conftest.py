@@ -4,22 +4,29 @@ Pytest configuration and shared fixtures.
 This file provides common fixtures and configuration for all tests.
 """
 
+import pathlib
 import sys
-from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Ensure ``src/`` is importable even when the editable install is broken.
+#
+# macOS APFS marks every file inside a dot-prefixed directory (like .venv311)
+# with UF_HIDDEN, causing Python's ``site.py`` to skip all ``.pth`` files.
+# Prepending ``src/`` to ``sys.path`` and symlinking the C++ ``.so`` files
+# into ``src/satellite_control/cpp/`` is the most reliable cross-platform
+# workaround.
+# ---------------------------------------------------------------------------
+_SRC_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "src")
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
 from unittest.mock import MagicMock
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-# Prefer SimulationConfig for tests (v3.0.0)
-from src.satellite_control.config.simulation_config import (
-    SimulationConfig,
-)  # noqa: E402
+from satellite_control.config.simulation_config import SimulationConfig
 
 # ============================================================================
 # Configuration Reset Fixture
@@ -103,7 +110,7 @@ def mpc_params():
 @pytest.fixture
 def zero_state():
     """Provide a zero state vector."""
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     state = np.zeros(13)
     state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.0))
@@ -113,7 +120,7 @@ def zero_state():
 @pytest.fixture
 def sample_state():
     """Provide a sample non-zero state."""
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     state = np.zeros(13)
     state[0:3] = np.array([1.0, 0.5, 0.2])
@@ -126,7 +133,7 @@ def sample_state():
 @pytest.fixture
 def reference_state():
     """Provide a typical reference state."""
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     state = np.zeros(13)
     state[3:7] = euler_xyz_to_quat_wxyz((0.0, 0.0, 0.0))

@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from src.satellite_control.core.simulation_context import SimulationContext
-from src.satellite_control.core.simulation_logger import SimulationLogger
-from src.satellite_control.utils.data_logger import DataLogger
+from satellite_control.core.simulation_context import SimulationContext
+from satellite_control.core.simulation_logger import SimulationLogger
+from satellite_control.utils.data_logger import DataLogger
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def simulation_logger(mock_data_logger):
 @pytest.fixture
 def sample_context():
     """Create a sample SimulationContext for testing."""
-    from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
     context = SimulationContext()
     context.simulation_time = 1.0

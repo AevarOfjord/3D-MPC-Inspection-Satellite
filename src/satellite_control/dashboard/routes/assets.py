@@ -8,11 +8,11 @@ from typing import Dict, List
 from fastapi import APIRouter, File, Form, HTTPException
 from fastapi.responses import FileResponse
 
-from src.satellite_control.dashboard.models import (
+from satellite_control.dashboard.models import (
     MeshScanConfigModel,
     PathAssetSaveRequest,
 )
-from src.satellite_control.mission.path_assets import (
+from satellite_control.mission.path_assets import (
     list_path_assets,
     load_path_asset,
     save_path_asset,
@@ -98,7 +98,7 @@ async def list_model_files():
 @router.get("/api/models/bounds")
 async def get_model_bounds(path: str):
     """Compute basic bounds for an OBJ model."""
-    from src.satellite_control.mission.mesh_scan import (
+    from satellite_control.mission.mesh_scan import (
         load_obj_vertices,
         compute_mesh_bounds,
     )
@@ -153,7 +153,7 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
 @router.post("/preview_trajectory")
 async def preview_trajectory(config: MeshScanConfigModel):
     """Generate a preview of the mesh scan trajectory without running simulation."""
-    from src.satellite_control.mission.mesh_scan import (
+    from satellite_control.mission.mesh_scan import (
         build_mesh_scan_trajectory,
         build_mesh_spiral_trajectory,
         load_obj_vertices,

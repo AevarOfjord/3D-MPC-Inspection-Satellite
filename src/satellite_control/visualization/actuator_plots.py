@@ -6,18 +6,18 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.satellite_control.visualization.command_utils import (
+from satellite_control.visualization.command_utils import (
     get_thruster_count,
     parse_command_vector,
 )
-from src.satellite_control.visualization.plot_data_utils import (
+from satellite_control.visualization.plot_data_utils import (
     get_control_time_axis,
     get_series,
     has_valve_data,
     normalize_series,
     resolve_data_frame_and_columns,
 )
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 
 
 def generate_thruster_usage_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -516,7 +516,7 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
     rw_z = normalize_series(get_series(plot_gen, "RW_Torque_Z", df, cols), base_len)
 
     try:
-        from src.satellite_control.config.reaction_wheel_config import (
+        from satellite_control.config.reaction_wheel_config import (
             get_reaction_wheel_config,
         )
 
@@ -594,7 +594,7 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
             thruster_forces = plot_gen.app_config.physics.thruster_forces
             thruster_dirs = plot_gen.app_config.physics.thruster_directions
         else:
-            from src.satellite_control.config.simulation_config import SimulationConfig
+            from satellite_control.config.simulation_config import SimulationConfig
 
             cfg = SimulationConfig.create_default().app_config.physics
             thruster_forces = cfg.thruster_forces

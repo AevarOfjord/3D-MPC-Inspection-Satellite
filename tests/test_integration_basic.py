@@ -13,11 +13,10 @@ class TestConfigModelIntegration:
 
     def test_config_and_model_thruster_counts_match(self):
         """Test that config and model have same number of thrusters."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.config import physics as physics_cfg
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config import physics as physics_cfg
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         config_thruster_count = len(config.app_config.physics.thruster_forces)
         model_thruster_count = len(model.thruster_positions)
@@ -27,10 +26,9 @@ class TestConfigModelIntegration:
 
     def test_config_and_model_thruster_ids_match(self):
         """Test that thruster IDs are consistent between config and model."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         config_ids = set(config.app_config.physics.thruster_forces.keys())
         model_position_ids = set(model.thruster_positions.keys())
@@ -40,11 +38,10 @@ class TestConfigModelIntegration:
 
     def test_config_thruster_positions_match_model(self):
         """Test that thruster positions in config match model."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.config import physics as physics_cfg
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config import physics as physics_cfg
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
@@ -58,11 +55,10 @@ class TestConfigModelIntegration:
         """Test that thruster directions in config match model."""
         import numpy as np
 
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.config import physics as physics_cfg
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config import physics as physics_cfg
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         expected_count = len(physics_cfg.THRUSTER_POSITIONS)
 
@@ -89,9 +85,8 @@ class TestSystemInitialization:
 
     def test_can_get_all_config_params(self):
         """Test that all configuration parameters can be retrieved."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.simulation_config import SimulationConfig
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
 
         assert config.app_config.physics is not None
@@ -100,9 +95,8 @@ class TestSystemInitialization:
 
     def test_params_are_internally_consistent(self):
         """Test that parameters are consistent with each other."""
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.simulation_config import SimulationConfig
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
 
         # MPC timestep should match control DT
@@ -127,10 +121,9 @@ class TestPhysicsComputation:
         """Test computing satellite dynamics with one thruster firing."""
         import numpy as np
 
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
 
@@ -158,11 +151,10 @@ class TestPhysicsComputation:
         """Test computing dynamics with all thrusters."""
         import numpy as np
 
-        from src.satellite_control.config.simulation_config import SimulationConfig
-        from src.satellite_control.config import physics as physics_cfg
-        from src.satellite_control.core import model
+        from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config import physics as physics_cfg
+        from satellite_control.core import model
 
-        # V3.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
         mass = physics.total_mass
@@ -199,26 +191,26 @@ class TestModuleImports:
 
     def test_can_import_config(self):
         """Test that config module can be imported."""
-        import src.satellite_control.config as config
+        import satellite_control.config as config
 
         assert config is not None
 
     def test_can_import_model(self):
         """Test that model module can be imported."""
-        import src.satellite_control.core.model as model
+        import satellite_control.core.model as model
 
         assert model is not None
 
     def test_can_import_mission(self):
         """Test that mission module can be imported."""
-        import src.satellite_control.mission as mission
+        import satellite_control.mission as mission
 
         assert mission is not None
 
     def test_can_import_logging_config(self):
         """Test that logging_config module can be imported."""
         try:
-            import src.satellite_control.utils.logging_config as logging_config
+            import satellite_control.utils.logging_config as logging_config
 
             assert logging_config is not None
         except ImportError:

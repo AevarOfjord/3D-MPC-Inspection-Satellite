@@ -12,12 +12,12 @@ from typing import Any, Dict, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.satellite_control.config.models import AppConfig
-from src.satellite_control.visualization.command_utils import (
+from satellite_control.config.models import AppConfig
+from satellite_control.visualization.command_utils import (
     get_thruster_count as infer_thruster_count,
     parse_command_vector as parse_command_vector_with_context,
 )
-from src.satellite_control.visualization.actuator_plots import (
+from satellite_control.visualization.actuator_plots import (
     generate_actuator_limits_plot,
     generate_control_effort_plot,
     generate_pwm_quantization_plot,
@@ -26,14 +26,14 @@ from src.satellite_control.visualization.actuator_plots import (
     generate_thruster_usage_plot,
     generate_thruster_valve_activity_plot,
 )
-from src.satellite_control.visualization.diagnostics_plots import (
+from satellite_control.visualization.diagnostics_plots import (
     generate_mpc_performance_plot,
     generate_solver_health_plot,
     generate_timing_intervals_plot,
     generate_waypoint_progress_plot,
 )
-from src.satellite_control.visualization.plot_style import PlotStyle
-from src.satellite_control.visualization.state_plots import (
+from satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.state_plots import (
     generate_constraint_violations_plot,
     generate_phase_attitude_rate_plot,
     generate_phase_position_velocity_plot,
@@ -41,7 +41,7 @@ from src.satellite_control.visualization.state_plots import (
     generate_velocity_tracking_plot,
     generate_z_tilt_coupling_plot,
 )
-from src.satellite_control.visualization.trajectory_plots import (
+from satellite_control.visualization.trajectory_plots import (
     generate_trajectory_3d_interactive_plot,
     generate_trajectory_3d_orientation_plot,
     generate_trajectory_plot,

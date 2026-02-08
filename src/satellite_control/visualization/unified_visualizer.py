@@ -31,15 +31,13 @@ from cycler import cycler
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-# V4.0.0: SatelliteConfig removed - use AppConfig/MissionState only
-from src.satellite_control.config.mission_state import MissionState
-from src.satellite_control.config.models import AppConfig
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config.constants import Constants
-from src.satellite_control.config.physics import THRUSTER_COUNT
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.config.mission_state import MissionState
+from satellite_control.config.models import AppConfig
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.constants import Constants
+from satellite_control.config.physics import THRUSTER_COUNT
+from satellite_control.visualization.plot_style import PlotStyle
 
-# V4.0.0: mpc_params removed
 
 
 matplotlib.use("Agg")  # Use non-interactive backend
@@ -48,7 +46,7 @@ matplotlib.use("Agg")  # Use non-interactive backend
 # Configure ffmpeg path with safe fallbacks
 try:
     # Try to get from constants first
-    from src.satellite_control.config.constants import Constants
+    from satellite_control.config.constants import Constants
 
     ffmpeg_path = Constants.FFMPEG_PATH
     if ffmpeg_path and os.path.exists(ffmpeg_path):
@@ -156,11 +154,9 @@ class UnifiedVisualizationGenerator:
         self.app_config = app_config
         self.mission_state = mission_state
 
-        # V4.0.0: Get satellite size from app_config (required, no fallback)
         if app_config and app_config.physics:
             self.satellite_size = app_config.physics.satellite_size
         else:
-            # V4.0.0: Create default config if not provided
             default_config = SimulationConfig.create_default()
             self.satellite_size = default_config.app_config.physics.satellite_size
 
@@ -168,7 +164,6 @@ class UnifiedVisualizationGenerator:
         self.reference_color = "red"
         self.trajectory_color = "cyan"
 
-        # V3.0.0: Get obstacles from mission_state
         if mission_state and hasattr(mission_state, "obstacles"):
             self.obstacles = mission_state.obstacles
         else:
@@ -181,7 +176,6 @@ class UnifiedVisualizationGenerator:
                 self.thrusters[thruster_id] = pos
             self.thruster_forces = app_config.physics.thruster_forces.copy()
         else:
-            # V4.0.0: Use default config if app_config not provided
             default_config = SimulationConfig.create_default()
             for (
                 thruster_id,
@@ -726,7 +720,7 @@ class UnifiedVisualizationGenerator:
 
         radius = self.satellite_size / 2
 
-        # Check shape from config (V4.1.0)
+        # Check shape from config.
         shape = "sphere"
         if self.app_config and self.app_config.physics:
             if hasattr(self.app_config.physics, "satellite_shape"):
@@ -942,14 +936,12 @@ class UnifiedVisualizationGenerator:
         """
         assert self.ax_main is not None, "ax_main must be initialized"
 
-        # V4.0.0: Get obstacles from mission_state (required, no fallback)
         obstacles_enabled = False
         obstacles = []
         state_to_use = mission_state or self.mission_state
         if state_to_use:
             obstacles_enabled = state_to_use.obstacles_enabled
             obstacles = list(state_to_use.obstacles) if state_to_use.obstacles else []
-        # V4.0.0: No fallback - if no mission_state, obstacles are empty
 
         if obstacles_enabled and obstacles:
             for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
@@ -1270,7 +1262,7 @@ class UnifiedVisualizationGenerator:
     def _get_plot_generator(self):
         """Get or create PlotGenerator instance (lazy initialization)."""
         if self._plot_generator is None:
-            from src.satellite_control.visualization.plot_generator import PlotGenerator
+            from satellite_control.visualization.plot_generator import PlotGenerator
 
             assert self.dt is not None, "dt must be set before generating plots"
             self._plot_generator = PlotGenerator(
@@ -1284,7 +1276,7 @@ class UnifiedVisualizationGenerator:
     def _get_video_renderer(self):
         """Get or create VideoRenderer instance (lazy initialization)."""
         if self._video_renderer is None:
-            from src.satellite_control.visualization.video_renderer import VideoRenderer
+            from satellite_control.visualization.video_renderer import VideoRenderer
 
             assert self.dt is not None, "dt must be set before generating animation"
             assert self.fps is not None, "fps must be set before generating animation"

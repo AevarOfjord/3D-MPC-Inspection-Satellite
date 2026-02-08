@@ -39,12 +39,12 @@ from pathlib import Path
 import matplotlib.patches as patches
 import numpy as np
 
-from src.satellite_control.config.physics import THRUSTER_COUNT
+from satellite_control.config.physics import THRUSTER_COUNT
 from matplotlib.animation import writers
 
 # Conditional import for visualization generator
 try:
-    from src.satellite_control.visualization.unified_visualizer import (
+    from satellite_control.visualization.unified_visualizer import (
         UnifiedVisualizationGenerator,
     )
 except ImportError:
@@ -128,14 +128,13 @@ class SimulationVisualizationManager:
         self.data_save_path = None
 
         # Get config from controller's simulation_config (v3.0.0)
-        # In V3.0.0, controller should always have simulation_config
+        # Controller should always have simulation_config
         if hasattr(controller, "simulation_config") and controller.simulation_config:
             self.app_config = controller.simulation_config.app_config
             self.mission_state = controller.simulation_config.mission_state
         else:
-            # V4.0.0: Create defaults if not provided (no SatelliteConfig fallback)
-            from src.satellite_control.config.simulation_config import SimulationConfig
-            from src.satellite_control.config.mission_state import create_mission_state
+            from satellite_control.config.simulation_config import SimulationConfig
+            from satellite_control.config.mission_state import create_mission_state
 
             default_config = SimulationConfig.create_default()
             self.app_config = default_config.app_config
@@ -308,7 +307,6 @@ class SimulationVisualizationManager:
                 else []
             )
         else:
-            # V4.0.0: No fallback - if no mission_state, obstacles are empty
             obstacles_enabled = False
             obstacles = []
 
@@ -1581,14 +1579,14 @@ class SimulationVisualizationManager:
         try:
             print("\n Animation, Plots and Summary will now be generated!")
 
-            # Check for MissionState (V4.0.0)
+            # Check for MissionState.
             mission_state = getattr(self.controller, "mission_state", None)
             if mission_state is None and hasattr(self.controller, "simulation_config"):
                 mission_state = getattr(
                     self.controller.simulation_config, "mission_state", None
                 )
 
-            # Check for AppConfig (V4.0.0)
+            # Check for AppConfig.
             app_config = None
             if hasattr(self.controller, "simulation_config") and getattr(
                 self.controller.simulation_config, "app_config", None

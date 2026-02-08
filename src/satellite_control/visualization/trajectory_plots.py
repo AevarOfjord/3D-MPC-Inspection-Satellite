@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 
 
 def _reference_point(plot_gen: Any) -> Tuple[float, float, float]:
@@ -343,7 +343,7 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
         if plot_gen.app_config and plot_gen.app_config.physics:
             arrow_len = float(plot_gen.app_config.physics.satellite_size) * 0.2
         else:
-            from src.satellite_control.config.simulation_config import SimulationConfig
+            from satellite_control.config.simulation_config import SimulationConfig
 
             arrow_len = (
                 float(

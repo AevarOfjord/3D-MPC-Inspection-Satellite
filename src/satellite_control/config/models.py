@@ -380,7 +380,7 @@ class MPCParams(BaseModel):
         description="Safety margin around obstacles in meters",
     )
 
-    # Path Following (V4.0.1) - General Path MPCC
+    # Path Following. - General Path MPCC
     path_speed: float = Field(
         timing.DEFAULT_PATH_SPEED,
         gt=0.0,
@@ -501,7 +501,7 @@ class SimulationParams(BaseModel):
         description="Require final stabilization hold before terminating missions",
     )
 
-    # Timing parameters (V3.0.0: moved to SimulationParams)
+    # Timing parameters.
     control_dt: float = Field(
         timing.CONTROL_DT,
         gt=0,
