@@ -5,9 +5,9 @@ Provides factory functions to create default configuration objects.
 This centralizes all default values for the Pydantic config models.
 """
 
-from src.satellite_control.config import constants, physics, timing
-from src.satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
-from src.satellite_control.config.models import (
+from satellite_control.config import constants, physics, timing
+from satellite_control.config.reaction_wheel_config import get_reaction_wheel_config
+from satellite_control.config.models import (
     AppConfig,
     MPCParams,
     SatellitePhysicalParams,

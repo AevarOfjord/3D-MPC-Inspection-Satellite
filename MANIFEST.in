@@ -1,0 +1,23 @@
+# Include C++ source for building extensions
+recursive-include src *.cpp *.h *.hpp
+include CMakeLists.txt
+
+# Include project metadata
+include LICENSE
+include README.md
+include requirements.txt
+include requirements-dev.txt
+
+# Exclude non-essential directories
+prune ui
+prune OBJ_files
+prune Data
+prune docs
+prune tests
+prune assets
+prune missions
+prune missions_unified
+prune logs
+prune scripts
+prune .github
+prune .venv311

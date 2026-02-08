@@ -13,18 +13,18 @@ import math
 
 import numpy as np
 
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.mission.mesh_scan import (
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.mission.mesh_scan import (
     compute_scan_sampling,
     load_obj_vertices,
 )
-from src.satellite_control.mission.path_following import build_point_to_point_path
-from src.satellite_control.mission.unified_mission import (
+from satellite_control.mission.path_following import build_point_to_point_path
+from satellite_control.mission.unified_mission import (
     MissionDefinition,
     SegmentType,
     MissionObstacle,
 )
-from src.satellite_control.mission.path_assets import load_path_asset
+from satellite_control.mission.path_assets import load_path_asset
 
 
 def _repo_root() -> Path:

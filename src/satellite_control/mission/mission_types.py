@@ -99,7 +99,7 @@ class ObstacleType(Enum):
 @dataclass
 class Obstacle:
     """
-    An obstacle for collision avoidance (V3.0.0).
+    An obstacle for collision avoidance..
 
     Defines keep-out zones the satellite must avoid.
     """
@@ -154,7 +154,7 @@ class Mission:
     keep_out_radius: float = 2.0  # Minimum distance from target (m)
     max_speed: float = 0.1  # Maximum approach speed (m/s)
 
-    # Collision avoidance obstacles (V3.0.0)
+    # Collision avoidance obstacles.
     obstacles: List[Obstacle] = field(default_factory=list)
 
     # Execution state

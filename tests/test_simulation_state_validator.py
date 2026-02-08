@@ -8,8 +8,8 @@ bounds checking, and tolerance verification for satellite simulations.
 import numpy as np
 import pytest
 
-from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
-from src.satellite_control.utils.simulation_state_validator import (
+from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+from satellite_control.utils.simulation_state_validator import (
     SimulationStateValidator,
     create_state_validator_from_config,
 )
@@ -454,7 +454,6 @@ class TestSensorNoise:
             omega=(0.0, 0.0, 0.05),
         )
 
-        # V4.0.0: Patch app_config.physics instead of SatelliteConfig
         # Create a mock app_config with noise parameters
         from unittest.mock import MagicMock
 

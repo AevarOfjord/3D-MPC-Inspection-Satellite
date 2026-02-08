@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from src.satellite_control.core.thruster_manager import ThrusterManager
+from satellite_control.core.thruster_manager import ThrusterManager
 
 
 class TestThrusterToggle(unittest.TestCase):

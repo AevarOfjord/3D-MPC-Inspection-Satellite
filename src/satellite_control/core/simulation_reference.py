@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from src.satellite_control.utils.orientation_utils import quat_wxyz_from_basis
+from satellite_control.utils.orientation_utils import quat_wxyz_from_basis
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.satellite_control.core.simulation import (
+    from satellite_control.core.simulation import (
         SatelliteMPCLinearizedSimulation,
     )
 

@@ -1,11 +1,11 @@
 """
-Configuration I/O Module (V3.0.0)
+Configuration I/O Module.
 
 Provides save/load functionality for SimulationConfig objects.
 Supports YAML and JSON formats with versioned schemas and migration helpers.
 
 Usage:
-    from src.satellite_control.config.io import ConfigIO
+    from satellite_control.config.io import ConfigIO
 
     # Save config
     config = SimulationConfig.create_default()

@@ -284,7 +284,7 @@ class DataLogger:
             return max_id
 
         try:
-            from src.satellite_control.config.simulation_config import SimulationConfig
+            from satellite_control.config.simulation_config import SimulationConfig
 
             default_config = SimulationConfig.create_default()
             return len(default_config.app_config.physics.thruster_positions)

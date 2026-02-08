@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from src.satellite_control.config.orbital_config import OrbitalConfig
+from satellite_control.config.orbital_config import OrbitalConfig
 
 
 @dataclass
@@ -28,7 +28,7 @@ class CWDynamics:
     Computes accelerations due to gravity gradient effects
     for a chaser satellite relative to a target in circular orbit.
 
-    V2.0.0: Uses C++ backend (`_cpp_physics`) for performance if available.
+    Uses C++ backend (`_cpp_physics`) for performance if available.
     """
 
     orbital_config: OrbitalConfig

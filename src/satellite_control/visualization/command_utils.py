@@ -51,7 +51,7 @@ def get_thruster_count(data_accessor: Any, app_config: Optional[Any] = None) -> 
     try:
         if app_config is not None and getattr(app_config, "physics", None) is not None:
             return len(app_config.physics.thruster_positions)
-        from src.satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.simulation_config import SimulationConfig
 
         default_config = SimulationConfig.create_default()
         return len(default_config.app_config.physics.thruster_positions)

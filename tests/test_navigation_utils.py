@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from typing import List, Tuple
 
-from src.satellite_control.utils.navigation_utils import (
+from satellite_control.utils.navigation_utils import (
     normalize_angle,
     angle_difference,
     point_to_line_distance,

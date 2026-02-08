@@ -3,31 +3,28 @@ Unit tests for config.py module.
 
 Tests configuration validation, parameter access, and configuration methods.
 
-V4.0.0: Tests updated to use SimulationConfig where possible.
+Tests use SimulationConfig.
 Some tests still use SatelliteConfig for deprecated API compatibility.
 """
 
 import numpy as np
 import pytest
 
-# V4.0.0: Prefer SimulationConfig, but keep SatelliteConfig for deprecated API tests
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config.validator import ConfigValidator
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.validator import ConfigValidator
 
 
 class TestSatelliteConfigValidation:
-    """Test configuration validation methods (V4.0.0: uses SimulationConfig)."""
+    """Test configuration validation methods.."""
 
     def test_validate_parameters_success(self):
         """Test that default parameters pass validation."""
-        # V4.0.0: Use SimulationConfig and ConfigValidator instead of SatelliteConfig
         config = SimulationConfig.create_default()
         # Should not raise any exceptions
         ConfigValidator.validate_and_raise(config.app_config)
 
     def test_physical_parameters_are_positive(self):
         """Test that physical parameters are positive values."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
 
@@ -37,7 +34,6 @@ class TestSatelliteConfigValidation:
 
     def test_thruster_forces_are_positive(self):
         """Test that all thruster forces are positive."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
 
@@ -46,7 +42,6 @@ class TestSatelliteConfigValidation:
 
     def test_mpc_horizons_are_valid(self):
         """Test that MPC horizons are valid."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         mpc = config.app_config.mpc
 
@@ -56,7 +51,6 @@ class TestSatelliteConfigValidation:
 
     def test_cost_weights_are_positive(self):
         """Test that MPC cost weights are positive."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         mpc = config.app_config.mpc
 
@@ -70,25 +64,22 @@ class TestSatelliteConfigValidation:
 
 
 class TestSatelliteConfigConstants:
-    """Test configuration constants and boundaries (V4.0.0: uses SimulationConfig)."""
+    """Test configuration constants and boundaries.."""
 
     def test_simulation_dt_is_reasonable(self):
         """Test that simulation timestep is reasonable."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         dt = config.app_config.simulation.dt
         assert 0.001 <= dt <= 0.1
 
     def test_control_dt_is_reasonable(self):
         """Test that control timestep is reasonable."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         control_dt = config.app_config.simulation.control_dt
         assert 0.01 <= control_dt <= 1.0
 
     def test_control_dt_is_multiple_of_simulation_dt(self):
         """Test that control DT is a multiple of simulation DT."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         dt = config.app_config.simulation.dt
         control_dt = config.app_config.simulation.control_dt
@@ -99,7 +90,6 @@ class TestSatelliteConfigConstants:
 
     def test_solver_time_limit_less_than_control_dt(self):
         """Test that solver has time budget within control interval."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         solver_time_limit = config.app_config.mpc.solver_time_limit
         control_dt = config.app_config.simulation.control_dt
@@ -107,18 +97,16 @@ class TestSatelliteConfigConstants:
 
     def test_path_speed_is_reasonable(self):
         """Test that path speed is within expected bounds."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         path_speed = config.app_config.mpc.path_speed
         assert 0.0 < path_speed <= 1.0
 
 
 class TestSatelliteConfigThrusterGeometry:
-    """Test thruster positions and directions (V4.0.0: uses SimulationConfig)."""
+    """Test thruster positions and directions.."""
 
     def test_thruster_positions_are_valid(self):
         """Test that thruster positions are within satellite bounds."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
         half_size = physics.satellite_size / 2
@@ -134,7 +122,6 @@ class TestSatelliteConfigThrusterGeometry:
 
     def test_thruster_directions_are_unit_vectors(self):
         """Test that thruster directions are unit vectors."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
 
@@ -147,7 +134,6 @@ class TestSatelliteConfigThrusterGeometry:
 
     def test_thruster_ids_are_consistent(self):
         """Test that thruster IDs are consistent across dictionaries."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
         physics = config.app_config.physics
 
@@ -160,11 +146,10 @@ class TestSatelliteConfigThrusterGeometry:
 
 
 class TestSatelliteConfigIntegration:
-    """Integration tests for configuration system (V4.0.0: uses SimulationConfig)."""
+    """Integration tests for configuration system.."""
 
     def test_config_supports_simulation_initialization(self):
         """Test that config provides all needed params for simulation."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config = SimulationConfig.create_default()
 
         # Should be able to create simulation with these params
@@ -174,7 +159,6 @@ class TestSatelliteConfigIntegration:
 
     def test_config_consistency_after_multiple_gets(self):
         """Test that config returns consistent values across multiple calls."""
-        # V4.0.0: Use SimulationConfig instead of SatelliteConfig
         config1 = SimulationConfig.create_default()
         config2 = SimulationConfig.create_default()
 
@@ -202,7 +186,7 @@ class TestConfigValidator:
 
     def test_validator_detects_invalid_mass(self):
         """Test that validator detects invalid mass."""
-        from src.satellite_control.config.models import (
+        from satellite_control.config.models import (
             AppConfig,
             MPCParams,
             SatellitePhysicalParams,
@@ -256,7 +240,7 @@ class TestConfigValidator:
 
     def test_validator_detects_invalid_mpc_horizon(self):
         """Test that validator detects invalid MPC horizon."""
-        from src.satellite_control.config.models import AppConfig
+        from satellite_control.config.models import AppConfig
 
         app_config = SimulationConfig.create_default().app_config
 

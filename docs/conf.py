@@ -8,10 +8,10 @@ sys.path.insert(0, os.path.abspath(".."))
 sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
-project = "Satellite Thruster Control"
-copyright = "2024, Aevar Oefjoerd"
-author = "Aevar Oefjoerd"
-release = "1.0.0"
+project = "Satellite Control System"
+copyright = "2024, Aevar Ofjord"
+author = "Aevar Ofjord"
+release = "1.0.0"  # Keep in sync with pyproject.toml
 
 # -- General configuration ---------------------------------------------------
 extensions = [

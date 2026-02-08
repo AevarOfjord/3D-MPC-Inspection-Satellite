@@ -10,16 +10,15 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.config import SimulationConfig
-from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
-from src.satellite_control.core.simulation_initialization import SimulationInitializer
-from src.satellite_control.core.simulation_loop import SimulationLoop
+from satellite_control.config import SimulationConfig
+from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+from satellite_control.core.simulation_initialization import SimulationInitializer
+from satellite_control.core.simulation_loop import SimulationLoop
 
 
 @pytest.fixture
 def simulation_config():
-    """Create a test SimulationConfig (V4.0.0: use create_default)."""
-    # V4.0.0: Use SimulationConfig.create_default() instead of SatelliteConfig
+    """Create a test SimulationConfig.."""
     return SimulationConfig.create_default()
 
 
@@ -39,7 +38,7 @@ class TestRefactoredComponentsIntegration:
         )
 
         with patch(
-            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
+            "satellite_control.core.cpp_satellite.CppSatelliteSimulator"
         ) as mock_sat:
             mock_sat_instance = MagicMock()
             mock_sat_instance.dt = 0.005
@@ -70,10 +69,10 @@ class TestRefactoredComponentsIntegration:
         # We'll use mocking to avoid full simulation setup
 
         with patch(
-            "src.satellite_control.core.simulation.SimulationInitializer"
+            "satellite_control.core.simulation.SimulationInitializer"
         ) as mock_init_class:
             with patch(
-                "src.satellite_control.core.simulation.SimulationLoop"
+                "satellite_control.core.simulation.SimulationLoop"
             ) as mock_loop_class:
                 mock_initializer = MagicMock()
                 mock_init_class.return_value = mock_initializer
@@ -103,7 +102,7 @@ class TestInitializerLoopDataFlow:
 
         # Setup mocks for initialization
         with patch(
-            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
+            "satellite_control.core.cpp_satellite.CppSatelliteSimulator"
         ) as mock_sat:
             mock_sat_instance = MagicMock()
             mock_sat_instance.dt = 0.005
@@ -139,8 +138,8 @@ class TestVisualizationComponentsIntegration:
 
     def test_plot_generator_and_video_renderer_compatible(self, tmp_path):
         """Test that PlotGenerator and VideoRenderer can use same data."""
-        from src.satellite_control.visualization.plot_generator import PlotGenerator
-        from src.satellite_control.visualization.video_renderer import VideoRenderer
+        from satellite_control.visualization.plot_generator import PlotGenerator
+        from satellite_control.visualization.video_renderer import VideoRenderer
 
         # Create mock data accessor
         mock_accessor = MagicMock()
@@ -186,7 +185,7 @@ class TestErrorRecovery:
         assert initializer.simulation_config is None
 
         # Should still be able to initialize (will use SatelliteConfig)
-        with patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"):
+        with patch("satellite_control.core.cpp_satellite.CppSatelliteSimulator"):
             # Should not raise exception
             try:
                 initializer.initialize(

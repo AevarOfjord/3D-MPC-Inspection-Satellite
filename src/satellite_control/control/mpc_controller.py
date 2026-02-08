@@ -12,12 +12,12 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 # Configuration
-from src.satellite_control.config.models import AppConfig
+from satellite_control.config.models import AppConfig
 
 # C++ Backend (required)
 _CPP_IMPORT_ERROR: Optional[ImportError] = None
 try:
-    from src.satellite_control.cpp._cpp_mpc import (
+    from satellite_control.cpp._cpp_mpc import (
         SatelliteParams,
         MPCParams as CppMPCParams,
         MPCControllerCpp,
@@ -41,7 +41,7 @@ def _raise_cpp_binding_import_error() -> None:
         f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     )
     message = (
-        "Failed to import C++ MPC bindings (`src.satellite_control.cpp._cpp_mpc`). "
+        "Failed to import C++ MPC bindings (`satellite_control.cpp._cpp_mpc`). "
         f"Running interpreter: Python {py_ver}. Original error: {_CPP_IMPORT_ERROR}"
     )
 
@@ -479,7 +479,7 @@ class MPCController(Controller):
         self.coast_vel_tolerance = getattr(mpc, "coast_vel_tolerance", 0.0)
         self.coast_min_speed = getattr(mpc, "coast_min_speed", 0.0)
 
-        # Path Following (V4.0.1) - General Path MPCC
+        # Path Following. - General Path MPCC
         self.mode_path_following = True  # Always True now
         self.Q_contour = mpc.Q_contour
         self.Q_progress = mpc.Q_progress
@@ -498,7 +498,7 @@ class MPCController(Controller):
 
         # Orbital parameters (for MPC linearization)
         try:
-            from src.satellite_control.config.orbital_config import OrbitalConfig
+            from satellite_control.config.orbital_config import OrbitalConfig
 
             orbital_cfg = getattr(physics, "orbital", None)
             if orbital_cfg is not None:

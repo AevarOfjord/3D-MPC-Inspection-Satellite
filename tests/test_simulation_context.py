@@ -6,7 +6,7 @@ Tests the SimulationContext dataclass that holds simulation state.
 
 import numpy as np
 
-from src.satellite_control.core.simulation_context import SimulationContext
+from satellite_control.core.simulation_context import SimulationContext
 
 
 class TestSimulationContextInitialization:

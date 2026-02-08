@@ -4,15 +4,15 @@ Tests for caching utilities.
 Tests caching decorators and utilities.
 """
 
-from src.satellite_control.config import physics as physics_cfg
+from satellite_control.config import physics as physics_cfg
 
-from src.satellite_control.config.models import (
+from satellite_control.config.models import (
     AppConfig,
     MPCParams,
     SatellitePhysicalParams,
     SimulationParams,
 )
-from src.satellite_control.utils.caching import (
+from satellite_control.utils.caching import (
     cache_by_config,
     cache_key_from_config,
     cached,

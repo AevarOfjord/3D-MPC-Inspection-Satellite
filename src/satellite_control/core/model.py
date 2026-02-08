@@ -5,7 +5,7 @@ This keeps older integrations/tests working by exposing the
 thruster layout from the current configuration defaults.
 """
 
-from src.satellite_control.config.physics import (
+from satellite_control.config.physics import (
     THRUSTER_DIRECTIONS,
     THRUSTER_FORCES,
     THRUSTER_POSITIONS,

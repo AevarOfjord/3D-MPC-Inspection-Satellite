@@ -6,7 +6,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 
 
 def generate_constraint_violations_plot(plot_gen: Any, plot_dir: Path) -> None:

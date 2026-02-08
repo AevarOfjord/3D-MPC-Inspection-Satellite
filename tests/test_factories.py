@@ -76,7 +76,7 @@ class TestSimulationFactory:
         Returns:
             Configured SatelliteMPCLinearizedSimulation instance
         """
-        from src.satellite_control.core.simulation import (
+        from satellite_control.core.simulation import (
             SatelliteMPCLinearizedSimulation,
         )
 

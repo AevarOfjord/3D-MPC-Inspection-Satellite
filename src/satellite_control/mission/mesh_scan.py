@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.satellite_control.mission.trajectory_utils import (
+from satellite_control.mission.trajectory_utils import (
     apply_hold_segments,
     build_time_parameterized_trajectory,
     compute_curvature,

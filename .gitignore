@@ -37,6 +37,10 @@ wheels/
 htmlcov/
 .hypothesis/
 
+# Linting / Formatting
+.ruff_cache/
+.mypy_cache/
+
 # IDEs
 .vscode/
 .idea/
@@ -44,7 +48,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
-Data/simulation.log
 simulation.log
 
 # Node
@@ -55,3 +58,11 @@ ui/dist/
 
 # C++ extension artifacts
 src/satellite_control/cpp/*.so
+src/satellite_control/cpp/*.pyd
+
+# Docker
+.dockerignore
+
+# Docs build output
+docs/_build/
+docs/_static/

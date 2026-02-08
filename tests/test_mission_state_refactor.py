@@ -1,7 +1,7 @@
 import pytest
 
-from src.satellite_control.config.io import ConfigIO
-from src.satellite_control.config.mission_state import MissionState
+from satellite_control.config.io import ConfigIO
+from satellite_control.config.mission_state import MissionState
 
 
 class TestMissionStateRefactor:

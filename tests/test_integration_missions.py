@@ -19,8 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from pathlib import Path
 
-# V4.0.0: SatelliteConfig removed - use SimulationConfig only
-from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 # Suppress matplotlib animation GC warnings triggered during headless tests
 warnings.filterwarnings(
@@ -67,7 +66,7 @@ def simple_simulation():
             "control_dt": 0.25,
         },
         "physics": {
-            "use_realistic_physics": False,  # V4.0.0: Use SimulationConfig format
+            "use_realistic_physics": False,
         },
     }
 
@@ -146,7 +145,6 @@ class TestPointToPointMission:
         """Test a single simulation step."""
         sim = simple_simulation
 
-        # V4.0.0: No need to mock SatelliteConfig - it's been removed
         # Mock draw_simulation to prevent visualization code
         with (
             patch.object(sim, "draw_simulation", return_value=[]),
@@ -177,7 +175,7 @@ class TestPathMission:
 
     def test_path_initialization(self):
         """Path-following mission should be active when path is set."""
-        from src.satellite_control.config.mission_state import MissionState
+        from satellite_control.config.mission_state import MissionState
 
         mission_state = MissionState()
         mission_state.path_waypoints = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
@@ -322,7 +320,6 @@ class TestRealisticPhysics:
         # Check that noisy states differ
         differences = [np.linalg.norm(noisy - true_state) for noisy in noisy_states]
 
-        # V4.0.0: Check app_config.physics.use_realistic_physics instead
         # At least some should be different (not all zero due to randomness)
         if (
             sim.simulation_config
@@ -372,7 +369,6 @@ class TestRealisticPhysics:
             for _ in range(5):
                 sim.update_simulation(0)
 
-            # V4.0.0: Check app_config.physics.use_realistic_physics instead
             # Velocity should decrease due to damping (if no thrusters active)
             if (
                 sim.simulation_config
@@ -498,7 +494,7 @@ class TestPathCompletion:
 
     def test_point_to_point_completion(self, simple_simulation):
         """Test point-to-point path completion."""
-        from src.satellite_control.core.simulation_loop import SimulationLoop
+        from satellite_control.core.simulation_loop import SimulationLoop
 
         sim = simple_simulation
         sim.simulation_config.mission_state.path_length = float(

@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from src.satellite_control.utils.data_logger import DataLogger
+from satellite_control.utils.data_logger import DataLogger
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class SimulationLogger:
         # Extract 3D components
         curr_x, curr_y, curr_z = current_state[0:3]
 
-        from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
+        from satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
         q = np.array(current_state[3:7], dtype=float)
         if np.linalg.norm(q) == 0:

@@ -24,8 +24,8 @@ class TestPhysicsBenchmarks:
     @pytest.fixture
     def physics_simulator(self):
         """Create a physics simulator instance."""
-        from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
-        from src.satellite_control.config.defaults import create_default_app_config
+        from satellite_control.core.cpp_satellite import CppSatelliteSimulator
+        from satellite_control.config.defaults import create_default_app_config
 
         app_config = create_default_app_config()
         return CppSatelliteSimulator(app_config=app_config)
@@ -80,7 +80,7 @@ class TestOrientationBenchmarks:
 
     def test_euler_to_quaternion(self, benchmark):
         """Benchmark Euler to quaternion conversion."""
-        from src.satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
         euler = (0.1, 0.2, 0.3)
 
@@ -90,7 +90,7 @@ class TestOrientationBenchmarks:
 
     def test_quaternion_to_euler(self, benchmark):
         """Benchmark quaternion to Euler conversion."""
-        from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
+        from satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
         quat = np.array([0.98, 0.1, 0.2, 0.0])  # Normalized quaternion
 
@@ -100,7 +100,7 @@ class TestOrientationBenchmarks:
 
     def test_quaternion_normalization(self, benchmark):
         """Benchmark quaternion normalization."""
-        from src.satellite_control.utils.orientation_utils import normalize_quaternion
+        from satellite_control.utils.orientation_utils import normalize_quaternion
 
         quat = np.array([1.1, 0.2, 0.3, 0.1])  # Unnormalized
 
@@ -116,7 +116,7 @@ class TestNavigationBenchmarks:
 
     def test_distance_computation(self, benchmark):
         """Benchmark distance computation."""
-        from src.satellite_control.utils.navigation_utils import compute_distance
+        from satellite_control.utils.navigation_utils import compute_distance
 
         pos1 = np.array([1.0, 2.0, 3.0])
         pos2 = np.array([4.0, 5.0, 6.0])
@@ -126,7 +126,7 @@ class TestNavigationBenchmarks:
 
     def test_angle_error_computation(self, benchmark):
         """Benchmark angle error computation."""
-        from src.satellite_control.utils.navigation_utils import compute_angle_error
+        from satellite_control.utils.navigation_utils import compute_angle_error
 
         quat1 = np.array([1.0, 0.0, 0.0, 0.0])
         quat2 = np.array([0.98, 0.0, 0.2, 0.0])

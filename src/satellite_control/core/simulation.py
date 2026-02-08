@@ -39,28 +39,26 @@ from pathlib import Path
 
 import numpy as np
 
-# V4.0.0: SatelliteConfig removed - use SimulationConfig only
-# V4.0.0: Strict Configuration
-from src.satellite_control.config import SimulationConfig, AppConfig
-from src.satellite_control.config.constants import Constants
+from satellite_control.config import SimulationConfig, AppConfig
+from satellite_control.config.constants import Constants
 
-from src.satellite_control.core.simulation_loop import SimulationLoop
-from src.satellite_control.core.simulation_initialization import SimulationInitializer
-from src.satellite_control.core.control_loop import update_mpc_control_step
-from src.satellite_control.core.path_completion import check_path_complete
-from src.satellite_control.core.simulation_step_logging import (
+from satellite_control.core.simulation_loop import SimulationLoop
+from satellite_control.core.simulation_initialization import SimulationInitializer
+from satellite_control.core.control_loop import update_mpc_control_step
+from satellite_control.core.path_completion import check_path_complete
+from satellite_control.core.simulation_step_logging import (
     log_simulation_step as log_simulation_step_impl,
 )
-from src.satellite_control.core.simulation_reference import (
+from satellite_control.core.simulation_reference import (
     update_path_reference_state as _update_path_reference_impl,
 )
-from src.satellite_control.utils.logging_config import setup_logging
-from src.satellite_control.utils.navigation_utils import (
+from satellite_control.utils.logging_config import setup_logging
+from satellite_control.utils.navigation_utils import (
     angle_difference,
     normalize_angle,
     point_to_line_distance,
 )
-from src.satellite_control.utils.orientation_utils import (
+from satellite_control.utils.orientation_utils import (
     quat_wxyz_from_basis,  # noqa: F401 – re-exported for downstream compatibility
 )
 
@@ -88,7 +86,7 @@ def _ensure_plt_configured():
 
 
 try:
-    from src.satellite_control.visualization.unified_visualizer import (
+    from satellite_control.visualization.unified_visualizer import (
         UnifiedVisualizationGenerator,
     )
 except ImportError:
@@ -157,7 +155,6 @@ class SatelliteMPCLinearizedSimulation:
 
         # Ensure we have a structured SimulationConfig for downstream components.
         # Adapt Hydra config to SimulationConfig if needed
-        # V4.1.0: Prefer explicitly passed simulation_config, then AppConfig
         if self.simulation_config is None:
             if isinstance(self.cfg, AppConfig):
                 self.simulation_config = SimulationConfig(app_config=self.cfg)
@@ -341,7 +338,7 @@ class SatelliteMPCLinearizedSimulation:
 
         # Delegate to SimulationLogger
         if not hasattr(self, "physics_logger_helper"):
-            from src.satellite_control.core.simulation_logger import (
+            from satellite_control.core.simulation_logger import (
                 SimulationLogger,
             )
 
@@ -572,7 +569,7 @@ class SatelliteMPCLinearizedSimulation:
         """
         if not hasattr(self, "loop"):
             # Lazy init of loop helper
-            from src.satellite_control.core.simulation_loop import SimulationLoop
+            from satellite_control.core.simulation_loop import SimulationLoop
 
             self.loop = SimulationLoop(self)
 
@@ -581,7 +578,7 @@ class SatelliteMPCLinearizedSimulation:
 
             # Context setup
             if not hasattr(self, "context"):
-                from src.satellite_control.core.simulation_context import (
+                from satellite_control.core.simulation_context import (
                     SimulationContext,
                 )
 

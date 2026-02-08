@@ -6,19 +6,19 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.dashboard.models import (
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.dashboard.models import (
     PreviewUnifiedMissionResponse,
     RunMissionRequest,
     SaveUnifiedMissionRequest,
     UnifiedMissionModel,
 )
-from src.satellite_control.mission.unified_mission import MissionDefinition
-from src.satellite_control.mission.runtime_loader import (
+from satellite_control.mission.unified_mission import MissionDefinition
+from satellite_control.mission.runtime_loader import (
     compile_unified_mission_runtime,
     parse_unified_mission_payload,
 )
-from src.satellite_control.mission.repository import (
+from satellite_control.mission.repository import (
     list_mission_names,
     load_mission_json,
     resolve_mission_file as resolve_mission_file_repo,
@@ -146,7 +146,7 @@ async def run_mission(request: RunMissionRequest):
             [
                 sys.executable,
                 "-m",
-                "src.satellite_control.cli",
+                "satellite_control.cli",
                 "--mission",
                 str(mission_file.absolute()),
                 "--no-anim",

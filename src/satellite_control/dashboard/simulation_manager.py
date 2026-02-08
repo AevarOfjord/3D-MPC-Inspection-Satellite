@@ -10,12 +10,12 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from fastapi import WebSocket
 
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.config.timing import SIMULATION_DT
-from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
-from src.satellite_control.mission.runtime_loader import compile_unified_mission_runtime
-from src.satellite_control.mission.unified_mission import MissionDefinition, SegmentType
-from src.satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.timing import SIMULATION_DT
+from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+from satellite_control.mission.runtime_loader import compile_unified_mission_runtime
+from satellite_control.mission.unified_mission import MissionDefinition, SegmentType
+from satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 logger = logging.getLogger("dashboard")
 
@@ -31,7 +31,10 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass  # Already disconnected
 
     async def broadcast(self, message: Dict[str, Any]):
         # Convert numpy types to native types for JSON serialization

@@ -13,10 +13,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.satellite_control.dashboard.simulation_manager import SimulationManager
-from src.satellite_control.dashboard.routes import simulations as sim_routes
-from src.satellite_control.dashboard.routes import missions as mission_routes
-from src.satellite_control.dashboard.routes import assets as asset_routes
+from satellite_control.dashboard.simulation_manager import SimulationManager
+from satellite_control.dashboard.routes import simulations as sim_routes
+from satellite_control.dashboard.routes import missions as mission_routes
+from satellite_control.dashboard.routes import assets as asset_routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

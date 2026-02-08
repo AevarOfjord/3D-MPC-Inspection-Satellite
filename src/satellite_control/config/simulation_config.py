@@ -6,7 +6,7 @@ the need for mutable global state. This is the foundation for better testability
 and thread-safety.
 
 Usage:
-    from src.satellite_control.config.simulation_config import SimulationConfig
+    from satellite_control.config.simulation_config import SimulationConfig
 
     # Create default config
     config = SimulationConfig.create_default()

@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from src.satellite_control.mission.repository import (
+from satellite_control.mission.repository import (
     MISSIONS_UNIFIED_DIR,
     list_mission_entries,
     load_mission_json,
@@ -111,7 +111,7 @@ def run(
     config_overrides: Optional[Dict[str, Dict[str, Any]]] = None
 
     # Import SimulationConfig for Pydantic configuration
-    from src.satellite_control.config.simulation_config import SimulationConfig
+    from satellite_control.config.simulation_config import SimulationConfig
 
     simulation_config = None
     if not auto and mission_file is None:
@@ -131,7 +131,7 @@ def run(
         # Use default Pydantic config for auto mode
         simulation_config = SimulationConfig.create_default()
         # Path-only default: straight line from start to end
-        from src.satellite_control.mission.path_following import (
+        from satellite_control.mission.path_following import (
             build_point_to_point_path,
         )
 
@@ -171,7 +171,7 @@ def run(
             mission_data = json.loads(m_path.read_text())
 
         simulation_config = SimulationConfig.create_default()
-        from src.satellite_control.mission.runtime_loader import (
+        from satellite_control.mission.runtime_loader import (
             parse_unified_mission_payload,
             compile_unified_mission_runtime,
         )
@@ -202,7 +202,7 @@ def run(
 
     # Validate configuration at startup
     try:
-        from src.satellite_control.config.validator import validate_config_at_startup
+        from satellite_control.config.validator import validate_config_at_startup
 
         validate_config_at_startup()
     except ValueError as e:
@@ -233,7 +233,7 @@ def run(
 
     # Initialize Simulation (Pydantic config only - no Hydra)
     try:
-        from src.satellite_control.core.simulation import (
+        from satellite_control.core.simulation import (
             SatelliteMPCLinearizedSimulation,
         )
 

@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 
 if TYPE_CHECKING:
-    from src.satellite_control.config.models import AppConfig
+    from satellite_control.config.models import AppConfig
 
 _CPP_SIM_IMPORT_ERROR: Optional[ImportError] = None
 try:
-    from src.satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
+    from satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
 except ImportError as exc_src:
     try:
         from satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
@@ -27,12 +27,12 @@ except Exception as exc:  # pragma: no cover - import-time runtime mismatch deta
     SimulationEngine = None  # type: ignore
     SatelliteParams = None  # type: ignore
 
-from src.satellite_control.utils.orientation_utils import (
+from satellite_control.utils.orientation_utils import (
     quat_wxyz_to_euler_xyz,
     euler_xyz_to_quat_wxyz,
 )
-from src.satellite_control.config.orbital_config import OrbitalConfig
-from src.satellite_control.config.timing import SIMULATION_DT
+from satellite_control.config.orbital_config import OrbitalConfig
+from satellite_control.config.timing import SIMULATION_DT
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def _raise_cpp_sim_binding_import_error() -> None:
     )
     original = _CPP_SIM_IMPORT_ERROR or ImportError("Unknown _cpp_sim import error")
     message = (
-        "Failed to import C++ simulation bindings (`src.satellite_control.cpp._cpp_sim`). "
+        "Failed to import C++ simulation bindings (`satellite_control.cpp._cpp_sim`). "
         f"Running interpreter: Python {py_ver}. Original error: {original}"
     )
     if "Python version mismatch" in str(original):

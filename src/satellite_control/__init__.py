@@ -12,8 +12,8 @@ except PackageNotFoundError:  # pragma: no cover – editable / dev installs
     __version__ = "1.0.0"
 
 # ── Core public classes ──────────────────────────────────────────────
-from src.satellite_control.config.models import AppConfig  # noqa: F401
-from src.satellite_control.core.exceptions import (  # noqa: F401
+from satellite_control.config.models import AppConfig  # noqa: F401
+from satellite_control.core.exceptions import (  # noqa: F401
     SatelliteControlError,
     ConfigurationError,
     SimulationError,

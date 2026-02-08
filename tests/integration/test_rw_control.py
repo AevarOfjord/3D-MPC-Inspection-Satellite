@@ -12,10 +12,10 @@ import sys
 
 import numpy as np
 
-from src.satellite_control.control.mpc_controller import MPCController
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
-from src.satellite_control.config.models import ReactionWheelParams
+from satellite_control.control.mpc_controller import MPCController
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.core.cpp_satellite import CppSatelliteSimulator
+from satellite_control.config.models import ReactionWheelParams
 
 
 def _build_state(sim: CppSatelliteSimulator) -> np.ndarray:

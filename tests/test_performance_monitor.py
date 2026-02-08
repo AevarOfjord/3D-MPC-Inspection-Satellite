@@ -7,7 +7,7 @@ Tests PerformanceMonitor and PerformanceMetrics classes.
 import json
 
 
-from src.satellite_control.core.performance_monitor import (
+from satellite_control.core.performance_monitor import (
     PerformanceMetrics,
     PerformanceMonitor,
 )

@@ -15,7 +15,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 if TYPE_CHECKING:
-    from src.satellite_control.core.simulation import (
+    from satellite_control.core.simulation import (
         SatelliteMPCLinearizedSimulation,
     )
 

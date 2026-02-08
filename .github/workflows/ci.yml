@@ -2,11 +2,21 @@ name: ci
 
 on:
   push:
+    branches: [main, "Py+C"]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,13 +30,26 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
-      - name: Verify Python runtime baseline
-        run: python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else f'Expected Python 3.11.x, got {sys.version}')"
-
-      - name: Install system deps
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential git ffmpeg
+          sudo apt-get install -y --no-install-recommends build-essential ffmpeg libeigen3-dev
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg eigen
+
+      - name: Install system deps (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y
+
+      - name: Cache C++ build
+        uses: actions/cache@v4
+        with:
+          path: build/
+          key: cpp-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/satellite_control/cpp/*.cpp') }}
+          restore-keys: cpp-${{ runner.os }}-
 
       - name: Install Python deps
         run: |
@@ -34,9 +57,8 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install --no-build-isolation -e .
 
-      - name: Lint Python (high-signal rules)
-        run: |
-          python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
+      - name: Lint Python
+        run: python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
 
       - name: Run tests
         run: python -m pytest -q --tb=short --cov=src/satellite_control --cov-report=term-missing
@@ -65,3 +87,23 @@ jobs:
 
       - name: Build UI
         run: npm run build
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install doc deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sphinx sphinx-rtd-theme myst-parser
+          python -m pip install -r requirements.txt
+
+      - name: Build docs
+        run: sphinx-build -W -b html docs docs/_build/html

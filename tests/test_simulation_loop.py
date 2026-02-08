@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.core.simulation_loop import SimulationLoop
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.core.simulation_loop import SimulationLoop
 
 
 @pytest.fixture
@@ -59,7 +59,6 @@ def mock_simulation():
     sim.continuous_mode = False
     sim.mpc_controller = MagicMock()
     sim.mpc_controller.s = 0.0
-    # V3.0.0: Add simulation_config to mock
     sim.simulation_config = SimulationConfig.create_default()
     return sim
 
@@ -103,7 +102,7 @@ class TestSimulationLoopRun:
 class TestSimulationLoopBatchMode:
     """Test batch mode execution."""
 
-    @patch("src.satellite_control.core.simulation_loop.time.sleep")
+    @patch("satellite_control.core.simulation_loop.time.sleep")
     def test_batch_mode_runs_physics_steps(self, mock_sleep, mock_simulation):
         """Test that batch mode runs physics steps."""
         loop = SimulationLoop(mock_simulation)

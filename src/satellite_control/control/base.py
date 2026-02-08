@@ -1,12 +1,12 @@
 """
-Controller Base Interface (V3.0.0)
+Controller Base Interface.
 
 Defines the abstract base class for all controllers in the satellite control system.
 This enables pluggable controller implementations (MPC, PID, LQR, etc.).
 
 Usage:
-    from src.satellite_control.control.base import Controller
-    from src.satellite_control.control.mpc_controller import MPCController
+    from satellite_control.control.base import Controller
+    from satellite_control.control.mpc_controller import MPCController
 
     # MPCController implements Controller
     controller: Controller = MPCController(...)
