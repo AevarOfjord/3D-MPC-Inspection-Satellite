@@ -66,6 +66,8 @@ cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
 # Setup for development install (editable)
 editable.rebuild = true
 build-dir = "build/{wheel_tag}"
+# Exclude non-C++ dirs from source scan (avoids iCloud-duplicated node_modules hanging)
+sdist.exclude = ["ui/", "OBJ_files/", "Data/", "docs/", "tests/", "assets/", "missions/", "missions_unified/", "logs/", "scripts/", ".venv311/"]
 
 [tool.black]
 line-length = 88
