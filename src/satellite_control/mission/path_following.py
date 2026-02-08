@@ -27,9 +27,7 @@ def _interpolate_segment(
     if distance < 1e-9:
         return [tuple(map(float, end))]
     steps = max(2, int(np.ceil(distance / max(step_size, 1e-3))))
-    points = [
-        start + (end - start) * (i / steps) for i in range(1, steps + 1)
-    ]
+    points = [start + (end - start) * (i / steps) for i in range(1, steps + 1)]
     return [tuple(map(float, p)) for p in points]
 
 
@@ -107,7 +105,9 @@ def _find_first_blocking_obstacle(
     return best
 
 
-def _compute_tangent_angles(point: np.ndarray, radius: float) -> Optional[Tuple[float, float]]:
+def _compute_tangent_angles(
+    point: np.ndarray, radius: float
+) -> Optional[Tuple[float, float]]:
     d = float(np.linalg.norm(point))
     if d <= radius:
         return None
@@ -204,9 +204,7 @@ def _build_arc_detour(
         tuple(
             map(
                 float,
-                center
-                + e1 * (r_eff * np.cos(a))
-                + e2 * (r_eff * np.sin(a)),
+                center + e1 * (r_eff * np.cos(a)) + e2 * (r_eff * np.sin(a)),
             )
         )
         for a in angles

@@ -76,8 +76,6 @@ class TestMPCControllerInitialization:
         expected_thrusters = len(physics_cfg.THRUSTER_POSITIONS)
         assert mpc.nu == expected_thrusters  # thrusters only in this helper
 
-
-
     def test_thruster_precomputation(self):
         """Test that thruster forces and torques are precomputed."""
         cfg = create_default_app_config()
@@ -117,6 +115,7 @@ class TestControlAction:
         assert len(u) == mpc.nu
         assert "solve_time" in info
         assert info["status"] in [1, -1, -2]  # OSQP status codes
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

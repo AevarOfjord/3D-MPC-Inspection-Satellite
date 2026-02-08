@@ -13,8 +13,11 @@ Key features:
 """
 
 import csv
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class DataLogger:
@@ -157,7 +160,10 @@ class DataLogger:
                 pos_error, ang_error, thrusters, solve_time, next_update (optional)
         """
         self.terminal_log_data.append(message_data)
-        if self.max_terminal_entries and len(self.terminal_log_data) > self.max_terminal_entries:
+        if (
+            self.max_terminal_entries
+            and len(self.terminal_log_data) > self.max_terminal_entries
+        ):
             overflow = len(self.terminal_log_data) - self.max_terminal_entries
             if overflow == 1:
                 self.terminal_log_data.pop(0)
@@ -283,6 +289,7 @@ class DataLogger:
             default_config = SimulationConfig.create_default()
             return len(default_config.app_config.physics.thruster_positions)
         except Exception:
+            logger.debug("Failed to detect thruster count from config, defaulting to 8")
             return 8
 
     def _get_simulation_headers(self) -> List[str]:
@@ -385,14 +392,25 @@ class DataLogger:
         dispatch: Dict[str, str] = {}
 
         # Integer columns
-        for h in ["Step", "Waypoint_Number", "Total_Active_Thrusters",
-                   "Thruster_Switches", "MPC_Iterations"]:
+        for h in [
+            "Step",
+            "Waypoint_Number",
+            "Total_Active_Thrusters",
+            "Thruster_Switches",
+            "MPC_Iterations",
+        ]:
             dispatch[h] = "int"
 
         # Time values — 4 decimals
-        for h in ["MPC_Start_Time", "Control_Time", "Actual_Time_Interval",
-                   "Command_Sent_Time", "MPC_Computation_Time", "MPC_Solve_Time",
-                   "Total_MPC_Loop_Time"]:
+        for h in [
+            "MPC_Start_Time",
+            "Control_Time",
+            "Actual_Time_Interval",
+            "Command_Sent_Time",
+            "MPC_Computation_Time",
+            "MPC_Solve_Time",
+            "Total_MPC_Loop_Time",
+        ]:
             dispatch[h] = ".4f"
 
         # Configuration values — 3 decimals
@@ -408,24 +426,54 @@ class DataLogger:
             dispatch[h] = ".2f"
 
         # Position values (meters) — 5 decimals
-        for h in ["Current_X", "Current_Y", "Current_Z",
-                   "Reference_X", "Reference_Y", "Reference_Z",
-                   "Error_X", "Error_Y", "Error_Z"]:
+        for h in [
+            "Current_X",
+            "Current_Y",
+            "Current_Z",
+            "Reference_X",
+            "Reference_Y",
+            "Reference_Z",
+            "Error_X",
+            "Error_Y",
+            "Error_Z",
+        ]:
             dispatch[h] = ".5f"
 
         # Angle values (radians) — 5 decimals
-        for h in ["Current_Roll", "Current_Pitch", "Current_Yaw",
-                   "Reference_Roll", "Reference_Pitch", "Reference_Yaw",
-                   "Error_Roll", "Error_Pitch", "Error_Yaw"]:
+        for h in [
+            "Current_Roll",
+            "Current_Pitch",
+            "Current_Yaw",
+            "Reference_Roll",
+            "Reference_Pitch",
+            "Reference_Yaw",
+            "Error_Roll",
+            "Error_Pitch",
+            "Error_Yaw",
+        ]:
             dispatch[h] = ".5f"
 
         # Velocity values — 5 decimals
-        for h in ["Current_VX", "Current_VY", "Current_VZ",
-                   "Current_WX", "Current_WY", "Current_WZ",
-                   "Reference_VX", "Reference_VY", "Reference_VZ",
-                   "Reference_WX", "Reference_WY", "Reference_WZ",
-                   "Error_VX", "Error_VY", "Error_VZ",
-                   "Error_WX", "Error_WY", "Error_WZ"]:
+        for h in [
+            "Current_VX",
+            "Current_VY",
+            "Current_VZ",
+            "Current_WX",
+            "Current_WY",
+            "Current_WZ",
+            "Reference_VX",
+            "Reference_VY",
+            "Reference_VZ",
+            "Reference_WX",
+            "Reference_WY",
+            "Reference_WZ",
+            "Error_VX",
+            "Error_VY",
+            "Error_VZ",
+            "Error_WX",
+            "Error_WY",
+            "Error_WZ",
+        ]:
             dispatch[h] = ".5f"
 
         # Objective / gap — 3 decimals

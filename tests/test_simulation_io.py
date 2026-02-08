@@ -82,7 +82,6 @@ class TestSimulationIODirectories:
             with patch(
                 "src.satellite_control.core.simulation_io.datetime"
             ) as mock_datetime:
-
                 mock_datetime.now.return_value.strftime.return_value = (
                     "01-01-2026_12-00-00"
                 )
@@ -116,7 +115,9 @@ class TestSimulationIOMissionSummary:
         # Should not raise exception
         mock_simulation.report_generator.generate_report.assert_not_called()
 
-    def test_save_mission_summary_with_history(self, simulation_io, mock_simulation, tmp_path):
+    def test_save_mission_summary_with_history(
+        self, simulation_io, mock_simulation, tmp_path
+    ):
         """Test mission summary with state history."""
         mock_simulation.data_save_path = tmp_path
         mock_simulation.state_history = [np.zeros(13), np.ones(13)]
@@ -128,7 +129,9 @@ class TestSimulationIOMissionSummary:
         # Verify report was generated
         mock_simulation.report_generator.generate_report.assert_called_once()
 
-    def test_save_mission_summary_empty_history(self, simulation_io, mock_simulation, tmp_path):
+    def test_save_mission_summary_empty_history(
+        self, simulation_io, mock_simulation, tmp_path
+    ):
         """Test mission summary with empty history."""
         mock_simulation.data_save_path = tmp_path
         mock_simulation.state_history = []

@@ -369,7 +369,9 @@ class SimulationStateValidator:
             self._noise_pos_std = float(getattr(physics, "position_noise_std", 0.0))
             self._noise_vel_std = float(getattr(physics, "velocity_noise_std", 0.0))
             self._noise_ang_std = float(getattr(physics, "angle_noise_std", 0.0))
-            self._noise_angvel_std = float(getattr(physics, "angular_velocity_noise_std", 0.0))
+            self._noise_angvel_std = float(
+                getattr(physics, "angular_velocity_noise_std", 0.0)
+            )
             self._noise_params_cached = True
 
         position_noise_std = self._noise_pos_std
@@ -390,7 +392,9 @@ class SimulationStateValidator:
             angle_noise = np.random.normal(0, angle_noise_std)
             if abs(angle_noise) > 0.0:
                 axis = np.random.normal(0.0, 1.0, 3)
-                axis_norm = math.sqrt(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2])
+                axis_norm = math.sqrt(
+                    axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]
+                )
                 if axis_norm > 1e-12:
                     axis /= axis_norm
                     half = angle_noise / 2.0

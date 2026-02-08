@@ -235,7 +235,9 @@ class SimulationVisualizationManager:
         reference_arrow_length = 0.2
         reference_arrow_end = np.array(
             [reference_x, reference_y]
-        ) + reference_arrow_length * np.array([np.cos(reference_angle), np.sin(reference_angle)])
+        ) + reference_arrow_length * np.array(
+            [np.cos(reference_angle), np.sin(reference_angle)]
+        )
         arrow = self.satellite.ax_main.annotate(
             "",
             xy=reference_arrow_end,
@@ -268,7 +270,9 @@ class SimulationVisualizationManager:
         )
 
         if self.reference_state is not None:
-            pos_error = float(np.linalg.norm(current_state[:3] - self.reference_state[:3]))
+            pos_error = float(
+                np.linalg.norm(current_state[:3] - self.reference_state[:3])
+            )
 
             # Recalculate reference angle for error
             q_t = self.reference_state[3:7]
@@ -971,7 +975,9 @@ class SimulationVisualizationManager:
         reference_z = get_col("Reference_Z")[-1]
 
         # Calculate axis range - use same range for both axes (square)
-        all_vals = np.concatenate([x, y, z, [reference_x], [reference_y], [reference_z]])
+        all_vals = np.concatenate(
+            [x, y, z, [reference_x], [reference_y], [reference_z]]
+        )
         data_range = max(all_vals) - min(all_vals)
         padding = max(0.3, data_range * 0.2)
 
@@ -1578,7 +1584,9 @@ class SimulationVisualizationManager:
             # Check for MissionState (V4.0.0)
             mission_state = getattr(self.controller, "mission_state", None)
             if mission_state is None and hasattr(self.controller, "simulation_config"):
-                mission_state = getattr(self.controller.simulation_config, "mission_state", None)
+                mission_state = getattr(
+                    self.controller.simulation_config, "mission_state", None
+                )
 
             # Check for AppConfig (V4.0.0)
             app_config = None

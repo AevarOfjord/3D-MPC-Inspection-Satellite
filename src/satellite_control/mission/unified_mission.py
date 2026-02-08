@@ -69,9 +69,9 @@ class Pose:
         return {
             "frame": self.frame.value,
             "position": list(self.position),
-            "orientation": list(self.orientation)
-            if self.orientation is not None
-            else None,
+            "orientation": (
+                list(self.orientation) if self.orientation is not None else None
+            ),
         }
 
     @classmethod
@@ -79,9 +79,11 @@ class Pose:
         return cls(
             frame=Frame(data["frame"]),
             position=list(data["position"]),
-            orientation=list(data["orientation"])
-            if data.get("orientation") is not None
-            else None,
+            orientation=(
+                list(data["orientation"])
+                if data.get("orientation") is not None
+                else None
+            ),
         )
 
 

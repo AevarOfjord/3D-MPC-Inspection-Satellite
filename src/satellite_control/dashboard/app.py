@@ -6,6 +6,7 @@ registers route modules, and wires up lifecycle hooks.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -49,9 +50,12 @@ async def lifespan(application: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # CORS configuration
+_cors_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all for dev
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

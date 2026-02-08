@@ -64,7 +64,6 @@ from src.satellite_control.utils.orientation_utils import (
     quat_wxyz_from_basis,  # noqa: F401 – re-exported for downstream compatibility
 )
 
-
 # Set up logger with simple format for clean output (console only)
 logger = setup_logging(__name__, log_file=None, simple_format=True)
 
@@ -72,6 +71,7 @@ logger = setup_logging(__name__, log_file=None, simple_format=True)
 def _get_plt():
     """Lazy-import matplotlib.pyplot (saves ~200ms when not needed)."""
     import matplotlib.pyplot as plt
+
     return plt
 
 
@@ -85,6 +85,7 @@ def _ensure_plt_configured():
         plt = _get_plt()
         plt.rcParams["animation.ffmpeg_path"] = Constants.FFMPEG_PATH
         _plt_configured = True
+
 
 try:
     from src.satellite_control.visualization.unified_visualizer import (
@@ -277,7 +278,9 @@ class SatelliteMPCLinearizedSimulation:
         if hasattr(self, "mpc_controller") and self.mpc_controller is not None:
             if hasattr(self.mpc_controller, "_path_length"):
                 try:
-                    path_len = float(getattr(self.mpc_controller, "_path_length", 0.0) or 0.0)
+                    path_len = float(
+                        getattr(self.mpc_controller, "_path_length", 0.0) or 0.0
+                    )
                     if path_len > 0.0:
                         return path_len
                 except (TypeError, ValueError):
@@ -300,7 +303,9 @@ class SatelliteMPCLinearizedSimulation:
             path = self._get_mission_path_waypoints()
             if len(path) > 1:
                 path_arr = np.array(path, dtype=float)
-                return float(np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1)))
+                return float(
+                    np.sum(np.linalg.norm(path_arr[1:] - path_arr[:-1], axis=1))
+                )
 
         return 0.0
 

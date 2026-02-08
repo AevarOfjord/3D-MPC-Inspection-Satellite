@@ -429,7 +429,9 @@ def compile_unified_mission_path(
 
             if scan_path and apply_orientation and target_orientation:
                 scan_path = _apply_target_orientation(
-                    scan_path, target_pos=target_pos, target_orientation=target_orientation
+                    scan_path,
+                    target_pos=target_pos,
+                    target_orientation=target_orientation,
                 )
 
             if scan_path and scan_frame == "LVLH" and frame_mode == "ECI":

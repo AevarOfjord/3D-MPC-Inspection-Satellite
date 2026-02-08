@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-
 # Physical constants
 MU_EARTH = 3.986004418e14  # Earth gravitational parameter [m³/s²]
 EARTH_RADIUS = 6.371e6  # Earth mean radius [m]
@@ -61,11 +60,11 @@ class OrbitalConfig:
     def print_params(self):
         """Print orbital parameters summary."""
         print("Orbital Parameters:")
-        print(f"  Altitude: {self.altitude/1000:.1f} km")
-        print(f"  Orbital radius: {self.orbital_radius/1000:.1f} km")
+        print(f"  Altitude: {self.altitude / 1000:.1f} km")
+        print(f"  Orbital radius: {self.orbital_radius / 1000:.1f} km")
         print(f"  Mean motion: {self.mean_motion:.6f} rad/s")
-        print(f"  Orbital period: {self.orbital_period/60:.1f} min")
-        print(f"  Orbital velocity: {self.orbital_velocity/1000:.2f} km/s")
+        print(f"  Orbital period: {self.orbital_period / 60:.1f} min")
+        print(f"  Orbital velocity: {self.orbital_velocity / 1000:.2f} km/s")
 
 
 @dataclass

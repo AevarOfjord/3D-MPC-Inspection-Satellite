@@ -54,7 +54,9 @@ class TestSimulationContextInitialization:
             waypoint_number=2,
             last_control_update_time=1.4,
             active_thrusters=[1, 3, 5],
-            previous_thruster_command=np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+            previous_thruster_command=np.array(
+                [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
+            ),
             computation_time_last_step=0.005,
         )
 
@@ -68,7 +70,10 @@ class TestSimulationContextInitialization:
         assert context.waypoint_number == 2
         assert context.last_control_update_time == 1.4
         assert context.active_thrusters == [1, 3, 5]
-        assert np.all(context.previous_thruster_command == np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]))
+        assert np.all(
+            context.previous_thruster_command
+            == np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+        )
         assert context.computation_time_last_step == 0.005
 
 

@@ -1184,7 +1184,12 @@ class UnifiedVisualizationGenerator:
         reference_yaw = float(current_data.get("Reference_Yaw", 0.0) or 0.0)
 
         self.draw_reference(
-            reference_x, reference_y, reference_z, reference_roll, reference_pitch, reference_yaw
+            reference_x,
+            reference_y,
+            reference_z,
+            reference_roll,
+            reference_pitch,
+            reference_yaw,
         )
 
         # Draw trajectory
@@ -1314,7 +1319,6 @@ class UnifiedVisualizationGenerator:
         plot_generator = self._get_plot_generator()
         plot_generator.generate_all_plots(plots_dir)
 
-
     # --- CSV backend helpers ---
     def _load_csv_data_csvmodule(self) -> None:
         """Load CSV data using csv module backend."""
@@ -1389,6 +1393,7 @@ class UnifiedVisualizationGenerator:
                 for k in self._col_data.keys()
             }
         return {}
+
 
 def select_data_file_interactive() -> tuple:
     """Interactive file browser to select a CSV data file."""

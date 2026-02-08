@@ -20,10 +20,8 @@ from typing import Any, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-
 # V4.0.0: Legacy imports removed - using dependency injection
+# matplotlib is imported lazily inside _run_matplotlib_animation()
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +91,8 @@ class SimulationLoop:
         Args:
             show_animation: Whether to display animation during simulation
         """
-        print("\nStarting Linearized MPC Simulation...")
-        print("Press 'q' to quit early, Space to pause/resume")
+        logger.info("Starting Linearized MPC Simulation...")
+        logger.info("Press 'q' to quit early, Space to pause/resume")
         self.simulation.is_running = True
 
         # Clear any previous data from the logger
@@ -131,7 +129,7 @@ class SimulationLoop:
                 return self._run_batch_mode()
 
         except KeyboardInterrupt:
-            print("\n\nSimulation cancelled by user")
+            logger.info("Simulation cancelled by user")
             self.simulation.is_running = False
 
             # Save data when interrupted
@@ -139,22 +137,20 @@ class SimulationLoop:
                 self.simulation.data_save_path is not None
                 and self.simulation.data_logger.get_log_count() > 0
             ):
-                print("\nSaving simulation data...")
+                logger.info("Saving simulation data...")
                 self.simulation.save_csv_data()
                 self.simulation.visualizer.sync_from_controller()
                 self.simulation.save_mission_summary()
-                print(f" Data saved to: {self.simulation.data_save_path}")
+                logger.info("Data saved to: %s", self.simulation.data_save_path)
 
                 # Try to generate visualizations if we have enough data
                 if self.simulation.data_logger.get_log_count() > 10:
                     try:
-                        print("\n Auto-generating visualizations...")
+                        logger.info("Auto-generating visualizations...")
                         self.simulation.auto_generate_visualizations()
-                        print(" All visualizations complete!")
+                        logger.info("All visualizations complete!")
                     except Exception as e:
-                        logger.warning(
-                            f"WARNING: Could not generate visualizations: {e}"
-                        )
+                        logger.warning("Could not generate visualizations: %s", e)
 
         finally:
             # Cleanup
@@ -163,6 +159,9 @@ class SimulationLoop:
 
     def _run_matplotlib_animation(self) -> Optional[Path]:
         """Run simulation with matplotlib animation."""
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation
+
         fig = self.simulation.satellite.fig
         ani = FuncAnimation(
             fig,
@@ -176,16 +175,16 @@ class SimulationLoop:
 
         # After animation is complete, save files
         if self.simulation.data_save_path is not None:
-            print("\nSaving simulation data...")
+            logger.info("Saving simulation data...")
             self.simulation.save_csv_data()
             self.simulation.visualizer.sync_from_controller()
             self.simulation.save_mission_summary()
             self.simulation.save_animation_mp4(fig, ani)
-            print(f" Data saved to: {self.simulation.data_save_path}")
+            logger.info("Data saved to: %s", self.simulation.data_save_path)
 
-            print("\n Auto-generating performance plots...")
+            logger.info("Auto-generating performance plots...")
             self.simulation.auto_generate_visualizations()
-            print(" All visualizations complete!")
+            logger.info("All visualizations complete!")
 
         return self.simulation.data_save_path
 
@@ -210,7 +209,9 @@ class SimulationLoop:
             batch_mode
             and hasattr(self.simulation.satellite, "update_physics_batch")
             and getattr(self.simulation.thruster_manager, "thruster_type", "") == "CON"
-            and not getattr(self.simulation.thruster_manager, "use_realistic_physics", True)
+            and not getattr(
+                self.simulation.thruster_manager, "use_realistic_physics", True
+            )
             and float(getattr(self.simulation, "VALVE_DELAY", 0.0) or 0.0) == 0.0
             and float(getattr(self.simulation, "THRUST_RAMPUP_TIME", 0.0) or 0.0) == 0.0
         )
@@ -249,16 +250,16 @@ class SimulationLoop:
                 break
 
         if self.simulation.data_save_path is not None:
-            print("\nSaving simulation data...")
+            logger.info("Saving simulation data...")
             self.simulation.save_csv_data()
             self.simulation.visualizer.sync_from_controller()
             self.simulation.save_mission_summary()
-            print(f" CSV data saved to: {self.simulation.data_save_path}")
+            logger.info("CSV data saved to: %s", self.simulation.data_save_path)
 
             # Auto-generate all visualizations
-            print("\n Auto-generating visualizations...")
+            logger.info("Auto-generating visualizations...")
             self.simulation.auto_generate_visualizations()
-            print(" All visualizations complete!")
+            logger.info("All visualizations complete!")
 
         return self.simulation.data_save_path
 
@@ -327,7 +328,7 @@ class SimulationLoop:
         # Only stop simulation when max time is reached
         max_time = self.simulation.max_simulation_time
         if max_time and max_time > 0 and self.simulation.simulation_time >= max_time:
-            print(f"\nSIMULATION COMPLETE at {self.simulation.simulation_time:.1f}s")
+            logger.info("SIMULATION COMPLETE at %.1fs", self.simulation.simulation_time)
             self.simulation.is_running = False
             self.simulation.print_performance_summary()
             return True
@@ -357,9 +358,9 @@ class SimulationLoop:
             - self.simulation.trajectory_endpoint_reached_time
         )
         if hold_time >= hold_time_required:
-            print(
-                f"\nPATH FOLLOWING COMPLETE! "
-                f"Held for {hold_time_required:.1f} seconds."
+            logger.info(
+                "PATH FOLLOWING COMPLETE! Held for %.1f seconds.",
+                hold_time_required,
             )
             self.simulation.is_running = False
             self.simulation.print_performance_summary()

@@ -15,6 +15,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Verify Python runtime baseline
         run: python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else f'Expected Python 3.11.x, got {sys.version}')"
@@ -35,7 +39,7 @@ jobs:
           python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
 
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q --tb=short --cov=src/satellite_control --cov-report=term-missing
 
   ui:
     runs-on: ubuntu-latest

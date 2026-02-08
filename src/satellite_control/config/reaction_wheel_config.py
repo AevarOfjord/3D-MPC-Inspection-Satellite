@@ -140,7 +140,9 @@ class ReactionWheelArrayConfig:
             "ratios": ratios,
             "warning": np.any(ratios > self.saturation_warning_threshold),
             "critical": np.any(ratios > self.saturation_critical_threshold),
-            "saturated_axes": np.where(ratios > self.saturation_critical_threshold)[0].tolist(),
+            "saturated_axes": np.where(ratios > self.saturation_critical_threshold)[
+                0
+            ].tolist(),
         }
 
 

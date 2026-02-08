@@ -19,14 +19,20 @@ class TestThrusterToggle(unittest.TestCase):
 
         # At t=0 (start of interval), it should be ON (binary 1)
         manager.process_command_queue(
-            simulation_time=0.0, control_update_interval=1.0, last_control_update=0.0, sim_dt=0.1
+            simulation_time=0.0,
+            control_update_interval=1.0,
+            last_control_update=0.0,
+            sim_dt=0.1,
         )
         output_start = manager.get_actual_output()
         self.assertEqual(output_start[0], 1.0, "PWM should start ON")
 
         # At t=0.6 (> 0.5), it should be OFF (binary 0)
         manager.process_command_queue(
-            simulation_time=0.6, control_update_interval=1.0, last_control_update=0.0, sim_dt=0.1
+            simulation_time=0.6,
+            control_update_interval=1.0,
+            last_control_update=0.0,
+            sim_dt=0.1,
         )
         output_end = manager.get_actual_output()
         self.assertEqual(output_end[0], 0.0, "PWM should turn OFF after duty cycle")
@@ -47,7 +53,10 @@ class TestThrusterToggle(unittest.TestCase):
 
         # At any time, it should output exactly the commanded value
         manager.process_command_queue(
-            simulation_time=0.0, control_update_interval=1.0, last_control_update=0.0, sim_dt=0.1
+            simulation_time=0.0,
+            control_update_interval=1.0,
+            last_control_update=0.0,
+            sim_dt=0.1,
         )
         output = manager.get_actual_output()
         self.assertAlmostEqual(
@@ -56,10 +65,15 @@ class TestThrusterToggle(unittest.TestCase):
 
         # Even later in the interval
         manager.process_command_queue(
-            simulation_time=0.6, control_update_interval=1.0, last_control_update=0.0, sim_dt=0.1
+            simulation_time=0.6,
+            control_update_interval=1.0,
+            last_control_update=0.0,
+            sim_dt=0.1,
         )
         output = manager.get_actual_output()
-        self.assertAlmostEqual(output[0], expected_val, places=5, msg="CON should hold exact command")
+        self.assertAlmostEqual(
+            output[0], expected_val, places=5, msg="CON should hold exact command"
+        )
 
 
 if __name__ == "__main__":

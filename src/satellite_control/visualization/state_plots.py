@@ -236,7 +236,9 @@ def generate_phase_attitude_rate_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[1].set_ylabel("WY (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-    axes[2].plot(yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH)
+    axes[2].plot(
+        yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+    )
     axes[2].set_xlabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -274,7 +276,9 @@ def generate_velocity_tracking_plot(plot_gen: Any, plot_dir: Path) -> None:
                 linewidth=PlotStyle.LINEWIDTH,
                 label=f"Reference {axis_label}",
             )
-        ax.set_ylabel(f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        ax.set_ylabel(
+            f"{axis_label} Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE
+        )
         ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
         ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
@@ -313,7 +317,9 @@ def generate_velocity_magnitude_plot(plot_gen: Any, plot_dir: Path) -> None:
     if min_len == 0:
         return
 
-    velocity_magnitude = np.sqrt(vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2)
+    velocity_magnitude = np.sqrt(
+        vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2
+    )
 
     ax.plot(
         time[:min_len],

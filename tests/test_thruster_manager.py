@@ -115,7 +115,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.1,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
 
         # With idealized physics, output should match command immediately
@@ -137,7 +137,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.03,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         assert manager.thruster_actual_output[0] == 0.0
 
@@ -146,7 +146,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.06,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         # Should be ramping up (between 0 and 1)
         assert 0.0 <= manager.thruster_actual_output[0] <= 1.0
@@ -156,7 +156,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.08,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         # Should be at full thrust
         assert manager.thruster_actual_output[0] == pytest.approx(1.0, abs=0.1)
@@ -175,7 +175,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.1,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )  # After delay
 
         # Turn off
@@ -187,7 +187,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.12,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         # Should still be on
         assert manager.thruster_actual_output[0] > 0.0
@@ -197,7 +197,7 @@ class TestThrusterManagerUpdatePhysics:
             simulation_time=0.16,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         # Should be off
         assert manager.thruster_actual_output[0] == 0.0
@@ -244,7 +244,7 @@ class TestThrusterManagerPWM:
             simulation_time=0.1,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
         assert 0.0 <= manager.thruster_actual_output[0] <= 1.0
 
@@ -266,7 +266,7 @@ class TestThrusterManagerContinuous:
             simulation_time=0.1,
             control_update_interval=0.1,
             last_control_update=0.0,
-            sim_dt=0.005
+            sim_dt=0.005,
         )
 
         # Continuous mode should directly use the command value

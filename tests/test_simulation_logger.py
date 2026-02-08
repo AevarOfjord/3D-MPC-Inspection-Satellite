@@ -41,7 +41,9 @@ def sample_context():
     context.waypoint_number = 1
     context.last_control_update_time = 0.9
     context.active_thrusters = [1, 3, 5]
-    context.previous_thruster_command = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+    context.previous_thruster_command = np.array(
+        [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
+    )
     context.computation_time_last_step = 0.005
 
     # Set current state

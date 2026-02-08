@@ -425,12 +425,8 @@ class TestCalculateSafePathToWaypoint:
         obstacles: List[Tuple[float, float]] = [(0.5, 0.0)]
 
         # Try with different safety radii
-        path_small = calculate_safe_path_to_waypoint(
-            start_pos, end_pos, obstacles, 0.1
-        )
-        path_large = calculate_safe_path_to_waypoint(
-            start_pos, end_pos, obstacles, 0.5
-        )
+        path_small = calculate_safe_path_to_waypoint(start_pos, end_pos, obstacles, 0.1)
+        path_large = calculate_safe_path_to_waypoint(start_pos, end_pos, obstacles, 0.5)
 
         # Both should avoid obstacle
         assert len(path_small) == 3

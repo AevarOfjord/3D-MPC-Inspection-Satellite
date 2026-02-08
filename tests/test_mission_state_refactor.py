@@ -68,8 +68,12 @@ class TestMissionStateRefactor:
         ms.path_waypoints = [(0.0, 0.0, 0.0), (3.0, 4.0, 0.0), (3.0, 4.0, 12.0)]
         ms.path_length = 0.0
 
-        assert ms.get_resolved_path_length(compute_if_missing=True) == pytest.approx(17.0)
-        assert ms.get_resolved_path_length(compute_if_missing=False) == pytest.approx(0.0)
+        assert ms.get_resolved_path_length(compute_if_missing=True) == pytest.approx(
+            17.0
+        )
+        assert ms.get_resolved_path_length(compute_if_missing=False) == pytest.approx(
+            0.0
+        )
 
     def test_flat_dict_loading_supports_canonical_path_keys(self):
         """Test loading from flat dictionary with canonical path keys."""

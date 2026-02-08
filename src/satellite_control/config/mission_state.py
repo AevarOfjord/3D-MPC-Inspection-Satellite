@@ -56,7 +56,9 @@ class MissionState:
     path_hold_end: float = 0.0
     # Path tracking runtime fields.
     path_tracking_center: Optional[Tuple[float, float, float]] = None
-    path_tracking_base_shape: List[Tuple[float, float, float]] = field(default_factory=list)
+    path_tracking_base_shape: List[Tuple[float, float, float]] = field(
+        default_factory=list
+    )
     path_tracking_phase: str = "POSITIONING"
     path_tracking_closest_point_index: int = 0
     path_tracking_estimated_duration: float = 0.0

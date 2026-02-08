@@ -168,7 +168,9 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
 
         if df is not None:
-            raw_comp_times = df.get("MPC_Solve_Time", df.get("MPC_Computation_Time", [])).values
+            raw_comp_times = df.get(
+                "MPC_Solve_Time", df.get("MPC_Computation_Time", [])
+            ).values
         else:
             raw_comp_times = (
                 plot_gen._col("MPC_Solve_Time")
@@ -207,8 +209,16 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
         mean_ms = float(np.mean(comp_times))
         max_ms = float(np.max(comp_times))
-        ax.axhline(y=mean_ms, color="r", linestyle="--", alpha=0.7, label=f"Mean: {mean_ms:.1f} ms")
-        ax.axhline(y=max_ms, color="g", linestyle=":", alpha=0.7, label=f"Max: {max_ms:.1f} ms")
+        ax.axhline(
+            y=mean_ms,
+            color="r",
+            linestyle="--",
+            alpha=0.7,
+            label=f"Mean: {mean_ms:.1f} ms",
+        )
+        ax.axhline(
+            y=max_ms, color="g", linestyle=":", alpha=0.7, label=f"Max: {max_ms:.1f} ms"
+        )
         if limit_ms is not None and np.any(limit_ms > 0):
             if len(np.unique(limit_ms)) > 1:
                 ax.plot(
@@ -220,7 +230,9 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
                     label="Time Limit",
                 )
             else:
-                limit_val = float(limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms)
+                limit_val = float(
+                    limit_ms[0] if isinstance(limit_ms, np.ndarray) else limit_ms
+                )
                 if limit_val > 0:
                     ax.axhline(
                         y=limit_val,
@@ -234,7 +246,9 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
                 exceeded_idx = []
                 for i, val in enumerate(exceeded_vals):
                     try:
-                        if bool(val) or (isinstance(val, str) and val.lower() == "true"):
+                        if bool(val) or (
+                            isinstance(val, str) and val.lower() == "true"
+                        ):
                             exceeded_idx.append(i)
                     except Exception:
                         pass

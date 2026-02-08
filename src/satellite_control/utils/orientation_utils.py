@@ -20,7 +20,9 @@ def euler_xyz_to_quat_wxyz(euler_xyz: Iterable[float]) -> np.ndarray:
         raise ValueError(f"Expected 3-element Euler angles, got shape {euler.shape}")
 
     quat_xyzw = Rotation.from_euler("xyz", euler, degrees=False).as_quat()
-    return np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=float)
+    return np.array(
+        [quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=float
+    )
 
 
 def quat_wxyz_to_euler_xyz(quat_wxyz: Iterable[float]) -> np.ndarray:
@@ -55,7 +57,9 @@ def quat_wxyz_from_matrix(matrix: np.ndarray) -> np.ndarray:
     """
     rot = Rotation.from_matrix(matrix)
     quat_xyzw = rot.as_quat()
-    return np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=float)
+    return np.array(
+        [quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=float
+    )
 
 
 def quat_wxyz_from_basis(

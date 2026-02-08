@@ -61,7 +61,9 @@ def log_simulation_step(
         thruster_action = legacy_kwargs.pop("thrusters", None)
 
     if current_state is None or thruster_action is None:
-        raise ValueError("log_simulation_step requires current_state and thruster_action")
+        raise ValueError(
+            "log_simulation_step requires current_state and thruster_action"
+        )
 
     if mpc_start_sim_time is None:
         mpc_start_sim_time = sim.simulation_time
@@ -69,7 +71,9 @@ def log_simulation_step(
         command_sent_sim_time = sim.simulation_time
 
     if mpc_computation_time is None:
-        mpc_computation_time = float(mpc_info.get("solve_time", 0.0)) if mpc_info else 0.0
+        mpc_computation_time = (
+            float(mpc_info.get("solve_time", 0.0)) if mpc_info else 0.0
+        )
     if control_loop_duration is None:
         control_loop_duration = 0.0
 
@@ -121,9 +125,7 @@ def log_simulation_step(
     path_s = getattr(sim.mpc_controller, "s", None)
     path_len = sim._get_mission_path_length(compute_if_missing=True)
     if path_s is not None and path_len:
-        status_msg = (
-            f"Following Path (s={path_s:.2f}/{path_len:.2f}m, t={sim.simulation_time:.1f}s)"
-        )
+        status_msg = f"Following Path (s={path_s:.2f}/{path_len:.2f}m, t={sim.simulation_time:.1f}s)"
 
     # Prepare display variables and update command history.
     if thruster_action.ndim > 1:
@@ -135,8 +137,19 @@ def log_simulation_step(
     if record_history:
         sim._append_capped_history(sim.command_history, active_thruster_ids)
 
-    safe_reference = sim.reference_state if sim.reference_state is not None else np.zeros(13)
-    if safe_reference.shape[0] >= 7 and (safe_reference[3] * safe_reference[3] + safe_reference[4] * safe_reference[4] + safe_reference[5] * safe_reference[5] + safe_reference[6] * safe_reference[6]) == 0:
+    safe_reference = (
+        sim.reference_state if sim.reference_state is not None else np.zeros(13)
+    )
+    if (
+        safe_reference.shape[0] >= 7
+        and (
+            safe_reference[3] * safe_reference[3]
+            + safe_reference[4] * safe_reference[4]
+            + safe_reference[5] * safe_reference[5]
+            + safe_reference[6] * safe_reference[6]
+        )
+        == 0
+    ):
         safe_reference = safe_reference.copy()
         safe_reference[3] = 1.0
 
@@ -186,7 +199,9 @@ def log_simulation_step(
         )
 
         # Update Context.
-        sim.context.update_state(sim.simulation_time, current_state, sim.reference_state)
+        sim.context.update_state(
+            sim.simulation_time, current_state, sim.reference_state
+        )
         sim.context.step_number = sim.data_logger.current_step
         sim.context.mission_phase = mission_phase
         sim.context.previous_thruster_command = previous_thruster_action

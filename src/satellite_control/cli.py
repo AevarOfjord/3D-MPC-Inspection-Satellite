@@ -57,7 +57,9 @@ def _prompt_saved_mission_file() -> Optional[str]:
             return None
         return str(selected)
     except ImportError:
-        console.print("[yellow]questionary unavailable, using numbered selection.[/yellow]")
+        console.print(
+            "[yellow]questionary unavailable, using numbered selection.[/yellow]"
+        )
         for idx, entry in enumerate(entries, start=1):
             source = source_labels.get(entry.source, entry.source)
             console.print(f"  {idx}. {entry.path.stem} [{source}]")
@@ -195,9 +197,7 @@ def run(
         )
 
     else:
-        console.print(
-            "[red]Mission file is required unless running with --auto.[/red]"
-        )
+        console.print("[red]Mission file is required unless running with --auto.[/red]")
         raise typer.Exit(code=1)
 
     # Validate configuration at startup
@@ -233,7 +233,9 @@ def run(
 
     # Initialize Simulation (Pydantic config only - no Hydra)
     try:
-        from src.satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+        from src.satellite_control.core.simulation import (
+            SatelliteMPCLinearizedSimulation,
+        )
 
         sim = SatelliteMPCLinearizedSimulation(
             start_pos=sim_start_pos,

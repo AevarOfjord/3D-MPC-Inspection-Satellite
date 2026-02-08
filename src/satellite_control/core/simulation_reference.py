@@ -5,12 +5,15 @@ Extracted from SatelliteMPCLinearizedSimulation.update_path_reference_state
 to reduce simulation.py size while keeping the public API unchanged.
 """
 
+import logging
 import math
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from src.satellite_control.utils.orientation_utils import quat_wxyz_from_basis
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.satellite_control.core.simulation import (
@@ -88,10 +91,18 @@ def update_path_reference_state(
         if sim.simulation_config is not None:
             mpc_cfg = sim.simulation_config.app_config.mpc
             sim._ref_path_speed = float(mpc_cfg.path_speed)
-            sim._ref_taper_dist = float(getattr(mpc_cfg, "progress_taper_distance", 0.0) or 0.0)
-            sim._ref_coast_pos_tol = float(getattr(mpc_cfg, "coast_pos_tolerance", 0.0) or 0.0)
-            sim._ref_coast_vel_tol = float(getattr(mpc_cfg, "coast_vel_tolerance", 0.0) or 0.0)
-            sim._ref_coast_min_speed = float(getattr(mpc_cfg, "coast_min_speed", 0.0) or 0.0)
+            sim._ref_taper_dist = float(
+                getattr(mpc_cfg, "progress_taper_distance", 0.0) or 0.0
+            )
+            sim._ref_coast_pos_tol = float(
+                getattr(mpc_cfg, "coast_pos_tolerance", 0.0) or 0.0
+            )
+            sim._ref_coast_vel_tol = float(
+                getattr(mpc_cfg, "coast_vel_tolerance", 0.0) or 0.0
+            )
+            sim._ref_coast_min_speed = float(
+                getattr(mpc_cfg, "coast_min_speed", 0.0) or 0.0
+            )
         else:
             sim._ref_path_speed = 0.0
             sim._ref_taper_dist = 0.0
@@ -119,6 +130,9 @@ def update_path_reference_state(
             if taper_dist > 1e-6:
                 speed_scale = max(0.0, min(1.0, remaining / taper_dist))
     except Exception:
+        logger.debug(
+            "Speed tapering calculation failed, using scale=1.0", exc_info=True
+        )
         speed_scale = 1.0
 
     pos_tol = float(getattr(sim, "position_tolerance", 0.05))
