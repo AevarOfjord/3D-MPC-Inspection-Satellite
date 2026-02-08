@@ -10,7 +10,7 @@ ifeq ($(UNAME_S),Darwin)
   # macOS
   PLATFORM := macos
   EXT_SUFFIX := .so
-  BUILD_GLOB := build/cp3*-cp3*-macosx_*/*.so
+  BUILD_GLOB := build/cp3*-cp3*-macosx*/*.so
   KILL_PORT = lsof -ti:8000 | xargs kill -9 2>/dev/null || true
   SYSTEM_PYTHON := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g; s|$(CURDIR)/$(VENV_BIN)||g') command -v python3.11 2>/dev/null || echo "")
   INSTALL_HINT := brew install python@3.11
@@ -134,9 +134,9 @@ install: venv
 	@echo "=== Building C++ extensions ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 		$(VENV_PIP) install --no-build-isolation -e .
-	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 	@echo "=== Copying extension files ==="
 	@cp $(BUILD_GLOB) src/satellite_control/cpp/ 2>/dev/null || true
+	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 install-dev: venv
 	@echo ""
@@ -149,9 +149,9 @@ install-dev: venv
 	@echo "=== Building C++ extensions ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 		$(VENV_PIP) install --no-build-isolation -e .
-	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 	@echo "=== Copying extension files ==="
 	@cp $(BUILD_GLOB) src/satellite_control/cpp/ 2>/dev/null || true
+	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 # ============================================================================
 # Quality targets

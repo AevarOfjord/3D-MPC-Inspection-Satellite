@@ -16,7 +16,6 @@ prune docs
 prune tests
 prune assets
 prune missions
-prune missions_unified
 prune logs
 prune scripts
 prune .github

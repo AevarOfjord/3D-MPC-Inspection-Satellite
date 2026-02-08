@@ -38,7 +38,7 @@
 │   ├── dashboard/              # FastAPI backend + route modules
 │   └── physics/                # Orbital dynamics (CW equations)
 ├── ui/                         # Web-based mission designer
-├── missions_unified/           # Saved unified missions
+├── missions/                   # Saved unified missions
 └── Data/                       # Simulation outputs
 ```
 
@@ -97,7 +97,7 @@ npm run build
 
 ## 📋 Mission Types
 
-Mission definitions live in `missions_unified/` (saved)
+Mission definitions live in `missions/` (saved)
 and drive the path-following MPC setup.
 
 ## 📄 License

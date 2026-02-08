@@ -1,5 +1,9 @@
 
 cmake_minimum_required(VERSION 3.20)
+
+# Set CMake policy version minimum to allow older OSQP builds
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+
 project(satellite_control_cpp LANGUAGES CXX)
 
 
@@ -18,13 +22,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Eigen3)
 
-# OSQP solver
+# OSQP solver (v0.6.3 for API compatibility with existing code)
 FetchContent_Declare(
   osqp
   GIT_REPOSITORY https://github.com/osqp/osqp.git
   GIT_TAG v0.6.3
 )
-set(OSQP_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(OSQP_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(osqp)
 
 # Common Dependencies
@@ -34,7 +38,7 @@ message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 find_package(pybind11 CONFIG REQUIRED)
 
 # --- Module: _cpp_mpc ---
-add_library(_cpp_mpc MODULE 
+add_library(_cpp_mpc MODULE
     src/satellite_control/cpp/bindings.cpp
     src/satellite_control/cpp/linearizer.cpp
     src/satellite_control/cpp/mpc_controller.cpp
@@ -45,7 +49,7 @@ target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3:
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
 target_compile_features(_cpp_mpc PRIVATE cxx_std_17)
 set_target_properties(_cpp_mpc PROPERTIES PREFIX "")
-install(TARGETS _cpp_mpc DESTINATION satellite_control/cpp)
+install(TARGETS _cpp_mpc DESTINATION cpp)
 
 # Helper macro for future modules
 macro(add_satellite_module name sources)
@@ -53,7 +57,7 @@ macro(add_satellite_module name sources)
     target_link_libraries(${name} PRIVATE pybind11::headers Python3::Module Eigen3::Eigen)
     target_compile_features(${name} PRIVATE cxx_std_17)
     set_target_properties(${name} PROPERTIES PREFIX "")
-    install(TARGETS ${name} DESTINATION satellite_control/cpp)
+    install(TARGETS ${name} DESTINATION cpp)
 endmacro()
 
 # Module: _cpp_sim

@@ -27,13 +27,30 @@ def check_path_complete(sim: Any) -> bool:
             logger.debug("Failed to get position from state", exc_info=True)
             pos = None
 
+    # Default to MPC controller's internal state 's' if available.
+    # This is critical for closed-loop paths where geometric projection is ambiguous.
     path_s = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
+
     endpoint_error = float("inf")
+
+    # We still want endpoint_error from projection if available, but we trust
+    # the internal 's' state for progress if it exists (MPCC mode).
     if hasattr(sim.mpc_controller, "get_path_progress") and pos is not None:
         metrics = sim.mpc_controller.get_path_progress(pos)
         if isinstance(metrics, dict):
-            path_s = float(metrics.get("s", path_s))
+            # Only update path_s from metrics if we don't trust the internal state
+            # or if internal state is 0 and we want to rely on geometry (optional).
+            # For MPCC, internal state is authoritative.
+            # If path_s is 0 (start), geometric projection might return L (end) for loops.
+            # So we prefer the internal state.
+
+            # Update endpoint error
             endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
+
+            # Fallback: if sim.mpc_controller doesn't have attribute 's', use metrics
+            if not hasattr(sim.mpc_controller, "s"):
+                path_s = float(metrics.get("s", path_s))
+
     elif pos is not None:
         try:
             path = sim._get_mission_path_waypoints()
