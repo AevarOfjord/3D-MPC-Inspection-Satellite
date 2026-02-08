@@ -49,6 +49,9 @@ rebuild: clean-build install
 clean-build:
 	@echo "Cleaning build artifacts..."
 	@rm -rf build/cp3*
+	@rm -f src/satellite_control/cpp/*.so
+	@rm -rf $(VENV_DIR)
+	@rm -rf dist
 	@echo "Done."
 
 venv: check-python
@@ -66,6 +69,9 @@ install: venv
 	@echo "=== Installing Python dependencies ==="
 	$(VENV_PIP) install -r $(REQS_FILE)
 	@echo ""
+	@echo "=== Installing C++ build dependencies ==="
+	$(VENV_PIP) install "scikit-build-core>=0.3.3" pybind11 "cmake>=3.20" "ninja>=1.10"
+	@echo ""
 	@echo "=== Building C++ extensions (takes ~2 min) ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 		$(VENV_PIP) install --no-build-isolation -e .
@@ -77,6 +83,9 @@ install-dev: venv
 	@echo ""
 	@echo "=== Installing dev dependencies ==="
 	$(VENV_PIP) install -r $(DEV_REQS_FILE)
+	@echo ""
+	@echo "=== Installing C++ build dependencies ==="
+	$(VENV_PIP) install "scikit-build-core>=0.3.3" pybind11 "cmake>=3.20" "ninja>=1.10"
 	@echo ""
 	@echo "=== Building C++ extensions (takes ~2 min) ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
