@@ -7,9 +7,10 @@ existing MPC path-following pipeline.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import List, Tuple, Optional, Sequence, Any
 import math
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -18,28 +19,28 @@ from satellite_control.mission.mesh_scan import (
     compute_scan_sampling,
     load_obj_vertices,
 )
+from satellite_control.mission.path_assets import load_path_asset
 from satellite_control.mission.path_following import build_point_to_point_path
 from satellite_control.mission.unified_mission import (
     MissionDefinition,
-    SegmentType,
     MissionObstacle,
+    SegmentType,
 )
-from satellite_control.mission.path_assets import load_path_asset
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _resolve_target_obj_path(target_id: str) -> Optional[Path]:
+def _resolve_target_obj_path(target_id: str) -> Path | None:
     if not target_id:
         return None
     upper = target_id.upper()
     root = _repo_root()
     if "ISS" in upper:
-        return root / "OBJ_files" / "ISS" / "ISS.obj"
+        return root / "assets" / "models" / "ISS" / "ISS.obj"
     if "STARLINK" in upper:
-        return root / "OBJ_files" / "Starlink" / "starlink.obj"
+        return root / "assets" / "models" / "Starlink" / "starlink.obj"
     return None
 
 
@@ -52,14 +53,14 @@ def _axis_to_scan_axis(axis: str) -> str:
     return "Z"
 
 
-def _parse_axis(axis: str) -> Tuple[str, int]:
+def _parse_axis(axis: str) -> tuple[str, int]:
     axis = axis.strip().upper()
     sign = -1 if axis.startswith("-") else 1
     letter = axis[-1] if axis and axis[-1] in ("X", "Y", "Z") else "Z"
     return letter, sign
 
 
-def _axis_permutation(axis: str) -> Tuple[List[int], List[int]]:
+def _axis_permutation(axis: str) -> tuple[list[int], list[int]]:
     if axis == "X":
         return [1, 2, 0], [2, 0, 1]
     if axis == "Y":
@@ -69,9 +70,9 @@ def _axis_permutation(axis: str) -> Tuple[List[int], List[int]]:
 
 def _build_scan_path(
     target_pos: np.ndarray,
-    obj_path: Optional[Path],
+    obj_path: Path | None,
     scan: Any,
-) -> List[Tuple[float, float, float]]:
+) -> list[tuple[float, float, float]]:
     """Generate a scan path around the target (spiral or circles)."""
     axis_letter, axis_sign = _parse_axis(scan.axis)
     perm, inv = _axis_permutation(axis_letter)
@@ -114,7 +115,7 @@ def _build_scan_path(
     direction_mult = -1.0 if str(scan.direction).upper() == "CW" else 1.0
 
     pattern = getattr(scan, "pattern", "spiral")
-    path: List[Tuple[float, float, float]] = []
+    path: list[tuple[float, float, float]] = []
 
     if pattern == "circles":
         # Stacked rings
@@ -191,7 +192,7 @@ def _build_scan_path(
 
 def _build_asset_path(
     asset_id: str, target_pos: np.ndarray
-) -> Tuple[List[Tuple[float, float, float]], bool]:
+) -> tuple[list[tuple[float, float, float]], bool]:
     """Load a prebuilt path asset and optionally offset to target."""
     try:
         asset = load_path_asset(asset_id)
@@ -221,10 +222,10 @@ def _quat_rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 
 def _apply_target_orientation(
-    path: List[Tuple[float, float, float]],
+    path: list[tuple[float, float, float]],
     target_pos: np.ndarray,
-    target_orientation: Optional[Sequence[float]],
-) -> List[Tuple[float, float, float]]:
+    target_orientation: Sequence[float] | None,
+) -> list[tuple[float, float, float]]:
     if not target_orientation:
         return path
     q = np.array(target_orientation, dtype=float)
@@ -234,7 +235,7 @@ def _apply_target_orientation(
     if norm < 1e-9:
         return path
     q = q / norm
-    rotated: List[Tuple[float, float, float]] = []
+    rotated: list[tuple[float, float, float]] = []
     for p in path:
         vec = np.array(p, dtype=float) - target_pos
         vec_rot = _quat_rotate(q, vec)
@@ -242,7 +243,7 @@ def _apply_target_orientation(
     return rotated
 
 
-def _compute_path_length(path: List[Tuple[float, float, float]]) -> float:
+def _compute_path_length(path: list[tuple[float, float, float]]) -> float:
     if len(path) < 2:
         return 0.0
     arr = np.array(path, dtype=float)
@@ -255,7 +256,7 @@ def _build_segment_path(
     obstacles: Sequence[MissionObstacle],
     step_size: float,
     margin: float,
-) -> List[Tuple[float, float, float]]:
+) -> list[tuple[float, float, float]]:
     return build_point_to_point_path(
         waypoints=[tuple(map(float, start)), tuple(map(float, end))],
         obstacles=obstacles,
@@ -322,8 +323,8 @@ def _convert_position(
 def compile_unified_mission_path(
     mission: MissionDefinition,
     sim_config: SimulationConfig,
-    output_frame: Optional[str] = None,
-) -> Tuple[List[Tuple[float, float, float]], float, float]:
+    output_frame: str | None = None,
+) -> tuple[list[tuple[float, float, float]], float, float]:
     """
     Convert a unified mission into a single MPCC path.
 
@@ -348,7 +349,7 @@ def compile_unified_mission_path(
         origin,
     )
 
-    path: List[Tuple[float, float, float]] = [tuple(start_pos)]
+    path: list[tuple[float, float, float]] = [tuple(start_pos)]
     current = np.array(path[-1], dtype=float)
     obstacles = mission.obstacles
     margin = float(sim_config.app_config.mpc.obstacle_margin)
@@ -414,7 +415,7 @@ def compile_unified_mission_path(
                 target_orientation = list(segment.target_pose.orientation)
             obj_path = _resolve_target_obj_path(segment.target_id)
 
-            scan_path: List[Tuple[float, float, float]] = []
+            scan_path: list[tuple[float, float, float]] = []
             apply_orientation = False
             asset_id = getattr(segment, "path_asset", None)
             if asset_id:

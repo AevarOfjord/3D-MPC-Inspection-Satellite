@@ -19,7 +19,7 @@ simulation loop architecture.
 ## Overview
 
 The active runtime is **path-based MPC only** using unified mission v2 JSON
-files. Missions are authored in the web UI, saved to `missions_unified/`, then
+files. Missions are authored in the web UI, saved to `missions/`, then
 run from the terminal (`make sim` or `python run_simulation.py run --mission ...`).
 The simulation uses a high-fidelity custom C++ physics engine with MPC running
 at different rates for optimal performance.
@@ -41,7 +41,7 @@ python run_simulation.py run --auto
 **How missions are defined and run:**
 
 1. Build mission path/segments in the web UI
-2. Save unified mission v2 JSON to `missions_unified/`
+2. Save unified mission v2 JSON to `missions/`
 3. Run in terminal and choose from saved mission files
 
 **Runtime phases:**
@@ -403,11 +403,11 @@ SIMULATION_DT = 0.005  # Physics frequency
 
 The simulation provides:
 
-✅ **Accurate physics** with high-rate (200 Hz) integration  
-✅ **Realistic control** with discrete-time (16.67 Hz) MPC  
-✅ **Efficient computation** by separating control and physics rates  
-✅ **Comprehensive logging** for post-analysis  
-✅ **Real-time visualization** via terminal dashboard  
+✅ **Accurate physics** with high-rate (200 Hz) integration
+✅ **Realistic control** with discrete-time (16.67 Hz) MPC
+✅ **Efficient computation** by separating control and physics rates
+✅ **Comprehensive logging** for post-analysis
+✅ **Real-time visualization** via terminal dashboard
 ✅ **Path-based missions** created in web UI and executed in terminal
 
 This design mirrors real embedded control systems where controllers run at lower rates than sensor/actuator updates.

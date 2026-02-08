@@ -1,7 +1,7 @@
 {
   "id": "Starlink_Scan_Along_Long_Axis",
   "name": "Starlink Scan Along Long Axis",
-  "obj_path": "OBJ_files/Starlink/starlink.obj",
+  "obj_path": "assets/models/Starlink/starlink.obj",
   "path": [
     [
       1.9408968296252898,
@@ -4692,7 +4692,7 @@
   "open": true,
   "relative_to_obj": true,
   "mesh_scan": {
-    "obj_path": "OBJ_files/Starlink/starlink.obj",
+    "obj_path": "assets/models/Starlink/starlink.obj",
     "standoff": 0.5,
     "levels": 8,
     "level_spacing": 0.5,

@@ -25,7 +25,6 @@ RUN python -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physic
 # Copy remaining project files
 COPY run_dashboard.py run_simulation.py ./
 COPY missions/ missions/
-COPY missions_unified/ missions_unified/
 COPY assets/ assets/
 
 # Dashboard port

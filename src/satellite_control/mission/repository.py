@@ -2,15 +2,16 @@
 Mission repository helpers.
 
 Provides a single place for mission file discovery, resolution, and persistence
-for unified mission storage (`missions_unified`).
+for unified mission storage (`missions/`).
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Literal, Tuple
-import json
+from typing import Literal
 
 MissionSource = Literal["unified"]
 
@@ -25,13 +26,13 @@ class MissionEntry:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-MISSIONS_UNIFIED_DIR = PROJECT_ROOT / "missions_unified"
+MISSIONS_UNIFIED_DIR = PROJECT_ROOT / "missions"
 
-SOURCE_DIRS: Dict[MissionSource, Path] = {
+SOURCE_DIRS: dict[MissionSource, Path] = {
     "unified": MISSIONS_UNIFIED_DIR,
 }
 
-DEFAULT_SOURCE_PRIORITY: Tuple[MissionSource, ...] = ("unified",)
+DEFAULT_SOURCE_PRIORITY: tuple[MissionSource, ...] = ("unified",)
 
 
 def sanitize_mission_name(name: str) -> str:

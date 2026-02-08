@@ -11,7 +11,7 @@ interface ISSModelProps {
 }
 
 export function ISSModel({ position, orientation, scale = 1, realSpanMeters }: ISSModelProps) {
-  const gltf = useGLTF('/OBJ_files/ISS/ISS.glb');
+  const gltf = useGLTF('/models/ISS/ISS.glb');
   const clonedObj = useMemo(() => {
     const clone = gltf.scene.clone();
     clone.traverse((child) => {

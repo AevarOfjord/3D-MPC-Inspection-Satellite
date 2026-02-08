@@ -36,7 +36,7 @@ import { API_BASE_URL } from '../config/endpoints';
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
-    obstacles: TelemetryData['obstacles'], 
+    obstacles: TelemetryData['obstacles'],
     referencePos: TelemetryData['reference_position'],
     referenceOri: TelemetryData['reference_orientation'],
     referenceQuat?: TelemetryData['reference_quaternion'],
@@ -46,8 +46,8 @@ function LiveObstaclesRender() {
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
        if (!d || !d.reference_position) return;
-       setParams({ 
-         obstacles: d.obstacles || [], 
+       setParams({
+         obstacles: d.obstacles || [],
          referencePos: d.reference_position,
          referenceOri: d.reference_orientation || [0,0,0],
          referenceQuat: d.reference_quaternion,
@@ -323,7 +323,7 @@ function OrbitRingsLayer() {
 
 function EarthLayer() {
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
-  const earthGltf = useGLTF('/OBJ_files/Earth/Earth.glb');
+  const earthGltf = useGLTF('/models/Earth/Earth.glb');
   const earthScale = useMemo(() => {
     const box = new THREE.Box3().setFromObject(earthGltf.scene);
     const size = new THREE.Vector3();
@@ -404,7 +404,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
   // To prevent Z-fighting/Jitter at 6,000,000m, we shift the world so the active target is at (0,0,0).
   const sceneOrigin = useMemo(() => {
       let origin: [number, number, number] = [0, 0, 0];
-      
+
       // In Plan mode, center on the selected target or start target
       if (isPlanning && builderState) {
           const targetId = builderState.selectedOrbitTargetId || builderState.startTargetId;
@@ -413,7 +413,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
              if (obj) origin = obj.position_m;
           } else {
              // If no target, maybe center on start position?
-             // origin = builderState.startPosition; 
+             // origin = builderState.startPosition;
              // Better to keep Earth center if defining from scratch, unless zoomed in?
              // Let's stick to Target. If no target, Earth Center (0,0,0).
           }
@@ -423,8 +423,8 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
 
   const scaleToScene = useCallback(
     (vec: [number, number, number]) => [
-        (vec[0] - sceneOrigin[0]) * ORBIT_SCALE, 
-        (vec[1] - sceneOrigin[1]) * ORBIT_SCALE, 
+        (vec[0] - sceneOrigin[0]) * ORBIT_SCALE,
+        (vec[1] - sceneOrigin[1]) * ORBIT_SCALE,
         (vec[2] - sceneOrigin[2]) * ORBIT_SCALE
     ] as [number, number, number],
     [sceneOrigin]
@@ -440,7 +440,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
     controlsRef.current = node;
     // We might need to retarget controls if origin changes?
     if (node) {
-        setControls(node as any); 
+        setControls(node as any);
         // Reset target to 0,0,0 (which is now our scene origin)
         // node.target.set(0, 0, 0);
     }
@@ -454,26 +454,26 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         camera={{ position: initialCameraPosition, fov: 45, near: 0.1, far: 2_000_000_000_000 }}
       >
         <CanvasRegistrar />
-        {/* Only use CameraManager in Monitor mode or if not in editing mode? 
+        {/* Only use CameraManager in Monitor mode or if not in editing mode?
             Actually, CameraManager handles 'chase' view.
             In Plan mode, we usually want 'free' view.
         */}
         <CameraManager mode={viewMode} origin={mode === 'viewer' ? viewerOrigin : [0, 0, 0]} />
-        
-        <TrackballControls 
-          ref={handleControlsRef} 
-          makeDefault 
+
+        <TrackballControls
+          ref={handleControlsRef}
+          makeDefault
           enabled
           rotateSpeed={4.0}
         />
-        
+
         {/* Environment */}
         <color attach="background" args={['#1a2233']} />
         <Stars radius={EARTH_RADIUS_M * 50} depth={EARTH_RADIUS_M * 50} count={5000} factor={4.5} saturation={0} fade speed={1} />
         <ambientLight intensity={1.15} />
         <directionalLight position={[10, 10, 5]} intensity={1.8} castShadow />
         <hemisphereLight args={['#c4d2ff', '#1b2333', 0.5]} />
-        
+
 
 
         {mode === 'viewer' && (
@@ -499,7 +499,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
         {isPlanning && builderState && builderActions && (
             <Suspense fallback={null}>
                 {/* Grid Removed by User Request */}
-                
+
                 {/* Editable Content */}
                 <group>
                 {showOrbitLayer && (
@@ -509,14 +509,14 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                            onSelectTarget={(targetId, positionMeters, positionScene, focusDistance) => {
                              // We need to pass the "Scene" position back, which is relative to the floating origin now.
                              // OrbitSnapshotLayer returns absolute scene position (scaled).
-                             // We need to adjust it to be relative to the group shift? 
-                             // No, OrbitSnapshotLayer thinks it's at P_abs. 
+                             // We need to adjust it to be relative to the group shift?
+                             // No, OrbitSnapshotLayer thinks it's at P_abs.
                              // It is rendered at P_abs + Shift.
                              // The click event returns P_abs.
                              // The Camera Focus needs P_render = P_abs + Shift.
                              // So we should adjust the positionScene passed back.
                              // Or easier: Just calculate it here.
-                             
+
                              const obj = orbitSnapshot.objects.find(o => o.id === targetId);
                              if (obj) {
                                  const scenePos = scaleToScene(obj.position_m);
@@ -553,11 +553,11 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                     </group>
 
                     {/* Reference */}
-                    <group 
-                      position={scaleToScene(builderState.referencePosition)} 
+                    <group
+                      position={scaleToScene(builderState.referencePosition)}
                       rotation={[
-                          builderState.referenceAngle[0]*Math.PI/180, 
-                          builderState.referenceAngle[1]*Math.PI/180, 
+                          builderState.referenceAngle[0]*Math.PI/180,
+                          builderState.referenceAngle[1]*Math.PI/180,
                           builderState.referenceAngle[2]*Math.PI/180
                       ]}
                     >
@@ -576,9 +576,9 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
 
                     {/* Obstacles */}
                     {builderState.obstacles.map((obs, i) => (
-                        <mesh 
+                        <mesh
                             key={i}
-                            position={scaleToScene(obs.position)} 
+                            position={scaleToScene(obs.position)}
                         >
                             <sphereGeometry args={[obs.radius * ORBIT_SCALE, 16, 16]} />
                             <meshStandardMaterial color="#ef4444" transparent opacity={0.4} wireframe />
@@ -586,15 +586,15 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                     ))}
 
                     {/* Advanced Path Builder */}
-                    <EditableTrajectory 
-                        points={builderState.previewPath.map(scaleToScene)} 
+                    <EditableTrajectory
+                        points={builderState.previewPath.map(scaleToScene)}
                         onHover={(point) => {
                           if (!point) {
                             setHoveredPoint(null);
                           } else {
                             setHoveredPoint([point[0] / ORBIT_SCALE, point[1] / ORBIT_SCALE, point[2] / ORBIT_SCALE]);
                           }
-                        }} 
+                        }}
                         builderActions={builderActions}
                         selectedId={builderState.selectedObjectId}
                         sceneScale={ORBIT_SCALE}
@@ -629,7 +629,7 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
            <GizmoViewport axisColors={['red', '#39ff14', '#00f0ff']} labelColor="white" />
         </GizmoHelper>
       </Canvas>
-      
+
       {isPlanning && hoveredPoint && (
         <div className="absolute bottom-4 left-4 pointer-events-none z-10">
             <HudPanel className="text-xs font-mono">

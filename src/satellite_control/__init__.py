@@ -4,7 +4,8 @@ satellite_control – 3-D satellite simulation with MPC path-following.
 Public API re-exports for convenient top-level access.
 """
 
-from importlib.metadata import version as _pkg_version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
 try:
     __version__: str = _pkg_version("satellite-control")
@@ -13,14 +14,14 @@ except PackageNotFoundError:  # pragma: no cover – editable / dev installs
 
 # ── Core public classes ──────────────────────────────────────────────
 from satellite_control.config.models import AppConfig  # noqa: F401
-from satellite_control.core.exceptions import (  # noqa: F401
-    SatelliteControlError,
+from satellite_control.core.error_handling import (  # noqa: F401
     ConfigurationError,
-    SimulationError,
     ControllerError,
-    OptimizationError,
-    MissionError,
     DashboardError,
+    MissionError,
+    OptimizationError,
+    SatelliteControlError,
+    SimulationError,
     VisualizationError,
 )
 

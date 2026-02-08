@@ -13,10 +13,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from satellite_control.dashboard.simulation_manager import SimulationManager
-from satellite_control.dashboard.routes import simulations as sim_routes
-from satellite_control.dashboard.routes import missions as mission_routes
 from satellite_control.dashboard.routes import assets as asset_routes
+from satellite_control.dashboard.routes import missions as mission_routes
+from satellite_control.dashboard.routes import simulations as sim_routes
+from satellite_control.dashboard.simulation_manager import SimulationManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,8 +26,8 @@ logger = logging.getLogger("dashboard")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
 MODEL_ALLOWED_ROOTS = (
-    (PROJECT_ROOT / "OBJ_files").resolve(),
-    (PROJECT_ROOT / "ui" / "public" / "OBJ_files").resolve(),
+    (PROJECT_ROOT / "assets" / "models").resolve(),
+    (PROJECT_ROOT / "ui" / "public" / "models").resolve(),
 )
 
 # --- Global Singleton ---

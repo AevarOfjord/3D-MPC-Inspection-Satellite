@@ -98,17 +98,17 @@ The simulation engine with modular components:
 ```python
 class SatelliteMPCLinearizedSimulation:
     """Main simulation orchestrator."""
-    
+
     # Core Components
     satellite: CppSatelliteSimulator  # Physics backend
     mpc_controller: MPCController    # Control algorithm
     mission_state: MissionState      # Path-following state
     thruster_manager: ThrusterManager # Actuator physics
-    
+
     # State
     state: np.ndarray[13]  # [x,y,z, qw,qx,qy,qz, vx,vy,vz, wx,wy,wz]
     target_state: np.ndarray[13]
-    
+
     # Methods
     def run_simulation(show_animation: bool) -> None
     def get_current_state() -> np.ndarray
@@ -126,9 +126,9 @@ Python wrapper for C++ MPC backend:
 ```python
 class MPCController(Controller):
     """C++ backend wrapper for OSQP-based MPC."""
-    
+
     _cpp_controller: MPCControllerCpp  # C++ instance
-    
+
     def get_control_action(
         x_current: np.ndarray,   # 13-state vector
         x_target: np.ndarray,    # 13-state target
@@ -136,7 +136,7 @@ class MPCController(Controller):
         x_target_trajectory: np.ndarray,  # Optional horizon
     ) -> Tuple[np.ndarray, Dict]:
         """Returns (control_vector, info_dict)."""
-        
+
     def set_obstacles(obstacles: List[Obstacle]) -> None
     def clear_obstacles() -> None
 ```
@@ -187,12 +187,12 @@ class MPCControllerCpp {
     // OSQP solver
     OSQPWorkspace* work_;
     SparseMatrix P_, A_;  // QP matrices
-    
+
     // Index maps for fast updates
     std::vector<std::vector<int>> A_idx_map_;  // Quaternion dynamics
     std::vector<std::vector<int>> B_idx_map_;  // Actuator mapping
     std::vector<std::vector<int>> obs_A_indices_;  // Obstacles
-    
+
     // Key methods
     void update_dynamics(const VectorXd& x_current);
     void update_cost(const VectorXd& x_target);
@@ -251,7 +251,7 @@ Mission configuration and execution:
 | File | Description |
 |------|-------------|
 | `path_following.py` | Path building and path-following helpers |
-| `repository.py` | Mission discovery/loading from `missions_unified/` |
+| `repository.py` | Mission discovery/loading from `missions/` |
 | `runtime_loader.py` | Shared unified mission parse/compile runtime pipeline (CLI + dashboard) |
 | `unified_mission.py` | Unified mission schema |
 | `unified_compiler.py` | Compiles unified mission segments into executable paths |
@@ -274,13 +274,13 @@ Hill-Clohessy-Wiltshire (CW) relative motion dynamics:
 @dataclass
 class CWDynamics:
     """Computes gravity gradient accelerations for LEO."""
-    
+
     orbital_config: OrbitalConfig
     _cpp_backend: Optional[CppCWDynamics]  # C++ acceleration
-    
+
     def compute_acceleration(position, velocity) -> np.ndarray:
         """CW equations: ẍ = 3n²x + 2nẏ, ÿ = -2nẋ, z̈ = -n²z"""
-        
+
     def get_state_matrices(dt) -> Tuple[np.ndarray, np.ndarray]:
         """Discrete-time A, B matrices."""
 ```
@@ -394,17 +394,17 @@ graph LR
     subgraph Entry
         CLI[cli.py] --> SIM[simulation.py]
     end
-    
+
     subgraph Control
         SIM --> MPC[MPCController]
         MPC --> CPP[C++ OSQP]
     end
-    
+
     subgraph Physics
         SIM --> CPPENG[C++ Engine]
         CPPENG --> STATE[State Vector]
     end
-    
+
     subgraph Output
         SIM --> LOG[DataLogger]
         LOG --> CSV[physics_data.csv]
@@ -413,7 +413,7 @@ graph LR
         VIZ --> PNG[Plots]
         VIZ --> MP4[Animation]
     end
-    
+
     subgraph Web
         DASH[FastAPI] --> UI[React/Three.js]
         CSV --> DASH
@@ -444,7 +444,7 @@ find_package(Eigen3 REQUIRED)
 find_package(osqp REQUIRED)
 find_package(pybind11 REQUIRED)
 
-pybind11_add_module(_cpp_mpc 
+pybind11_add_module(_cpp_mpc
     cpp/bindings.cpp
     cpp/mpc_controller.cpp
     cpp/linearizer.cpp

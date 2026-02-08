@@ -9,11 +9,11 @@ import { ISSModel } from './ISSModel';
 
 const buildOrbitPoints = (radius: number, normal: THREE.Vector3, startPos: THREE.Vector3, segments = 2048) => {
   const safeNormal = normal.clone().normalize();
-  
+
   // Use startPos as the primary axis to ensure the loop starts exactly at the object
   const axisA = startPos.clone().normalize();
   const axisB = new THREE.Vector3().crossVectors(safeNormal, axisA).normalize();
-  
+
   const points: [number, number, number][] = [];
   for (let i = 0; i <= segments; i += 1) {
     const t = (i / segments) * Math.PI * 2;
@@ -61,7 +61,7 @@ export function OrbitSnapshotLayer({
 }) {
   const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
-  const earthGltf = useGLTF('/OBJ_files/Earth/Earth.glb');
+  const earthGltf = useGLTF('/models/Earth/Earth.glb');
   const earthScale = useMemo(() => {
     const box = new THREE.Box3().setFromObject(earthGltf.scene);
     const size = new THREE.Vector3();
@@ -141,9 +141,9 @@ export function OrbitSnapshotLayer({
           };
 
           return (
-            <group 
-              key={obj.id} 
-              onPointerDown={handlePointerDown} 
+            <group
+              key={obj.id}
+              onPointerDown={handlePointerDown}
               onClick={handleClick}
             >
               {obj.type === 'iss' ? (

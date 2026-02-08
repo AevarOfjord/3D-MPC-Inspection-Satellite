@@ -1,9 +1,11 @@
-"""Model-file serving, OBJ upload, mesh-scan preview, and path-asset routes."""
+"""Model-file serving, OBJ upload, mesh-scan preview, and path-asset routes.
+
+Model files are stored under assets/models/ at the project root.
+"""
 
 import logging
 import math
 from pathlib import Path
-from typing import Dict, List
 
 from fastapi import APIRouter, File, Form, HTTPException
 from fastapi.responses import FileResponse
@@ -46,7 +48,7 @@ def _resolve_allowed_model_path(path_value: str) -> Path:
 
     raise HTTPException(
         status_code=400,
-        detail="Model path must be inside OBJ_files or ui/public/OBJ_files",
+        detail="Model path must be inside assets/models or ui/public/models",
     )
 
 
@@ -73,10 +75,10 @@ async def serve_model_file(path: str):
 async def list_model_files():
     """List available OBJ models in the repository."""
     search_dirs = [
-        _project_root / "OBJ_files",
-        _project_root / "OBJ_files" / "uploads",
+        _project_root / "assets" / "models",
+        _project_root / "assets" / "models" / "uploads",
     ]
-    models: List[Dict[str, str]] = []
+    models: list[dict[str, str]] = []
     for base in search_dirs:
         if not base.exists():
             continue
@@ -99,8 +101,8 @@ async def list_model_files():
 async def get_model_bounds(path: str):
     """Compute basic bounds for an OBJ model."""
     from satellite_control.mission.mesh_scan import (
-        load_obj_vertices,
         compute_mesh_bounds,
+        load_obj_vertices,
     )
 
     file_path = _resolve_allowed_model_path(path)
@@ -131,7 +133,7 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
     except Exception:
         aiofiles = None
 
-    upload_dir = Path("OBJ_files/uploads")
+    upload_dir = Path("assets/models/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = Path(filename).name
@@ -156,8 +158,8 @@ async def preview_trajectory(config: MeshScanConfigModel):
     from satellite_control.mission.mesh_scan import (
         build_mesh_scan_trajectory,
         build_mesh_spiral_trajectory,
-        load_obj_vertices,
         compute_mesh_bounds,
+        load_obj_vertices,
     )
 
     try:

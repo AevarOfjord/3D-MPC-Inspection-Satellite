@@ -11,19 +11,19 @@ interface StarlinkModelProps {
   pivot?: 'center' | 'minY' | 'maxY' | 'centroid' | 'origin';
 }
 
-export function StarlinkModel({ 
-  position, 
+export function StarlinkModel({
+  position,
   orientation,
   scale = 1,
   realSpanMeters,
   pivot = 'center',
 }: StarlinkModelProps) {
-  const gltf = useGLTF('/OBJ_files/Starlink/starlink.glb');
+  const gltf = useGLTF('/models/Starlink/starlink.glb');
 
   // Clone and apply fallback material if needed
   const clonedObj = useMemo(() => {
     const clone = gltf.scene.clone();
-    
+
     // Apply metallic material to all meshes (as fallback or enhancement)
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -40,25 +40,25 @@ export function StarlinkModel({
         mesh.receiveShadow = true;
       }
     });
-    
+
     return clone;
   }, [gltf.scene]);
 
   const modelMetrics = useMemo(() => {
     // Ensure the clone has up-to-date matrices before measurement
     clonedObj.updateWorldMatrix(true, true);
-    
+
     const box = new THREE.Box3().setFromObject(clonedObj);
     const size = new THREE.Vector3();
     const center = new THREE.Vector3();
 
     box.getSize(size);
     box.getCenter(center);
-    
+
     // Fallback if box is empty
     if (box.isEmpty()) {
-      return { 
-        maxDim: 0, 
+      return {
+        maxDim: 0,
         center: new THREE.Vector3(0, 0, 0),
         min: new THREE.Vector3(0, 0, 0),
         max: new THREE.Vector3(0, 0, 0)
@@ -88,7 +88,7 @@ export function StarlinkModel({
     }
     return [-modelMetrics.center.x, -modelMetrics.center.y, -modelMetrics.center.z] as [number, number, number];
   }, [modelMetrics, pivot]);
-  
+
   return (
     <group position={position} rotation={orientation} scale={[resolvedScale, resolvedScale, resolvedScale]}>
       <primitive object={clonedObj} position={centerOffset} />

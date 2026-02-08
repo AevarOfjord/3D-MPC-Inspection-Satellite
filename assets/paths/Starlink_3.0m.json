@@ -1,7 +1,7 @@
 {
   "id": "Starlink_3.0m",
   "name": "Starlink 3.0m",
-  "obj_path": "OBJ_files/Starlink/starlink.obj",
+  "obj_path": "assets/models/Starlink/starlink.obj",
   "path": [
     [
       10.0,

@@ -41,7 +41,7 @@ pip install pytest pytest-cov
 python run_simulation.py run
 ```
 
-Select a saved unified mission from `missions_unified/` to run a basic test.
+Select a saved unified mission from `missions/` to run a basic test.
 
 ---
 
@@ -536,7 +536,7 @@ python run_simulation.py run --auto --no-anim --duration 10
 .venv311/bin/python -m pytest -v
 
 # Smoke-check CLI wiring with a saved mission
-python run_simulation.py run --mission missions_unified/<YourMission>.json --no-anim
+python run_simulation.py run --mission missions/<YourMission>.json --no-anim
 
 # Generate plots from existing data
 python -m src.satellite_control.visualization.unified_visualizer

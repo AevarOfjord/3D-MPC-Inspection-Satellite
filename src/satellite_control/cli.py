@@ -7,7 +7,7 @@ Runs the MPC simulation with interactive mission selection.
 """
 
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -26,11 +26,11 @@ app = typer.Typer(
 console = Console()
 
 
-def _prompt_saved_mission_file() -> Optional[str]:
+def _prompt_saved_mission_file() -> str | None:
     """Prompt user to select a saved mission file for simulation."""
     entries = list_mission_entries(source_priority=("unified",))
     if not entries:
-        console.print("[red]No saved missions found in missions_unified.[/red]")
+        console.print("[red]No saved missions found in missions/.[/red]")
         return None
 
     source_labels = {"unified": "unified"}
@@ -82,13 +82,13 @@ def run(
     auto: bool = typer.Option(
         False, "--auto", "-a", help="Run in auto mode with default parameters"
     ),
-    duration: Optional[float] = typer.Option(
+    duration: float | None = typer.Option(
         None, "--duration", "-d", help="Override max simulation time in seconds"
     ),
     no_anim: bool = typer.Option(
         False, "--no-anim", help="Disable animation (headless mode)"
     ),
-    mission_file: Optional[str] = typer.Option(
+    mission_file: str | None = typer.Option(
         None, "--mission", "-m", help="Path to mission file (JSON) to execute"
     ),
 ):
@@ -104,11 +104,11 @@ def run(
     )
 
     # Prepare simulation parameters
-    sim_start_pos: Optional[Tuple[float, float, float]] = None
-    sim_end_pos: Optional[Tuple[float, float, float]] = None
-    sim_start_angle: Optional[Tuple[float, float, float]] = None
-    sim_end_angle: Optional[Tuple[float, float, float]] = None
-    config_overrides: Optional[Dict[str, Dict[str, Any]]] = None
+    sim_start_pos: tuple[float, float, float] | None = None
+    sim_end_pos: tuple[float, float, float] | None = None
+    sim_start_angle: tuple[float, float, float] | None = None
+    sim_end_angle: tuple[float, float, float] | None = None
+    config_overrides: dict[str, dict[str, Any]] | None = None
 
     # Import SimulationConfig for Pydantic configuration
     from satellite_control.config.simulation_config import SimulationConfig
@@ -154,8 +154,8 @@ def run(
         ms.path_speed = mpc_cfg.path_speed
 
     elif mission_file:
-        from pathlib import Path
         import json
+        from pathlib import Path
 
         m_path = Path(mission_file)
         if not m_path.exists():
@@ -172,8 +172,8 @@ def run(
 
         simulation_config = SimulationConfig.create_default()
         from satellite_control.mission.runtime_loader import (
-            parse_unified_mission_payload,
             compile_unified_mission_runtime,
+            parse_unified_mission_payload,
         )
 
         try:
