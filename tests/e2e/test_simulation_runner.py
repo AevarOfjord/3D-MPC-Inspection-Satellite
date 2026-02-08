@@ -116,9 +116,7 @@ def test_config_validation():
     from src.satellite_control.config import physics as physics_cfg
 
     thruster_ids = range(1, len(physics_cfg.THRUSTER_POSITIONS) + 1)
-    thruster_positions = {
-        i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in thruster_ids
-    }
+    thruster_positions = {i: (0.1 * (i % 2), 0.1 * (i // 2), 0.0) for i in thruster_ids}
     thruster_directions = {i: (1.0, 0.0, 0.0) for i in thruster_ids}
     thruster_forces = {i: 0.3 for i in thruster_ids}
 

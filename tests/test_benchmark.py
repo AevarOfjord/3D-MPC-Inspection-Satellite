@@ -9,6 +9,7 @@ import time
 import numpy as np
 import pytest
 
+
 # Helper to build 13-element state vectors.
 def make_state(
     pos=(0.0, 0.0, 0.0),
@@ -26,6 +27,7 @@ def make_state(
     state[10:13] = np.array(omega, dtype=float)
     state[13:16] = np.array(rw_speeds, dtype=float)
     return state
+
 
 # Check if pytest-benchmark is available
 try:
@@ -182,30 +184,30 @@ class TestMPCRegressionDetection:
         # Report stats for debugging
         print("\nMPC Solve Time Stats (20 iterations):")
         print(
-            f"  Median (p50): {p50*1000:.2f}ms "
-            f"(threshold: {self.MPC_SOLVE_THRESHOLD_P50*1000:.0f}ms)"
+            f"  Median (p50): {p50 * 1000:.2f}ms "
+            f"(threshold: {self.MPC_SOLVE_THRESHOLD_P50 * 1000:.0f}ms)"
         )
         print(
-            f"  P95: {p95*1000:.2f}ms "
-            f"(threshold: {self.MPC_SOLVE_THRESHOLD_P95*1000:.0f}ms)"
+            f"  P95: {p95 * 1000:.2f}ms "
+            f"(threshold: {self.MPC_SOLVE_THRESHOLD_P95 * 1000:.0f}ms)"
         )
         print(
-            f"  Max: {max_time*1000:.2f}ms "
-            f"(threshold: {self.MPC_SOLVE_THRESHOLD_MAX*1000:.0f}ms)"
+            f"  Max: {max_time * 1000:.2f}ms "
+            f"(threshold: {self.MPC_SOLVE_THRESHOLD_MAX * 1000:.0f}ms)"
         )
 
         # Assert thresholds
         assert p50 < self.MPC_SOLVE_THRESHOLD_P50, (
-            f"MPC median solve time {p50*1000:.2f}ms exceeds threshold "
-            f"{self.MPC_SOLVE_THRESHOLD_P50*1000:.0f}ms"
+            f"MPC median solve time {p50 * 1000:.2f}ms exceeds threshold "
+            f"{self.MPC_SOLVE_THRESHOLD_P50 * 1000:.0f}ms"
         )
         assert p95 < self.MPC_SOLVE_THRESHOLD_P95, (
-            f"MPC p95 solve time {p95*1000:.2f}ms exceeds threshold "
-            f"{self.MPC_SOLVE_THRESHOLD_P95*1000:.0f}ms"
+            f"MPC p95 solve time {p95 * 1000:.2f}ms exceeds threshold "
+            f"{self.MPC_SOLVE_THRESHOLD_P95 * 1000:.0f}ms"
         )
         assert max_time < self.MPC_SOLVE_THRESHOLD_MAX, (
-            f"MPC max solve time {max_time*1000:.2f}ms exceeds threshold "
-            f"{self.MPC_SOLVE_THRESHOLD_MAX*1000:.0f}ms"
+            f"MPC max solve time {max_time * 1000:.2f}ms exceeds threshold "
+            f"{self.MPC_SOLVE_THRESHOLD_MAX * 1000:.0f}ms"
         )
 
     def test_mpc_path_following_performance(self, mpc_controller):
@@ -234,8 +236,8 @@ class TestMPCRegressionDetection:
         trajectory_threshold = self.MPC_SOLVE_THRESHOLD_MAX * 1.2  # 20% margin
 
         assert max_time < trajectory_threshold, (
-            f"MPC path solve time {max_time*1000:.2f}ms exceeds threshold "
-            f"{trajectory_threshold*1000:.0f}ms"
+            f"MPC path solve time {max_time * 1000:.2f}ms exceeds threshold "
+            f"{trajectory_threshold * 1000:.0f}ms"
         )
 
     @pytest.mark.slow
@@ -254,6 +256,7 @@ class TestMPCRegressionDetection:
             vel=(0.01, 0.02, 0.0),
             omega=(0.0, 0.0, 0.01),
         )
+
         def get_process_memory():
             process = psutil.Process(os.getpid())
             mem_info = process.memory_info()
@@ -299,6 +302,6 @@ class TestMPCRegressionDetection:
         if len(recent_times) >= 2:
             time_std = np.std(recent_times)
             assert time_std < 0.010, (  # 10ms std dev max
-                f"Solve time variance {time_std*1000:.2f}ms is too high - "
+                f"Solve time variance {time_std * 1000:.2f}ms is too high - "
                 "performance may be degrading"
             )

@@ -17,7 +17,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Prefer SimulationConfig for tests (v3.0.0)
-from src.satellite_control.config.simulation_config import SimulationConfig  # noqa: E402
+from src.satellite_control.config.simulation_config import (
+    SimulationConfig,
+)  # noqa: E402
 
 # ============================================================================
 # Configuration Reset Fixture

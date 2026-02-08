@@ -8,7 +8,10 @@ from typing import Dict, List
 from fastapi import APIRouter, File, Form, HTTPException
 from fastapi.responses import FileResponse
 
-from src.satellite_control.dashboard.models import MeshScanConfigModel, PathAssetSaveRequest
+from src.satellite_control.dashboard.models import (
+    MeshScanConfigModel,
+    PathAssetSaveRequest,
+)
 from src.satellite_control.mission.path_assets import (
     list_path_assets,
     load_path_asset,

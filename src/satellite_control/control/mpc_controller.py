@@ -7,7 +7,7 @@ The entire control loop runs in C++ for maximum performance.
 
 import logging
 import sys
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -37,7 +37,9 @@ def _raise_cpp_binding_import_error() -> None:
     """Raise a detailed error when C++ MPC bindings cannot be imported."""
     assert _CPP_IMPORT_ERROR is not None
 
-    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ver = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
     message = (
         "Failed to import C++ MPC bindings (`src.satellite_control.cpp._cpp_mpc`). "
         f"Running interpreter: Python {py_ver}. Original error: {_CPP_IMPORT_ERROR}"
@@ -61,31 +63,26 @@ class MPCController(Controller):
     Control: [τ_rw_x, τ_rw_y, τ_rw_z, u1, ..., uN] (RW torques + thrusters).
     """
 
-    def __init__(self, cfg: Union[AppConfig, Any]):
+    def __init__(self, cfg: AppConfig):
         """
         Initialize MPC controller with C++ backend.
 
         Args:
-            cfg: Configuration object. Must be AppConfig.
+            cfg: Application configuration.
         """
         if _CPP_IMPORT_ERROR is not None:
             _raise_cpp_binding_import_error()
 
-        # Determine config type and extract parameters
-        if isinstance(cfg, AppConfig):
-            self._extract_params_from_app_config(cfg)
-        else:
-            # Try to see if it's a wrapped AppConfig or compatible object
-            try:
-                # Last ditch effort: assume it behaves like AppConfig
-                if hasattr(cfg, "physics") and hasattr(cfg, "mpc"):
-                    self._extract_params_from_app_config(cfg)  # type: ignore
-                else:
-                    raise ValueError("Invalid config structure")
-            except Exception as e:
-                raise ValueError(
-                    f"MPCController requires AppConfig. Got {type(cfg)}. Error: {e}"
+        if not isinstance(cfg, AppConfig):
+            if hasattr(cfg, "physics") and hasattr(cfg, "mpc"):
+                # Duck-typed compatible object (e.g. test doubles)
+                pass
+            else:
+                raise TypeError(
+                    f"MPCController requires AppConfig, got {type(cfg).__name__}"
                 )
+
+        self._extract_params_from_app_config(cfg)
 
         # Build C++ SatelliteParams
         sat_params = SatelliteParams()
@@ -256,7 +253,9 @@ class MPCController(Controller):
                 s_val, proj, dist, _ = self._cpp_controller.project_onto_path(pos)
                 return float(s_val), np.array(proj, dtype=float), float(dist)
             except Exception:
-                pass
+                logger.debug(
+                    "C++ project_onto_path failed, using Python fallback", exc_info=True
+                )
 
         min_dist = float("inf")
         best_s = 0.0
@@ -330,6 +329,10 @@ class MPCController(Controller):
                     path_error = float(path_error)
                     endpoint_error = float(endpoint_error)
                 except Exception:
+                    logger.debug(
+                        "C++ project_onto_path failed in get_path_progress, using Python fallback",
+                        exc_info=True,
+                    )
                     s_val, _, path_error = self._project_onto_path(position)
                     endpoint = np.array(self._path_data[-1][1:4], dtype=float)
                     endpoint_error = float(np.linalg.norm(pos - endpoint))
@@ -346,7 +349,7 @@ class MPCController(Controller):
                 if s_val < float(self.s) - backtrack_tol:
                     s_val = float(self.s)
             except Exception:
-                pass
+                logger.debug("Backtrack tolerance calculation failed", exc_info=True)
 
         path_len = float(self._path_length) if self._path_length > 0 else 0.0
         progress = float(s_val / path_len) if path_len > 1e-9 else 0.0
@@ -460,7 +463,9 @@ class MPCController(Controller):
         )
         self.solver_type = str(getattr(mpc, "solver_type", "OSQP"))
         if self.solver_type.upper() != "OSQP":
-            logger.warning("MPC solver_type '%s' not supported, using OSQP.", self.solver_type)
+            logger.warning(
+                "MPC solver_type '%s' not supported, using OSQP.", self.solver_type
+            )
             self.solver_type = "OSQP"
         self.verbose_mpc = getattr(mpc, "verbose_mpc", False)
 
@@ -494,11 +499,14 @@ class MPCController(Controller):
         # Orbital parameters (for MPC linearization)
         try:
             from src.satellite_control.config.orbital_config import OrbitalConfig
+
             orbital_cfg = getattr(physics, "orbital", None)
             if orbital_cfg is not None:
                 self.orbital_mu = float(getattr(orbital_cfg, "mu", OrbitalConfig().mu))
                 self.orbital_radius = float(
-                    getattr(orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius)
+                    getattr(
+                        orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius
+                    )
                 )
                 self.orbital_mean_motion = float(
                     getattr(orbital_cfg, "mean_motion", OrbitalConfig().mean_motion)
@@ -511,6 +519,9 @@ class MPCController(Controller):
                 self.orbital_mean_motion = float(orbital_default.mean_motion)
                 self.use_two_body = True
         except Exception:
+            logger.warning(
+                "Failed to load orbital config, using Earth LEO defaults", exc_info=True
+            )
             self.orbital_mu = 3.986004418e14
             self.orbital_radius = 6.778e6
             self.orbital_mean_motion = 0.0
@@ -597,6 +608,10 @@ class MPCController(Controller):
                     path_error = float(proj_err)
                     endpoint_error = float(endpoint_error)
                 except Exception:
+                    logger.debug(
+                        "C++ project_onto_path failed in get_control_action, using Python fallback",
+                        exc_info=True,
+                    )
                     s_proj, closest_point, proj_err = self._project_onto_path(
                         x_current[:3]
                     )
@@ -658,7 +673,7 @@ class MPCController(Controller):
                     np.array(previous_thrusters, dtype=float)
                 )
             except Exception:
-                pass
+                logger.debug("Warm-start control failed", exc_info=True)
 
         try:
             result = self._cpp_controller.get_control_action(x_input)
@@ -670,7 +685,7 @@ class MPCController(Controller):
                 if x_target.shape[0] >= 3:
                     x_target[0:3] = pos_ref
             except Exception:
-                pass
+                logger.debug("Path reference override failed", exc_info=True)
             result = self._cpp_controller.get_control_action(x_input, x_target)
 
         self.solve_times.append(result.solve_time)

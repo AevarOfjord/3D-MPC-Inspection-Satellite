@@ -1,8 +1,11 @@
 """Path completion checks for simulation runtime."""
 
+import logging
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def check_path_complete(sim: Any) -> bool:
@@ -21,6 +24,7 @@ def check_path_complete(sim: Any) -> bool:
         try:
             pos = sim.get_current_state()[:3]
         except Exception:
+            logger.debug("Failed to get position from state", exc_info=True)
             pos = None
 
     path_s = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
@@ -36,6 +40,7 @@ def check_path_complete(sim: Any) -> bool:
             end_pt = np.array(path[-1], dtype=float)
             endpoint_error = float(np.linalg.norm(pos - end_pt))
         except Exception:
+            logger.debug("Failed to compute endpoint error", exc_info=True)
             endpoint_error = float("inf")
 
     pos_tol = float(getattr(sim, "position_tolerance", 0.05))
@@ -53,6 +58,7 @@ def check_path_complete(sim: Any) -> bool:
                 current_state, reference_state
             )
         except Exception:
+            logger.debug("State validator check failed", exc_info=True)
             state_ok = None
 
     if state_ok is None:

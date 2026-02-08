@@ -150,11 +150,8 @@ class TestPointToPointMission:
         # Mock draw_simulation to prevent visualization code
         with (
             patch.object(sim, "draw_simulation", return_value=[]),
-            patch.object(
-                sim.mpc_controller, "get_control_action"
-            ) as mock_mpc,
+            patch.object(sim.mpc_controller, "get_control_action") as mock_mpc,
         ):
-
             mock_mpc.return_value = (
                 np.zeros(sim.mpc_controller.num_thrusters),
                 {"status": 2, "status_name": "OPTIMAL", "solve_time": 0.01},
@@ -327,7 +324,10 @@ class TestRealisticPhysics:
 
         # V4.0.0: Check app_config.physics.use_realistic_physics instead
         # At least some should be different (not all zero due to randomness)
-        if sim.simulation_config and sim.simulation_config.app_config.physics.use_realistic_physics:
+        if (
+            sim.simulation_config
+            and sim.simulation_config.app_config.physics.use_realistic_physics
+        ):
             assert any(d > 0 for d in differences)
 
     def test_thruster_delay_simulation(self, simple_simulation):
@@ -374,7 +374,10 @@ class TestRealisticPhysics:
 
             # V4.0.0: Check app_config.physics.use_realistic_physics instead
             # Velocity should decrease due to damping (if no thrusters active)
-            if sim.simulation_config and sim.simulation_config.app_config.physics.use_realistic_physics:
+            if (
+                sim.simulation_config
+                and sim.simulation_config.app_config.physics.use_realistic_physics
+            ):
                 # Damping should reduce velocity over time
                 pass  # Can't guarantee without running actual physics
 

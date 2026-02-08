@@ -177,9 +177,7 @@ class MissionReportGenerator:
         """Write path-following configuration."""
         f.write("MISSION TYPE: PATH FOLLOWING (MPCC)\n")
         f.write("-" * 50 + "\n")
-        f.write(
-            "Description: Satellite follows a generated path between endpoints\n\n"
-        )
+        f.write("Description: Satellite follows a generated path between endpoints\n\n")
 
         f.write("STARTING CONFIGURATION:\n")
         f.write(f"  Starting X position:     {initial_state[0]:.3f} m\n")
@@ -203,7 +201,9 @@ class MissionReportGenerator:
             self.mission_state.get_resolved_path_length(compute_if_missing=True)
         )
 
-        path_speed = float(self.mission_state.path_speed or self.app_config.mpc.path_speed)
+        path_speed = float(
+            self.mission_state.path_speed or self.app_config.mpc.path_speed
+        )
         hold_end = float(self.mission_state.path_hold_end or 0.0)
 
         f.write("PATH CONFIGURATION:\n")
@@ -277,7 +277,9 @@ class MissionReportGenerator:
 
         f.write("PATH FOLLOWING SETTINGS:\n")
         f.write("-" * 50 + "\n")
-        f.write(f"  Path Speed (m/s):        {self.app_config.mpc.path_speed:.3f} m/s\n")
+        f.write(
+            f"  Path Speed (m/s):        {self.app_config.mpc.path_speed:.3f} m/s\n"
+        )
 
         f.write("\n")
 
@@ -391,9 +393,7 @@ class MissionReportGenerator:
         f.write(
             f"  MAX_SIMULATION_TIME:           {self.app_config.simulation.max_duration:.1f} s\n"
         )
-        path_hold_end = float(
-            getattr(self.mission_state, "path_hold_end", 0.0) or 0.0
-        )
+        path_hold_end = float(getattr(self.mission_state, "path_hold_end", 0.0) or 0.0)
         f.write(f"  PATH_HOLD_END:                {path_hold_end:.1f} s\n")
 
         # Physics Parameters

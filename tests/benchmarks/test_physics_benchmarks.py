@@ -32,7 +32,7 @@ class TestPhysicsBenchmarks:
 
     def test_physics_step_time(self, benchmark, physics_simulator):
         """Benchmark physics step computation time.
-        
+
         Target: < 1ms per step for real-time simulation at 200Hz.
         """
         dt = 0.005  # 5ms timestep

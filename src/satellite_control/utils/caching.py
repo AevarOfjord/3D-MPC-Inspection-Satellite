@@ -6,11 +6,11 @@ Supports config-based caching and LRU caching.
 
 Usage:
     from src.satellite_control.utils.caching import cache_by_config, cached
-    
+
     @cached(maxsize=128)
     def expensive_computation(x, y):
         return complex_calculation(x, y)
-    
+
     @cache_by_config
     def build_matrices(config):
         return build_expensive_matrices(config)
@@ -27,13 +27,13 @@ F = TypeVar("F", bound=Callable[..., Any])
 def cache_key_from_config(config: Any) -> str:
     """
     Generate cache key from configuration object.
-    
+
     Works with Pydantic models, dictionaries, or any object with
     a serializable representation.
-    
+
     Args:
         config: Configuration object (Pydantic model, dict, etc.)
-        
+
     Returns:
         MD5 hash string of configuration
     """
@@ -54,24 +54,24 @@ def cache_key_from_config(config: Any) -> str:
         except (TypeError, ValueError):
             # Fallback to string representation
             config_str = str(config)
-    
+
     return hashlib.md5(config_str.encode()).hexdigest()
 
 
 def cache_by_config(func: Optional[F] = None, maxsize: int = 10) -> F:
     """
     Decorator to cache function results based on configuration hash.
-    
+
     The first argument is assumed to be a configuration object.
     Results are cached based on the config's hash.
-    
+
     Args:
         func: Function to cache (if None, returns decorator)
         maxsize: Maximum cache size
-        
+
     Returns:
         Decorated function with caching
-        
+
     Example:
         @cache_by_config(maxsize=5)
         def build_mpc_matrices(config: AppConfig, horizon: int):
@@ -85,34 +85,36 @@ def cache_by_config(func: Optional[F] = None, maxsize: int = 10) -> F:
         def wrapper(config: Any, *args: Any, **kwargs: Any) -> Any:
             # Generate cache key from config
             config_key = cache_key_from_config(config)
-            
+
             # Create full cache key including args and kwargs
             args_key = str(args) + str(sorted(kwargs.items()))
             full_key = f"{config_key}:{hashlib.md5(args_key.encode()).hexdigest()}"
-            
+
             # Check cache
             if full_key in cache:
                 return cache[full_key]
-            
+
             # Compute result
             result = f(config, *args, **kwargs)
-            
+
             # Store in cache (with size limit)
             if len(cache) >= maxsize:
                 # Remove oldest entry (simple FIFO)
                 oldest_key = next(iter(cache))
                 del cache[oldest_key]
-            
+
             cache[full_key] = result
             return result
 
         # Add cache management methods
         wrapper.cache_clear = cache.clear  # type: ignore
-        wrapper.cache_info = lambda: {  # type: ignore
-            "size": len(cache),
-            "maxsize": maxsize,
-            "keys": list(cache.keys())[:5],  # Show first 5 keys
-        }
+        wrapper.cache_info = (
+            lambda: {  # type: ignore
+                "size": len(cache),
+                "maxsize": maxsize,
+                "keys": list(cache.keys())[:5],  # Show first 5 keys
+            }
+        )
 
         return wrapper  # type: ignore
 
@@ -124,15 +126,15 @@ def cache_by_config(func: Optional[F] = None, maxsize: int = 10) -> F:
 def cached(maxsize: int = 128) -> Callable[[F], F]:
     """
     Simple LRU cache decorator with configurable size.
-    
+
     Wrapper around functools.lru_cache with better defaults.
-    
+
     Args:
         maxsize: Maximum cache size (None for unlimited)
-        
+
     Returns:
         Decorated function with LRU caching
-        
+
     Example:
         @cached(maxsize=256)
         def expensive_computation(x: float, y: float) -> float:
@@ -144,7 +146,7 @@ def cached(maxsize: int = 128) -> Callable[[F], F]:
 def cache_clear_all() -> None:
     """
     Clear all function caches.
-    
+
     Useful for testing or when configuration changes significantly.
     """
     # This would need to track all cached functions
@@ -180,10 +182,10 @@ class CacheStats:
 def cache_with_stats(maxsize: int = 128) -> Callable[[F], F]:
     """
     LRU cache decorator with statistics tracking.
-    
+
     Args:
         maxsize: Maximum cache size
-        
+
     Returns:
         Decorated function with caching and stats
     """

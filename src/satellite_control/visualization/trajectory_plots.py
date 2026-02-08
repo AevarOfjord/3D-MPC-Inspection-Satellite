@@ -270,8 +270,7 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
 
     fig.add_annotation(
         text=(
-            "Double-click this file to open in browser. "
-            "Scroll to zoom, drag to rotate."
+            "Double-click this file to open in browser. Scroll to zoom, drag to rotate."
         ),
         xref="paper",
         yref="paper",
@@ -347,7 +346,9 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
             from src.satellite_control.config.simulation_config import SimulationConfig
 
             arrow_len = (
-                float(SimulationConfig.create_default().app_config.physics.satellite_size)
+                float(
+                    SimulationConfig.create_default().app_config.physics.satellite_size
+                )
                 * 0.2
             )
     except Exception:

@@ -6,11 +6,11 @@ Provides structured metrics export and performance regression detection.
 
 Usage:
     monitor = PerformanceMonitor()
-    
+
     # During simulation
     monitor.record_mpc_solve(0.002)  # 2ms
     monitor.record_physics_step(0.0001)  # 0.1ms
-    
+
     # At end of simulation
     metrics = monitor.get_metrics()
     metrics.export_to_json("metrics.json")
@@ -35,23 +35,29 @@ _MAX_TIMING_SAMPLES = 10_000
 class PerformanceMetrics:
     """
     Comprehensive performance metrics for a simulation run.
-    
+
     Collects timing data for all major components and provides
     statistical analysis and export capabilities.
     """
 
     # MPC Performance
-    mpc_solve_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
+    mpc_solve_times: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES)
+    )
     mpc_solve_count: int = 0
     mpc_timeout_count: int = 0
     mpc_failure_count: int = 0
 
     # Physics Performance
-    physics_step_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
+    physics_step_times: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES)
+    )
     physics_step_count: int = 0
 
     # Control Loop Performance
-    control_loop_times: Deque[float] = field(default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES))
+    control_loop_times: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_MAX_TIMING_SAMPLES)
+    )
     control_loop_count: int = 0
     timing_violations: int = 0
 
@@ -91,7 +97,9 @@ class PerformanceMetrics:
         self.physics_step_times.append(step_time)
         self.physics_step_count += 1
 
-    def record_control_loop(self, loop_time: float, timing_violation: bool = False) -> None:
+    def record_control_loop(
+        self, loop_time: float, timing_violation: bool = False
+    ) -> None:
         """Record a control loop time."""
         self.control_loop_times.append(loop_time)
         self.control_loop_count += 1
@@ -149,7 +157,9 @@ class PerformanceMetrics:
     def end_simulation(self) -> None:
         """Mark simulation end and calculate total time."""
         self.simulation_end_time = time.perf_counter()
-        self.total_simulation_time = self.simulation_end_time - self.simulation_start_time
+        self.total_simulation_time = (
+            self.simulation_end_time - self.simulation_start_time
+        )
 
     @property
     def mpc_p50_ms(self) -> float:
@@ -301,7 +311,9 @@ class PerformanceMetrics:
         lines.append(f"  P99: {self.mpc_p99_ms:.2f}ms")
         lines.append(f"  Max: {self.mpc_max_ms:.2f}ms")
         if self.mpc_timeout_count > 0:
-            lines.append(f"  ⚠️  Timeouts: {self.mpc_timeout_count} ({self.mpc_timeout_rate*100:.1f}%)")
+            lines.append(
+                f"  ⚠️  Timeouts: {self.mpc_timeout_count} ({self.mpc_timeout_rate * 100:.1f}%)"
+            )
         lines.append("")
         lines.append("Physics Performance:")
         lines.append(f"  Steps: {self.physics_step_count}")
@@ -314,7 +326,7 @@ class PerformanceMetrics:
         if self.timing_violations > 0:
             lines.append(
                 f"  ⚠️  Timing Violations: {self.timing_violations} "
-                f"({self.timing_violation_rate*100:.1f}%)"
+                f"({self.timing_violation_rate * 100:.1f}%)"
             )
         lines.append("=" * 60)
         return "\n".join(lines)
@@ -327,7 +339,7 @@ class PerformanceMetrics:
     ) -> List[str]:
         """
         Check performance against thresholds.
-        
+
         Returns list of warning messages for threshold violations.
         """
         warnings = []
@@ -340,14 +352,14 @@ class PerformanceMetrics:
 
         if self.mpc_timeout_rate > mpc_timeout_rate_threshold:
             warnings.append(
-                f"MPC timeout rate ({self.mpc_timeout_rate*100:.1f}%) exceeds threshold "
-                f"({mpc_timeout_rate_threshold*100:.1f}%)"
+                f"MPC timeout rate ({self.mpc_timeout_rate * 100:.1f}%) exceeds threshold "
+                f"({mpc_timeout_rate_threshold * 100:.1f}%)"
             )
 
         if self.timing_violation_rate > timing_violation_rate_threshold:
             warnings.append(
-                f"Timing violation rate ({self.timing_violation_rate*100:.1f}%) exceeds threshold "
-                f"({timing_violation_rate_threshold*100:.1f}%)"
+                f"Timing violation rate ({self.timing_violation_rate * 100:.1f}%) exceeds threshold "
+                f"({timing_violation_rate_threshold * 100:.1f}%)"
             )
 
         return warnings
@@ -356,7 +368,7 @@ class PerformanceMetrics:
 class PerformanceMonitor:
     """
     Performance monitor for simulation runs.
-    
+
     Collects metrics during simulation and provides analysis.
     """
 
@@ -375,7 +387,9 @@ class PerformanceMonitor:
         """Record physics step time."""
         self.metrics.record_physics_step(step_time)
 
-    def record_control_loop(self, loop_time: float, timing_violation: bool = False) -> None:
+    def record_control_loop(
+        self, loop_time: float, timing_violation: bool = False
+    ) -> None:
         """Record control loop time."""
         self.metrics.record_control_loop(loop_time, timing_violation)
 

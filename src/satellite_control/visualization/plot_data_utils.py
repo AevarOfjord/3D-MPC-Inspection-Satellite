@@ -5,9 +5,14 @@ from typing import Any, Optional, Sequence, Tuple
 import numpy as np
 
 
-def resolve_data_frame_and_columns(data_accessor: Any) -> Tuple[Optional[Any], Sequence[str]]:
+def resolve_data_frame_and_columns(
+    data_accessor: Any,
+) -> Tuple[Optional[Any], Sequence[str]]:
     """Resolve primary dataframe-like source and available columns."""
-    if hasattr(data_accessor, "control_data") and data_accessor.control_data is not None:
+    if (
+        hasattr(data_accessor, "control_data")
+        and data_accessor.control_data is not None
+    ):
         df = data_accessor.control_data
         return df, df.columns
 
@@ -43,7 +48,9 @@ def get_control_time_axis(
     return np.arange(base_len) * float(dt)
 
 
-def get_series(plot_gen: Any, name: str, df: Optional[Any], cols: Sequence[str]) -> np.ndarray:
+def get_series(
+    plot_gen: Any, name: str, df: Optional[Any], cols: Sequence[str]
+) -> np.ndarray:
     """Read series from dataframe source when available, else fallback to plot accessor."""
     if df is not None and name in cols:
         return df[name].values

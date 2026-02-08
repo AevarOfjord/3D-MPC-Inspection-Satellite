@@ -226,7 +226,11 @@ class VideoRenderer:
         )
 
     def draw_reference(
-        self, reference_x: float, reference_y: float, reference_z: float, reference_yaw: float
+        self,
+        reference_x: float,
+        reference_y: float,
+        reference_z: float,
+        reference_yaw: float,
     ) -> None:
         """Draw reference position and orientation (XY + XZ)."""
         assert self.ax_xy is not None, "ax_xy must be initialized"

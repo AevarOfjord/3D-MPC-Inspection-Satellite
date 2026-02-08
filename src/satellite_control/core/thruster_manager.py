@@ -15,6 +15,7 @@ from typing import Optional, Protocol
 
 import numpy as np
 
+
 class ThrusterTarget(Protocol):
     """Minimal interface for thruster sink implementations."""
 
@@ -67,19 +68,27 @@ class ThrusterManager:
         self.thruster_last_command = np.zeros(num_thrusters, dtype=np.float64)
 
         # Timing for valve open commands
-        self.thruster_open_command_time = np.full(num_thrusters, -1000.0, dtype=np.float64)
+        self.thruster_open_command_time = np.full(
+            num_thrusters, -1000.0, dtype=np.float64
+        )
 
         # Timing for valve close commands
-        self.thruster_close_command_time = np.full(num_thrusters, -1000.0, dtype=np.float64)
+        self.thruster_close_command_time = np.full(
+            num_thrusters, -1000.0, dtype=np.float64
+        )
 
         # Actual valve open times (after delay)
-        self.thruster_valve_open_time = np.full(num_thrusters, -1000.0, dtype=np.float64)
+        self.thruster_valve_open_time = np.full(
+            num_thrusters, -1000.0, dtype=np.float64
+        )
 
         # Actual output level [0, 1] for each thruster
         self.thruster_actual_output = np.zeros(num_thrusters, dtype=np.float64)
 
         # Internal binary state (for PWM pulse tracking)
-        self.thruster_internal_binary_command = np.zeros(num_thrusters, dtype=np.float64)
+        self.thruster_internal_binary_command = np.zeros(
+            num_thrusters, dtype=np.float64
+        )
 
     def set_thruster_pattern(
         self,
@@ -217,7 +226,9 @@ class ThrusterManager:
                             self.thruster_valve_open_time[i] = valve_open_time
 
                         if self.use_realistic_physics and self.THRUST_RAMPUP_TIME > 0:
-                            ramp_progress = time_since_valve_open / self.THRUST_RAMPUP_TIME
+                            ramp_progress = (
+                                time_since_valve_open / self.THRUST_RAMPUP_TIME
+                            )
                             self.thruster_actual_output[i] = min(1.0, ramp_progress)
                         else:
                             # Binary full thrust when PWM pulse is ON

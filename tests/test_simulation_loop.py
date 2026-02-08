@@ -127,7 +127,10 @@ class TestSimulationLoopBatchMode:
             loop._run_batch_mode()
 
         # Verify physics was called
-        assert mock_simulation.process_command_queue.called or mock_simulation.satellite.update_physics.called
+        assert (
+            mock_simulation.process_command_queue.called
+            or mock_simulation.satellite.update_physics.called
+        )
 
 
 class TestSimulationLoopUpdateStep:

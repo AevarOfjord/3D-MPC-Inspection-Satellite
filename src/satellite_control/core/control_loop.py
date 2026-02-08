@@ -66,7 +66,10 @@ def update_mpc_control_step(sim: Any) -> None:
     if not hasattr(sim, "_control_history_downsample_counter"):
         sim._control_history_downsample_counter = 0
     sim._control_history_downsample_counter += 1
-    if history_stride <= 1 or (sim._control_history_downsample_counter % history_stride) == 0:
+    if (
+        history_stride <= 1
+        or (sim._control_history_downsample_counter % history_stride) == 0
+    ):
         sim._append_capped_history(sim.control_history, thruster_copy)
     sim.set_thruster_pattern(thruster_action)
 

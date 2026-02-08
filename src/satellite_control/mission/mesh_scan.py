@@ -154,8 +154,6 @@ def slice_mesh_at_z(
     return np.vstack(points)
 
 
-
-
 def offset_polygon(points: np.ndarray, distance: float) -> np.ndarray:
     """
     Offset a convex polygon (ordered CCW) outward by distance.

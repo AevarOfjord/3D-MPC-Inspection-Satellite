@@ -71,10 +71,16 @@ class TestConfigModelIntegration:
             model_dir = model.thruster_directions[thruster_id]
 
             # Convert both to tuples for comparison (config has arrays, model has tuples)
-            config_tuple = tuple(config_dir) if isinstance(config_dir, np.ndarray) else config_dir
-            model_tuple = tuple(model_dir) if isinstance(model_dir, np.ndarray) else model_dir
+            config_tuple = (
+                tuple(config_dir) if isinstance(config_dir, np.ndarray) else config_dir
+            )
+            model_tuple = (
+                tuple(model_dir) if isinstance(model_dir, np.ndarray) else model_dir
+            )
 
-            assert config_tuple == model_tuple, f"Thruster {thruster_id} direction mismatch"
+            assert config_tuple == model_tuple, (
+                f"Thruster {thruster_id} direction mismatch"
+            )
 
 
 @pytest.mark.integration
@@ -106,7 +112,10 @@ class TestSystemInitialization:
         assert config.app_config.mpc.solver_time_limit < config.app_config.mpc.dt
 
         # Control horizon should not exceed prediction horizon
-        assert config.app_config.mpc.control_horizon <= config.app_config.mpc.prediction_horizon
+        assert (
+            config.app_config.mpc.control_horizon
+            <= config.app_config.mpc.prediction_horizon
+        )
 
 
 @pytest.mark.integration

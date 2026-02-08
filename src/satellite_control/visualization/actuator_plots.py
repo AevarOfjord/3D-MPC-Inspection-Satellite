@@ -168,7 +168,9 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
         ax_top.set_yticklabels(["OFF", "ON"])
         ax_top.grid(True, alpha=0.3)
         ax_top.set_ylabel("Valve State")
-        ax_top.set_title(f"Thruster {thruster_id} - {plot_gen.system_title}", fontsize=12)
+        ax_top.set_title(
+            f"Thruster {thruster_id} - {plot_gen.system_title}", fontsize=12
+        )
 
         ax_bot.plot(time, cmds, color="red", linewidth=1.5)
         ax_bot.fill_between(time, cmds, color="red", alpha=0.2)
@@ -456,7 +458,9 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
     if df is not None and "Command_Vector" in cols:
         for cmd_str in df["Command_Vector"].values:
             command_vectors.append(
-                parse_command_vector(cmd_str, plot_gen.data_accessor, plot_gen.app_config)
+                parse_command_vector(
+                    cmd_str, plot_gen.data_accessor, plot_gen.app_config
+                )
             )
     else:
         for idx in range(plot_gen._get_len()):
@@ -488,7 +492,9 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
             linewidth=PlotStyle.LINEWIDTH,
             label="Sum Thruster Command",
         )
-        axes[0].axhline(y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit")
+        axes[0].axhline(
+            y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit"
+        )
         axes[0].set_ylabel("Command (0-1)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
@@ -621,7 +627,9 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
     if df is not None and "Command_Vector" in cols:
         for cmd_str in df["Command_Vector"].values:
             command_vectors.append(
-                parse_command_vector(cmd_str, plot_gen.data_accessor, plot_gen.app_config)
+                parse_command_vector(
+                    cmd_str, plot_gen.data_accessor, plot_gen.app_config
+                )
             )
     else:
         for idx in range(plot_gen._get_len()):
@@ -666,7 +674,9 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
     dt_steps = np.diff(time[:min_len], prepend=time[0])
     if min_len > 1:
         fallback_dt = (
-            float(np.median(dt_steps[1:])) if np.any(dt_steps[1:]) else float(plot_gen.dt)
+            float(np.median(dt_steps[1:]))
+            if np.any(dt_steps[1:])
+            else float(plot_gen.dt)
         )
     else:
         fallback_dt = float(plot_gen.dt)

@@ -59,10 +59,9 @@ class MPCRunner:
             try:
                 default_thruster_count = len(self.config.physics.thruster_positions)
             except Exception:
+                logger.debug("Failed to read thruster count from config")
                 default_thruster_count = THRUSTER_COUNT
-        self.thruster_count = getattr(
-            self.mpc, "num_thrusters", default_thruster_count
-        )
+        self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         self.command_history: deque = deque(

@@ -145,7 +145,9 @@ class TestVisualizationComponentsIntegration:
         # Create mock data accessor
         mock_accessor = MagicMock()
         mock_accessor._col = MagicMock(return_value=np.array([0.0, 1.0, 2.0, 3.0, 4.0]))
-        mock_accessor._row = MagicMock(return_value={"Current_X": 1.0, "Current_Y": 2.0})
+        mock_accessor._row = MagicMock(
+            return_value={"Current_X": 1.0, "Current_Y": 2.0}
+        )
         mock_accessor._get_len = MagicMock(return_value=5)
 
         # Both should be able to use the same data accessor
@@ -184,9 +186,7 @@ class TestErrorRecovery:
         assert initializer.simulation_config is None
 
         # Should still be able to initialize (will use SatelliteConfig)
-        with patch(
-            "src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"
-        ):
+        with patch("src.satellite_control.core.cpp_satellite.CppSatelliteSimulator"):
             # Should not raise exception
             try:
                 initializer.initialize(

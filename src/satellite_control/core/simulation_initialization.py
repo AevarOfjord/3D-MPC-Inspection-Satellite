@@ -266,9 +266,7 @@ class SimulationInitializer:
                 guidance = ""
             else:
                 guidance = " Build the extension with 'pip install -e .'."
-            raise RuntimeError(
-                f"C++ Physics Engine unavailable: {e}.{guidance}"
-            ) from e
+            raise RuntimeError(f"C++ Physics Engine unavailable: {e}.{guidance}") from e
 
         self.simulation.satellite.external_simulation_mode = True
 
@@ -372,7 +370,9 @@ class SimulationInitializer:
         self.simulation.mpc_info_history: List[dict] = []
 
         history_max_steps = int(
-            getattr(self.simulation_config.app_config.simulation, "history_max_steps", 0)
+            getattr(
+                self.simulation_config.app_config.simulation, "history_max_steps", 0
+            )
             or 0
         )
         history_downsample_stride = int(
@@ -465,9 +465,9 @@ class SimulationInitializer:
                 "velocity_tolerance": self.simulation.velocity_tolerance,
                 "angular_velocity_tolerance": self.simulation.angular_velocity_tolerance,
             },
-            app_config=self.simulation_config.app_config
-            if self.simulation_config
-            else None,
+            app_config=(
+                self.simulation_config.app_config if self.simulation_config else None
+            ),
         )
 
     def _initialize_io_helper(self) -> None:

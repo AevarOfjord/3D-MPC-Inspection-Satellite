@@ -457,17 +457,17 @@ class TestSensorNoise:
         # V4.0.0: Patch app_config.physics instead of SatelliteConfig
         # Create a mock app_config with noise parameters
         from unittest.mock import MagicMock
-        
+
         mock_physics = MagicMock()
         mock_physics.use_realistic_physics = True
         mock_physics.position_noise_std = 0.01
         mock_physics.velocity_noise_std = 0.01
         mock_physics.angle_noise_std = 0.01
         mock_physics.angular_velocity_noise_std = 0.01
-        
+
         mock_app_config = MagicMock()
         mock_app_config.physics = mock_physics
-        
+
         # Patch the validator's app_config
         validator.app_config = mock_app_config
 

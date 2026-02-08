@@ -115,11 +115,11 @@ MOMENT_OF_INERTIA = (1 / 6) * TOTAL_MASS * SATELLITE_SIZE**2
 # Thruster configuration (6 thrusters, one per face)
 HALF_SIZE = SATELLITE_SIZE * 0.5
 THRUSTER_POSITIONS = {
-    1: (HALF_SIZE, 0.0, 0.0),   # +X face
+    1: (HALF_SIZE, 0.0, 0.0),  # +X face
     2: (-HALF_SIZE, 0.0, 0.0),  # -X face
-    3: (0.0, HALF_SIZE, 0.0),   # +Y face
+    3: (0.0, HALF_SIZE, 0.0),  # +Y face
     4: (0.0, -HALF_SIZE, 0.0),  # -Y face
-    5: (0.0, 0.0, HALF_SIZE),   # +Z face
+    5: (0.0, 0.0, HALF_SIZE),  # +Z face
     6: (0.0, 0.0, -HALF_SIZE),  # -Z face
 }
 

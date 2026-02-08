@@ -4,10 +4,14 @@ Tests for caching utilities.
 Tests caching decorators and utilities.
 """
 
-
 from src.satellite_control.config import physics as physics_cfg
 
-from src.satellite_control.config.models import AppConfig, MPCParams, SatellitePhysicalParams, SimulationParams
+from src.satellite_control.config.models import (
+    AppConfig,
+    MPCParams,
+    SatellitePhysicalParams,
+    SimulationParams,
+)
 from src.satellite_control.utils.caching import (
     cache_by_config,
     cache_key_from_config,
@@ -53,6 +57,7 @@ class TestCached:
 
     def test_cache_info(self):
         """@cached should provide cache_info."""
+
         @cached(maxsize=128)
         def expensive_function(x):
             return x * 2
@@ -131,6 +136,7 @@ class TestCacheByConfig:
 
     def test_cache_info(self):
         """@cache_by_config should provide cache_info."""
+
         @cache_by_config(maxsize=10)
         def build_matrices(config, horizon):
             return {"config": config, "horizon": horizon}
@@ -230,6 +236,7 @@ class TestCacheWithStats:
 
     def test_stats_tracking(self):
         """@cache_with_stats should track cache statistics."""
+
         @cache_with_stats(maxsize=128)
         def expensive_function(x):
             return x * 2

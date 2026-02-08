@@ -18,7 +18,6 @@ from src.satellite_control.core.cpp_satellite import CppSatelliteSimulator
 from src.satellite_control.config.models import ReactionWheelParams
 
 
-
 def _build_state(sim: CppSatelliteSimulator) -> np.ndarray:
     pos = sim.position.copy()
     quat = sim.quaternion.copy()
@@ -87,7 +86,10 @@ def run_station_keeping() -> bool:
 
     # Path following: hold at target with tiny segment for tangent stability
     controller.set_path(
-        [tuple(initial_offset), (initial_offset[0] + 0.01, initial_offset[1], initial_offset[2])]
+        [
+            tuple(initial_offset),
+            (initial_offset[0] + 0.01, initial_offset[1], initial_offset[2]),
+        ]
     )
 
     # Simulation parameters
@@ -157,8 +159,8 @@ def run_station_keeping() -> bool:
     passed = (max_error < max_error_threshold) and (final_error < final_error_threshold)
 
     print(
-        f"\nStation-keeping ≤{max_error_threshold*100:.0f}cm max / "
-        f"≤{final_error_threshold*100:.0f}cm final: {'✓ PASS' if passed else '✗ FAIL'}"
+        f"\nStation-keeping ≤{max_error_threshold * 100:.0f}cm max / "
+        f"≤{final_error_threshold * 100:.0f}cm final: {'✓ PASS' if passed else '✗ FAIL'}"
     )
 
     return bool(passed)

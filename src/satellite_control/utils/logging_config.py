@@ -27,7 +27,7 @@ Usage:
     logger.info("System initialized")
     logger.warning("High solve time detected")
     logger.error("MPC solver failed")
-    
+
     # Structured logging
     logger.info("MPC solve", extra={"solve_time": 0.002, "status": "success"})
 """
@@ -43,7 +43,7 @@ from typing import Any, Dict, Optional
 class StructuredFormatter(logging.Formatter):
     """
     JSON formatter for structured logging.
-    
+
     Formats log records as JSON for easy parsing and analysis.
     """
 
@@ -107,7 +107,9 @@ def setup_logging(
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     elif simple_format:
-        formatter = logging.Formatter(fmt="%(asctime)s, %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        formatter = logging.Formatter(
+            fmt="%(asctime)s, %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        )
     else:
         formatter = logging.Formatter(
             fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -119,7 +121,9 @@ def setup_logging(
         # Force UTF-8 encoding for Windows compatibility
         import io
 
-        utf8_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        utf8_stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
         console_handler = logging.StreamHandler(utf8_stdout)
         console_handler.setLevel(level)
         if structured:
@@ -142,13 +146,13 @@ def setup_logging(
 def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
     """
     Get or create a logger with default configuration.
-    
+
     Convenience function that uses module-level defaults.
-    
+
     Args:
         name: Logger name (typically __name__)
         level: Optional log level override
-        
+
     Returns:
         Configured logger
     """
@@ -162,13 +166,13 @@ def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
 def temporary_log_level(logger_name: str, level: int):
     """
     Context manager for temporarily changing log level.
-    
+
     Usage:
         with temporary_log_level("src.satellite_control.core.mpc_controller", logging.DEBUG):
             # Debug logging enabled here
             mpc_controller.get_control_action(state)
         # Original log level restored
-    
+
     Args:
         logger_name: Name of logger to modify
         level: Temporary log level
@@ -185,10 +189,10 @@ def temporary_log_level(logger_name: str, level: int):
 def configure_module_log_levels(module_levels: Dict[str, int]) -> None:
     """
     Configure log levels for specific modules.
-    
+
     Args:
         module_levels: Dictionary mapping module names to log levels
-        
+
     Example:
         configure_module_log_levels({
             "src.satellite_control.core.mpc_controller": logging.DEBUG,

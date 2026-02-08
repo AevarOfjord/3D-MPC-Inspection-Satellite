@@ -1,8 +1,13 @@
-from typing import Any, List, Optional, Tuple, Union
+from __future__ import annotations
 
-import numpy as np
 import logging
 import sys
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from src.satellite_control.config.models import AppConfig
 
 _CPP_SIM_IMPORT_ERROR: Optional[ImportError] = None
 try:
@@ -12,9 +17,7 @@ except ImportError as exc_src:
         from satellite_control.cpp._cpp_sim import SimulationEngine, SatelliteParams
     except ImportError as exc_installed:
         _CPP_SIM_IMPORT_ERROR = (
-            exc_src
-            if "Python version mismatch" in str(exc_src)
-            else exc_installed
+            exc_src if "Python version mismatch" in str(exc_src) else exc_installed
         )
         # Allow import without compiled module for typing/testing if optional
         SimulationEngine = None  # type: ignore
@@ -36,7 +39,9 @@ logger = logging.getLogger(__name__)
 
 def _raise_cpp_sim_binding_import_error() -> None:
     """Raise a detailed error when C++ simulation bindings cannot be imported."""
-    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ver = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
     original = _CPP_SIM_IMPORT_ERROR or ImportError("Unknown _cpp_sim import error")
     message = (
         "Failed to import C++ simulation bindings (`src.satellite_control.cpp._cpp_sim`). "
@@ -60,12 +65,12 @@ class CppSatelliteSimulator:
     Faster than the legacy Python physics backend for orbital dynamics simulation.
     """
 
-    def __init__(self, app_config: Any):
+    def __init__(self, app_config: AppConfig):
         """
         Initialize the C++ Satellite Simulator.
 
         Args:
-            app_config: Application configuration (AppConfig)
+            app_config: Application configuration.
         """
         if SimulationEngine is None:
             _raise_cpp_sim_binding_import_error()
@@ -108,7 +113,9 @@ class CppSatelliteSimulator:
         self.thruster_deactivation_time = {}
 
         # Pre-allocate command arrays as numpy for efficient C++ bridge crossing
-        self._current_thruster_cmds = np.zeros(self._cpp_params.num_thrusters, dtype=np.float64)
+        self._current_thruster_cmds = np.zeros(
+            self._cpp_params.num_thrusters, dtype=np.float64
+        )
         self._current_rw_torques = np.zeros(3, dtype=np.float64)
 
         # State cache: avoids repeated engine.get_state() calls within one timestep
@@ -117,7 +124,10 @@ class CppSatelliteSimulator:
 
     def _get_cached_state(self) -> np.ndarray:
         """Get state, reusing cache if same timestep."""
-        if self._cached_state is None or self._cached_state_time != self.simulation_time:
+        if (
+            self._cached_state is None
+            or self._cached_state_time != self.simulation_time
+        ):
             self._cached_state = self.engine.get_state()
             self._cached_state_time = self.simulation_time
         return self._cached_state
@@ -138,7 +148,7 @@ class CppSatelliteSimulator:
         # Direct numpy array indexing — no hasattr, no list growth guard
         self._current_thruster_cmds[thruster_id - 1] = level
 
-    def _create_satellite_params(self, cfg: Any):
+    def _create_satellite_params(self, cfg: AppConfig):
         """Create C++ SatelliteParams from AppConfig."""
         params = SatelliteParams()
         params.dt = self.dt
@@ -178,12 +188,16 @@ class CppSatelliteSimulator:
             rws = cfg.reaction_wheels
             params.num_rw = len(rws)
             params.rw_torque_limits = [float(rw.max_torque) for rw in rws]
-            params.rw_inertia = [float(rw.inertia) if hasattr(rw, "inertia") else 0.001 for rw in rws]
+            params.rw_inertia = [
+                float(rw.inertia) if hasattr(rw, "inertia") else 0.001 for rw in rws
+            ]
             if hasattr(params, "rw_speed_limits"):
-                params.rw_speed_limits = [float(getattr(rw, "max_speed", 0.0)) for rw in rws]
+                params.rw_speed_limits = [
+                    float(getattr(rw, "max_speed", 0.0)) for rw in rws
+                ]
         elif hasattr(cfg, "mpc") and hasattr(cfg.mpc, "r_rw_torque"):
-             # Basic fallback if needed, but safe to leave 0
-             pass
+            # Basic fallback if needed, but safe to leave 0
+            pass
         else:
             if hasattr(params, "rw_speed_limits"):
                 params.rw_speed_limits = []
@@ -195,10 +209,16 @@ class CppSatelliteSimulator:
             orbital_cfg = getattr(cfg.physics, "orbital", None)
             if orbital_cfg is not None:
                 if hasattr(params, "orbital_mu"):
-                    params.orbital_mu = float(getattr(orbital_cfg, "mu", OrbitalConfig().mu))
+                    params.orbital_mu = float(
+                        getattr(orbital_cfg, "mu", OrbitalConfig().mu)
+                    )
                 if hasattr(params, "orbital_radius"):
                     params.orbital_radius = float(
-                        getattr(orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius)
+                        getattr(
+                            orbital_cfg,
+                            "orbital_radius",
+                            OrbitalConfig().orbital_radius,
+                        )
                     )
                 if hasattr(params, "orbital_mean_motion"):
                     params.orbital_mean_motion = float(
@@ -213,6 +233,9 @@ class CppSatelliteSimulator:
                 if hasattr(params, "orbital_mean_motion"):
                     params.orbital_mean_motion = float(orbital_default.mean_motion)
         except Exception:
+            logger.warning(
+                "Failed to load orbital config, using Earth LEO defaults", exc_info=True
+            )
             if hasattr(params, "orbital_mu"):
                 params.orbital_mu = 3.986004418e14
             if hasattr(params, "orbital_radius"):
@@ -323,10 +346,11 @@ class CppSatelliteSimulator:
         if steps <= 0:
             return
 
-        self.engine.step_batch(steps, dt, self._current_thruster_cmds, self._current_rw_torques)
+        self.engine.step_batch(
+            steps, dt, self._current_thruster_cmds, self._current_rw_torques
+        )
         self.simulation_time += dt * steps
         self._invalidate_state_cache()
-
 
     # Visualization Compat (Headless Mocks)
     def is_viewer_paused(self):
