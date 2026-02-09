@@ -45,7 +45,7 @@ def _resolve_allowed_model_path(path_value: str) -> Path:
 
     raise HTTPException(
         status_code=400,
-        detail="Model path must be inside OBJ_files or ui/public/OBJ_files",
+        detail="Model path must be inside model_files or ui/public/model_files",
     )
 
 
@@ -72,8 +72,8 @@ async def serve_model_file(path: str):
 async def list_model_files():
     """List available OBJ models in the repository."""
     search_dirs = [
-        _project_root / "assets" / "OBJ_files",
-        _project_root / "assets" / "OBJ_files" / "uploads",
+        _project_root / "assets" / "model_files",
+        _project_root / "assets" / "model_files" / "uploads",
     ]
     models: list[dict[str, str]] = []
     for base in search_dirs:
@@ -130,7 +130,7 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
     except Exception:
         aiofiles = None
 
-    upload_dir = Path("assets/OBJ_files/uploads")
+    upload_dir = Path("assets/model_files/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = Path(filename).name

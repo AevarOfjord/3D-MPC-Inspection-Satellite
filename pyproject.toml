@@ -74,7 +74,7 @@ build-dir = "build/{wheel_tag}"
 sdist.exclude = [
     "ui/",
     "ui/node_modules/",
-    "OBJ_files/",
+    "model_files/",
     "data/",
     "docs/",
     "tests/",

@@ -1,7 +1,7 @@
 {
   "id": "Starlink_1.0m",
   "name": "Starlink 1.0m",
-  "obj_path": "OBJ_files/Starlink/starlink.obj",
+  "obj_path": "model_files/Starlink/starlink.obj",
   "path": [
     [
       10.187623362886878,
@@ -41357,7 +41357,7 @@
   "open": true,
   "relative_to_obj": true,
   "mesh_scan": {
-    "obj_path": "OBJ_files/Starlink/starlink.obj",
+    "obj_path": "model_files/Starlink/starlink.obj",
     "standoff": 0.5,
     "levels": 8,
     "level_spacing": 1.0,

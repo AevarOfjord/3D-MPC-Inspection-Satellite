@@ -10,7 +10,7 @@ include requirements-dev.txt
 
 # Exclude non-essential directories
 prune ui
-prune OBJ_files
+prune model_files
 prune Data
 prune docs
 prune tests

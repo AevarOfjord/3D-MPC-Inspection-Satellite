@@ -26,8 +26,8 @@ logger = logging.getLogger("dashboard")
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = PROJECT_ROOT / "data" / "Simulation"
 MODEL_ALLOWED_ROOTS = (
-    (PROJECT_ROOT / "assets" / "OBJ_files").resolve(),
-    (PROJECT_ROOT / "ui" / "public" / "OBJ_files").resolve(),
+    (PROJECT_ROOT / "assets" / "model_files").resolve(),
+    (PROJECT_ROOT / "ui" / "public" / "model_files").resolve(),
 )
 
 # --- Global Singleton ---
