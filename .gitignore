@@ -66,3 +66,5 @@ src/satellite_control/cpp/*.pyd
 # Docs build output
 docs/_build/
 docs/_static/
+src/python/satellite_control/cpp/*.so
+src/python/satellite_control/cpp/*.dylib

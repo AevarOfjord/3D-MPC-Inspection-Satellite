@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 pytest.skip(
     "MissionManager and ShapeFollowingMissionPlugin not yet implemented",

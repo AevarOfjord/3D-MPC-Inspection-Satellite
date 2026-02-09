@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-
 from satellite_control.core.simulation_io import SimulationIO
 
 

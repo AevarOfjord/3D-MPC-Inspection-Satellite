@@ -1,4 +1,5 @@
 import unittest
+
 import numpy as np
 from satellite_control.core.thruster_manager import ThrusterManager
 

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
 from satellite_control.core.simulation_context import SimulationContext
 from satellite_control.core.simulation_logger import SimulationLogger
 from satellite_control.utils.data_logger import DataLogger

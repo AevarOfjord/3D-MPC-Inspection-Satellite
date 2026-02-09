@@ -13,8 +13,8 @@ class TestConfigModelIntegration:
 
     def test_config_and_model_thruster_counts_match(self):
         """Test that config and model have same number of thrusters."""
-        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.config import physics as physics_cfg
+        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.core import model
 
         config = SimulationConfig.create_default()
@@ -38,8 +38,8 @@ class TestConfigModelIntegration:
 
     def test_config_thruster_positions_match_model(self):
         """Test that thruster positions in config match model."""
-        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.config import physics as physics_cfg
+        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.core import model
 
         config = SimulationConfig.create_default()
@@ -54,9 +54,8 @@ class TestConfigModelIntegration:
     def test_config_thruster_directions_match_model(self):
         """Test that thruster directions in config match model."""
         import numpy as np
-
-        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.config import physics as physics_cfg
+        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.core import model
 
         config = SimulationConfig.create_default()
@@ -120,7 +119,6 @@ class TestPhysicsComputation:
     def test_can_compute_dynamics_for_single_thruster(self):
         """Test computing satellite dynamics with one thruster firing."""
         import numpy as np
-
         from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.core import model
 
@@ -150,9 +148,8 @@ class TestPhysicsComputation:
     def test_can_compute_dynamics_for_all_thrusters(self):
         """Test computing dynamics with all thrusters."""
         import numpy as np
-
-        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.config import physics as physics_cfg
+        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.core import model
 
         config = SimulationConfig.create_default()

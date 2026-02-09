@@ -1,9 +1,9 @@
-import pytest
-from fastapi.testclient import TestClient
-from pathlib import Path
 import json
 import os
+from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
 from satellite_control.dashboard.app import app
 
 client = TestClient(app)
@@ -12,7 +12,7 @@ client = TestClient(app)
 @pytest.fixture
 def clean_missions():
     """Cleanup missions directory before and after tests."""
-    missions_dir = Path("missions_unified")
+    missions_dir = Path("missions")
     missions_dir.mkdir(parents=True, exist_ok=True)
 
     # Backup existing
@@ -45,17 +45,17 @@ def test_save_mission(clean_missions):
     assert response.json()["filename"] == "TestMission1.json"
 
     # Verify file exists
-    assert Path("missions_unified/TestMission1.json").exists()
+    assert Path("missions/TestMission1.json").exists()
 
     # Verify content
-    saved = json.loads(Path("missions_unified/TestMission1.json").read_text())
+    saved = json.loads(Path("missions/TestMission1.json").read_text())
     assert saved["start_pose"]["position"] == [1.0, 2.0, 3.0]
 
 
 def test_list_saved_missions(clean_missions):
     # create dummy file
-    Path("missions_unified/UnifiedAlpha.json").touch()
-    Path("missions_unified/UnifiedBeta.json").touch()
+    Path("missions/UnifiedAlpha.json").touch()
+    Path("missions/UnifiedBeta.json").touch()
 
     response = client.get("/saved_missions_v2")
     assert response.status_code == 200

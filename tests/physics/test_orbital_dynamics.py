@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 from satellite_control.config.orbital_config import OrbitalConfig
 from satellite_control.physics.orbital_dynamics import (
     CWDynamics,

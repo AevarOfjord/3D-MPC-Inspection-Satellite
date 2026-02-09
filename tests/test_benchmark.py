@@ -45,8 +45,8 @@ class TestMPCBenchmarks:
     @pytest.fixture
     def mpc_controller(self):
         """Create an MPCController instance for benchmarking."""
-        from satellite_control.control.mpc_controller import MPCController
         from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.control.mpc_controller import MPCController
 
         sim_config = SimulationConfig.create_default()
         app_config = sim_config.app_config
@@ -247,6 +247,7 @@ class TestMPCRegressionDetection:
         Marked slow - runs 100 solves and checks memory growth.
         """
         import os
+
         import psutil
 
         x_current = make_state(

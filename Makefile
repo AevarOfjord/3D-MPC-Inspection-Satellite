@@ -1,5 +1,3 @@
-.PHONY: run backend frontend sim build rebuild clean-build install install-dev venv clean test lint check-python help
-
 # ============================================================================
 # Cross-platform detection
 # ============================================================================
@@ -93,13 +91,13 @@ dashboard: run
 backend:
 	@echo "Stopping any existing process on port 8000..."
 	@$(KILL_PORT)
-	PYTHONPATH="$(CURDIR)/src$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) run_dashboard.py
+	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
 
 frontend:
 	cd ui && npm install && npm run dev
 
 sim:
-	PYTHONPATH="$(CURDIR)/src$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) run_simulation.py
+	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_simulation.py
 
 # ============================================================================
 # Build targets
@@ -136,7 +134,10 @@ install: venv
 		$(VENV_PIP) install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 	@echo "=== Copying extension files ==="
-	@cp $(BUILD_GLOB) src/satellite_control/cpp/ 2>/dev/null || true
+	@# We copy extensions to src/python/satellite_control/cpp to be importable
+	@mkdir -p src/python/satellite_control/cpp
+	@cp $(BUILD_GLOB) src/python/satellite_control/cpp/ 2>/dev/null || true
+	@# Also copy to src/satellite_control/cpp if it exists in site-packages (handled by pip install -e .)
 
 install-dev: venv
 	@echo ""
@@ -151,17 +152,18 @@ install-dev: venv
 		$(VENV_PIP) install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 	@echo "=== Copying extension files ==="
-	@cp $(BUILD_GLOB) src/satellite_control/cpp/ 2>/dev/null || true
+	@mkdir -p src/python/satellite_control/cpp
+	@cp $(BUILD_GLOB) src/python/satellite_control/cpp/ 2>/dev/null || true
 
 # ============================================================================
 # Quality targets
 # ============================================================================
 
 test:
-	PYTHONPATH="$(CURDIR)/src$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
+	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
 
 lint:
-	PYTHONPATH="$(CURDIR)/src$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src tests
+	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
 	cd ui && npx eslint .
 
 # ============================================================================
@@ -171,14 +173,14 @@ lint:
 clean-build:
 	@echo "Cleaning build artifacts..."
 	@rm -rf build/cp3*
-	@rm -f src/satellite_control/cpp/*$(EXT_SUFFIX)
+	@rm -f src/python/satellite_control/cpp/*$(EXT_SUFFIX)
 	@rm -rf $(VENV_DIR)
 	@rm -rf dist
 	@echo "Done."
 
 clean:
 	@rm -rf $(VENV_DIR) build dist src/lib
-	@rm -f src/satellite_control/cpp/*$(EXT_SUFFIX)
+	@rm -f src/python/satellite_control/cpp/*$(EXT_SUFFIX)
 	@rm -rf ui/node_modules/.vite
 	@rm -rf .pytest_cache .ruff_cache
 	@echo "Cleaned."

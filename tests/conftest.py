@@ -25,7 +25,6 @@ from unittest.mock import MagicMock
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-
 from satellite_control.config.simulation_config import SimulationConfig
 
 # ============================================================================

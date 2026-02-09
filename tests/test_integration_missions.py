@@ -8,17 +8,15 @@ Tests complete mission scenarios including:
 - MPC controller integration with simulation
 """
 
+import warnings
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from typing import Any, Dict
-import warnings
-
-import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from pathlib import Path
-
 from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 # Suppress matplotlib animation GC warnings triggered during headless tests
@@ -54,7 +52,7 @@ def close_figures():
 def simple_simulation():
     """Create a simple simulation instance for testing."""
     # Use a config override to ensure controlled test environment
-    config_overrides: Dict[str, Dict[str, Any]] = {
+    config_overrides: dict[str, dict[str, Any]] = {
         "mpc": {
             "prediction_horizon": 10,
             "control_horizon": 8,

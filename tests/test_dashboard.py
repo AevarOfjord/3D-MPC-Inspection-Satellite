@@ -7,7 +7,6 @@ Tests the REST endpoints without starting a real server.
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -135,7 +134,7 @@ class TestAssetRoutes:
         resp = client.get("/api/models/list")
         assert resp.status_code == 200
         body = resp.json()
-        assert isinstance(body, (list, dict))
+        assert isinstance(body, list | dict)
 
     def test_path_assets_list(self, client: TestClient):
         """GET /path_assets should return assets."""

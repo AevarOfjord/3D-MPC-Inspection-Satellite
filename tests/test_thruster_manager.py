@@ -6,7 +6,6 @@ Tests thruster command processing, valve delays, and PWM logic.
 
 import numpy as np
 import pytest
-
 from satellite_control.core.thruster_manager import ThrusterManager
 
 

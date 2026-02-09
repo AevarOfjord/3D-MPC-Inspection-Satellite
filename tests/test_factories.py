@@ -5,7 +5,7 @@ Provides factory methods for creating pre-configured test objects,
 reducing the need for extensive mocking in integration tests.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -46,7 +46,7 @@ class TestSimulationFactory:
         },
     }
 
-    def __init__(self, config_overrides: Optional[Dict[str, Any]] = None):
+    def __init__(self, config_overrides: dict[str, Any] | None = None):
         """
         Initialize factory with optional default config overrides.
 
@@ -57,11 +57,11 @@ class TestSimulationFactory:
 
     def create_simulation(
         self,
-        start_pos: Tuple[float, float] = (0.5, 0.5),
-        end_pos: Tuple[float, float] = (0.0, 0.0),
-        start_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-        end_angle: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-        config_overrides: Optional[Dict[str, Any]] = None,
+        start_pos: tuple[float, float] = (0.5, 0.5),
+        end_pos: tuple[float, float] = (0.0, 0.0),
+        start_angle: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        end_angle: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        config_overrides: dict[str, Any] | None = None,
     ):
         """
         Create a simulation instance for testing.
@@ -97,8 +97,8 @@ class TestSimulationFactory:
 
     def create_headless_simulation(
         self,
-        start_pos: Tuple[float, float] = (0.5, 0.5),
-        end_pos: Tuple[float, float] = (0.0, 0.0),
+        start_pos: tuple[float, float] = (0.5, 0.5),
+        end_pos: tuple[float, float] = (0.0, 0.0),
         **kwargs,
     ):
         """
@@ -120,8 +120,8 @@ class TestSimulationFactory:
 
     def create_mock_mpc_controller(
         self,
-        default_action: Optional[np.ndarray] = None,
-        info: Optional[Dict[str, Any]] = None,
+        default_action: np.ndarray | None = None,
+        info: dict[str, Any] | None = None,
     ) -> MagicMock:
         """
         Create a mock MPC controller for testing.
@@ -166,12 +166,12 @@ class TestSimulationFactory:
         return mock_sat
 
     @staticmethod
-    def _merge_configs(*configs: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_configs(*configs: dict[str, Any]) -> dict[str, Any]:
         """
         Deep merge multiple config dictionaries.
 
         """
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for config in configs:
             for section, values in config.items():
                 if section not in result:
@@ -220,7 +220,7 @@ class MockMPCContext:
     def return_action(
         self,
         action: np.ndarray,
-        info: Optional[Dict[str, Any]] = None,
+        info: dict[str, Any] | None = None,
     ):
         """Set the action that MPC will return."""
         default_info = info or {

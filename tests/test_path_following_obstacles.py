@@ -1,5 +1,4 @@
 import numpy as np
-
 from satellite_control.config.constants import Constants
 from satellite_control.mission.path_following import build_point_to_point_path
 
