@@ -1,0 +1,1543 @@
+
+#include "mpc_controller.hpp"
+#include <Eigen/Geometry>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <unordered_set>
+
+namespace satellite_control {
+
+MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCParams& mpc_params)
+    : sat_params_(sat_params), mpc_params_(mpc_params) {
+
+    // Path Following State Augmentation
+    // Path Following Configuration (Default)
+    nx_ = 17; // 13 base + 3 wheel speeds + 1 path param (s)
+
+    N_ = mpc_params_.prediction_horizon;
+    dt_ = mpc_params_.dt;
+    control_horizon_ = std::max(1, std::min(mpc_params_.control_horizon, N_));
+
+    // Control: RW + Thrusters + 1 virtual path velocity v_s
+    nu_ = sat_params_.num_rw + sat_params_.num_thrusters + 1;
+
+    // Create linearizer
+    linearizer_ = std::make_unique<Linearizer>(sat_params_);
+
+    // Precompute weight vectors
+    Q_diag_.resize(nx_);
+    // Path-following: contouring handles position, velocity alignment handled in update_path_cost.
+    // Disable quaternion tracking to avoid penalizing unit quaternion magnitude.
+    Q_diag_ << VectorXd::Constant(3, 2.0 * mpc_params_.Q_contour),
+               VectorXd::Constant(4, 2.0 * mpc_params_.Q_attitude),
+               VectorXd::Constant(3, 0.0),
+               VectorXd::Constant(3, mpc_params_.Q_angvel),
+               VectorXd::Constant(3, 0.0), // Wheel speeds
+               VectorXd::Constant(1, 0.0); // s diagonal updated per-step
+
+    R_diag_.resize(nu_);
+    R_diag_ << VectorXd::Constant(sat_params_.num_rw, mpc_params_.R_rw_torque),
+               VectorXd::Constant(sat_params_.num_thrusters, mpc_params_.R_thrust),
+               VectorXd::Constant(1, mpc_params_.Q_smooth + mpc_params_.Q_progress);
+
+    // Control bounds
+    control_lower_.resize(nu_);
+    control_upper_.resize(nu_);
+
+    double v_s_min = std::max(0.0, mpc_params_.path_speed_min);
+    double v_s_max = mpc_params_.path_speed_max;
+    if (v_s_max <= 0.0) {
+        v_s_max = mpc_params_.path_speed;
+    }
+    if (v_s_min > v_s_max) {
+        std::swap(v_s_min, v_s_max);
+    }
+    control_lower_ << VectorXd::Constant(sat_params_.num_rw, -1.0),
+                      VectorXd::Zero(sat_params_.num_thrusters),
+                      VectorXd::Constant(1, v_s_min); // v_s >= min speed
+    control_upper_ << VectorXd::Constant(sat_params_.num_rw, 1.0),
+                      VectorXd::Ones(sat_params_.num_thrusters),
+                      VectorXd::Constant(1, v_s_max); // v_s max bound
+
+    // Initialize quaternion tracking
+    prev_quat_ << -999, -999, -999, -999;
+
+    // Initialize path following state
+    s_guess_.resize(N_ + 1, 0.0);
+
+    // Initialize solver
+    init_solver();
+
+    dyn_affine_ = VectorXd::Zero(nx_);
+}
+
+MPCControllerCpp::~MPCControllerCpp() {
+    cleanup_solver();
+}
+
+// ----------------------------------------------------------------------------
+// Initialization & Helpers
+// ----------------------------------------------------------------------------
+
+void MPCControllerCpp::cleanup_solver() {
+    if (work_) {
+        osqp_cleanup(work_);
+        work_ = nullptr;
+    }
+    if (data_) {
+        if (data_->P) {
+            c_free(data_->P);
+        }
+        if (data_->A) {
+            c_free(data_->A);
+        }
+        c_free(data_);
+        data_ = nullptr;
+    }
+    if (settings_) {
+        c_free(settings_);
+        settings_ = nullptr;
+    }
+}
+
+void MPCControllerCpp::rebuild_solver() {
+    cleanup_solver();
+    init_solver();
+}
+
+void MPCControllerCpp::init_solver() {
+    int n_vars = (N_ + 1) * nx_ + N_ * nu_;
+    // Path-focused MPCC: obstacles are ignored by design.
+    obs_per_step_ = 0;
+
+    // 1. Build P matrix (Cost)
+    std::vector<Eigen::Triplet<double>> P_triplets;
+    build_P_matrix(P_triplets, n_vars);
+
+    P_.resize(n_vars, n_vars);
+    P_.setFromTriplets(P_triplets.begin(), P_triplets.end());
+    P_.makeCompressed();
+
+    // 2. Build A matrix (Constraints)
+    std::vector<Eigen::Triplet<double>> A_triplets;
+    if (linearizer_) {
+        linearizer_->set_freeze_target(true);
+    }
+    build_A_matrix(A_triplets);
+    if (linearizer_) {
+        linearizer_->set_freeze_target(false);
+    }
+
+    // Count constraints based on structure:
+    // Dynamics (N*nx) + Initial (nx) + State Bounds ((N+1)*nx) + Control Bounds (N*nu)
+    // + Control Horizon ((N-M)*nu) + Obstacles (N * num_obs)
+    n_dyn_ = N_ * nx_;
+    n_init_ = nx_;
+    n_bounds_x_ = (N_ + 1) * nx_;
+    n_bounds_u_ = N_ * nu_;
+    n_control_horizon_constraints_ = (control_horizon_ < N_) ? (N_ - control_horizon_) * nu_ : 0;
+    obs_per_step_ = static_cast<int>(obstacles_.size());
+    n_obs_constraints_ = (obs_per_step_ > 0) ? (N_ * obs_per_step_) : 0;
+    int n_constraints = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_ + n_obs_constraints_;
+
+    A_.resize(n_constraints, n_vars);
+    A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
+    A_.makeCompressed();
+
+    // 3. Build index maps for fast updates
+
+    // A. Obstacle update indices
+    // Row layout: [dyn, init, bounds_x, bounds_u, ctrl_horizon, obs]
+    obs_row_start_ = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_;
+    obs_A_indices_.clear();
+    if (n_obs_constraints_ > 0) {
+        obs_A_indices_.resize(n_obs_constraints_);
+        for (int row_local = 0; row_local < n_obs_constraints_; ++row_local) {
+            obs_A_indices_[row_local] = { -1, -1, -1 };
+            int row = obs_row_start_ + row_local;
+            int k = row_local / obs_per_step_;
+            int x_k_idx = k * nx_;
+            for (int i = 0; i < 3; ++i) {
+                int col = x_k_idx + i;
+                bool found = false;
+                // Search in column 'col' for row 'row' in CSC matrix
+                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (A_.innerIndexPtr()[idx] == row) {
+                        obs_A_indices_[row_local][i] = idx;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std::cerr << "[MPC] Error: Could not find obstacle constraint entry at row="
+                              << row_local << ", i=" << i << std::endl;
+                }
+            }
+        }
+    }
+
+    // B. Actuator dynamics index map (B matrix updates)
+    B_idx_map_.resize(nx_ * nu_);
+    for (auto &v : B_idx_map_) {
+        v.clear();
+    }
+    int u_start_idx = (N_ + 1) * nx_;
+    for (int k = 0; k < N_; ++k) {
+        int current_row_base = k * nx_;
+        for (int r = 0; r < nx_; ++r) {
+            for (int c = 0; c < nu_; ++c) {
+                int col = u_start_idx + k * nu_ + c;
+                // Find index in CSC format
+                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (A_.innerIndexPtr()[idx] == current_row_base + r) {
+                        B_idx_map_[r * nu_ + c].push_back(idx);
+                    }
+                }
+            }
+        }
+    }
+
+    // C. Quaternion dynamics index map (A matrix updates for G-block)
+    // A_dyn rows 3-6, cols 10-12
+    A_idx_map_.resize(4 * 3);
+    for (auto &v : A_idx_map_) {
+        v.clear();
+    }
+    for (int k = 0; k < N_; ++k) {
+        int row_base = k * nx_;
+        int col_base = k * nx_;
+
+        for (int qr = 0; qr < 4; ++qr) {      // Relative rows 3-6
+            for (int oc = 0; oc < 3; ++oc) {  // Relative cols 10-12
+                int row = row_base + 3 + qr;
+                int col = col_base + 10 + oc;
+
+                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (A_.innerIndexPtr()[idx] == row) {
+                        A_idx_map_[qr * 3 + oc].push_back(idx);
+                    }
+                }
+            }
+        }
+    }
+
+    // D. Orbital/velocity dynamics index map (rows 7-9, cols 0-9)
+    A_orbital_idx_map_.resize(3 * 10);
+    for (auto &v : A_orbital_idx_map_) {
+        v.clear();
+    }
+    for (int k = 0; k < N_; ++k) {
+        int row_base = k * nx_;
+        int col_base = k * nx_;
+        for (int vr = 0; vr < 3; ++vr) {
+            for (int vc = 0; vc < 10; ++vc) {
+                int row = row_base + 7 + vr;
+                int col = col_base + vc;
+                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (A_.innerIndexPtr()[idx] == row) {
+                        A_orbital_idx_map_[vr * 10 + vc].push_back(idx);
+                    }
+                }
+            }
+        }
+    }
+
+    // E. Path Following P-matrix index map
+    // We need to find the indices in P_data_ for the cross terms (0,16), (1,16), (2,16)
+    path_P_indices_.resize(N_ + 1);
+    path_s_diag_indices_.resize(N_ + 1);
+    path_vel_P_indices_.resize(N_ + 1);
+    path_pos_diag_indices_.resize(N_ + 1);
+    path_pos_offdiag_indices_.resize(N_ + 1);
+    int s_offset = 16;
+    int v_offset = 7;
+
+    for (int k = 0; k <= N_; ++k) { // Include terminal
+        path_P_indices_[k].resize(3);
+        path_pos_diag_indices_[k].resize(3);
+        path_pos_offdiag_indices_[k].resize(3);
+        int base_idx = k * nx_;
+
+        // P is symmetric, we added (row, col) with row < col.
+        // In CSC, we look for column 'col' and row 'row'.
+        int col = base_idx + s_offset;
+
+        for (int i = 0; i < 3; ++i) {
+            int row = base_idx + i;
+            bool found = false;
+
+            // Search column 'col'
+            for (int idx = P_.outerIndexPtr()[col]; idx < P_.outerIndexPtr()[col + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == row) {
+                    path_P_indices_[k][i] = idx;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                 std::cerr << "[MPC] Error: P-matrix cross term not found at k=" << k << ", i=" << i << std::endl;
+            }
+        }
+
+        // Find s diagonal index
+        int s_row = base_idx + s_offset;
+        int s_col = base_idx + s_offset;
+        bool s_found = false;
+        for (int idx = P_.outerIndexPtr()[s_col]; idx < P_.outerIndexPtr()[s_col + 1]; ++idx) {
+            if (P_.innerIndexPtr()[idx] == s_row) {
+                path_s_diag_indices_[k] = idx;
+                s_found = true;
+                break;
+            }
+        }
+        if (!s_found) {
+            std::cerr << "[MPC] Error: P-matrix s diagonal not found at k=" << k << std::endl;
+        }
+
+        // Find position diagonal indices for x,y,z
+        for (int i = 0; i < 3; ++i) {
+            int diag_col = base_idx + i;
+            int diag_row = base_idx + i;
+            bool pos_found = false;
+            for (int idx = P_.outerIndexPtr()[diag_col]; idx < P_.outerIndexPtr()[diag_col + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == diag_row) {
+                    path_pos_diag_indices_[k][i] = idx;
+                    pos_found = true;
+                    break;
+                }
+            }
+            if (!pos_found) {
+                std::cerr << "[MPC] Error: P-matrix position diagonal not found at k=" << k
+                          << ", i=" << i << std::endl;
+            }
+        }
+
+        // Find position off-diagonal indices for (x,y), (x,z), (y,z)
+        struct PosPair { int row; int col; int slot; };
+        std::array<PosPair, 3> pairs = {
+            PosPair{base_idx + 0, base_idx + 1, 0},
+            PosPair{base_idx + 0, base_idx + 2, 1},
+            PosPair{base_idx + 1, base_idx + 2, 2},
+        };
+        for (const auto &pair : pairs) {
+            bool off_found = false;
+            for (int idx = P_.outerIndexPtr()[pair.col]; idx < P_.outerIndexPtr()[pair.col + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == pair.row) {
+                    path_pos_offdiag_indices_[k][pair.slot] = idx;
+                    off_found = true;
+                    break;
+                }
+            }
+            if (!off_found) {
+                std::cerr << "[MPC] Error: P-matrix position off-diagonal not found at k=" << k
+                          << ", slot=" << pair.slot << std::endl;
+            }
+        }
+
+        // Find velocity block indices (upper triangular)
+        path_vel_P_indices_[k].resize(6);
+        int vel_idx = 0;
+        for (int i = 0; i < 3; ++i) {
+            for (int j = i; j < 3; ++j) {
+                int row = base_idx + v_offset + i;
+                int col = base_idx + v_offset + j;
+                bool v_found = false;
+                for (int idx = P_.outerIndexPtr()[col]; idx < P_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (P_.innerIndexPtr()[idx] == row) {
+                        path_vel_P_indices_[k][vel_idx++] = idx;
+                        v_found = true;
+                        break;
+                    }
+                }
+                if (!v_found) {
+                std::cerr << "[MPC] Error: P-matrix velocity entry not found at k=" << k
+                          << ", i=" << i << ", j=" << j << std::endl;
+                }
+            }
+        }
+    }
+
+    // Cache indices for partial P updates (path-related entries only)
+    {
+        std::unordered_set<c_int> unique;
+        auto add_index = [&](int idx) {
+            if (idx >= 0) {
+                unique.insert(static_cast<c_int>(idx));
+            }
+        };
+        for (int k = 0; k <= N_; ++k) {
+            for (int i = 0; i < 3; ++i) {
+                add_index(path_P_indices_[k][i]);
+                add_index(path_pos_diag_indices_[k][i]);
+            }
+            for (int idx : path_pos_offdiag_indices_[k]) {
+                add_index(idx);
+            }
+            for (int idx : path_vel_P_indices_[k]) {
+                add_index(idx);
+            }
+            add_index(path_s_diag_indices_[k]);
+        }
+
+        path_P_update_indices_.assign(unique.begin(), unique.end());
+        std::sort(path_P_update_indices_.begin(), path_P_update_indices_.end());
+        path_P_update_values_.resize(path_P_update_indices_.size(), 0.0);
+    }
+
+    // 4. Setup Bounds and OSQP workspace
+    setup_osqp_workspace(n_vars, n_constraints);
+}
+
+void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& triplets, int n_vars) {
+    VectorXd P_diag(n_vars);
+
+    // Stage costs (0 to N-1)
+    for (int k = 0; k < N_; ++k) {
+        P_diag.segment(k * nx_, nx_) = Q_diag_;
+    }
+    // Terminal cost (N) - scaled by 10
+    P_diag.segment(N_ * nx_, nx_) = Q_diag_ * 10.0;
+
+    // Control costs (0 to N-1)
+    for (int k = 0; k < N_; ++k) {
+        P_diag.segment((N_ + 1) * nx_ + k * nu_, nu_) = R_diag_; // Augmented nu handles vs cost
+    }
+
+    // Penalize opposing thruster co-firing: w * (u_i + u_j)^2 per axis.
+    if (mpc_params_.thrust_pair_weight > 0.0 && sat_params_.num_thrusters >= 2) {
+        double w = mpc_params_.thrust_pair_weight;
+        int thruster_offset = sat_params_.num_rw;
+        int pair_count = sat_params_.num_thrusters / 2;
+        for (int k = 0; k < N_; ++k) {
+            int base = (N_ + 1) * nx_ + k * nu_;
+            for (int p = 0; p < pair_count; ++p) {
+                int i = base + thruster_offset + 2 * p;
+                int j = i + 1;
+                if (j >= base + thruster_offset + sat_params_.num_thrusters) {
+                    break;
+                }
+                P_diag(i) += 2.0 * w;
+                P_diag(j) += 2.0 * w;
+                triplets.emplace_back(i, j, 2.0 * w);
+            }
+        }
+    }
+
+    for (int i = 0; i < n_vars; ++i) {
+        triplets.emplace_back(i, i, P_diag(i));
+    }
+
+    // Path Following: Pre-allocate cross-terms for (x, s), (y, s), (z, s)
+    // These correspond to the -2 * weight * r^T * t * s term in the cost expansion.
+    // We need sparsity at (k*nx + 0, k*nx + 16), (k*nx + 1, k*nx + 16), etc.
+    // Path Following: Pre-allocate cross-terms for (x, s), (y, s), (z, s)
+    // These correspond to the -2 * weight * r^T * t * s term in the cost expansion.
+    // We need sparsity at (k*nx + 0, k*nx + 16), (k*nx + 1, k*nx + 16), etc.
+    {
+        int s_offset = 16; // Index of s in state vector
+        int v_offset = 7; // Index of velocity block in state vector
+        for (int k = 0; k <= N_; ++k) { // Include terminal cost
+            int base_idx = k * nx_;
+            // Add entries for x, y, z cross s
+            for (int i = 0; i < 3; ++i) {
+                triplets.emplace_back(base_idx + i, base_idx + s_offset, 0.0); // Placeholder
+            }
+            // Add entries for position block off-diagonals (x,y), (x,z), (y,z)
+            triplets.emplace_back(base_idx + 0, base_idx + 1, 0.0);
+            triplets.emplace_back(base_idx + 0, base_idx + 2, 0.0);
+            triplets.emplace_back(base_idx + 1, base_idx + 2, 0.0);
+            // Add entries for velocity block (upper triangular) for tangent alignment cost
+            for (int i = 0; i < 3; ++i) {
+                for (int j = i; j < 3; ++j) {
+                    triplets.emplace_back(base_idx + v_offset + i,
+                                          base_idx + v_offset + j, 0.0); // Placeholder
+                }
+            }
+        }
+    }
+}
+
+void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& triplets) {
+    // Get template A, B matrices around a valid quaternion
+    VectorXd dummy_state = VectorXd::Zero(nx_);
+    dummy_state(3) = 1.0;
+    auto [A_dyn, B_dyn] = linearizer_->linearize(dummy_state);
+
+    int row_idx = 0;
+
+    // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
+    // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
+    for (int k = 0; k < N_; ++k) {
+        int x_k_idx = k * nx_;
+        int x_kp1_idx = (k + 1) * nx_;
+        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
+
+        // -A block
+        for (int r = 0; r < nx_; ++r) {
+            for (int c = 0; c < nx_; ++c) {
+                // Special handling for Path State (index 16)
+                // s_{k+1} = s_k + v_s * dt  =>  -s_k + s_{k+1} - dt*v_s = 0
+                // So A term for s is just 1.0 at (16, 16).
+                if (r == 16) {
+                    if (c == 16) triplets.emplace_back(row_idx + r, x_k_idx + c, -1.0);
+                    continue;
+                }
+
+                // Normal Physics Dynamics (0-15)
+                // Linearizer returns 16x16, so checking bounds
+                if (r < 16 && c < 16) {
+                    // Force inclusion of G-block (rows 3-6, cols 10-12) for quaternion dynamics updates
+                    bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
+                    if (is_g_block || std::abs(A_dyn(r, c)) > 1e-12) {
+                        triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
+                    }
+                }
+            }
+        }
+        // +I block (x_{k+1})
+        for (int r = 0; r < nx_; ++r) {
+            triplets.emplace_back(row_idx + r, x_kp1_idx + r, 1.0);
+        }
+        // -B block
+        for (int r = 0; r < nx_; ++r) {
+            for (int c = 0; c < nu_; ++c) {
+                // Special handling for Path Control (v_s)
+                // v_s is the last control input.
+                // Dynamics: -dt * v_s
+                if (r == 16) {
+                    if (c == nu_ - 1) { // Last control is v_s
+                        triplets.emplace_back(row_idx + r, u_k_idx + c, -mpc_params_.dt);
+                    }
+                    continue;
+                }
+
+                // Normal Physics Limits
+                // B_dyn is 16 rows, (nu-1) cols (if we ignore v_s)
+                int nu_phys = nu_ - 1;
+
+                if (r < 16 && c < nu_phys) {
+                    // Force inclusion of velocity rows (7-12) for updates
+                    bool is_velocity_row = (r >= 7);
+                    if (is_velocity_row || std::abs(B_dyn(r, c)) > 1e-12) {
+                        triplets.emplace_back(row_idx + r, u_k_idx + c, -B_dyn(r, c));
+                    }
+                }
+            }
+        }
+        row_idx += nx_;
+    }
+
+    // 2. Initial state constraint: I*x_0 = x_current
+    for (int r = 0; r < nx_; ++r) {
+        triplets.emplace_back(row_idx + r, r, 1.0);
+    }
+    row_idx += nx_;
+
+    // 3. State bounds: I*x_k
+    for (int k = 0; k < N_ + 1; ++k) {
+        for (int r = 0; r < nx_; ++r) {
+            triplets.emplace_back(row_idx + r, k * nx_ + r, 1.0);
+        }
+        row_idx += nx_;
+    }
+
+    // 4. Control bounds: I*u_k
+    for (int k = 0; k < N_; ++k) {
+        int u_k_idx = (N_ + 1) * nx_ + k * nu_;
+        for (int r = 0; r < nu_; ++r) {
+            triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
+        }
+        row_idx += nu_;
+    }
+
+    // 5. Control horizon constraints: u_k == u_{M-1} for k >= M
+    if (control_horizon_ < N_) {
+        int u_anchor_idx = (N_ + 1) * nx_ + (control_horizon_ - 1) * nu_;
+        for (int k = control_horizon_; k < N_; ++k) {
+            int u_k_idx = (N_ + 1) * nx_ + k * nu_;
+            for (int r = 0; r < nu_; ++r) {
+                triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
+                triplets.emplace_back(row_idx + r, u_anchor_idx + r, -1.0);
+            }
+            row_idx += nu_;
+        }
+    }
+
+    // 6. Obstacle constraints: obs_k^T * p_k >= dist_k
+    // We reserve these rows now and update coefficients dynamically.
+    // Initial coeff is epsilon to prevent pruning.
+    if (obs_per_step_ > 0) {
+        for (int k = 0; k < N_; ++k) {
+            int x_k_idx = k * nx_;
+            for (int o = 0; o < obs_per_step_; ++o) {
+                for (int i = 0; i < 3; ++i) {
+                    triplets.emplace_back(row_idx, x_k_idx + i, 1e-10);
+                }
+                row_idx++;
+            }
+        }
+    }
+}
+
+void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
+    // Initialize bound vectors
+    q_ = VectorXd::Zero(n_vars);
+    l_ = VectorXd::Zero(n_constraints);
+    u_ = VectorXd::Zero(n_constraints);
+
+    int n_dyn = n_dyn_;
+    int n_init = n_init_;
+    int n_bounds_x = n_bounds_x_;
+    int n_bounds_u = n_bounds_u_;
+
+    // 1. Dynamics equality (l=0, u=0) - default is 0
+
+    // 2. Initial state (will be updated at valid step)
+
+    // 3. State bounds (initialized to infinity)
+    int state_idx_start = n_dyn + n_init;
+    l_.segment(state_idx_start, n_bounds_x).setConstant(-1e20);
+    u_.segment(state_idx_start, n_bounds_x).setConstant(1e20);
+
+    // 3a. Velocity bounds (indices 7, 8, 9) - DISABLED in MPCC mode
+    // 3a. Velocity bounds (indices 7, 8, 9) - DISABLED in MPCC mode
+    // (Legacy max_velocity logic removed)
+
+    // 3b. Wheel speed limits (indices 13-15) - from config if available
+    for (int k = 0; k < N_ + 1; ++k) {
+        int ws_idx = state_idx_start + k * nx_ + 13;
+        for (int i = 0; i < 3; ++i) {
+            double limit = 600.0;
+            if (i < static_cast<int>(sat_params_.rw_speed_limits.size())) {
+                double cfg_limit = sat_params_.rw_speed_limits[i];
+                if (cfg_limit > 0.0) {
+                    limit = cfg_limit;
+                }
+            }
+            l_(ws_idx + i) = -limit;
+            u_(ws_idx + i) = limit;
+        }
+    }
+
+    // 3c. Path parameter bounds (index 16) - MPCC mode
+    // 3c. Path parameter bounds (index 16) - MPCC mode
+    for (int k = 0; k < N_ + 1; ++k) {
+        int s_idx = state_idx_start + k * nx_ + 16;
+        // s must be within [0, L]
+        // We use a slightly relaxed lower bound to handle start-up noise
+        l_(s_idx) = -0.5;
+        // Upper bound is path length + margin
+        // If path_total_length_ is 0 (not set yet), use large number
+        double L = (path_total_length_ > 0) ? path_total_length_ : 100000.0;
+        u_(s_idx) = L + 2.0; // Allow slight overshoot for stability
+    }
+
+    // 4. Control bounds
+    int ctrl_idx_start = n_dyn + n_init + n_bounds_x;
+    for (int k = 0; k < N_; ++k) {
+        l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_;
+        u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_;
+    }
+
+    // 5. Control horizon constraints (initialized to equality 0)
+    int ctrl_horizon_start = n_dyn + n_init + n_bounds_x + n_bounds_u;
+    if (n_control_horizon_constraints_ > 0) {
+        l_.segment(ctrl_horizon_start, n_control_horizon_constraints_).setZero();
+        u_.segment(ctrl_horizon_start, n_control_horizon_constraints_).setZero();
+    }
+
+    // 6. Obstacle bounds (initialized to inactive)
+    int obs_idx_start = ctrl_horizon_start + n_control_horizon_constraints_;
+    if (n_obs_constraints_ > 0) {
+        l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
+        u_.segment(obs_idx_start, n_obs_constraints_).setConstant(1e20);
+    }
+
+    // Convert to CSC arrays for OSQP
+    P_data_.assign(P_.valuePtr(), P_.valuePtr() + P_.nonZeros());
+    P_indices_.assign(P_.innerIndexPtr(), P_.innerIndexPtr() + P_.nonZeros());
+    P_indptr_.assign(P_.outerIndexPtr(), P_.outerIndexPtr() + P_.cols() + 1);
+
+    A_data_.assign(A_.valuePtr(), A_.valuePtr() + A_.nonZeros());
+    A_indices_.assign(A_.innerIndexPtr(), A_.innerIndexPtr() + A_.nonZeros());
+    A_indptr_.assign(A_.outerIndexPtr(), A_.outerIndexPtr() + A_.cols() + 1);
+
+    // Setup OSQP Structures
+    data_ = (OSQPData*)c_malloc(sizeof(OSQPData));
+    data_->n = n_vars;
+    data_->m = n_constraints;
+
+    data_->P = csc_matrix(n_vars, n_vars, P_.nonZeros(),
+                          P_data_.data(), P_indices_.data(), P_indptr_.data());
+    data_->q = q_.data();
+    data_->A = csc_matrix(n_constraints, n_vars, A_.nonZeros(),
+                          A_data_.data(), A_indices_.data(), A_indptr_.data());
+    data_->l = l_.data();
+    data_->u = u_.data();
+
+    settings_ = (OSQPSettings*)c_malloc(sizeof(OSQPSettings));
+    osqp_set_default_settings(settings_);
+    settings_->verbose = mpc_params_.verbose_mpc ? 1 : 0;
+    settings_->time_limit = mpc_params_.solver_time_limit;
+    settings_->warm_start = 1;
+
+    if (!mpc_params_.solver_type.empty() && mpc_params_.solver_type != "OSQP") {
+        std::cerr << "[MPC] Warning: solver_type '" << mpc_params_.solver_type
+                  << "' is not supported. Falling back to OSQP." << std::endl;
+    }
+
+    osqp_setup(&work_, data_, settings_);
+}
+
+// ----------------------------------------------------------------------------
+// Runtime Updates
+// ----------------------------------------------------------------------------
+
+void MPCControllerCpp::update_dynamics(const VectorXd& x_current) {
+    auto [A_dyn, B_dyn] = linearizer_->linearize(x_current);
+    const VectorXd& affine = linearizer_->affine();
+    if (affine.size() == 16) {
+        dyn_affine_.setZero(nx_);
+        dyn_affine_.segment(0, 16) = affine;
+    } else {
+        dyn_affine_.setZero(nx_);
+    }
+
+    // Update A-block entries (G matrix: dQuat/dOmega)
+    // A_dyn rows 3-6, cols 10-12
+    for (int qr = 0; qr < 4; ++qr) {
+        for (int oc = 0; oc < 3; ++oc) {
+            double val = -A_dyn(3 + qr, 10 + oc); // Stored as -A
+            for (int idx : A_idx_map_[qr * 3 + oc]) {
+                A_data_[idx] = val;
+            }
+        }
+    }
+
+    // Update orbital/velocity dynamics block (rows 7-9, cols 0-9)
+    for (int vr = 0; vr < 3; ++vr) {
+        for (int vc = 0; vc < 10; ++vc) {
+            double val = -A_dyn(7 + vr, vc);
+            for (int idx : A_orbital_idx_map_[vr * 10 + vc]) {
+                A_data_[idx] = val;
+            }
+        }
+    }
+
+    // Update B matrix entries (physics-only block)
+    int nx_phys = 16;
+    int nu_phys = nu_ - 1;
+    for (int r = 0; r < nx_phys; ++r) {
+        for (int c = 0; c < nu_phys; ++c) {
+            double val = -B_dyn(r, c);
+            for (int idx : B_idx_map_[r * nu_ + c]) {
+                A_data_[idx] = val;
+            }
+        }
+    }
+
+    A_dirty_ = true;
+}
+
+void MPCControllerCpp::update_cost() {
+    // In MPCC mode, q vector is managed by update_path_cost.
+    // Standard update_cost is a no-op or reset.
+    q_.setZero();
+    osqp_update_lin_cost(work_, q_.data());
+}
+
+void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
+    // Update dynamics affine term (if any) for all horizon steps
+    if (dyn_affine_.size() == nx_) {
+        for (int k = 0; k < N_; ++k) {
+            l_.segment(k * nx_, nx_) = dyn_affine_;
+            u_.segment(k * nx_, nx_) = dyn_affine_;
+        }
+    }
+
+    // Update initial state constraint bounds (equality constraint)
+    int init_start = n_dyn_;
+    l_.segment(init_start, nx_) = x_current;
+    u_.segment(init_start, nx_) = x_current;
+
+    osqp_update_bounds(work_, l_.data(), u_.data());
+}
+
+
+
+// ----------------------------------------------------------------------------
+// Main Control Interface
+// ----------------------------------------------------------------------------
+
+ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    ControlResult result;
+    result.timeout = false;
+
+    VectorXd x_curr_aug = x_current;
+    A_dirty_ = false;
+
+    // Update s_guess mechanism (Warm Start)
+    // Shift s_guess_: s[0] = s[1], s[N] = s[N-1] + v*dt
+    if (s_guess_.size() == N_ + 1) {
+        std::rotate(s_guess_.begin(), s_guess_.begin() + 1, s_guess_.end());
+        s_guess_.back() += mpc_params_.path_speed * dt_;
+        // Re-anchor to current state to prevent drift
+        // Assuming x_current(16) contains current s if size is 17
+        if (x_current.size() >= 17) {
+             double s_curr = x_current(16);
+             for(int k=0; k<=N_; ++k) s_guess_[k] = s_curr + k * mpc_params_.path_speed * dt_;
+        }
+    }
+
+    // Successive Linearization: Update dynamics each step to capture orbital effects
+    Eigen::Vector4d quat = x_curr_aug.segment<4>(3);
+    update_dynamics(x_curr_aug);
+    prev_quat_ = quat;
+
+    update_cost(); // Sets Q cost (will be overwritten for path terms)
+    update_path_cost(x_curr_aug); // Overwrites P/q for path terms
+    update_obstacle_constraints(x_curr_aug);
+    update_constraints(x_curr_aug);
+
+    if (A_dirty_) {
+        osqp_update_A(work_, A_data_.data(), OSQP_NULL, A_.nonZeros());
+    }
+
+    if (has_warm_start_control_) {
+        int n_vars = data_ ? data_->n : 0;
+        if (n_vars > 0) {
+            if (warm_start_x_.size() != n_vars) {
+                warm_start_x_ = VectorXd::Zero(n_vars);
+            }
+            if (work_ && work_->solution && work_->solution->x) {
+                std::memcpy(warm_start_x_.data(), work_->solution->x, sizeof(c_float) * n_vars);
+            } else {
+                warm_start_x_.setZero();
+            }
+
+            VectorXd u_guess = VectorXd::Zero(nu_);
+            if (warm_start_control_.size() == nu_) {
+                u_guess = warm_start_control_;
+            } else if (warm_start_control_.size() == sat_params_.num_thrusters) {
+                int thruster_offset = sat_params_.num_rw;
+                for (int i = 0; i < sat_params_.num_thrusters; ++i) {
+                    u_guess(thruster_offset + i) = warm_start_control_(i);
+                }
+                u_guess(nu_ - 1) = mpc_params_.path_speed;
+            } else if (warm_start_control_.size() == nu_ - 1) {
+                u_guess.head(nu_ - 1) = warm_start_control_;
+                u_guess(nu_ - 1) = mpc_params_.path_speed;
+            }
+
+            int u_idx = (N_ + 1) * nx_;
+            for (int k = 0; k < N_; ++k) {
+                for (int i = 0; i < nu_; ++i) {
+                    warm_start_x_(u_idx + k * nu_ + i) = u_guess(i);
+                }
+            }
+
+            osqp_warm_start_x(work_, warm_start_x_.data());
+        }
+        has_warm_start_control_ = false;
+    }
+
+    osqp_solve(work_);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    result.solve_time = std::chrono::duration<double>(end - start).count();
+
+    if (work_->info->status_val != OSQP_SOLVED &&
+        work_->info->status_val != OSQP_SOLVED_INACCURATE) {
+        result.status = -1; // Error
+        result.u = VectorXd::Zero(nu_); // Note: this is augmented nu size
+        return result;
+    }
+
+    // Extract predicted s trajectory for next step (optional, for better linearization)
+    for (int k = 0; k <= N_; ++k) {
+        s_guess_[k] = work_->solution->x[k * nx_ + 16];
+    }
+
+    // Extract control from solution
+    int u_idx = (N_ + 1) * nx_;
+    result.u = Eigen::Map<VectorXd>(work_->solution->x + u_idx, nu_);
+
+    // Clip to bounds (safety)
+    result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
+    result.status = 1; // Success
+
+    // --- Velocity Governor Safety Check (Post-Solve) ---
+    // If strict velocity limit is enabled and we are overspeeding,
+    // prevent any thrust that increases velocity in the direction of motion.
+    // DISABLED in MPCC mode - path following manages speed via progress cost
+    // --- Velocity Governor Safety Check (Post-Solve) ---
+    // DISABLED in MPCC mode - path following manages speed via progress cost
+
+    return result;
+}
+
+// ----------------------------------------------------------------------------
+// Collision Avoidance
+// ----------------------------------------------------------------------------
+
+void MPCControllerCpp::set_obstacles(const ObstacleSet& obstacles) {
+    // Path-focused MPCC ignores obstacles.
+    obstacles_ = obstacles;
+}
+
+void MPCControllerCpp::clear_obstacles() {
+    obstacles_.clear();
+}
+
+void MPCControllerCpp::set_warm_start_control(const VectorXd& u_prev) {
+    if (u_prev.size() == 0) {
+        has_warm_start_control_ = false;
+        return;
+    }
+    warm_start_control_ = u_prev;
+    has_warm_start_control_ = true;
+}
+
+void MPCControllerCpp::set_scan_attitude_context(
+    const Eigen::Vector3d& center,
+    const Eigen::Vector3d& axis,
+    const std::string& direction
+) {
+    (void)direction;
+    scan_center_ = center;
+    double axis_norm = axis.norm();
+    if (axis_norm > 1e-9) {
+        scan_axis_ = axis / axis_norm;
+    } else {
+        scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+    }
+    scan_attitude_enabled_ = true;
+}
+
+void MPCControllerCpp::clear_scan_attitude_context() {
+    scan_attitude_enabled_ = false;
+    scan_center_ = Eigen::Vector3d::Zero();
+    scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+}
+
+void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
+    // if (!mpc_params_.mode_path_following) return; // Always on
+    q_.setZero();
+    if (!path_data_valid_) {
+        // No path data - cannot compute path-following cost
+        osqp_update_lin_cost(work_, q_.data());
+        return;
+    }
+
+    // ==========================================================================
+    // General Path-Following MPC (MPCC) Cost Update - V4.0.1
+    // ==========================================================================
+    //
+    // Cost function:
+    //   J = Σ [ Q_contour * ||p - p(s)||²      (Contouring: stay on path)
+    //         + Q_progress * (v_s - v_ref)² (Progress: track path speed)
+    //         + R * ||u||² ]                   (Control effort)
+    //
+    // State augmentation:
+    //   x = [p(3), q(4), v(3), w(3), s(1)]  (17 states)
+    //   u = [τ_rw(3), f(6), v_s(1)]         (10 controls: 3 RW + 6 thrusters + 1 path vel)
+    //
+    // Linearization around s_bar:
+    //   p(s) ≈ p(s_bar) + t(s_bar) * (s - s_bar)
+    //   where t = dp/ds is the unit tangent
+    // ==========================================================================
+
+    double Q_c = mpc_params_.Q_contour;   // Contouring weight
+    double Q_p = mpc_params_.Q_progress;  // Progress weight (quadratic)
+    double progress_reward = mpc_params_.progress_reward; // Linear reward for v_s
+    double Q_v = mpc_params_.Q_progress;  // Velocity alignment weight (reuse progress)
+    double Q_l = mpc_params_.Q_lag;       // Lag weight (along tangent)
+    if (Q_l <= 0.0) {
+        Q_l = Q_c;
+    }
+    double Q_s_anchor = std::max(Q_p, 0.5 * Q_c);  // Anchor s to progress reference
+    double Q_att = mpc_params_.Q_attitude; // Attitude tracking weight
+    // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
+    double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
+    if (mpc_params_.path_speed_max > 0.0) {
+        v_ref = std::min(v_ref, mpc_params_.path_speed_max);
+    }
+    if (mpc_params_.path_speed_min > 0.0) {
+        v_ref = std::max(v_ref, mpc_params_.path_speed_min);
+    }
+    double slowdown_dist = mpc_params_.progress_slowdown_distance;
+    double Q_term_pos = mpc_params_.Q_terminal_pos;
+    double Q_term_s = mpc_params_.Q_terminal_s;
+    if (Q_term_pos <= 0.0) {
+        Q_term_pos = std::max(1.0, Q_c);
+    }
+    if (Q_term_s <= 0.0) {
+        Q_term_s = std::max(Q_c, 10.0 * Q_p);
+    }
+    double taper_dist = mpc_params_.progress_taper_distance;
+    if (taper_dist <= 0.0) {
+        taper_dist = std::max(1e-3, v_ref * dt_ * static_cast<double>(N_));
+    }
+    Eigen::Vector3d p_end = path_points_.back();
+    Eigen::Vector4d q_curr = Eigen::Vector4d::Zero();
+    if (x_current.size() >= 7) {
+        q_curr = x_current.segment<4>(3);
+    }
+
+    if (slowdown_dist <= 0.0) {
+        slowdown_dist = std::max(0.5, 0.5 * v_ref * dt_ * static_cast<double>(N_));
+    }
+
+    double s_curr = 0.0;
+    if (x_current.size() >= 17) {
+        s_curr = x_current(16);
+    } else if (!s_guess_.empty()) {
+        s_curr = s_guess_.front();
+    }
+    s_curr = std::max(0.0, std::min(s_curr, path_total_length_));
+
+    double remaining = std::max(0.0, path_total_length_ - s_curr);
+
+    double speed_scale = 1.0;
+    if (x_current.size() >= 3 && slowdown_dist > 1e-6) {
+        Eigen::Vector3d p_curr = x_current.segment<3>(0);
+        Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
+        double contour_err = (p_curr - p_ref_curr).norm();
+        speed_scale = std::max(0.0, std::min(1.0, 1.0 - contour_err / slowdown_dist));
+    }
+    double end_scale = 1.0;
+    if (taper_dist > 1e-6) {
+        end_scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
+    }
+    double v_ref_base = v_ref * speed_scale * end_scale;
+    bool auto_progress = progress_reward > 0.0;
+
+    // Coasting bias: if we're already on the path and moving along it,
+    // match the reference speed to the current along-track speed to avoid braking.
+    if (mpc_params_.coast_pos_tolerance > 0.0 &&
+        mpc_params_.coast_vel_tolerance >= 0.0 &&
+        x_current.size() >= 10 &&
+        remaining > taper_dist) {
+        Eigen::Vector3d p_curr = x_current.segment<3>(0);
+        Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
+        Eigen::Vector3d t_curr = get_path_tangent(s_curr);
+        Eigen::Vector3d v_curr = x_current.segment<3>(7);
+        double contour_err = (p_curr - p_ref_curr).norm();
+        double v_along = v_curr.dot(t_curr);
+        Eigen::Vector3d v_perp = v_curr - v_along * t_curr;
+        double v_perp_norm = v_perp.norm();
+
+        if (contour_err <= mpc_params_.coast_pos_tolerance &&
+            v_perp_norm <= mpc_params_.coast_vel_tolerance &&
+            v_along >= 0.0) {
+            double v_coast = std::max(mpc_params_.coast_min_speed, v_along);
+            v_ref_base = v_coast;
+        }
+    }
+
+    // Initialize s_guess if needed
+    if (s_guess_.size() != static_cast<size_t>(N_ + 1)) {
+        s_guess_.resize(N_ + 1);
+        double s0 = (nx_ == 17 && x_current.size() >= 17) ? x_current(16) : s_curr;
+        for (int k = 0; k <= N_; ++k) {
+            s_guess_[k] = std::min(s0 + k * v_ref_base * dt_, path_total_length_);
+        }
+    } else if (speed_scale < 1.0) {
+        for (int k = 0; k <= N_; ++k) {
+            s_guess_[k] = std::min(s_curr + k * v_ref_base * dt_, path_total_length_);
+        }
+    }
+
+    for (int k = 0; k <= N_; ++k) {
+        double s_bar = s_guess_[k];
+        double stage_scale = (k == N_) ? 10.0 : 1.0;
+        double Q_c_k = Q_c * stage_scale;
+        double Q_l_k = Q_l * stage_scale;
+
+        // Clamp s_bar to valid range
+        s_bar = std::max(0.0, std::min(s_bar, path_total_length_));
+
+        // Get path reference point and tangent at s_bar
+        Eigen::Vector3d p_ref = get_path_point(s_bar);
+        Eigen::Vector3d t_ref = get_path_tangent(s_bar); // Unit tangent
+
+        // Linearized contouring error: e = p - p(s) ≈ p - (p_ref + t*(s - s_bar))
+        //                              e = p - t*s - (p_ref - t*s_bar)
+        // Let C = p_ref - t*s_bar  (constant for this step)
+        // Then e = p - t*s - C
+        //
+        // Cost: ||e||² = (p - t*s - C)ᵀ(p - t*s - C)
+        //
+        // Expand: p'p - 2p't*s - 2p'C + t't*s² + 2t'C*s + C'C
+        //
+        // In QP form (OSQP: 0.5 x'Px + q'x):
+        //   P terms: 2*Q_c*I (for p), 2*Q_c*|t|² (for s), -2*Q_c*t (cross p,s)
+        //   q terms: -2*Q_c*C (for p), 2*Q_c*(t·C) (for s)
+
+        Eigen::Vector3d C = p_ref - t_ref * s_bar;
+        double t_norm_sq = t_ref.squaredNorm(); // Should be ~1 for unit tangent
+        double t_dot_C = t_ref.dot(C);
+        double t_dot_pref = t_ref.dot(p_ref);
+
+        int x_idx = k * nx_;  // State index for this step
+
+        // 0. Update position diagonal entries (base + optional terminal boost)
+        double pos_diag_base = 2.0 * Q_c * stage_scale;
+        for (int i = 0; i < 3; ++i) {
+            double pos_diag = pos_diag_base;
+            pos_diag += 2.0 * Q_l_k * t_ref(i) * t_ref(i);
+            if (k == N_) {
+                pos_diag += 2.0 * Q_term_pos;
+            }
+            P_data_[path_pos_diag_indices_[k][i]] = pos_diag;
+        }
+
+        // 0b. Update position off-diagonals for lag cost (t*t^T)
+        if (path_pos_offdiag_indices_.size() > static_cast<size_t>(k)) {
+            double xy = 2.0 * Q_l_k * t_ref(0) * t_ref(1);
+            double xz = 2.0 * Q_l_k * t_ref(0) * t_ref(2);
+            double yz = 2.0 * Q_l_k * t_ref(1) * t_ref(2);
+            auto &offdiag = path_pos_offdiag_indices_[k];
+            if (offdiag.size() == 3) {
+                P_data_[offdiag[0]] = xy;
+                P_data_[offdiag[1]] = xz;
+                P_data_[offdiag[2]] = yz;
+            }
+        }
+
+        // 1. Update P matrix cross-terms (p, s)
+        // These are stored at path_P_indices_[k][0..2]
+        // P_ps = -2 * Q_c * t (off-diagonal coupling position with s)
+        for (int i = 0; i < 3; ++i) {
+            double val = -2.0 * Q_c_k * t_ref(i);
+            P_data_[path_P_indices_[k][i]] = val;
+        }
+
+        // 1b. Update s diagonal entry
+        if (k < static_cast<int>(path_s_diag_indices_.size())) {
+            double s_diag = 2.0 * Q_c_k * t_norm_sq;
+            if (k == N_) {
+                s_diag += 2.0 * Q_term_s;
+            }
+            if (Q_s_anchor > 0.0) {
+                s_diag += 2.0 * Q_s_anchor * stage_scale;
+            }
+            P_data_[path_s_diag_indices_[k]] = s_diag;
+        }
+
+        // 2. Update q vector (linear costs)
+        // q_p = -2 * Q_c * C  (attracts position toward path)
+        for (int i = 0; i < 3; ++i) {
+            q_(x_idx + i) = -2.0 * Q_c_k * C(i);
+            q_(x_idx + i) += -2.0 * Q_l_k * t_dot_pref * t_ref(i);
+        }
+
+        // q_s = 2 * Q_c * (t·C) (pushes s forward)
+        q_(x_idx + 16) = 2.0 * Q_c_k * t_dot_C;
+        if (k == N_) {
+            // Terminal penalties: position and s to endpoint
+            for (int i = 0; i < 3; ++i) {
+                q_(x_idx + i) += -2.0 * Q_term_pos * p_end(i);
+            }
+            q_(x_idx + 16) += -2.0 * Q_term_s * path_total_length_;
+        }
+        if (Q_s_anchor > 0.0) {
+            q_(x_idx + 16) += -2.0 * Q_s_anchor * stage_scale * s_bar;
+        }
+
+        // 2c. Attitude tracking:
+        // +X follows path tangent. In scan mode, choose the object-facing side
+        // (+Y or -Y) that is closest to current attitude to avoid roll flips.
+        if (Q_att > 0.0) {
+            Eigen::Vector3d x_axis = t_ref;
+            double x_norm = x_axis.norm();
+            if (x_norm > 1e-9) {
+                x_axis /= x_norm;
+            } else {
+                x_axis = Eigen::Vector3d(1.0, 0.0, 0.0);
+            }
+            Eigen::Vector3d y_axis(0.0, 1.0, 0.0);
+            Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
+
+            if (scan_attitude_enabled_) {
+                Eigen::Vector3d radial_in = scan_center_ - p_ref;
+                radial_in -= radial_in.dot(x_axis) * x_axis;
+                double radial_norm = radial_in.norm();
+
+                if (radial_norm > 1e-9) {
+                    radial_in /= radial_norm;
+                    y_axis = radial_in;
+                    if (q_curr.norm() > 1e-9) {
+                        Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
+                        q_curr_eig.normalize();
+                        Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
+                        if (curr_y.norm() > 1e-9 && curr_y.dot(y_axis) < 0.0) {
+                            y_axis = -y_axis;
+                        }
+                    }
+                    z_axis = x_axis.cross(y_axis);
+                    double z_norm = z_axis.norm();
+                    if (z_norm > 1e-9) {
+                        z_axis /= z_norm;
+                        y_axis = z_axis.cross(x_axis);
+                        double y_norm = y_axis.norm();
+                        if (y_norm > 1e-9) {
+                            y_axis /= y_norm;
+                        } else {
+                            y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                        }
+                    }
+                } else {
+                    // Degenerate radial case near scan axis: preserve roll with scan axis.
+                    z_axis = scan_axis_ - scan_axis_.dot(x_axis) * x_axis;
+                    double z_norm = z_axis.norm();
+                    if (z_norm > 1e-9) {
+                        z_axis /= z_norm;
+                    } else {
+                        z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                    }
+                    y_axis = z_axis.cross(x_axis);
+                    double y_norm = y_axis.norm();
+                    if (y_norm > 1e-9) {
+                        y_axis /= y_norm;
+                    } else {
+                        y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                    }
+                }
+            } else {
+                Eigen::Vector3d up(0.0, 0.0, 1.0);
+                if (std::abs(x_axis.dot(up)) > 0.95) {
+                    up = Eigen::Vector3d(0.0, 1.0, 0.0);
+                }
+                z_axis = up - up.dot(x_axis) * x_axis;
+                double z_norm = z_axis.norm();
+                if (z_norm > 1e-9) {
+                    z_axis /= z_norm;
+                } else {
+                    z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                }
+                y_axis = z_axis.cross(x_axis);
+                double y_norm = y_axis.norm();
+                if (y_norm > 1e-9) {
+                    y_axis /= y_norm;
+                } else {
+                    y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                }
+            }
+
+            Eigen::Matrix3d R;
+            R.col(0) = x_axis;
+            R.col(1) = y_axis;
+            R.col(2) = z_axis;
+            Eigen::Quaterniond q_ref_eig(R);
+            Eigen::Vector4d q_ref(q_ref_eig.w(), q_ref_eig.x(), q_ref_eig.y(), q_ref_eig.z());
+
+            if (q_curr.dot(q_ref) < 0.0) {
+                q_ref = -q_ref;
+            }
+
+            for (int i = 0; i < 4; ++i) {
+                q_(x_idx + 3 + i) = -2.0 * Q_att * q_ref(i);
+            }
+        }
+
+        // 2b. Velocity alignment cost: track v along path tangent
+        if (k < static_cast<int>(path_vel_P_indices_.size())) {
+            // Use same tapering as progress to slow near the endpoint.
+            double v_ref_k = v_ref_base;
+            if (auto_progress) {
+                v_ref_k = 0.0;
+            }
+            double remaining = path_total_length_ - s_bar;
+            if (taper_dist > 1e-9) {
+                double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
+                v_ref_k = v_ref_k * scale;
+            }
+
+            // Update velocity quadratic terms (diagonal only)
+            // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
+            double vel_weight = 2.0 * Q_v * stage_scale;
+            auto &vel_indices = path_vel_P_indices_[k];
+            if (vel_indices.size() == 6) {
+                P_data_[vel_indices[0]] = vel_weight;
+                P_data_[vel_indices[1]] = 0.0;
+                P_data_[vel_indices[2]] = 0.0;
+                P_data_[vel_indices[3]] = vel_weight;
+                P_data_[vel_indices[4]] = 0.0;
+                P_data_[vel_indices[5]] = vel_weight;
+            }
+
+            // Linear term encourages velocity along tangent
+            for (int i = 0; i < 3; ++i) {
+                q_(x_idx + 7 + i) += -2.0 * Q_v * v_ref_k * t_ref(i) * stage_scale;
+            }
+        }
+
+        // 3. Progress tracking: (v_s - v_ref)² on control side
+        // v_s is the last control in u (index nu_-1)
+        // Cost: Q_p * (v_s - v_ref)² = Q_p * v_s² - 2*Q_p*v_ref*v_s + const
+        // Linear term: -2 * Q_p * v_ref
+        if (k < N_) {
+            double v_ref_k = v_ref_base;
+            double remaining = path_total_length_ - s_bar;
+            if (taper_dist > 1e-9) {
+                double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
+                v_ref_k = v_ref_k * scale;
+            }
+            int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
+            if (auto_progress) {
+                double progress_scale = speed_scale * end_scale;
+                q_(u_idx) = -2.0 * progress_reward * progress_scale;
+            } else {
+                q_(u_idx) = -2.0 * Q_p * v_ref_k;
+            }
+
+            // Fuel bias: linear penalty on thruster usage to promote coasting.
+            if (mpc_params_.thrust_l1_weight > 0.0) {
+                int thruster_base = (N_ + 1) * nx_ + k * nu_ + sat_params_.num_rw;
+                for (int i = 0; i < sat_params_.num_thrusters; ++i) {
+                    q_(thruster_base + i) += mpc_params_.thrust_l1_weight;
+                }
+            }
+        }
+
+    }// Push updates to OSQP
+    if (!path_P_update_indices_.empty()) {
+        for (size_t i = 0; i < path_P_update_indices_.size(); ++i) {
+            path_P_update_values_[i] = P_data_[path_P_update_indices_[i]];
+        }
+        osqp_update_P(
+            work_,
+            path_P_update_values_.data(),
+            path_P_update_indices_.data(),
+            static_cast<c_int>(path_P_update_indices_.size())
+        );
+    } else {
+        osqp_update_P(work_, P_data_.data(), OSQP_NULL, P_.nonZeros());
+    }
+    osqp_update_lin_cost(work_, q_.data());
+}
+
+void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current) {
+    // Path-focused MPCC ignores obstacles.
+    if (n_obs_constraints_ == 0) {
+        return;
+    }
+
+    int obs_idx_start = obs_row_start_;
+
+    if (!mpc_params_.enable_collision_avoidance || obstacles_.size() == 0) {
+        // Disable all constraints
+        l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
+        for (int row_local = 0; row_local < n_obs_constraints_; ++row_local) {
+            for (int i = 0; i < 3; ++i) {
+                int idx = obs_A_indices_[row_local][i];
+                if (idx >= 0) {
+                    A_data_[idx] = 0.0;
+                }
+            }
+        }
+        A_dirty_ = true;
+        return;
+    }
+
+    Eigen::Vector3d p_curr = x_current.segment<3>(0);
+
+    for (int k = 0; k < N_; ++k) {
+        Eigen::Vector3d p_guess = p_curr;
+        if (path_data_valid_) {
+            double s_k = 0.0;
+            if (s_guess_.size() == static_cast<size_t>(N_ + 1)) {
+                s_k = s_guess_[k];
+            } else if (x_current.size() >= 17) {
+                s_k = x_current(16) + static_cast<double>(k) * mpc_params_.path_speed * dt_;
+            }
+            s_k = std::max(0.0, std::min(s_k, path_total_length_));
+            p_guess = get_path_point(s_k);
+        }
+
+        auto constraints = obstacles_.get_linear_constraints(p_guess, mpc_params_.obstacle_margin);
+
+        for (int o = 0; o < obs_per_step_; ++o) {
+            int row_local = k * obs_per_step_ + o;
+            if (o >= static_cast<int>(constraints.size())) {
+                l_(obs_idx_start + row_local) = -1e20;
+                for (int i = 0; i < 3; ++i) {
+                    int idx = obs_A_indices_[row_local][i];
+                    if (idx >= 0) {
+                        A_data_[idx] = 0.0;
+                    }
+                }
+                continue;
+            }
+
+            Eigen::Vector3d normal = constraints[o].first;
+            double bound_val = constraints[o].second;
+
+            for (int i = 0; i < 3; ++i) {
+                int idx = obs_A_indices_[row_local][i];
+                if (idx >= 0) {
+                    A_data_[idx] = normal(i);
+                }
+            }
+            l_(obs_idx_start + row_local) = bound_val;
+        }
+    }
+
+    A_dirty_ = true;
+}
+
+// ============================================================================
+// Path Following: General Path Support (V4.0.1)
+// ============================================================================
+
+void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& path_data) {
+    path_s_.clear();
+    path_points_.clear();
+
+    if (path_data.empty()) {
+        path_data_valid_ = false;
+        path_total_length_ = 0.0;
+        return;
+    }
+
+    path_s_.reserve(path_data.size());
+    path_points_.reserve(path_data.size());
+
+    for (const auto& pt : path_data) {
+        path_s_.push_back(pt[0]);  // s (arc-length parameter)
+        path_points_.push_back(Eigen::Vector3d(pt[1], pt[2], pt[3]));  // x, y, z
+    }
+
+    path_total_length_ = path_s_.back();
+    path_data_valid_ = true;
+
+    // Reset s guess when path changes
+    s_guess_.clear();
+
+    // Update s bounds with actual path length (if solver initialized)
+    if (work_ != nullptr) {
+        int n_dyn = n_dyn_;
+        int n_init = n_init_;
+        int n_bounds_x = n_bounds_x_;
+        int state_idx_start = n_dyn + n_init;
+
+        double L = path_total_length_;
+        for (int k = 0; k < N_ + 1; ++k) {
+            int s_idx = state_idx_start + k * nx_ + 16;
+            l_(s_idx) = -0.5;
+            u_(s_idx) = L + 2.0;
+        }
+        osqp_update_bounds(work_, l_.data(), u_.data());
+    }
+}
+
+Eigen::Vector3d MPCControllerCpp::get_path_point(double s) const {
+    if (!path_data_valid_ || path_s_.empty()) {
+        // Fallback: return origin
+        return Eigen::Vector3d::Zero();
+    }
+
+    // Clamp s to valid range
+    if (s <= path_s_.front()) {
+        return path_points_.front();
+    }
+    if (s >= path_s_.back()) {
+        return path_points_.back();
+    }
+
+    // Binary search for segment
+    auto it = std::lower_bound(path_s_.begin(), path_s_.end(), s);
+    int idx = std::distance(path_s_.begin(), it);
+    if (idx == 0) idx = 1;
+
+    // Linear interpolation within segment
+    double s0 = path_s_[idx - 1];
+    double s1 = path_s_[idx];
+    double t = (s - s0) / (s1 - s0 + 1e-12);
+
+    return path_points_[idx - 1] + t * (path_points_[idx] - path_points_[idx - 1]);
+}
+
+Eigen::Vector3d MPCControllerCpp::get_path_tangent(double s) const {
+    if (!path_data_valid_ || path_s_.size() < 2) {
+        // Fallback: unit X direction
+        return Eigen::Vector3d(1.0, 0.0, 0.0);
+    }
+
+    // Clamp s to valid range
+    double s_clamped = std::max(path_s_.front(), std::min(s, path_s_.back()));
+
+    // Binary search for segment
+    auto it = std::lower_bound(path_s_.begin(), path_s_.end(), s_clamped);
+    int idx = std::distance(path_s_.begin(), it);
+    if (idx == 0) idx = 1;
+    if (idx >= static_cast<int>(path_s_.size())) idx = path_s_.size() - 1;
+
+    // Tangent is direction between adjacent points
+    Eigen::Vector3d diff = path_points_[idx] - path_points_[idx - 1];
+    double len = diff.norm();
+    if (len < 1e-12) {
+        return Eigen::Vector3d(1.0, 0.0, 0.0);  // Degenerate case
+    }
+
+    return diff / len;  // Normalized tangent
+}
+
+std::tuple<double, Eigen::Vector3d, double, double> MPCControllerCpp::project_onto_path(
+    const Eigen::Vector3d& position) const {
+    if (!path_data_valid_ || path_points_.size() < 2 || path_s_.size() < 2) {
+        return {0.0, Eigen::Vector3d::Zero(),
+                std::numeric_limits<double>::infinity(),
+                std::numeric_limits<double>::infinity()};
+    }
+
+    double best_s = path_s_.front();
+    double min_dist = std::numeric_limits<double>::infinity();
+    Eigen::Vector3d best_point = path_points_.front();
+
+    for (size_t i = 0; i + 1 < path_points_.size(); ++i) {
+        const Eigen::Vector3d& p0 = path_points_[i];
+        const Eigen::Vector3d& p1 = path_points_[i + 1];
+        Eigen::Vector3d seg = p1 - p0;
+        double seg_len2 = seg.squaredNorm();
+        double t = 0.0;
+        if (seg_len2 > 1e-12) {
+            t = (position - p0).dot(seg) / seg_len2;
+            if (t < 0.0) {
+                t = 0.0;
+            } else if (t > 1.0) {
+                t = 1.0;
+            }
+        }
+        Eigen::Vector3d proj = p0 + t * seg;
+        double dist = (position - proj).norm();
+        if (dist < min_dist) {
+            min_dist = dist;
+            best_point = proj;
+            double s0 = path_s_[i];
+            double s1 = path_s_[i + 1];
+            best_s = s0 + t * (s1 - s0);
+        }
+    }
+
+    if (path_total_length_ > 0.0) {
+        if (best_s < 0.0) {
+            best_s = 0.0;
+        } else if (best_s > path_total_length_) {
+            best_s = path_total_length_;
+        }
+    }
+
+    double endpoint_error = (position - path_points_.back()).norm();
+    return {best_s, best_point, min_dist, endpoint_error};
+}
+
+} // namespace satellite_control

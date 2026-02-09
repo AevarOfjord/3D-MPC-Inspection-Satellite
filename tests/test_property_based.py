@@ -269,8 +269,8 @@ class TestOrientationUtilsProperties:
         """Euler -> quat -> Euler should preserve rotation."""
         from satellite_control.utils.orientation_utils import (
             euler_xyz_to_quat_wxyz,
-            quat_wxyz_to_euler_xyz,
             quat_angle_error,
+            quat_wxyz_to_euler_xyz,
         )
 
         euler = (roll, pitch, yaw)
@@ -343,10 +343,10 @@ class TestStateValidationProperties:
     @settings(max_examples=50)
     def test_state_validation_deterministic(self, pos_x, pos_y, pos_z):
         """State validation should be deterministic."""
+        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
         from satellite_control.utils.simulation_state_validator import (
             create_state_validator_from_config,
         )
-        from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 
         validator = create_state_validator_from_config()
 

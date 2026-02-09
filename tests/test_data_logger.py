@@ -10,7 +10,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from satellite_control.utils.data_logger import DataLogger, create_data_logger
 
 
@@ -187,7 +186,7 @@ class TestCSVExport:
             assert csv_file.exists()
 
             # Verify CSV content
-            with open(csv_file, "r") as f:
+            with open(csv_file) as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
                 assert len(rows) == 1
@@ -415,7 +414,7 @@ class TestIntegration:
             csv_file = save_path / "control_data.csv"
             assert csv_file.exists()
 
-            with open(csv_file, "r") as f:
+            with open(csv_file) as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
                 assert len(rows) == 10

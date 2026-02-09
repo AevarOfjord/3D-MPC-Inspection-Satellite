@@ -11,11 +11,10 @@ Tests the full control loop:
 import sys
 
 import numpy as np
-
-from satellite_control.control.mpc_controller import MPCController
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.core.cpp_satellite import CppSatelliteSimulator
 from satellite_control.config.models import ReactionWheelParams
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.control.mpc_controller import MPCController
+from satellite_control.core.cpp_satellite import CppSatelliteSimulator
 
 
 def _build_state(sim: CppSatelliteSimulator) -> np.ndarray:

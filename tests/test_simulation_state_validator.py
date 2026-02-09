@@ -7,7 +7,6 @@ bounds checking, and tolerance verification for satellite simulations.
 
 import numpy as np
 import pytest
-
 from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
 from satellite_control.utils.simulation_state_validator import (
     SimulationStateValidator,

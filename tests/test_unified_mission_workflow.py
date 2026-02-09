@@ -5,11 +5,10 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from typer.testing import CliRunner
-
 from satellite_control import cli as cli_module
 from satellite_control.dashboard.app import app
 from satellite_control.mission import repository as mission_repo
+from typer.testing import CliRunner
 
 
 def _sample_unified_mission() -> dict:
@@ -28,10 +27,10 @@ def _sample_unified_mission() -> dict:
 
 @pytest.fixture
 def isolated_mission_repo(tmp_path, monkeypatch):
-    missions_dir = tmp_path / "missions_unified"
+    missions_dir = tmp_path / "missions"
     missions_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(mission_repo, "MISSIONS_UNIFIED_DIR", missions_dir)
-    monkeypatch.setattr(mission_repo, "SOURCE_DIRS", {"unified": missions_dir})
+    monkeypatch.setattr(mission_repo, "MISSIONS_DIR", missions_dir)
+    monkeypatch.setattr(mission_repo, "SOURCE_DIRS", {"local": missions_dir})
     return missions_dir
 
 
@@ -44,7 +43,7 @@ def test_web_save_then_terminal_discovery_prompt(isolated_mission_repo, monkeypa
     assert response.status_code == 200
     assert response.json()["filename"] == "WebMission.json"
 
-    entries = mission_repo.list_mission_entries(source_priority=("unified",))
+    entries = mission_repo.list_mission_entries(source_priority=("local",))
     assert [entry.name for entry in entries] == ["WebMission.json"]
 
     real_import = builtins.__import__

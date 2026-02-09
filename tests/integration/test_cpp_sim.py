@@ -7,10 +7,9 @@ import sys
 
 import numpy as np
 import pytest
-
 from satellite_control.config import SimulationConfig
-from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from satellite_control.core.cpp_satellite import CppSatelliteSimulator
+from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 
 
 def test_cpp_engine_initialization():

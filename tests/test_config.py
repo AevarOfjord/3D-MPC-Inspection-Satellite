@@ -9,7 +9,6 @@ Some tests still use SatelliteConfig for deprecated API compatibility.
 
 import numpy as np
 import pytest
-
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.config.validator import ConfigValidator
 
@@ -186,17 +185,16 @@ class TestConfigValidator:
 
     def test_validator_detects_invalid_mass(self):
         """Test that validator detects invalid mass."""
+        # Create config with invalid mass
+        # Pydantic V2 raises ValidationError on instantiation
+        import pytest
+        from pydantic import ValidationError
         from satellite_control.config.models import (
             AppConfig,
             MPCParams,
             SatellitePhysicalParams,
             SimulationParams,
         )
-
-        # Create config with invalid mass
-        # Pydantic V2 raises ValidationError on instantiation
-        import pytest
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError) as excinfo:
             AppConfig(

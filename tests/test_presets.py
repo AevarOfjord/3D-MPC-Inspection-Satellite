@@ -5,7 +5,6 @@ Tests preset loading, validation, and CLI integration.
 """
 
 import pytest
-
 from satellite_control.config.presets import (
     ConfigPreset,
     get_preset_description,

@@ -1,5 +1,4 @@
 import pytest
-
 from satellite_control.config.io import ConfigIO
 from satellite_control.config.mission_state import MissionState
 

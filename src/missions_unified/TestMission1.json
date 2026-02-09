@@ -1,0 +1,27 @@
+{
+  "epoch": "2026-01-01T00:00:00Z",
+  "start_pose": {
+    "frame": "ECI",
+    "position": [
+      1.0,
+      2.0,
+      3.0
+    ],
+    "orientation": null
+  },
+  "segments": [
+    {
+      "type": "hold",
+      "constraints": {
+        "speed_max": null,
+        "accel_max": null,
+        "angular_rate_max": null
+      },
+      "duration": 1.0
+    }
+  ],
+  "obstacles": [],
+  "overrides": {
+    "spline_controls": []
+  }
+}

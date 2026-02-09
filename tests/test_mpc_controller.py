@@ -7,15 +7,14 @@ for satellite thruster systems using linearized dynamics and OSQP.
 
 import numpy as np
 import pytest
-
-from satellite_control.control.mpc_controller import MPCController
 from satellite_control.config import physics as physics_cfg
 from satellite_control.config.models import (
     AppConfig,
-    SatellitePhysicalParams,
     MPCParams,
+    SatellitePhysicalParams,
     SimulationParams,
 )
+from satellite_control.control.mpc_controller import MPCController
 
 
 def create_default_app_config(path_speed=0.1) -> AppConfig:

@@ -24,8 +24,8 @@ class TestPhysicsBenchmarks:
     @pytest.fixture
     def physics_simulator(self):
         """Create a physics simulator instance."""
-        from satellite_control.core.cpp_satellite import CppSatelliteSimulator
         from satellite_control.config.defaults import create_default_app_config
+        from satellite_control.core.cpp_satellite import CppSatelliteSimulator
 
         app_config = create_default_app_config()
         return CppSatelliteSimulator(app_config=app_config)

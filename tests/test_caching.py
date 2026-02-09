@@ -5,7 +5,6 @@ Tests caching decorators and utilities.
 """
 
 from satellite_control.config import physics as physics_cfg
-
 from satellite_control.config.models import (
     AppConfig,
     MPCParams,
@@ -15,8 +14,8 @@ from satellite_control.config.models import (
 from satellite_control.utils.caching import (
     cache_by_config,
     cache_key_from_config,
-    cached,
     cache_with_stats,
+    cached,
 )
 
 THRUSTER_IDS = range(1, len(physics_cfg.THRUSTER_POSITIONS) + 1)

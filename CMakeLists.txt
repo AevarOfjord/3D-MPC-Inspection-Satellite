@@ -34,12 +34,12 @@ message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 find_package(pybind11 CONFIG REQUIRED)
 
 # --- Module: _cpp_mpc ---
-add_library(_cpp_mpc MODULE 
-    src/satellite_control/cpp/bindings.cpp
-    src/satellite_control/cpp/linearizer.cpp
-    src/satellite_control/cpp/mpc_controller.cpp
-    src/satellite_control/cpp/obstacle.cpp
-    src/satellite_control/cpp/orbital_dynamics.cpp
+add_library(_cpp_mpc MODULE
+    src/cpp/bindings.cpp
+    src/cpp/linearizer.cpp
+    src/cpp/mpc_controller.cpp
+    src/cpp/obstacle.cpp
+    src/cpp/orbital_dynamics.cpp
 )
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
@@ -58,13 +58,13 @@ endmacro()
 
 # Module: _cpp_sim
 add_satellite_module(_cpp_sim
-    src/satellite_control/cpp/bindings_sim.cpp
-    src/satellite_control/cpp/simulation_engine.cpp
-    src/satellite_control/cpp/orbital_dynamics.cpp
+    src/cpp/bindings_sim.cpp
+    src/cpp/simulation_engine.cpp
+    src/cpp/orbital_dynamics.cpp
 )
 
 # Module: _cpp_physics
 add_satellite_module(_cpp_physics
-    src/satellite_control/cpp/bindings_physics.cpp
-    src/satellite_control/cpp/orbital_dynamics.cpp
+    src/cpp/bindings_physics.cpp
+    src/cpp/orbital_dynamics.cpp
 )
