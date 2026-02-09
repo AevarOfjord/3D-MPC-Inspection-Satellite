@@ -38,9 +38,9 @@ def _resolve_target_obj_path(target_id: str) -> Path | None:
     upper = target_id.upper()
     root = _repo_root()
     if "ISS" in upper:
-        return root / "OBJ_files" / "ISS" / "ISS.obj"
+        return root / "model_files" / "ISS" / "ISS.obj"
     if "STARLINK" in upper:
-        return root / "OBJ_files" / "Starlink" / "starlink.obj"
+        return root / "model_files" / "Starlink" / "starlink.obj"
     return None
 
 
