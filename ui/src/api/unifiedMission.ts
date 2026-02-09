@@ -1,5 +1,4 @@
 export type Frame = 'ECI' | 'LVLH';
-export type SegmentType = 'transfer' | 'scan' | 'hold';
 export type SpiralDirection = 'CW' | 'CCW';
 export type SensorAxis = '+Y' | '-Y';
 export type SpiralAxis = '+X' | '-X' | '+Y' | '-Y' | '+Z' | '-Z' | 'custom';
