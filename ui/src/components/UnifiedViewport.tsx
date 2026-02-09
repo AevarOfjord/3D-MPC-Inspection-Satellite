@@ -442,7 +442,6 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
     if (node) {
         setControls(node as any);
         // Reset target to 0,0,0 (which is now our scene origin)
-        // node.target.set(0, 0, 0);
     }
   }, [setControls, sceneOrigin]);
 
@@ -488,7 +487,6 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                 <OrbitObjectsLayer />
                 <LiveObstaclesRender />
                 <SatelliteModel />
-                {/* FinalStateMarker removed for brevity or need import */}
             </group>
             {/* Trajectory and PlannedPath rendered with floating origin subtraction to prevent jitter */}
             <Trajectory origin={viewerOrigin} />

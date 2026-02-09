@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Activity, Clock, Zap } from 'lucide-react';
 import { useMissionBuilder } from '../../hooks/useMissionBuilder';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, Tooltip } from 'recharts';
 
 interface StateTimelineProps {
     builder: ReturnType<typeof useMissionBuilder>;
@@ -9,7 +9,7 @@ interface StateTimelineProps {
 
 export function StateTimeline({ builder }: StateTimelineProps) {
     const { state } = builder;
-    
+
     // Convert path points to chart data
     // Assuming uniform time steps for now or using index as proxy if time not available
     // Ideally we getting full trajectory state with timestamps.
@@ -19,11 +19,11 @@ export function StateTimeline({ builder }: StateTimelineProps) {
             // Mock velocity magnitude if not available (delta from previous)
             const prev = state.previewPath[Math.max(0, i - 1)];
             const dist = Math.sqrt(
-                Math.pow(p[0] - prev[0], 2) + 
-                Math.pow(p[1] - prev[1], 2) + 
+                Math.pow(p[0] - prev[0], 2) +
+                Math.pow(p[1] - prev[1], 2) +
                 Math.pow(p[2] - prev[2], 2)
             );
-            // Assuming simplified DT=1 for visualization if real DT unknown, 
+            // Assuming simplified DT=1 for visualization if real DT unknown,
             // but effectively this visualizes "Step Magnitude".
             return {
                 index: i,
@@ -65,23 +65,23 @@ export function StateTimeline({ builder }: StateTimelineProps) {
                                 <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <Tooltip 
+                        <Tooltip
                             contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', fontSize: '12px' }}
                             itemStyle={{ color: '#94a3b8' }}
                             labelStyle={{ color: '#cbd5e1' }}
                         />
-                        <Area 
-                            type="monotone" 
-                            dataKey="velocity" 
-                            stroke="#06b6d4" 
-                            fillOpacity={1} 
-                            fill="url(#colorVel)" 
+                        <Area
+                            type="monotone"
+                            dataKey="velocity"
+                            stroke="#06b6d4"
+                            fillOpacity={1}
+                            fill="url(#colorVel)"
                             strokeWidth={2}
                         />
                         {/* We could add reference lines for segments here */}
                     </AreaChart>
                 </ResponsiveContainer>
-                
+
                 {chartData.length === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center text-slate-600 font-mono text-sm pointer-events-none">
                         NO TRAJECTORY DATA
