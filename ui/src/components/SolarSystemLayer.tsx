@@ -57,7 +57,7 @@ export function SolarSystemLayer() {
         .filter((body) => body.type === 'planet' || body.type === 'moon')
         .map((body) => {
           const orbitRadius = body.orbit_au * AU_M * SOLAR_SCALE;
-          
+
           let centerX = sunCenterX;
           if (body.parentId) {
             const parent = bodies.find(b => b.id === body.parentId);
@@ -67,10 +67,6 @@ export function SolarSystemLayer() {
             }
           }
 
-          // Moons need thinner orbt lines
-          const pickWidth =  body.type === 'moon' 
-             ? Math.max(orbitRadius * 0.1, 0.05)
-             : Math.max(orbitRadius * 0.03, 0.2);
 
           return (
             <group key={`${body.id}-orbit`}>
@@ -86,7 +82,7 @@ export function SolarSystemLayer() {
               />
               {/* Only show hit ring for planets if we removed interaction? Or remove hit ring entirely?
                   The user asked to remove "interaction feature", but keeping the ring for visual debugging/hit detection might be useless now.
-                  BUT, the previous request only asked to remove "hover name and click". 
+                  BUT, the previous request only asked to remove "hover name and click".
                   The user didn't ask to remove the TORUS mesh, but since it was transparent and used only for picking...
                   Wait, step 264 removed interactions from the Torus mesh.
                   If the Torus mesh is invisible (opacity 0) and has no handlers, it's dead code.

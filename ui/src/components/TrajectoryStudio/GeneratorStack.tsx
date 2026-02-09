@@ -12,7 +12,6 @@ import {
   type DragEndEvent
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -26,28 +25,27 @@ interface GeneratorStackProps {
 
 // Ensure items have unique IDs for dnd-kit
 // Since segments don't have IDs by default, we'll map them to an index-based ID for now,
-// but for robustness we should probably use stable IDs. 
+// but for robustness we should probably use stable IDs.
 // For this implementation, we will assume index stability is handled by parent re-render.
 // Actually, dnd-kit needs stable IDs. We will generate temporary IDs or use index strings if list is simple.
-// Using index strings "0", "1" etc is risky if items change. 
+// Using index strings "0", "1" etc is risky if items change.
 // But since we are modifying the list itself, let's use a wrapper with generated IDs if needed.
 // For now, let's use "segment-{index}" and hope for the best, or stable IDs if we had them.
 // We don't have stable IDs on segments. We will use index for now, but this is fragile.
 // Better to rely on index solely for lookups.
 
-function SortableItem({ 
-    id, 
-    index, 
-    segment, 
-    isSelected, 
-    onSelect, 
-    onRemove 
-}: { 
-    id: string; 
-    index: number; 
-    segment: MissionSegment; 
-    isSelected: boolean; 
-    onSelect: () => void; 
+function SortableItem({
+    id,
+    segment,
+    isSelected,
+    onSelect,
+    onRemove
+}: {
+    id: string;
+    index: number;
+    segment: MissionSegment;
+    isSelected: boolean;
+    onSelect: () => void;
     onRemove: (e: React.MouseEvent) => void;
 }) {
     const {
@@ -67,19 +65,19 @@ function SortableItem({
     };
 
     return (
-        <div 
-           ref={setNodeRef} 
+        <div
+           ref={setNodeRef}
            style={style}
            onClick={onSelect}
            className={`group relative flex items-center gap-2 p-2 rounded border transition-all cursor-pointer mb-2 select-none ${
-               isSelected 
-               ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+               isSelected
+               ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
                : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/60'
            }`}
         >
             {/* Grip - Drag Handle */}
-            <div 
-                {...attributes} 
+            <div
+                {...attributes}
                 {...listeners}
                 className="text-slate-600 cursor-grab active:cursor-grabbing hover:text-slate-400 p-1 touch-none"
             >
@@ -90,7 +88,7 @@ function SortableItem({
             <div className="flex-1">
                 <div className="flex items-center gap-2 mb-0.5">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                        segment.type === 'scan' ? 'text-purple-400' : 
+                        segment.type === 'scan' ? 'text-purple-400' :
                         segment.type === 'transfer' ? 'text-blue-400' : 'text-slate-400'
                     }`}>
                         {segment.type}
@@ -109,7 +107,7 @@ function SortableItem({
 
             {/* Actions (visible on hover or select) */}
             <div className={`flex items-center gap-1 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
-                <button 
+                <button
                    onClick={onRemove}
                    className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-red-400"
                >
@@ -128,19 +126,19 @@ function SortableItem({
 export function GeneratorStack({ builder }: GeneratorStackProps) {
     const { state, actions } = builder;
     const { selectedSegmentIndex } = state;
-    
-    // Create stable-ish IDs for the list. 
+
+    // Create stable-ish IDs for the list.
     // Ideally we'd modify the segment type to include a UUID, but for now we'll construct them.
     // NOTE: If segments change order, using index as ID in loop is problematic for DND.
     // We strictly need stable IDs. Since we don't have them in the data model yet,
-    // let's rely on map `index` but be careful. 
-    // Actually, `dnd-kit` needs to key off something persistent. 
-    // We will generate a local map of IDs if needed, but let's try simple index-keying first 
+    // let's rely on map `index` but be careful.
+    // Actually, `dnd-kit` needs to key off something persistent.
+    // We will generate a local map of IDs if needed, but let's try simple index-keying first
     // knowing it might act weird on re-sort if not careful.
-    // A better approach for this MVP: Attach a temp ID to items in memory if needed, 
-    // OR just fix the data model. 
+    // A better approach for this MVP: Attach a temp ID to items in memory if needed,
+    // OR just fix the data model.
     // Let's generate a list of strings "0", "1", etc. and assume standard sorting behavior.
-    
+
     const items = state.segments.map((_, i) => `${i}`);
 
     const sensors = useSensors(
@@ -172,11 +170,11 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
             {/* List */}
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
                 {/* Fixed START Item */}
-                <div 
+                <div
                    onClick={() => actions.selectSegment(-1)}
                    className={`group relative flex items-center gap-2 p-2 rounded border transition-all cursor-pointer mb-2 select-none ${
                        selectedSegmentIndex === -1
-                       ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                       ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
                        : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/60'
                    }`}
                 >
@@ -193,7 +191,7 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                             </span>
                         </div>
                         <div className="text-xs text-slate-300 font-mono truncate">
-                             {state.startFrame} 
+                             {state.startFrame}
                              {state.startFrame === 'LVLH' && state.startTargetId ? ` @ ${state.startTargetId}` : ''}
                              {' : '}
                              [{state.startPosition.map(v => v.toFixed(1)).join(', ')}]
@@ -207,12 +205,12 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
 
                 <div className="w-full h-px bg-slate-800/50 my-2" />
 
-                <DndContext 
+                <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
                 >
-                    <SortableContext 
+                    <SortableContext
                         items={items}
                         strategy={verticalListSortingStrategy}
                     >
@@ -220,7 +218,6 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                             <SortableItem
                                 key={idx} // Using index as key is generally bad for DND but unavoidable without IDs
                                 id={`${idx}`}
-                                index={idx}
                                 segment={seg}
                                 isSelected={selectedSegmentIndex === idx}
                                 onSelect={() => actions.selectSegment(idx)}
