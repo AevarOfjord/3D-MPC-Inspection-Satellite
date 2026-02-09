@@ -221,8 +221,7 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                                 segment={seg}
                                 isSelected={selectedSegmentIndex === idx}
                                 onSelect={() => actions.selectSegment(idx)}
-                                onRemove={(e) => { e.stopPropagation(); actions.removeSegment(idx); }}
-                            />
+                                onRemove={(e) => { e.stopPropagation(); actions.removeSegment(idx); } } index={0}                            />
                         ))}
                     </SortableContext>
                 </DndContext>
