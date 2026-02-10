@@ -60,7 +60,7 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 
 ### Key Design Principles
 
-1. **Centralized Configuration**: All parameters in `src/satellite_control/config/` package
+1. **Centralized Configuration**: All parameters in `src/python/satellite_control/config/` package
 
     - Never hardcode parameters in other files
     - Import configuration using `SimulationConfig`
@@ -291,7 +291,7 @@ class TestMyFeature:
 
 ```bash
 # 1. Make changes to code
-# (Edit files in src/satellite_control/)
+# (Edit files in src/python/satellite_control/)
 
 # 2. Format and check
 black src/ tests/
@@ -315,7 +315,7 @@ python run_simulation.py run
 
 #### Step 1: Define Mission Logic
 
-Create a helper in `src/satellite_control/mission/` (e.g., `figure8.py`):
+Create a helper in `src/python/satellite_control/mission/` (e.g., `figure8.py`):
 
 ```python
 def configure_figure8_mission(
@@ -375,7 +375,7 @@ entries = list_mission_entries(source_priority=("unified", "dev"))
 
 #### Step 4: Add Configuration
 
-If needed, add parameters to `src/satellite_control/config/mission_state.py`:
+If needed, add parameters to `src/python/satellite_control/config/mission_state.py`:
 
 ```python
 # Figure-8 mission defaults
@@ -427,7 +427,7 @@ python run_simulation.py run
 
 ### Where Parameters Live
 
-All parameters are in `src/satellite_control/config/`:
+All parameters are in `src/python/satellite_control/config/`:
 
 ```
 config/
@@ -622,7 +622,7 @@ git checkout -b feature/my-enhancement
 # (edit files, run tests, etc.)
 
 # Stage changes
-git add src/satellite_control/myfile.py tests/test_myfile.py
+git add src/python/satellite_control/myfile.py tests/test_myfile.py
 
 # Commit with descriptive message
 git commit -m "feat: add new feature X
@@ -843,7 +843,7 @@ python run_simulation.py run
 # Results saved to Data/Simulation/<timestamp-1>/
 
 # Modify parameters in config/
-# Edit src/satellite_control/config/models.py or constants in src/satellite_control/config/
+# Edit src/python/satellite_control/config/models.py or constants in src/python/satellite_control/config/
 
 # Run with new parameters
 python run_simulation.py run

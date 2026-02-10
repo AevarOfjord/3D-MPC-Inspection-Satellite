@@ -97,9 +97,8 @@ def run(
     """
     console.print(
         Panel.fit(
-            "Satellite Control Simulation",
+            "Run Simulation",
             style="bold blue",
-            subtitle="MPC Control System",
         )
     )
 

@@ -20,7 +20,7 @@ make frontend   # Start web interface (Vite dev server)
 
 ```
 Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
-├── src/satellite_control/    # Main Python package
+├── src/python/satellite_control/    # Main Python package
 │   ├── cli.py               # Entry point (single 'run' command)
 │   ├── core/                # Simulation engine (18 files)
 │   ├── control/             # MPC controller (3 files)
@@ -35,7 +35,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 ├── tests/                   # pytest test suite
 ├── docs/                    # Documentation
 ├── run_simulation.py        # Simulation entry point
-├── run_dashboard.py         # Dashboard entry point
+├── scripts/run_dashboard.py         # Dashboard entry point
 └── Makefile                 # Build targets
 ```
 
@@ -48,10 +48,10 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 | File | Purpose |
 |------|---------|
 | `run_simulation.py` | CLI entry → delegates to `cli.py` |
-| `run_dashboard.py` | Starts FastAPI server for web 3D visualization |
+| `scripts/run_dashboard.py` | Starts FastAPI server for web 3D visualization |
 | `Makefile` | Build targets: `sim`, `backend`, `frontend`, `install` |
 
-### src/satellite_control/cli.py (270 lines)
+### src/python/satellite_control/cli.py (270 lines)
 
 Single command CLI using Typer:
 
@@ -67,7 +67,7 @@ def run(
 
 ---
 
-## src/satellite_control/core/ (18 files)
+## src/python/satellite_control/core/ (18 files)
 
 The simulation engine with modular components:
 
@@ -117,7 +117,7 @@ class SatelliteMPCLinearizedSimulation:
 
 ---
 
-## src/satellite_control/control/ (3 files)
+## src/python/satellite_control/control/ (3 files)
 
 ### mpc_controller.py (334 lines)
 
@@ -147,7 +147,7 @@ Abstract controller interface.
 
 ---
 
-## src/satellite_control/cpp/ (18 files)
+## src/python/satellite_control/cpp/ (18 files)
 
 High-performance C++ backend with pybind11 bindings:
 
@@ -203,7 +203,7 @@ class MPCControllerCpp {
 
 ---
 
-## src/satellite_control/config/ (15 files)
+## src/python/satellite_control/config/ (15 files)
 
 Pydantic-based configuration with comprehensive validation:
 
@@ -244,14 +244,14 @@ AppConfig
 
 ---
 
-## src/satellite_control/mission/ (current core files)
+## src/python/satellite_control/mission/ (current core files)
 
 Mission configuration and execution:
 
 | File | Description |
 |------|-------------|
 | `path_following.py` | Path building and path-following helpers |
-| `repository.py` | Mission discovery/loading from `missions_unified/` |
+| `repository.py` | Mission discovery/loading from `missions/` |
 | `runtime_loader.py` | Shared unified mission parse/compile runtime pipeline (CLI + dashboard) |
 | `unified_mission.py` | Unified mission schema |
 | `unified_compiler.py` | Compiles unified mission segments into executable paths |
@@ -264,7 +264,7 @@ Mission configuration and execution:
 
 ---
 
-## src/satellite_control/physics/ (2 files)
+## src/python/satellite_control/physics/ (2 files)
 
 ### orbital_dynamics.py (213 lines)
 
@@ -287,7 +287,7 @@ class CWDynamics:
 
 ---
 
-## src/satellite_control/visualization/ (current core files)
+## src/python/satellite_control/visualization/ (current core files)
 
 | File | Description |
 |------|-------------|
@@ -322,7 +322,7 @@ simulation.py
 
 ---
 
-## src/satellite_control/dashboard/ (7 files)
+## src/python/satellite_control/dashboard/ (7 files)
 
 FastAPI backend for the web UI. Routes are split by concern:
 
@@ -338,7 +338,7 @@ FastAPI backend for the web UI. Routes are split by concern:
 
 ---
 
-## src/satellite_control/utils/ (6 files)
+## src/python/satellite_control/utils/ (6 files)
 
 | File | Lines | Description |
 |------|-------|-------------|
