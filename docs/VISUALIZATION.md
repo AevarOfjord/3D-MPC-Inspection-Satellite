@@ -354,7 +354,7 @@ Thruster 3: ░░░░░░░░████░░  (fired for final correct
 
 ### Changing Plot Appearance
 
-Edit `src/satellite_control/visualization/plot_style.py` for shared defaults:
+Edit `src/python/satellite_control/visualization/plot_style.py` for shared defaults:
 
 ```python
 from src.satellite_control.visualization.plot_style import PlotStyle

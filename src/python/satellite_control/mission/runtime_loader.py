@@ -56,7 +56,10 @@ def compile_unified_mission_runtime(
     """
     Compile a unified mission into a simulation-ready configuration.
     """
-    sim_config = simulation_config or SimulationConfig.create_default()
+    base_config = simulation_config or SimulationConfig.create_default()
+
+    # Create mutable working copy to avoid frozen dataclass violations
+    sim_config = base_config.clone()
 
     path, path_length, path_speed, origin = compile_unified_mission_path(
         mission=mission,

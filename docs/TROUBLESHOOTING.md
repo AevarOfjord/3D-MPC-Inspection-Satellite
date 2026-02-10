@@ -128,7 +128,7 @@ which python  # Should show .venv311/bin/python
 
 ```python
 # Option 1: Reduce prediction horizon
-# src/satellite_control/config/models.py (MPCParams)
+# src/python/satellite_control/config/models.py (MPCParams)
 MPC_PREDICTION_HORIZON = 30  # Reduce from 50
 MPC_CONTROL_HORIZON = 30     # Keep equal to prediction
 
@@ -161,7 +161,7 @@ print(f'Max: {df[\"mpc_solve_time\"].max()*1000:.2f}ms')
 
 ```bash
 # Check velocity cost weight
-grep q_angular_velocity src/satellite_control/config/models.py
+grep q_angular_velocity src/python/satellite_control/config/models.py
 ```
 
 **Solutions**:
@@ -195,7 +195,7 @@ Q_POSITION = 500.0  # Decrease from 1000
 assert abs(target_x) < 3.0 and abs(target_y) < 3.0
 
 # Check velocity limit
-# src/satellite_control/config/models.py (MPCParams)
+# src/python/satellite_control/config/models.py (MPCParams)
 MAX_VELOCITY = 0.5  # m/s (current default)
 
 # Relax convergence tolerances

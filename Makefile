@@ -60,7 +60,7 @@ help:
 	@echo "  make build        Build everything (venv + deps + C++ extensions)"
 	@echo "  make rebuild      Clean build artifacts, then build from scratch"
 	@echo "  make run          Start backend + frontend together"
-	@echo "  make sim          Run CLI simulation"
+	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make lint         Lint Python + UI"
 	@echo "  make clean        Remove venv, build artifacts, caches"
@@ -97,6 +97,12 @@ frontend:
 	cd ui && npm install && npm run dev
 
 sim:
+	@printf "Run tests before simulation? [y/N] "; \
+	read ans; \
+	case "$$ans" in \
+		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
+		*) echo "Skipping tests."; ;; \
+	esac
 	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_simulation.py
 
 # ============================================================================
@@ -133,11 +139,6 @@ install: venv
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 		$(VENV_PIP) install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
-	@echo "=== Copying extension files ==="
-	@# We copy extensions to src/python/satellite_control/cpp to be importable
-	@mkdir -p src/python/satellite_control/cpp
-	@cp $(BUILD_GLOB) src/python/satellite_control/cpp/ 2>/dev/null || true
-	@# Also copy to src/satellite_control/cpp if it exists in site-packages (handled by pip install -e .)
 
 install-dev: venv
 	@echo ""
@@ -151,9 +152,6 @@ install-dev: venv
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 		$(VENV_PIP) install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
-	@echo "=== Copying extension files ==="
-	@mkdir -p src/python/satellite_control/cpp
-	@cp $(BUILD_GLOB) src/python/satellite_control/cpp/ 2>/dev/null || true
 
 # ============================================================================
 # Quality targets

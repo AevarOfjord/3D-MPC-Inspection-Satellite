@@ -19,7 +19,7 @@ simulation loop architecture.
 ## Overview
 
 The active runtime is **path-based MPC only** using unified mission v2 JSON
-files. Missions are authored in the web UI, saved to `missions_unified/`, then
+files. Missions are authored in the web UI, saved to `missions/`, then
 run from the terminal (`make sim` or `python run_simulation.py run --mission ...`).
 The simulation uses a high-fidelity custom C++ physics engine with MPC running
 at different rates for optimal performance.
@@ -41,7 +41,7 @@ python run_simulation.py run --auto
 **How missions are defined and run:**
 
 1. Build mission path/segments in the web UI
-2. Save unified mission v2 JSON to `missions_unified/`
+2. Save unified mission v2 JSON to `missions/`
 3. Run in terminal and choose from saved mission files
 
 **Runtime phases:**
@@ -56,7 +56,7 @@ python run_simulation.py run --auto
 
 ## Simulation Loop Architecture
 
-**Key File:** `src/satellite_control/core/simulation.py`
+**Key File:** `src/python/satellite_control/core/simulation.py`
 
 ### High-Level Control Flow
 
@@ -214,7 +214,7 @@ Between MPC solves, physics continues with previous commands
 
 ### Timing Configuration
 
-All timing parameters in `src/satellite_control/config/timing.py`:
+All timing parameters in `src/python/satellite_control/config/timing.py`:
 
 ```python
 CONTROL_DT = 0.06      # 16.67 Hz control loop
@@ -259,7 +259,7 @@ python run_simulation.py run --no-anim
 - Stabilization time: Configurable (default 10-15s)
 - Return phase: Optional, variable duration
 
-All constants modifiable in `src/satellite_control/config/timing.py`.
+All constants modifiable in `src/python/satellite_control/config/timing.py`.
 
 ### Mission Safety & Constraints
 
@@ -390,7 +390,7 @@ Data/
 
 ### Configuration
 
-Change loop rates in `src/satellite_control/config/timing.py`:
+Change loop rates in `src/python/satellite_control/config/timing.py`:
 
 ```python
 CONTROL_DT = 0.06      # Control frequency

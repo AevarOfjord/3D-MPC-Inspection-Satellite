@@ -24,7 +24,7 @@ logger = logging.getLogger("dashboard")
 
 # --- Shared constants ---
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = PROJECT_ROOT / "data" / "Simulation"
+DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
 MODEL_ALLOWED_ROOTS = (
     (PROJECT_ROOT / "assets" / "model_files").resolve(),
     (PROJECT_ROOT / "ui" / "public" / "model_files").resolve(),

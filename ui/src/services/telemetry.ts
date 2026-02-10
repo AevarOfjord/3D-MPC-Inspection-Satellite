@@ -1,4 +1,4 @@
-import { WS_URL } from '../config/endpoints';
+
 
 export interface TelemetryData {
   time: number;
@@ -39,56 +39,12 @@ type TelemetryCallback = (data: TelemetryData) => void;
 type ConnectionCallback = (connected: boolean) => void;
 
 class TelemetryService {
-  private socket: WebSocket | null = null;
   private subscribers: Set<TelemetryCallback> = new Set();
   private statusSubscribers: Set<ConnectionCallback> = new Set();
-  private isConnected: boolean = false;
-  private manualMode: boolean = false;
 
   public get connected() {
-    return this.isConnected;
-  }
-
-  connect(url: string = WS_URL) {
-    if (this.socket || this.manualMode) return;
-
-    this.socket = new WebSocket(url);
-
-    this.socket.onopen = () => {
-      console.log("Telemetry Connected");
-      this.isConnected = true;
-      this.notifyStatus(true);
-    };
-
-    this.socket.onmessage = (event) => {
-      try {
-        const data: TelemetryData = JSON.parse(event.data);
-        this.notify(this.normalize(data));
-      } catch (e) {
-        console.error("Failed to parse telemetry", e);
-      }
-    };
-
-    this.socket.onclose = () => {
-      console.log("Telemetry Disconnected");
-      this.isConnected = false;
-      this.socket = null;
-      this.notifyStatus(false);
-      // Reconnect logic could go here
-      if (!this.manualMode) {
-        setTimeout(() => this.connect(url), 1000);
-      }
-    };
-  }
-
-  setManualMode(enabled: boolean) {
-    this.manualMode = enabled;
-    if (enabled && this.socket) {
-      this.socket.close();
-      this.socket = null;
-      this.isConnected = false;
-      this.notifyStatus(false);
-    }
+    // Always return false since we're playback-only (no live websocket)
+    return false;
   }
 
   emit(data: TelemetryData) {

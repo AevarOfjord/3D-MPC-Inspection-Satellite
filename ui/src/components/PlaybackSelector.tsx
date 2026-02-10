@@ -137,11 +137,10 @@ export function PlaybackSelector() {
     useTelemetryStore.getState().setPlaybackFinalState(null);
 
     if (!value) {
-      telemetry.setManualMode(false);
       return;
     }
 
-    telemetry.setManualMode(true);
+
     setLoading(true);
     try {
       const run = runs.find(r => r.id === value);

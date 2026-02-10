@@ -1,26 +1,37 @@
 # Tests
 
-This directory is for unit tests and integration tests for the Satellite Thruster Control System.
+Compact, high-value test suite for the Satellite control system.
+Reduced from 32 files to 12 focused files that test real behavior, not mocks.
 
 ## Running Tests
 
-Once tests are added, you can run them with:
-
 ```bash
+# Run all tests (fast)
 .venv311/bin/python -m pytest
+
+# Run slow integration/E2E tests
+.venv311/bin/python -m pytest -m slow
+
+# Run opt-in E2E simulation test (slow + environment-gated)
+RUN_E2E_SIM_TESTS=1 .venv311/bin/python -m pytest -m slow tests/test_e2e_simulation.py
+
+# Run benchmarks
+.venv311/bin/python -m pytest tests/test_benchmark.py --benchmark-only
 ```
 
-## Test Structure
+## Test Files
 
-- `test_mpc_controller.py` - Tests for MPC controller
-- `test_config.py` - Tests for configuration validation
-- `test_model.py` - Tests for physical model
-- `test_integration_basic.py` - Basic integration tests
-- `test_integration_missions.py` - Mission integration tests
-- Additional test files as needed
-
-## Testing Tools
-
-For manual testing and verification:
-- Use `python run_simulation.py run` (or `make sim`) to run missions in the simulator
-- Inspect generated outputs under `Data/Simulation/<timestamp>/` for validation
+| File | Scope |
+|------|-------|
+| `test_config.py` | Configuration validation, presets, parameter constraints. |
+| `test_math.py` | Pure math: orbital dynamics, navigation, angle normalization. |
+| `test_mpc.py` | MPC Controller logic: initialization, control action generation. |
+| `test_thruster_logic.py` | Thruster management: PWM duty cycles, continuous mode, valve delays. |
+| `test_state_validation.py` | State vector checks: NaN/Inf detection, bounds, trajectory continuity. |
+| `test_path_planning.py` | Obstacle avoidance, waypoint generation, safe path calculation. |
+| `test_mission_workflow.py` | MissionState serialization, mission context management. |
+| `test_dashboard_api.py` | FastAPI endpoints: mission listing, simulation status, control. |
+| `test_property_based.py` | Hypothesis fuzzing for math invariants and edge cases. |
+| `test_cpp_integration.py` | C++ simulation engine bindings and physics stepping. |
+| `test_e2e_simulation.py` | Full headless simulation run (smoke test, opt-in via `RUN_E2E_SIM_TESTS=1`). |
+| `test_benchmark.py` | Performance regression tests for the solver. |

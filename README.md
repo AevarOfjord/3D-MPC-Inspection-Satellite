@@ -30,7 +30,7 @@
 ## 📁 Project Structure
 
 ```
-├── src/satellite_control/
+├── src/python/satellite_control/
 │   ├── control/                # MPC controllers
 │   ├── core/                   # Simulation loop + C++ engine bindings
 │   ├── config/                 # Orbital & actuator configs
@@ -38,7 +38,7 @@
 │   ├── dashboard/              # FastAPI backend + route modules
 │   └── physics/                # Orbital dynamics (CW equations)
 ├── ui/                         # Web-based mission designer
-├── missions_unified/           # Saved unified missions
+├── missions/                   # Saved unified missions
 └── Data/                       # Simulation outputs
 ```
 
@@ -52,7 +52,7 @@ pip install -r requirements-dev.txt
 cd ui && npm install && cd ..
 
 # 2. Start the Backend Simulation Server (Term 1)
-python run_dashboard.py
+python scripts/run_dashboard.py
 # Server binds to localhost (127.0.0.1:8000)
 
 # 3. Start the Mission Control UI (Term 2)
@@ -97,7 +97,7 @@ npm run build
 
 ## 📋 Mission Types
 
-Mission definitions live in `missions_unified/` (saved)
+Mission definitions live in `missions/` (saved)
 and drive the path-following MPC setup.
 
 ## 📄 License
