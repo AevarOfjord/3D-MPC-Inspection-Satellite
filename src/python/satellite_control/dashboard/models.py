@@ -115,6 +115,15 @@ MissionSegmentModel = Annotated[
 
 class MissionOverridesModel(BaseModel):
     spline_controls: list[SplineControlModel] = Field(default_factory=list)
+    manual_path: list[list[float]] = Field(default_factory=list)
+
+    @field_validator("manual_path")
+    @classmethod
+    def validate_manual_path(cls, value: list[list[float]]) -> list[list[float]]:
+        for point in value:
+            if len(point) != 3:
+                raise ValueError("manual_path points must have length 3")
+        return value
 
 
 class UnifiedMissionModel(BaseModel):

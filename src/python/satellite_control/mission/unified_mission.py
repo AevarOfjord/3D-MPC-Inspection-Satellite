@@ -267,10 +267,12 @@ Segment = TransferSegment | ScanSegment | HoldSegment
 @dataclass
 class MissionOverrides:
     spline_controls: list[SplineControl] = field(default_factory=list)
+    manual_path: list[list[float]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "spline_controls": [c.to_dict() for c in self.spline_controls],
+            "manual_path": [list(p) for p in self.manual_path],
         }
 
     @classmethod
@@ -278,7 +280,10 @@ class MissionOverrides:
         if not data:
             data = {}
         controls = [SplineControl.from_dict(c) for c in data.get("spline_controls", [])]
-        return cls(spline_controls=controls)
+        manual_path = [
+            list(map(float, p)) for p in data.get("manual_path", []) if len(p) == 3
+        ]
+        return cls(spline_controls=controls, manual_path=manual_path)
 
 
 @dataclass

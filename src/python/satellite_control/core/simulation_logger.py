@@ -247,6 +247,7 @@ class SimulationLogger:
         normalize_angle_func: Any | None = None,
         solve_time: float = 0.0,
         frame_origin: np.ndarray | None = None,
+        rw_torque: np.ndarray | None = None,
     ) -> None:
         """
         Log high-frequency physics data.
@@ -294,6 +295,10 @@ class SimulationLogger:
         origin_y = frame_origin[1] if frame_origin is not None else 0.0
         origin_z = frame_origin[2] if frame_origin is not None else 0.0
 
+        rw_x = rw_torque[0] if rw_torque is not None and len(rw_torque) > 0 else 0.0
+        rw_y = rw_torque[1] if rw_torque is not None and len(rw_torque) > 1 else 0.0
+        rw_z = rw_torque[2] if rw_torque is not None and len(rw_torque) > 2 else 0.0
+
         entry = {
             "Time": f"{simulation_time:.4f}",
             "Current_X": f"{curr_x:.5f}",
@@ -324,6 +329,9 @@ class SimulationLogger:
             "Frame_Origin_Y": f"{origin_y:.5f}",
             "Frame_Origin_Z": f"{origin_z:.5f}",
             "Command_Vector": cmd_vec_str,
+            "RW_Torque_X": f"{rw_x:.5f}",
+            "RW_Torque_Y": f"{rw_y:.5f}",
+            "RW_Torque_Z": f"{rw_z:.5f}",
             "Solve_Time": f"{solve_time * 1000:.2f}",  # Save in ms for readability
         }
 

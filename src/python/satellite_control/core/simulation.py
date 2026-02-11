@@ -348,6 +348,11 @@ class SatelliteMPCLinearizedSimulation:
         if mission_state and hasattr(mission_state, "frame_origin"):
             frame_origin = np.array(mission_state.frame_origin, dtype=float)
 
+        # Get RW torque if available
+        rw_torque = np.zeros(3)
+        if hasattr(self.satellite, "_current_rw_torques"):
+            rw_torque = self.satellite._current_rw_torques.copy()
+
         self.physics_logger_helper.log_physics_step(
             simulation_time=self.simulation_time,
             current_state=current_state,
@@ -357,6 +362,7 @@ class SatelliteMPCLinearizedSimulation:
             normalize_angle_func=self.normalize_angle,
             solve_time=self.last_solve_time,
             frame_origin=frame_origin,
+            rw_torque=rw_torque,
         )
 
     def save_csv_data(self) -> None:
