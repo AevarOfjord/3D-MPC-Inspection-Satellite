@@ -46,7 +46,7 @@ else
 endif
 
 REQS_FILE ?= requirements.txt
-DEV_REQS_FILE ?= requirements-dev.txt
+SYSTEM_CMAKE := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g; s|$(CURDIR)/$(VENV_BIN)||g') command -v cmake 2>/dev/null || echo "")
 
 # ============================================================================
 # Help
@@ -79,6 +79,15 @@ check-python:
 	@$(SYSTEM_PYTHON) -c "import sys; v=sys.version_info[:2]; raise SystemExit(0 if v==(3,11) else f'Python 3.11.x required, got {sys.version.split()[0]}')"
 	@echo "Found system Python: $(SYSTEM_PYTHON)"
 
+check-cmake:
+	@if [ -z "$(SYSTEM_CMAKE)" ]; then \
+		echo "Error: CMake not found on system PATH"; \
+		echo "Install it (macOS: brew install cmake, Ubuntu: apt install cmake)"; \
+		exit 1; \
+	fi
+	@echo "Found system CMake: $(SYSTEM_CMAKE)"
+	@$(SYSTEM_CMAKE) --version | head -1
+
 # ============================================================================
 # Run targets
 # ============================================================================
@@ -97,6 +106,17 @@ frontend:
 	cd ui && npm install && npm run dev
 
 sim:
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -c "import numpy, scipy, pydantic, typer" >/dev/null 2>&1; then \
+		echo "Python runtime dependencies are missing in $(VENV_DIR)."; \
+		echo "Running 'make install' to repair the environment..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(VENV_PY) -c "import numpy, scipy, pydantic, typer" >/dev/null 2>&1; then \
+			echo "Error: Dependencies are still missing after install."; \
+			echo "Check network access and pip output above."; \
+			exit 1; \
+		fi; \
+	fi
 	@printf "Run tests before simulation? [y/N] "; \
 	read ans; \
 	case "$$ans" in \
@@ -118,39 +138,42 @@ rebuild: clean-build install
 	@echo "Rebuild complete. Run a mission with: make sim"
 
 venv: check-python
-	@if [ ! -f "$(VENV_PY)" ]; then \
+	@if [ -f "$(VENV_PY)" ]; then \
+		echo "Virtual environment already exists, skipping creation."; \
+	else \
 		echo "Creating virtual environment..."; \
 		$(SYSTEM_PYTHON) -m venv $(VENV_DIR); \
-		$(VENV_PIP) install --upgrade pip; \
 		echo "Virtual environment created at $(VENV_DIR)"; \
-	else \
-		echo "Virtual environment already exists, skipping creation."; \
+	fi
+	@if ! $(VENV_PY) -c "import pip" >/dev/null 2>&1; then \
+		echo "pip missing in venv, repairing with ensurepip..."; \
+		$(VENV_PY) -m ensurepip --upgrade; \
+		$(VENV_PY) -m pip install --upgrade pip setuptools; \
 	fi
 
-install: venv
+install: venv check-cmake
 	@echo ""
 	@echo "=== Installing Python dependencies ==="
-	$(VENV_PIP) install -r $(REQS_FILE)
+	$(VENV_PY) -m pip install -r $(REQS_FILE)
 	@echo ""
 	@echo "=== Installing C++ build dependencies ==="
-	$(VENV_PIP) install "scikit-build-core>=0.3.3" pybind11 "cmake>=3.20" "ninja>=1.10"
+	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
 	@echo ""
 	@echo "=== Building C++ extensions ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
-		$(VENV_PIP) install --no-build-isolation -e .
+	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
+		$(VENV_PY) -m pip install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
-install-dev: venv
-	@echo ""
-	@echo "=== Installing dev dependencies ==="
-	$(VENV_PIP) install -r $(DEV_REQS_FILE)
+install-dev: install
 	@echo ""
 	@echo "=== Installing C++ build dependencies ==="
-	$(VENV_PIP) install "scikit-build-core>=0.3.3" pybind11 "cmake>=3.20" "ninja>=1.10"
+	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
 	@echo ""
 	@echo "=== Building C++ extensions ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
-		$(VENV_PIP) install --no-build-isolation -e .
+	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
+		$(VENV_PY) -m pip install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 # ============================================================================

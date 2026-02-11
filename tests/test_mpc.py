@@ -74,3 +74,37 @@ class TestMPCController:
         # Only check if we have RWs configured
         if max_torque > 0:
             assert np.all(np.abs(rw_torques) <= max_torque + 1e-5)
+
+    def test_solver_metadata_fields(self, controller):
+        """Solver metadata should include status and timeout diagnostics."""
+        x_current = np.zeros(16)
+        x_current[3] = 1.0
+        _, info = controller.get_control_action(x_current)
+
+        assert "status" in info
+        assert "timeout" in info
+        assert "solver_status" in info
+        assert isinstance(info["timeout"], bool)
+
+    def test_obstacle_constraint_api(self, controller):
+        """Controller accepts obstacle updates and still computes controls."""
+        if not hasattr(controller, "set_obstacles"):
+            pytest.skip("Obstacle APIs not available in this build")
+
+        controller.set_obstacles([(1.0, 0.0, 0.0, 0.5), (2.0, 0.0, 0.0, 0.25)])
+        x_current = np.zeros(16)
+        x_current[3] = 1.0
+        u, info = controller.get_control_action(x_current)
+        assert u is not None
+        assert isinstance(info.get("status"), int)
+
+        if hasattr(controller, "clear_obstacles"):
+            controller.clear_obstacles()
+
+    def test_collision_avoidance_flag_passthrough(self):
+        """MPC config flag should propagate into the controller wrapper."""
+        cfg = SimulationConfig.create_with_overrides(
+            {"mpc": {"enable_collision_avoidance": True}}
+        )
+        controller = MPCController(cfg.app_config)
+        assert controller.enable_collision_avoidance is True

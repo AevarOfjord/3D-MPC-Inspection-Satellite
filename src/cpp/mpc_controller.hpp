@@ -35,7 +35,7 @@ struct MPCParams {
     double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
     double progress_reward = 0.0;       ///< Reward for forward progress (auto speed)
     double Q_lag = 0.0;                 ///< Weight for lag error (along tangent, 0 = auto)
-    double Q_smooth = 10.0;             ///< Weight for velocity smoothness
+    double Q_smooth = 10.0;             ///< Weight for control increment smoothness (Δu)
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
     double Q_attitude = 0.0;            ///< Attitude tracking weight (align body x-axis to path tangent)
 
@@ -46,6 +46,11 @@ struct MPCParams {
     double coast_pos_tolerance = 0.0; ///< Coasting band position error [m] (0 = off)
     double coast_vel_tolerance = 0.0; ///< Coasting band lateral velocity [m/s] (0 = off)
     double coast_min_speed = 0.0;     ///< Minimum progress speed when coasting [m/s]
+    double max_linear_velocity = 0.0; ///< Linear velocity bound [m/s] (0 = auto)
+    double max_angular_velocity = 0.0; ///< Angular velocity bound [rad/s] (0 = auto)
+    bool enable_delta_u_coupling = false; ///< Enable full Δu temporal coupling in smoothness cost
+    bool enable_gyro_jacobian = false; ///< Enable gyroscopic Jacobian updates in angular dynamics
+    bool enable_auto_state_bounds = false; ///< Auto-derive velocity bounds when explicit bounds are unset
 
 
 
@@ -71,7 +76,10 @@ struct MPCParams {
  */
 struct ControlResult {
     VectorXd u;         ///< Optimal control vector (RW + Thrusters)
-    int status;         ///< OSQP solver status
+    int status;         ///< 1 for success, -1 for non-success
+    int solver_status;  ///< Raw OSQP status code
+    int iterations;     ///< Solver iteration count
+    double objective;   ///< Solver objective value
     double solve_time;  ///< Time taken to solve [s]
     bool timeout;       ///< Whether the solver timed out
 };
@@ -228,6 +236,8 @@ private:
 
     /// Maps [row][col] -> index in A_data_ for orbital/velocity dynamics updates (rows 7-9, cols 0-9).
     std::vector<std::vector<int>> A_orbital_idx_map_;
+    /// Maps [row][col] -> index in A_data_ for angular dynamics updates (rows 10-12, cols 10-12).
+    std::vector<std::vector<int>> A_angvel_idx_map_;
 
     // -- Collision Avoidance Internals --
     ObstacleSet obstacles_;
@@ -257,6 +267,7 @@ private:
     int n_bounds_u_ = 0;
     int n_control_horizon_constraints_ = 0;
     int control_horizon_ = 0;
+    int ctrl_row_start_ = 0;
 
     // Dynamic affine term (for gravity, etc.)
     VectorXd dyn_affine_;
@@ -268,6 +279,12 @@ private:
     VectorXd warm_start_control_;
     VectorXd warm_start_x_;
     bool has_warm_start_control_ = false;
+    VectorXd last_feasible_control_;
+    bool has_last_feasible_control_ = false;
+
+    // Auto-derived state bounds (used when params are unset)
+    double max_linear_velocity_bound_ = 0.0;
+    double max_angular_velocity_bound_ = 0.0;
 
     // -- Runtime Methods --
     void update_dynamics(const VectorXd& x_current);
@@ -275,6 +292,7 @@ private:
     void update_constraints(const VectorXd& x_current);
     void update_obstacle_constraints(const VectorXd& x_current);
     void update_path_cost(const VectorXd& x_current); // Path following linearization
+    double compute_dynamic_vs_min(double s_curr) const;
 
     // Path following internal state
     std::vector<double> s_guess_; // Guess for path parameter s over horizon

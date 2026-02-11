@@ -5,6 +5,7 @@ Runs valid headless simulations to verify the entire stack holds together.
 Consolidates `e2e/test_simulation_runner.py`.
 """
 
+import json
 import os
 
 import pytest
@@ -59,4 +60,11 @@ class TestE2ESimulation:
         # Verify core simulation artifacts were created.
         assert (output_path / "physics_data.csv").exists()
         assert (output_path / "control_data.csv").exists()
-        assert (output_path / "performance_metrics.json").exists()
+        metrics_path = output_path / "performance_metrics.json"
+        assert metrics_path.exists()
+
+        metrics = json.loads(metrics_path.read_text())
+        contract = metrics.get("mpc_timing_contract", {})
+        assert "target_mean_ms" in contract
+        assert "hard_max_ms" in contract
+        assert "pass" in contract

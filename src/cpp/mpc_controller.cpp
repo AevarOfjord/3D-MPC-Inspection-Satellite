@@ -27,7 +27,10 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     nu_ = sat_params_.num_rw + sat_params_.num_thrusters + 1;
 
     // Create linearizer
-    linearizer_ = std::make_unique<Linearizer>(sat_params_);
+    linearizer_ = std::make_unique<Linearizer>(
+        sat_params_,
+        mpc_params_.enable_gyro_jacobian
+    );
 
     // Precompute weight vectors
     Q_diag_.resize(nx_);
@@ -43,7 +46,7 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     R_diag_.resize(nu_);
     R_diag_ << VectorXd::Constant(sat_params_.num_rw, mpc_params_.R_rw_torque),
                VectorXd::Constant(sat_params_.num_thrusters, mpc_params_.R_thrust),
-               VectorXd::Constant(1, mpc_params_.Q_smooth + mpc_params_.Q_progress);
+               VectorXd::Constant(1, mpc_params_.Q_progress);
 
     // Control bounds
     control_lower_.resize(nu_);
@@ -67,8 +70,57 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     // Initialize quaternion tracking
     prev_quat_ << -999, -999, -999, -999;
 
+    // Derive practical state bounds only when requested.
+    max_linear_velocity_bound_ =
+        (mpc_params_.max_linear_velocity > 0.0) ? mpc_params_.max_linear_velocity : 0.0;
+    max_angular_velocity_bound_ =
+        (mpc_params_.max_angular_velocity > 0.0) ? mpc_params_.max_angular_velocity : 0.0;
+
+    if (mpc_params_.enable_auto_state_bounds) {
+        if (max_linear_velocity_bound_ <= 0.0) {
+            double total_thruster_force = 0.0;
+            for (double f : sat_params_.thruster_forces) {
+                total_thruster_force += std::max(0.0, f);
+            }
+            double accel_linear = 0.0;
+            if (sat_params_.mass > 1e-9) {
+                accel_linear = total_thruster_force / sat_params_.mass;
+            }
+            double auto_v = std::max(
+                0.25,
+                std::max(
+                    mpc_params_.path_speed_max * 4.0,
+                    accel_linear * dt_ * static_cast<double>(N_)
+                )
+            );
+            max_linear_velocity_bound_ = auto_v;
+        }
+
+        if (max_angular_velocity_bound_ <= 0.0) {
+            double torque_total = 0.0;
+            for (double t : sat_params_.rw_torque_limits) {
+                torque_total += std::max(0.0, t);
+            }
+            for (size_t i = 0; i < sat_params_.thruster_positions.size() &&
+                              i < sat_params_.thruster_directions.size() &&
+                              i < sat_params_.thruster_forces.size(); ++i) {
+                Eigen::Vector3d r = sat_params_.thruster_positions[i] - sat_params_.com_offset;
+                Eigen::Vector3d f = sat_params_.thruster_forces[i] * sat_params_.thruster_directions[i];
+                torque_total += r.cross(f).norm();
+            }
+            double inertia_min = std::min(
+                sat_params_.inertia.x(),
+                std::min(sat_params_.inertia.y(), sat_params_.inertia.z())
+            );
+            double accel_angular = (inertia_min > 1e-9) ? (torque_total / inertia_min) : 0.0;
+            double auto_w = std::max(0.5, accel_angular * dt_ * static_cast<double>(N_));
+            max_angular_velocity_bound_ = auto_w;
+        }
+    }
+
     // Initialize path following state
     s_guess_.resize(N_ + 1, 0.0);
+    last_feasible_control_ = VectorXd::Zero(nu_);
 
     // Initialize solver
     init_solver();
@@ -112,8 +164,7 @@ void MPCControllerCpp::rebuild_solver() {
 
 void MPCControllerCpp::init_solver() {
     int n_vars = (N_ + 1) * nx_ + N_ * nu_;
-    // Path-focused MPCC: obstacles are ignored by design.
-    obs_per_step_ = 0;
+    obs_per_step_ = static_cast<int>(obstacles_.size());
 
     // 1. Build P matrix (Cost)
     std::vector<Eigen::Triplet<double>> P_triplets;
@@ -141,7 +192,6 @@ void MPCControllerCpp::init_solver() {
     n_bounds_x_ = (N_ + 1) * nx_;
     n_bounds_u_ = N_ * nu_;
     n_control_horizon_constraints_ = (control_horizon_ < N_) ? (N_ - control_horizon_) * nu_ : 0;
-    obs_per_step_ = static_cast<int>(obstacles_.size());
     n_obs_constraints_ = (obs_per_step_ > 0) ? (N_ * obs_per_step_) : 0;
     int n_constraints = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_ + n_obs_constraints_;
 
@@ -247,7 +297,31 @@ void MPCControllerCpp::init_solver() {
         }
     }
 
-    // E. Path Following P-matrix index map
+    // E. Angular dynamics index map (rows 10-12, cols 10-12)
+    A_angvel_idx_map_.clear();
+    if (mpc_params_.enable_gyro_jacobian) {
+        A_angvel_idx_map_.resize(3 * 3);
+        for (auto &v : A_angvel_idx_map_) {
+            v.clear();
+        }
+        for (int k = 0; k < N_; ++k) {
+            int row_base = k * nx_;
+            int col_base = k * nx_;
+            for (int wr = 0; wr < 3; ++wr) {
+                for (int wc = 0; wc < 3; ++wc) {
+                    int row = row_base + 10 + wr;
+                    int col = col_base + 10 + wc;
+                    for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                        if (A_.innerIndexPtr()[idx] == row) {
+                            A_angvel_idx_map_[wr * 3 + wc].push_back(idx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // F. Path Following P-matrix index map
     // We need to find the indices in P_data_ for the cross terms (0,16), (1,16), (2,16)
     path_P_indices_.resize(N_ + 1);
     path_s_diag_indices_.resize(N_ + 1);
@@ -408,6 +482,23 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
         P_diag.segment((N_ + 1) * nx_ + k * nu_, nu_) = R_diag_; // Augmented nu handles vs cost
     }
 
+    // Smoothness penalty: Σ ||u_k - u_{k-1}||^2 for k=1..N-1
+    if (mpc_params_.Q_smooth > 0.0 && N_ > 1) {
+        double w = mpc_params_.Q_smooth;
+        int u0 = (N_ + 1) * nx_;
+        for (int k = 1; k < N_; ++k) {
+            int uk = u0 + k * nu_;
+            int ukm1 = u0 + (k - 1) * nu_;
+            for (int c = 0; c < nu_; ++c) {
+                P_diag(uk + c) += 2.0 * w;
+                P_diag(ukm1 + c) += 2.0 * w;
+                if (mpc_params_.enable_delta_u_coupling) {
+                    triplets.emplace_back(ukm1 + c, uk + c, -2.0 * w);
+                }
+            }
+        }
+    }
+
     // Penalize opposing thruster co-firing: w * (u_i + u_j)^2 per axis.
     if (mpc_params_.thrust_pair_weight > 0.0 && sat_params_.num_thrusters >= 2) {
         double w = mpc_params_.thrust_pair_weight;
@@ -493,7 +584,9 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 if (r < 16 && c < 16) {
                     // Force inclusion of G-block (rows 3-6, cols 10-12) for quaternion dynamics updates
                     bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
-                    if (is_g_block || std::abs(A_dyn(r, c)) > 1e-12) {
+                    bool is_angvel_block = mpc_params_.enable_gyro_jacobian &&
+                        (r >= 10 && r < 13 && c >= 10 && c < 13);
+                    if (is_g_block || is_angvel_block || std::abs(A_dyn(r, c)) > 1e-12) {
                         triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
                     }
                 }
@@ -604,11 +697,25 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     l_.segment(state_idx_start, n_bounds_x).setConstant(-1e20);
     u_.segment(state_idx_start, n_bounds_x).setConstant(1e20);
 
-    // 3a. Velocity bounds (indices 7, 8, 9) - DISABLED in MPCC mode
-    // 3a. Velocity bounds (indices 7, 8, 9) - DISABLED in MPCC mode
-    // (Legacy max_velocity logic removed)
+    // 3a. Velocity bounds (indices 7-9)
+    if (max_linear_velocity_bound_ > 0.0) {
+        for (int k = 0; k < N_ + 1; ++k) {
+            int vel_idx = state_idx_start + k * nx_ + 7;
+            l_.segment(vel_idx, 3).setConstant(-max_linear_velocity_bound_);
+            u_.segment(vel_idx, 3).setConstant(max_linear_velocity_bound_);
+        }
+    }
 
-    // 3b. Wheel speed limits (indices 13-15) - from config if available
+    // 3b. Angular velocity bounds (indices 10-12)
+    if (max_angular_velocity_bound_ > 0.0) {
+        for (int k = 0; k < N_ + 1; ++k) {
+            int w_idx = state_idx_start + k * nx_ + 10;
+            l_.segment(w_idx, 3).setConstant(-max_angular_velocity_bound_);
+            u_.segment(w_idx, 3).setConstant(max_angular_velocity_bound_);
+        }
+    }
+
+    // 3c. Wheel speed limits (indices 13-15) - from config if available
     for (int k = 0; k < N_ + 1; ++k) {
         int ws_idx = state_idx_start + k * nx_ + 13;
         for (int i = 0; i < 3; ++i) {
@@ -624,8 +731,7 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
         }
     }
 
-    // 3c. Path parameter bounds (index 16) - MPCC mode
-    // 3c. Path parameter bounds (index 16) - MPCC mode
+    // 3d. Path parameter bounds (index 16) - MPCC mode
     for (int k = 0; k < N_ + 1; ++k) {
         int s_idx = state_idx_start + k * nx_ + 16;
         // s must be within [0, L]
@@ -639,6 +745,7 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
 
     // 4. Control bounds
     int ctrl_idx_start = n_dyn + n_init + n_bounds_x;
+    ctrl_row_start_ = ctrl_idx_start;
     for (int k = 0; k < N_; ++k) {
         l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_;
         u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_;
@@ -685,6 +792,11 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     settings_->verbose = mpc_params_.verbose_mpc ? 1 : 0;
     settings_->time_limit = mpc_params_.solver_time_limit;
     settings_->warm_start = 1;
+    // Favor deterministic, low-jitter behavior for real-time MPC.
+    // Adaptive rho can trigger occasional expensive refactorizations.
+    settings_->adaptive_rho = 0;
+    settings_->max_iter = 1200;
+    settings_->check_termination = 5;
 
     if (!mpc_params_.solver_type.empty() && mpc_params_.solver_type != "OSQP") {
         std::cerr << "[MPC] Warning: solver_type '" << mpc_params_.solver_type
@@ -729,6 +841,18 @@ void MPCControllerCpp::update_dynamics(const VectorXd& x_current) {
         }
     }
 
+    // Update angular velocity dynamics block (rows 10-12, cols 10-12)
+    if (mpc_params_.enable_gyro_jacobian) {
+        for (int wr = 0; wr < 3; ++wr) {
+            for (int wc = 0; wc < 3; ++wc) {
+                double val = -A_dyn(10 + wr, 10 + wc);
+                for (int idx : A_angvel_idx_map_[wr * 3 + wc]) {
+                    A_data_[idx] = val;
+                }
+            }
+        }
+    }
+
     // Update B matrix entries (physics-only block)
     int nx_phys = 16;
     int nu_phys = nu_ - 1;
@@ -765,6 +889,20 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
     l_.segment(init_start, nx_) = x_current;
     u_.segment(init_start, nx_) = x_current;
 
+    // Dynamically relax progress lower bound near the path endpoint so MPC can stop.
+    if (ctrl_row_start_ > 0 && nu_ > 0) {
+        double s_curr = 0.0;
+        if (x_current.size() >= 17) {
+            s_curr = x_current(16);
+        }
+        double v_s_min_dynamic = compute_dynamic_vs_min(s_curr);
+        for (int k = 0; k < N_; ++k) {
+            int row = ctrl_row_start_ + k * nu_ + (nu_ - 1);
+            l_(row) = v_s_min_dynamic;
+            u_(row) = control_upper_(nu_ - 1);
+        }
+    }
+
     osqp_update_bounds(work_, l_.data(), u_.data());
 }
 
@@ -778,6 +916,11 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     auto start = std::chrono::high_resolution_clock::now();
 
     ControlResult result;
+    result.status = -1;
+    result.solver_status = 0;
+    result.iterations = 0;
+    result.objective = 0.0;
+    result.u = VectorXd::Zero(nu_);
     result.timeout = false;
 
     VectorXd x_curr_aug = x_current;
@@ -788,11 +931,22 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     if (s_guess_.size() == N_ + 1) {
         std::rotate(s_guess_.begin(), s_guess_.begin() + 1, s_guess_.end());
         s_guess_.back() += mpc_params_.path_speed * dt_;
-        // Re-anchor to current state to prevent drift
-        // Assuming x_current(16) contains current s if size is 17
+
+        double s_curr = s_guess_.front();
         if (x_current.size() >= 17) {
-             double s_curr = x_current(16);
-             for(int k=0; k<=N_; ++k) s_guess_[k] = s_curr + k * mpc_params_.path_speed * dt_;
+            s_curr = x_current(16);
+        }
+        double delta = s_curr - s_guess_.front();
+        for (double &s_k : s_guess_) {
+            s_k += delta;
+        }
+        if (path_total_length_ > 0.0) {
+            double prev = 0.0;
+            for (double &s_k : s_guess_) {
+                s_k = std::max(0.0, std::min(s_k, path_total_length_));
+                s_k = std::max(s_k, prev);
+                prev = s_k;
+            }
         }
     }
 
@@ -853,16 +1007,33 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     auto end = std::chrono::high_resolution_clock::now();
     result.solve_time = std::chrono::duration<double>(end - start).count();
 
-    if (work_->info->status_val != OSQP_SOLVED &&
-        work_->info->status_val != OSQP_SOLVED_INACCURATE) {
-        result.status = -1; // Error
-        result.u = VectorXd::Zero(nu_); // Note: this is augmented nu size
+    int solver_status = 0;
+    if (work_ && work_->info) {
+        solver_status = work_->info->status_val;
+        result.iterations = static_cast<int>(work_->info->iter);
+        result.objective = static_cast<double>(work_->info->obj_val);
+    }
+    result.solver_status = solver_status;
+#ifdef OSQP_TIME_LIMIT_REACHED
+    result.timeout = (solver_status == OSQP_TIME_LIMIT_REACHED);
+#endif
+
+    const bool solved = (solver_status == OSQP_SOLVED ||
+                         solver_status == OSQP_SOLVED_INACCURATE);
+    if (!solved) {
+        if (has_last_feasible_control_ && last_feasible_control_.size() == nu_) {
+            result.u = last_feasible_control_;
+        }
         return result;
     }
 
     // Extract predicted s trajectory for next step (optional, for better linearization)
     for (int k = 0; k <= N_; ++k) {
-        s_guess_[k] = work_->solution->x[k * nx_ + 16];
+        double s_k = work_->solution->x[k * nx_ + 16];
+        if (path_total_length_ > 0.0) {
+            s_k = std::max(0.0, std::min(s_k, path_total_length_));
+        }
+        s_guess_[k] = s_k;
     }
 
     // Extract control from solution
@@ -870,8 +1041,14 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     result.u = Eigen::Map<VectorXd>(work_->solution->x + u_idx, nu_);
 
     // Clip to bounds (safety)
-    result.u = result.u.cwiseMax(control_lower_).cwiseMin(control_upper_);
-    result.status = 1; // Success
+    VectorXd lower = control_lower_;
+    if (x_current.size() >= 17) {
+        lower(nu_ - 1) = compute_dynamic_vs_min(x_current(16));
+    }
+    result.u = result.u.cwiseMax(lower).cwiseMin(control_upper_);
+    result.status = 1;
+    last_feasible_control_ = result.u;
+    has_last_feasible_control_ = true;
 
     // --- Velocity Governor Safety Check (Post-Solve) ---
     // If strict velocity limit is enabled and we are overspeeding,
@@ -888,12 +1065,22 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 // ----------------------------------------------------------------------------
 
 void MPCControllerCpp::set_obstacles(const ObstacleSet& obstacles) {
-    // Path-focused MPCC ignores obstacles.
+    int previous_count = static_cast<int>(obstacles_.size());
     obstacles_ = obstacles;
+    mpc_params_.enable_collision_avoidance = (obstacles_.size() > 0);
+    int next_count = static_cast<int>(obstacles_.size());
+    if (previous_count != next_count) {
+        rebuild_solver();
+    }
 }
 
 void MPCControllerCpp::clear_obstacles() {
+    if (obstacles_.size() == 0) {
+        return;
+    }
     obstacles_.clear();
+    mpc_params_.enable_collision_avoidance = false;
+    rebuild_solver();
 }
 
 void MPCControllerCpp::set_warm_start_control(const VectorXd& u_prev) {
@@ -925,6 +1112,27 @@ void MPCControllerCpp::clear_scan_attitude_context() {
     scan_attitude_enabled_ = false;
     scan_center_ = Eigen::Vector3d::Zero();
     scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+}
+
+double MPCControllerCpp::compute_dynamic_vs_min(double s_curr) const {
+    double base_min = control_lower_(nu_ - 1);
+    if (!path_data_valid_ || path_total_length_ <= 0.0) {
+        return base_min;
+    }
+
+    double s_clamped = std::max(0.0, std::min(s_curr, path_total_length_));
+    double remaining = std::max(0.0, path_total_length_ - s_clamped);
+
+    // Distance covered at minimum speed over one horizon.
+    double horizon_min_distance = std::max(
+        1e-4,
+        std::max(1.0, 0.25 * static_cast<double>(N_)) * mpc_params_.path_speed_min * dt_
+    );
+
+    if (remaining <= horizon_min_distance) {
+        return 0.0;
+    }
+    return base_min;
 }
 
 void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
@@ -1326,7 +1534,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 }
 
 void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current) {
-    // Path-focused MPCC ignores obstacles.
     if (n_obs_constraints_ == 0) {
         return;
     }

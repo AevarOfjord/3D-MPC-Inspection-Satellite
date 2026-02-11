@@ -55,6 +55,11 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("coast_pos_tolerance", &MPCParams::coast_pos_tolerance)
         .def_readwrite("coast_vel_tolerance", &MPCParams::coast_vel_tolerance)
         .def_readwrite("coast_min_speed", &MPCParams::coast_min_speed)
+        .def_readwrite("max_linear_velocity", &MPCParams::max_linear_velocity)
+        .def_readwrite("max_angular_velocity", &MPCParams::max_angular_velocity)
+        .def_readwrite("enable_delta_u_coupling", &MPCParams::enable_delta_u_coupling)
+        .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
+        .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
 
         // Collision avoidance (V3.0.0)
         .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
@@ -78,6 +83,9 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def(py::init<>())
         .def_readwrite("u", &ControlResult::u)
         .def_readwrite("status", &ControlResult::status)
+        .def_readwrite("solver_status", &ControlResult::solver_status)
+        .def_readwrite("iterations", &ControlResult::iterations)
+        .def_readwrite("objective", &ControlResult::objective)
         .def_readwrite("solve_time", &ControlResult::solve_time)
         .def_readwrite("timeout", &ControlResult::timeout);
 

@@ -183,6 +183,16 @@ class SimulationInitializer:
             self.simulation.mpc_controller.set_path(mission_state.path_waypoints)
             self.simulation.planned_path = list(mission_state.path_waypoints)
 
+        if hasattr(self.simulation.mpc_controller, "set_obstacles"):
+            if getattr(mission_state, "obstacles_enabled", False) and getattr(
+                mission_state, "obstacles", None
+            ):
+                self.simulation.mpc_controller.set_obstacles(
+                    list(mission_state.obstacles)
+                )
+            elif hasattr(self.simulation.mpc_controller, "clear_obstacles"):
+                self.simulation.mpc_controller.clear_obstacles()
+
         # Path-only runtime: clear optional scan attitude context.
         if hasattr(self.simulation.mpc_controller, "set_scan_attitude_context"):
             self.simulation.mpc_controller.set_scan_attitude_context(None, None, "CW")
@@ -421,6 +431,12 @@ class SimulationInitializer:
         from satellite_control.core.performance_monitor import PerformanceMonitor
 
         self.simulation.performance_monitor = PerformanceMonitor()
+        sim_cfg = self.simulation_config.app_config.simulation
+        self.simulation.performance_monitor.set_mpc_timing_contract(
+            target_mean_ms=float(sim_cfg.mpc_target_mean_solve_time_ms),
+            hard_max_ms=float(sim_cfg.mpc_hard_max_solve_time_ms),
+            enforce=bool(sim_cfg.enforce_mpc_timing_contract),
+        )
 
     def _initialize_tolerances(self) -> None:
         """Initialize tolerance values."""

@@ -297,7 +297,7 @@ class MPCParams(BaseModel):
         constants.Constants.Q_SMOOTH,
         ge=0.0,
         le=1000.0,
-        description="Smoothness weight - penalizes velocity changes [unitless]",
+        description="Smoothness weight - penalizes control increments (Δu) [unitless]",
     )
     Q_attitude: float = Field(
         constants.Constants.Q_ATTITUDE,
@@ -382,6 +382,10 @@ class MPCParams(BaseModel):
         le=5.0,
         description="Safety margin around obstacles in meters",
     )
+    enable_collision_avoidance: bool = Field(
+        constants.Constants.ENABLE_COLLISION_AVOIDANCE,
+        description="Enable online MPC obstacle constraints",
+    )
 
     # Path Following. - General Path MPCC
     path_speed: float = Field(
@@ -413,6 +417,38 @@ class MPCParams(BaseModel):
         ge=0.0,
         le=1e6,
         description="Contour error threshold to slow progress (0 = auto)",
+    )
+    max_linear_velocity: float = Field(
+        constants.Constants.MAX_LINEAR_VELOCITY,
+        ge=0.0,
+        le=100.0,
+        description="Linear velocity state bound [m/s] (0 = auto)",
+    )
+    max_angular_velocity: float = Field(
+        constants.Constants.MAX_ANGULAR_VELOCITY,
+        ge=0.0,
+        le=100.0,
+        description="Angular velocity state bound [rad/s] (0 = auto)",
+    )
+    enable_delta_u_coupling: bool = Field(
+        constants.Constants.ENABLE_DELTA_U_COUPLING,
+        description=(
+            "Enable full temporal coupling for Δu smoothness cost "
+            "(more accurate, higher solver load)"
+        ),
+    )
+    enable_gyro_jacobian: bool = Field(
+        constants.Constants.ENABLE_GYRO_JACOBIAN,
+        description=(
+            "Enable angular-rate gyroscopic Jacobian in linearization "
+            "(improves high-rate accuracy, adds compute)"
+        ),
+    )
+    enable_auto_state_bounds: bool = Field(
+        constants.Constants.ENABLE_AUTO_STATE_BOUNDS,
+        description=(
+            "Auto-derive velocity state bounds when explicit limits are unset"
+        ),
     )
 
     @field_validator("thruster_type")
@@ -547,6 +583,31 @@ class SimulationParams(BaseModel):
         le=1000,
         description="Keep every Nth history entry in memory (1 = keep all)",
     )
+    mpc_target_mean_solve_time_ms: float = Field(
+        constants.Constants.TARGET_MEAN_SOLVE_TIME_MS,
+        gt=0.0,
+        le=1000.0,
+        description="Target MPC mean solve time in milliseconds",
+    )
+    mpc_hard_max_solve_time_ms: float = Field(
+        constants.Constants.HARD_MAX_SOLVE_TIME_MS,
+        gt=0.0,
+        le=5000.0,
+        description="Hard MPC single-solve time ceiling in milliseconds",
+    )
+    enforce_mpc_timing_contract: bool = Field(
+        constants.Constants.ENFORCE_TIMING_CONTRACT,
+        description="If true, fail the run when MPC timing contract is violated",
+    )
+
+    @model_validator(mode="after")
+    def validate_mpc_timing_contract(self) -> "SimulationParams":
+        """Ensure timing contract thresholds are internally consistent."""
+        if self.mpc_hard_max_solve_time_ms < self.mpc_target_mean_solve_time_ms:
+            raise ValueError(
+                "mpc_hard_max_solve_time_ms must be >= mpc_target_mean_solve_time_ms"
+            )
+        return self
 
 
 class AppConfig(BaseModel):

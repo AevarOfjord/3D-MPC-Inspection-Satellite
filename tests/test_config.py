@@ -79,3 +79,16 @@ class TestConfigValidation:
         """Test handling of invalid preset names."""
         with pytest.raises(ValueError):
             load_preset("nonexistent_preset")
+
+    def test_mpc_performance_toggles_default_and_legacy_mapping(self):
+        """Ensure MPC performance toggles are exposed in config and legacy maps."""
+        config = SimulationConfig.create_default()
+        mpc = config.app_config.mpc
+        legacy = config.get_mpc_params()
+
+        assert mpc.enable_delta_u_coupling is False
+        assert mpc.enable_gyro_jacobian is False
+        assert mpc.enable_auto_state_bounds is False
+        assert legacy["enable_delta_u_coupling"] is False
+        assert legacy["enable_gyro_jacobian"] is False
+        assert legacy["enable_auto_state_bounds"] is False

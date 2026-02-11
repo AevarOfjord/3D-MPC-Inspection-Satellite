@@ -75,7 +75,7 @@ def create_default_app_config() -> AppConfig:
         # MPCC Weights
         Q_contour=constants.Constants.Q_CONTOUR,
         Q_progress=constants.Constants.Q_PROGRESS,
-        progress_reward=constants.Constants.Q_PROGRESS * timing.DEFAULT_PATH_SPEED,
+        progress_reward=constants.Constants.PROGRESS_REWARD,
         Q_lag=0.0,
         Q_smooth=constants.Constants.Q_SMOOTH,
         Q_attitude=constants.Constants.Q_ATTITUDE,
@@ -91,6 +91,12 @@ def create_default_app_config() -> AppConfig:
         coast_min_speed=constants.Constants.COAST_MIN_SPEED,
         thruster_type=constants.Constants.THRUSTER_TYPE,
         verbose_mpc=False,
+        enable_collision_avoidance=constants.Constants.ENABLE_COLLISION_AVOIDANCE,
+        max_linear_velocity=constants.Constants.MAX_LINEAR_VELOCITY,
+        max_angular_velocity=constants.Constants.MAX_ANGULAR_VELOCITY,
+        enable_delta_u_coupling=constants.Constants.ENABLE_DELTA_U_COUPLING,
+        enable_gyro_jacobian=constants.Constants.ENABLE_GYRO_JACOBIAN,
+        enable_auto_state_bounds=constants.Constants.ENABLE_AUTO_STATE_BOUNDS,
         # Path Following
         path_speed=constants.Constants.PATH_SPEED_MAX,
         path_speed_min=constants.Constants.PATH_SPEED_MIN,
@@ -113,6 +119,9 @@ def create_default_app_config() -> AppConfig:
         control_log_stride=1,
         history_max_steps=50000,
         history_downsample_stride=1,
+        mpc_target_mean_solve_time_ms=constants.Constants.TARGET_MEAN_SOLVE_TIME_MS,
+        mpc_hard_max_solve_time_ms=constants.Constants.HARD_MAX_SOLVE_TIME_MS,
+        enforce_mpc_timing_contract=constants.Constants.ENFORCE_TIMING_CONTRACT,
     )
 
     return AppConfig(physics=phys, mpc=mpc, simulation=sim, input_file_path=None)

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.3.3", "pybind11", "cmake>=3.20", "ninja>=1.10"]
+requires = ["scikit-build-core>=0.3.3", "pybind11", "ninja>=1.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -46,14 +46,8 @@ dependencies = [
     "httpx>=0.24.0",
     "python-multipart>=0.0.6",
     "aiofiles>=23.0.0",
-]
-
-[tool.setuptools.packages.find]
-where = ["src/python"]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
+    "tqdm>=4.66.0",
+    "pytest-benchmark>=4.0.0",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
@@ -61,6 +55,12 @@ dev = [
     "hypothesis>=6.0.0",
     "pre-commit>=3.0.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src/python"]
+
+# [project.optional-dependencies] removed as dev deps are now in main
+
 
 [tool.scikit-build]
 cmake.version = ">=3.20"

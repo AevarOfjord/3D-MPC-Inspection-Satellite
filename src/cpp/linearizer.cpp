@@ -4,11 +4,12 @@
 
 namespace satellite_control {
 
-Linearizer::Linearizer(const SatelliteParams& params)
+Linearizer::Linearizer(const SatelliteParams& params, bool enable_gyro_jacobian)
     : params_(params),
       cw_dynamics_(params.orbital_mean_motion > 0.0 ? params.orbital_mean_motion : 0.0),
       two_body_dynamics_(params.orbital_mu, params.orbital_radius),
-      use_two_body_(params.use_two_body) {
+      use_two_body_(params.use_two_body),
+      enable_gyro_jacobian_(enable_gyro_jacobian) {
     precompute_thrusters();
     affine_ = VectorXd::Zero(16);
 }
@@ -53,6 +54,12 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
 
     // Extract quaternion
     Eigen::Vector4d q = x_current.segment<4>(3);
+    double q_norm = q.norm();
+    if (q_norm > 1e-12) {
+        q /= q_norm;
+    } else {
+        q << 1.0, 0.0, 0.0, 0.0;
+    }
     Eigen::Matrix3d R = compute_rotation_matrix(q);
 
     double dt = params_.dt;
@@ -104,6 +111,25 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     } else if (params_.orbital_mean_motion > 0.0) {
         auto [A_cw, _] = cw_dynamics_.get_mpc_dynamics_matrices(dt);
         A += A_cw;
+    }
+
+    // Angular velocity dynamics Jacobian (gyroscopic coupling):
+    // I * w_dot + w x (I w) = tau  =>  w_dot = I^{-1}(tau - w x (I w))
+    if (enable_gyro_jacobian_ && x_current.size() >= 13) {
+        Eigen::Vector3d omega = x_current.segment<3>(10);
+        double Ix = params_.inertia[0];
+        double Iy = params_.inertia[1];
+        double Iz = params_.inertia[2];
+        if (Ix > 1e-9 && Iy > 1e-9 && Iz > 1e-9) {
+            Eigen::Matrix3d Jw = Eigen::Matrix3d::Zero();
+            Jw(0, 1) = -((Iz - Iy) / Ix) * omega(2);
+            Jw(0, 2) = -((Iz - Iy) / Ix) * omega(1);
+            Jw(1, 0) = -((Ix - Iz) / Iy) * omega(2);
+            Jw(1, 2) = -((Ix - Iz) / Iy) * omega(0);
+            Jw(2, 0) = -((Iy - Ix) / Iz) * omega(1);
+            Jw(2, 1) = -((Iy - Ix) / Iz) * omega(0);
+            A.block<3, 3>(10, 10) += Jw * dt;
+        }
     }
 
     // B matrix

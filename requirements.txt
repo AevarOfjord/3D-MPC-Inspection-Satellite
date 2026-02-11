@@ -25,6 +25,17 @@ plotly>=5.0.0
 imageio>=2.30.0
 imageio-ffmpeg>=0.4.9
 shapely>=1.8.0
+tqdm>=4.66.0
+
+# Development dependencies
+pytest-benchmark>=4.0.0
+pytest-cov>=4.0.0
+black>=23.0.0
+ruff>=0.1.0
+psutil>=5.9.0
+hypothesis>=6.0.0
+pre-commit>=3.0.0
+
 
 # Optimization solvers
 osqp>=0.6.0
@@ -37,6 +48,5 @@ httpx>=0.24.0
 python-multipart>=0.0.6
 aiofiles>=23.0.0
 
-# Optional: for enhanced performance
-# ecos>=2.0.0
-# scs>=3.0.0
+
+
