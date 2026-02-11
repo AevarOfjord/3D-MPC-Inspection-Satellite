@@ -203,6 +203,15 @@ def _build_asset_path(
     if not raw_path:
         return [], False
 
+    # Some legacy "open" assets were saved with a duplicate closing point.
+    # Trim trailing closure points so mission previews do not draw a return leg.
+    open_path = bool(asset.get("open", True))
+    if open_path and len(raw_path) > 2:
+        pts = [np.array(p, dtype=float) for p in raw_path]
+        while len(pts) > 2 and np.linalg.norm(pts[-1] - pts[0]) <= 1e-6:
+            pts.pop()
+        raw_path = [tuple(map(float, p)) for p in pts]
+
     relative = bool(asset.get("relative_to_obj", True))
     if relative and target_pos is not None:
         offset = np.array(target_pos, dtype=float)
@@ -331,21 +340,44 @@ def compile_unified_mission_path(
     Returns:
         path, path_length, path_speed
     """
-    if not mission.segments:
-        start = tuple(mission.start_pose.position)
-        return (
-            [start],
-            0.0,
-            float(sim_config.app_config.mpc.path_speed),
-            (0.0, 0.0, 0.0),
-        )
-
     frame_mode = (
         output_frame.upper()
         if output_frame is not None
         else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
     )
     origin = _resolve_reference_origin(mission)
+
+    manual_path = getattr(getattr(mission, "overrides", None), "manual_path", None) or []
+    if manual_path:
+        # Mission planner saves edited preview points in ECI coordinates.
+        path = [
+            tuple(
+                map(
+                    float,
+                    _convert_position(
+                        p,
+                        "ECI",
+                        frame_mode,
+                        origin,
+                    ),
+                )
+            )
+            for p in manual_path
+            if len(p) == 3
+        ]
+        if path:
+            path_length = _compute_path_length(path)
+            path_speed = float(sim_config.app_config.mpc.path_speed)
+            return path, path_length, path_speed, tuple(origin)
+
+    if not mission.segments:
+        start = tuple(mission.start_pose.position)
+        return (
+            [start],
+            0.0,
+            float(sim_config.app_config.mpc.path_speed),
+            tuple(origin),
+        )
 
     start_pos = _convert_position(
         mission.start_pose.position,

@@ -48,6 +48,18 @@ def _asset_path(asset_id: str) -> Path:
     return PATH_ASSET_DIR / f"{safe_id}.json"
 
 
+def _normalize_open_path(path: list[Any], is_open: bool) -> list[Any]:
+    if not is_open or len(path) <= 2:
+        return path
+    try:
+        pts = [np.array(p, dtype=float) for p in path]
+    except Exception:
+        return path
+    while len(pts) > 2 and np.linalg.norm(pts[-1] - pts[0]) <= 1e-6:
+        pts.pop()
+    return [list(map(float, p)) for p in pts]
+
+
 def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
     """Persist a path asset to disk and return the stored payload."""
     _ensure_dir()
@@ -62,6 +74,9 @@ def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(path, list) or not path:
         raise ValueError("Path asset requires a non-empty 'path' list")
 
+    open_path = bool(data.get("open", True))
+    path = _normalize_open_path(path, open_path)
+
     now_iso = datetime.now(UTC).isoformat()
     path_length = _compute_path_length(path)
 
@@ -70,7 +85,7 @@ def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
         "name": name,
         "obj_path": obj_path,
         "path": path,
-        "open": bool(data.get("open", True)),
+        "open": open_path,
         "relative_to_obj": bool(data.get("relative_to_obj", True)),
         "notes": data.get("notes"),
         "points": int(len(path)),

@@ -167,7 +167,11 @@ function ThrusterBar({ value, label }: { value: number, label: string }) {
 
 function ReactionWheelBar({ value, label }: { value: number, label: string }) {
     const active = Math.abs(value) > 0.00001;
-    const heightPct = Math.min(Math.abs(value) * 500, 100); // Scale for visibility
+    // Logarithmic-like scaling for better visibility of small values
+    // Ensure at least 15% height if active so it's visible even for small values
+    const heightPct = active 
+        ? Math.min(Math.max((Math.log10(Math.abs(value) * 1000 + 1) / 3) * 100, 15), 100)
+        : 0;
     return (
         <div className="flex flex-col items-center gap-1">
              <div className="relative w-2 h-8 bg-slate-800 rounded-sm overflow-hidden">

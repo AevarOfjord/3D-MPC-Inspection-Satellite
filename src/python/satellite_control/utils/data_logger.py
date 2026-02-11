@@ -256,6 +256,9 @@ class DataLogger:
             "Frame_Origin_Y",
             "Frame_Origin_Z",
             "Command_Vector",
+            "RW_Torque_X",
+            "RW_Torque_Y",
+            "RW_Torque_Z",
             "Solve_Time",
         ]
         thruster_count = self._get_logged_thruster_count()
@@ -445,6 +448,9 @@ class DataLogger:
             "Frame_Origin_X",
             "Frame_Origin_Y",
             "Frame_Origin_Z",
+            "RW_Torque_X",
+            "RW_Torque_Y",
+            "RW_Torque_Z",
         ]:
             dispatch[h] = ".5f"
 

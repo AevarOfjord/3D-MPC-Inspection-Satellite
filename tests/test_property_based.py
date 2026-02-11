@@ -15,6 +15,23 @@ try:
     HYPOTHESIS_AVAILABLE = True
 except ImportError:
     HYPOTHESIS_AVAILABLE = False
+    # Keep module importable when hypothesis is missing so skipif can apply.
+    def _identity_decorator(*args, **kwargs):
+        def _wrap(fn):
+            return fn
+
+        return _wrap
+
+    class _StrategiesStub:
+        def __getattr__(self, _name):
+            def _stub(*args, **kwargs):
+                return None
+
+            return _stub
+
+    given = _identity_decorator
+    settings = _identity_decorator
+    st = _StrategiesStub()
 
 
 @pytest.mark.skipif(not HYPOTHESIS_AVAILABLE, reason="hypothesis not installed")

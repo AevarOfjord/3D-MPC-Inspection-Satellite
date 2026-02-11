@@ -560,7 +560,8 @@ export function useMissionBuilder() {
 
   // --- Unified Mission Helpers ---
 
-  const buildUnifiedMission = (): UnifiedMission => {
+  const buildUnifiedMission = (options?: { includeManualPath?: boolean }): UnifiedMission => {
+    const includeManualPath = options?.includeManualPath ?? true;
     // Resolve Start Pose
     let resolvedStartPose = {
         frame: startFrame,
@@ -579,6 +580,17 @@ export function useMissionBuilder() {
             resolvedStartPose = { frame: 'ECI', position: absPos };
             resolvedStartTargetId = undefined; // Resolved to absolute
          }
+    }
+
+    const hasManualPath = includeManualPath && isManualMode && previewPath.length > 0;
+    const overrides: UnifiedMission['overrides'] = {};
+    if (splineControls.length > 0) {
+      overrides.spline_controls = splineControls;
+    }
+    if (hasManualPath) {
+      overrides.manual_path = previewPath.map(
+        (p) => [p[0], p[1], p[2]] as [number, number, number]
+      );
     }
 
     return {
@@ -629,7 +641,7 @@ export function useMissionBuilder() {
         position: [...o.position] as [number, number, number],
         radius: o.radius,
       })),
-      overrides: splineControls.length > 0 ? { spline_controls: splineControls } : undefined,
+      overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     };
   };
 
@@ -639,74 +651,8 @@ export function useMissionBuilder() {
   };
 
   const saveUnifiedMission = async (name: string) => {
-    const mission = buildUnifiedMission();
+    const mission = buildUnifiedMission({ includeManualPath: true });
     return unifiedMissionApi.saveMission(name, mission);
-  };
-
-  const saveEditedPathToAsset = async () => {
-    if (!previewPath.length) return;
-
-    const activeIdx =
-      typeof selectedSegmentIndex === 'number'
-        ? selectedSegmentIndex
-        : null;
-    let assetId: string | null = null;
-
-    if (activeIdx !== null) {
-      const seg = segments[activeIdx];
-      if (seg && seg.type === 'scan' && seg.path_asset) {
-        assetId = seg.path_asset;
-      }
-    }
-    if (!assetId) {
-      const firstScan = segments.find(
-        (seg) => seg.type === 'scan' && (seg as ScanSegment).path_asset
-      ) as ScanSegment | undefined;
-      assetId = firstScan?.path_asset ?? null;
-    }
-    if (!assetId) return;
-
-    let existing: Awaited<ReturnType<typeof pathAssetsApi.get>> | null = null;
-    try {
-      existing = await pathAssetsApi.get(assetId);
-    } catch {
-      existing = null;
-    }
-
-    const densePath = resamplePath(previewPath, savePointMultiplier);
-    // Auto-rebase to relative if points look like absolute ECI coords.
-    let finalPath = densePath;
-    let relativeToObj = existing?.relative_to_obj ?? true;
-    const maxAbs = densePath.reduce((acc, p) => {
-      const v = Math.max(Math.abs(p[0]), Math.abs(p[1]), Math.abs(p[2]));
-      return Math.max(acc, v);
-    }, 0);
-    if (maxAbs > 10000) {
-      const activeSeg =
-        (typeof selectedSegmentIndex === 'number' && segments[selectedSegmentIndex]) || null;
-      const scanSeg =
-        (activeSeg && activeSeg.type === 'scan' ? (activeSeg as ScanSegment) : null) ||
-        (segments.find((seg) => seg.type === 'scan') as ScanSegment | undefined);
-      const origin = scanSeg?.target_pose?.position;
-      if (origin) {
-        finalPath = densePath.map((p) => [
-          p[0] - origin[0],
-          p[1] - origin[1],
-          p[2] - origin[2],
-        ]) as [number, number, number][];
-        relativeToObj = true;
-      }
-    }
-    const payload = {
-      name: existing?.name ?? assetId,
-      obj_path: existing?.obj_path || config.obj_path || '',
-      path: finalPath,
-      open: existing?.open ?? true,
-      relative_to_obj: relativeToObj,
-      notes: existing?.notes ?? null,
-    };
-
-    await pathAssetsApi.save(payload);
   };
 
   const handleSaveUnifiedMission = async () => {
@@ -718,7 +664,6 @@ export function useMissionBuilder() {
     const name = prompt('Enter mission name (e.g. Starlink_Scan_M01):');
     if (!name) return;
     try {
-      await saveEditedPathToAsset();
       await saveUnifiedMission(name);
       await refreshUnifiedMissions();
       alert(`Mission saved: ${name}`);
@@ -742,6 +687,23 @@ export function useMissionBuilder() {
     });
     setSegments(hydratedSegments);
     setSplineControls(mission.overrides?.spline_controls || []);
+    const manualPath = mission.overrides?.manual_path || [];
+    if (manualPath.length > 0) {
+      pathHistory.set(manualPath.map((p) => [p[0], p[1], p[2]] as [number, number, number]));
+      setIsManualMode(true);
+      const length = computePathLength(
+        manualPath.map((p) => [p[0], p[1], p[2]] as [number, number, number])
+      );
+      const speed = config.speed_max > 0 ? config.speed_max : 0.1;
+      setStats({
+        duration: speed > 0 ? length / speed : 0,
+        length,
+        points: manualPath.length,
+      });
+    } else {
+      pathHistory.set([]);
+      setIsManualMode(false);
+    }
     setSelectedSegmentIndex(null);
     setStartPosition([...mission.start_pose.position] as [number, number, number]);
     if (mission.obstacles) {
@@ -757,7 +719,7 @@ export function useMissionBuilder() {
   };
 
   const pushUnifiedMission = async () => {
-    const mission = buildUnifiedMission();
+    const mission = buildUnifiedMission({ includeManualPath: true });
     return unifiedMissionApi.setMission(mission);
   };
 
@@ -770,7 +732,7 @@ export function useMissionBuilder() {
           return;
         }
         setIsManualMode(false);
-        const mission = buildUnifiedMission();
+        const mission = buildUnifiedMission({ includeManualPath: false });
         const preview = await unifiedMissionApi.previewMission(mission);
         if (preview.path && preview.path.length > 0) {
           const editablePath = downsamplePath(preview.path, editPointLimit);

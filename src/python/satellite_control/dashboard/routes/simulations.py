@@ -223,7 +223,11 @@ async def get_simulation_telemetry(
                         "reference_quaternion": list(reference_quat),
                         "scan_object": scan_object,
                         "thrusters": [to_float(row.get(col)) for col in thruster_cols],
-                        "rw_torque": [0.0, 0.0, 0.0],
+                        "rw_torque": [
+                            to_float(row.get("RW_Torque_X")),
+                            to_float(row.get("RW_Torque_Y")),
+                            to_float(row.get("RW_Torque_Z")),
+                        ],
                         "obstacles": [],
                         "solve_time": to_float(row.get("Solve_Time", 0.0)) / 1000.0,
                         "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
