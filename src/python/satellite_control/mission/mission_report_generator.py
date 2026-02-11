@@ -597,15 +597,15 @@ class MissionReportGenerator:
             )
 
         if len(mpc_convergence_times) > 0:
+            mean_solve = float(np.mean(mpc_convergence_times))
+            max_solve = float(np.max(mpc_convergence_times))
             f.write(
                 f"Fastest MPC Solve:         {np.min(mpc_convergence_times):.3f} s\n"
             )
             f.write(
-                f"Slowest MPC Solve:         {np.max(mpc_convergence_times):.3f} s\n"
+                f"Slowest MPC Solve:         {max_solve:.3f} s\n"
             )
-            f.write(
-                f"Average MPC Solve:         {np.mean(mpc_convergence_times):.3f} s\n"
-            )
+            f.write(f"Average MPC Solve:         {mean_solve:.3f} s\n")
             f.write(
                 f"MPC Solve Std Dev:         {np.std(mpc_convergence_times):.3f} s\n"
             )
@@ -620,6 +620,19 @@ class MissionReportGenerator:
             rt_pct = np.mean(mpc_convergence_times) / control_update_interval
             f.write(
                 f"Real-time Performance:     {rt_pct * 100:.1f}% of available time\n"
+            )
+            mean_target_ms = float(
+                self.app_config.simulation.mpc_target_mean_solve_time_ms
+            )
+            hard_max_ms = float(self.app_config.simulation.mpc_hard_max_solve_time_ms)
+            mean_ms = mean_solve * 1000.0
+            max_ms = max_solve * 1000.0
+            contract_pass = (mean_ms <= mean_target_ms) and (max_ms <= hard_max_ms)
+            f.write(
+                "Timing Contract:           "
+                f"{'PASS' if contract_pass else 'FAIL'} "
+                f"(mean {mean_ms:.2f}/{mean_target_ms:.2f} ms, "
+                f"max {max_ms:.2f}/{hard_max_ms:.2f} ms)\n"
             )
         f.write("\n")
 

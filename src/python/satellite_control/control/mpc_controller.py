@@ -17,15 +17,19 @@ from satellite_control.config.models import AppConfig
 # C++ Backend (required)
 _CPP_IMPORT_ERROR: ImportError | None = None
 try:
-    from satellite_control.cpp._cpp_mpc import (
-        MPCControllerCpp,
-        SatelliteParams,
-    )
-    from satellite_control.cpp._cpp_mpc import (
-        MPCParams as CppMPCParams,
-    )
+    from satellite_control.cpp import _cpp_mpc as _cpp_mpc_mod
+
+    MPCControllerCpp = _cpp_mpc_mod.MPCControllerCpp
+    SatelliteParams = _cpp_mpc_mod.SatelliteParams
+    CppMPCParams = _cpp_mpc_mod.MPCParams
+    Obstacle = getattr(_cpp_mpc_mod, "Obstacle", None)
+    ObstacleSet = getattr(_cpp_mpc_mod, "ObstacleSet", None)
+    ObstacleType = getattr(_cpp_mpc_mod, "ObstacleType", None)
 except ImportError as exc:  # pragma: no cover - depends on local runtime env
     _CPP_IMPORT_ERROR = exc
+    Obstacle = None  # type: ignore[assignment]
+    ObstacleSet = None  # type: ignore[assignment]
+    ObstacleType = None  # type: ignore[assignment]
     SatelliteParams = None  # type: ignore[assignment]
     CppMPCParams = None  # type: ignore[assignment]
     MPCControllerCpp = None  # type: ignore[assignment]
@@ -150,11 +154,24 @@ class MPCController(Controller):
             mpc_params.progress_taper_distance = self.progress_taper_distance
         if hasattr(mpc_params, "progress_slowdown_distance"):
             mpc_params.progress_slowdown_distance = self.progress_slowdown_distance
+        if hasattr(mpc_params, "max_linear_velocity"):
+            mpc_params.max_linear_velocity = float(self.max_linear_velocity)
+        if hasattr(mpc_params, "max_angular_velocity"):
+            mpc_params.max_angular_velocity = float(self.max_angular_velocity)
+        if hasattr(mpc_params, "enable_delta_u_coupling"):
+            mpc_params.enable_delta_u_coupling = bool(self.enable_delta_u_coupling)
+        if hasattr(mpc_params, "enable_gyro_jacobian"):
+            mpc_params.enable_gyro_jacobian = bool(self.enable_gyro_jacobian)
+        if hasattr(mpc_params, "enable_auto_state_bounds"):
+            mpc_params.enable_auto_state_bounds = bool(self.enable_auto_state_bounds)
 
         # Collision Avoidance
-        # Path-focused MPCC: obstacles are ignored by design.
-        mpc_params.enable_collision_avoidance = False
-        mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
+        if hasattr(mpc_params, "enable_collision_avoidance"):
+            mpc_params.enable_collision_avoidance = bool(
+                self.enable_collision_avoidance
+            )
+        if hasattr(mpc_params, "obstacle_margin"):
+            mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
@@ -214,6 +231,102 @@ class MPCController(Controller):
         self._last_path_projection = {}
 
         logger.info(f"Path set with {len(path_points)} points, total length: {s:.3f}m")
+
+    def set_obstacles(self, obstacles: list[Any] | None) -> None:
+        """
+        Set runtime obstacle constraints for MPC.
+
+        Supported formats:
+        - tuple/list: (x, y, z, radius) for spherical obstacles
+        - dict/object with fields: type, position, radius, size, axis, name
+        """
+        if not hasattr(self, "_cpp_controller") or not hasattr(
+            self._cpp_controller, "set_obstacles"
+        ):
+            return
+
+        if not obstacles:
+            self.clear_obstacles()
+            return
+
+        if ObstacleSet is None or Obstacle is None or ObstacleType is None:
+            logger.warning("C++ obstacle bindings unavailable; skipping obstacle update")
+            return
+
+        obstacle_set = ObstacleSet()
+        added = 0
+
+        def _to_enum(raw_type: Any) -> Any:
+            if raw_type is None:
+                return ObstacleType.SPHERE
+            if hasattr(raw_type, "name"):
+                raw_type = raw_type.name
+            t = str(raw_type).strip().upper()
+            if t.endswith(".SPHERE") or t == "SPHERE":
+                return ObstacleType.SPHERE
+            if t.endswith(".CYLINDER") or t == "CYLINDER":
+                return ObstacleType.CYLINDER
+            if t.endswith(".BOX") or t == "BOX":
+                return ObstacleType.BOX
+            return ObstacleType.SPHERE
+
+        for item in obstacles:
+            obs = Obstacle()
+            try:
+                if isinstance(item, (list, tuple, np.ndarray)) and len(item) >= 4:
+                    arr = np.array(item, dtype=float).reshape(-1)
+                    obs.type = ObstacleType.SPHERE
+                    obs.position = np.array(arr[:3], dtype=float)
+                    obs.radius = max(0.0, float(arr[3]))
+                    obs.name = "obstacle"
+                else:
+                    if isinstance(item, dict):
+                        position = item.get("position", None)
+                    else:
+                        position = getattr(item, "position", None)
+                    if position is None:
+                        continue
+
+                    if isinstance(item, dict):
+                        raw_type = item.get("type", "sphere")
+                        radius = item.get("radius", obs.radius)
+                        size = item.get("size", obs.size)
+                        axis = item.get("axis", obs.axis)
+                        name = item.get("name", "obstacle")
+                    else:
+                        raw_type = getattr(item, "type", "sphere")
+                        radius = getattr(item, "radius", obs.radius)
+                        size = getattr(item, "size", obs.size)
+                        axis = getattr(item, "axis", obs.axis)
+                        name = getattr(item, "name", "obstacle")
+
+                    obs.type = _to_enum(raw_type)
+                    obs.position = np.array(position, dtype=float)
+                    obs.radius = max(0.0, float(radius))
+                    obs.size = np.array(size, dtype=float)
+                    obs.axis = np.array(axis, dtype=float)
+                    obs.name = str(name)
+
+                obstacle_set.add(obs)
+                added += 1
+            except Exception:
+                logger.debug("Skipping invalid obstacle entry", exc_info=True)
+
+        if added == 0:
+            self.clear_obstacles()
+            return
+
+        self._cpp_controller.set_obstacles(obstacle_set)
+        self.enable_collision_avoidance = True
+        logger.info("Applied %d MPC obstacle constraints", added)
+
+    def clear_obstacles(self) -> None:
+        """Clear all runtime MPC obstacle constraints."""
+        if hasattr(self, "_cpp_controller") and hasattr(
+            self._cpp_controller, "clear_obstacles"
+        ):
+            self._cpp_controller.clear_obstacles()
+        self.enable_collision_avoidance = False
 
     def set_scan_attitude_context(
         self,
@@ -504,6 +617,18 @@ class MPCController(Controller):
         self.coast_pos_tolerance = getattr(mpc, "coast_pos_tolerance", 0.0)
         self.coast_vel_tolerance = getattr(mpc, "coast_vel_tolerance", 0.0)
         self.coast_min_speed = getattr(mpc, "coast_min_speed", 0.0)
+        self.max_linear_velocity = getattr(mpc, "max_linear_velocity", 0.0)
+        self.max_angular_velocity = getattr(mpc, "max_angular_velocity", 0.0)
+        self.enable_delta_u_coupling = bool(
+            getattr(mpc, "enable_delta_u_coupling", False)
+        )
+        self.enable_gyro_jacobian = bool(getattr(mpc, "enable_gyro_jacobian", False))
+        self.enable_auto_state_bounds = bool(
+            getattr(mpc, "enable_auto_state_bounds", False)
+        )
+        self.enable_collision_avoidance = bool(
+            getattr(mpc, "enable_collision_avoidance", False)
+        )
 
         # Path Following. - General Path MPCC
         self.mode_path_following = True  # Always True now
@@ -739,8 +864,15 @@ class MPCController(Controller):
 
         extras = {
             "status": result.status,
+            "solver_status": getattr(result, "solver_status", None),
+            "timeout": bool(getattr(result, "timeout", False)),
             "solve_time": result.solve_time,
+            "iterations": getattr(result, "iterations", None),
+            "objective_value": getattr(result, "objective", None),
             "solver_type": self.solver_type,
+            "solver_time_limit": self.solver_time_limit,
+            "time_limit_exceeded": bool(getattr(result, "timeout", False))
+            or (float(result.solve_time) > float(self.solver_time_limit)),
             "path_s": float(s_for_state),
             "path_s_proj": float(s_proj) if s_proj is not None else None,
             "path_v_s": v_s,

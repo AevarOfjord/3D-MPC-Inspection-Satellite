@@ -18,6 +18,7 @@ Usage:
 
 import json
 import logging
+import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -47,6 +48,10 @@ class PerformanceMetrics:
     mpc_solve_count: int = 0
     mpc_timeout_count: int = 0
     mpc_failure_count: int = 0
+    mpc_hard_limit_breach_count: int = 0
+    mpc_target_mean_solve_time_ms: float = 3.0
+    mpc_hard_max_solve_time_ms: float = 50.0
+    enforce_mpc_timing_contract: bool = False
 
     # Physics Performance
     physics_step_times: deque[float] = field(
@@ -91,6 +96,19 @@ class PerformanceMetrics:
             self.mpc_timeout_count += 1
         if failed:
             self.mpc_failure_count += 1
+        if solve_time * 1000.0 > self.mpc_hard_max_solve_time_ms:
+            self.mpc_hard_limit_breach_count += 1
+
+    def set_mpc_timing_contract(
+        self,
+        target_mean_ms: float,
+        hard_max_ms: float,
+        enforce: bool = False,
+    ) -> None:
+        """Set timing contract thresholds used for reporting and enforcement."""
+        self.mpc_target_mean_solve_time_ms = float(target_mean_ms)
+        self.mpc_hard_max_solve_time_ms = float(hard_max_ms)
+        self.enforce_mpc_timing_contract = bool(enforce)
 
     def record_physics_step(self, step_time: float) -> None:
         """Record a physics step time."""
@@ -160,6 +178,23 @@ class PerformanceMetrics:
         self.total_simulation_time = (
             self.simulation_end_time - self.simulation_start_time
         )
+        self.calculate_metrics()
+
+    @staticmethod
+    def _safe_float(value: Any) -> float:
+        """Return a JSON-safe float, replacing non-finite values with 0.0."""
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(v):
+            return 0.0
+        return v
+
+    @staticmethod
+    def _safe_bool(value: Any) -> bool:
+        """Return a JSON-safe bool (normalizes numpy bool_ values)."""
+        return bool(value)
 
     @property
     def mpc_p50_ms(self) -> float:
@@ -238,54 +273,102 @@ class PerformanceMetrics:
             return 0.0
         return self.timing_violations / self.control_loop_count
 
+    @property
+    def mpc_hard_limit_breach_rate(self) -> float:
+        """Rate of solves that exceed the hard solve-time ceiling."""
+        if self.mpc_solve_count == 0:
+            return 0.0
+        return self.mpc_hard_limit_breach_count / self.mpc_solve_count
+
+    @property
+    def mpc_timing_contract_passed(self) -> bool:
+        """Whether current metrics satisfy the configured MPC timing contract."""
+        if self.mpc_solve_count == 0:
+            return True
+        mean_ok = self.mpc_mean_ms <= self.mpc_target_mean_solve_time_ms
+        max_ok = self.mpc_max_ms <= self.mpc_hard_max_solve_time_ms
+        hard_ok = self.mpc_hard_limit_breach_count == 0
+        return mean_ok and max_ok and hard_ok
+
     def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary for JSON export."""
+        mean_ms = self._safe_float(self.mpc_mean_ms)
+        p50_ms = self._safe_float(self.mpc_p50_ms)
+        p95_ms = self._safe_float(self.mpc_p95_ms)
+        p99_ms = self._safe_float(self.mpc_p99_ms)
+        max_ms = self._safe_float(self.mpc_max_ms)
+        min_ms = self._safe_float(
+            (np.min(self.mpc_solve_times) * 1000.0) if self.mpc_solve_times else 0.0
+        )
+        mean_pass = mean_ms <= self._safe_float(self.mpc_target_mean_solve_time_ms)
+        max_pass = max_ms <= self._safe_float(self.mpc_hard_max_solve_time_ms)
+        hard_rate = self._safe_float(self.mpc_hard_limit_breach_rate)
+
         return {
-            "total_simulation_time_s": self.total_simulation_time,
+            "total_simulation_time_s": self._safe_float(self.total_simulation_time),
             "total_steps": self.total_steps,
-            "mpc_mean_solve_time_ms": self.mpc_mean_solve_time * 1000.0,
-            "mpc_p50_solve_time_ms": self.mpc_p50_solve_time * 1000.0,
-            "mpc_p95_solve_time_ms": self.mpc_p95_solve_time * 1000.0,
-            "mpc_p99_solve_time_ms": self.mpc_p99_solve_time * 1000.0,
-            "mpc_max_solve_time_ms": self.mpc_max_solve_time * 1000.0,
-            "mpc_min_solve_time_ms": self.mpc_min_solve_time * 1000.0,
-            "physics_avg_step_time_ms": self.physics_avg_step_time * 1000.0,
-            "physics_max_step_time_ms": self.physics_max_step_time * 1000.0,
-            "control_loop_avg_time_ms": self.control_loop_avg_time * 1000.0,
+            "mpc_mean_solve_time_ms": mean_ms,
+            "mpc_p50_solve_time_ms": p50_ms,
+            "mpc_p95_solve_time_ms": p95_ms,
+            "mpc_p99_solve_time_ms": p99_ms,
+            "mpc_max_solve_time_ms": max_ms,
+            "mpc_min_solve_time_ms": min_ms,
+            "physics_avg_step_time_ms": self._safe_float(self.physics_avg_ms),
+            "physics_max_step_time_ms": self._safe_float(self.physics_max_ms),
+            "control_loop_avg_time_ms": self._safe_float(self.control_loop_avg_ms),
             "mpc": {
                 "solve_count": self.mpc_solve_count,
                 "timeout_count": self.mpc_timeout_count,
-                "timeout_rate": self.mpc_timeout_rate,
-                "mean_ms": self.mpc_mean_ms,
-                "p50_ms": self.mpc_p50_ms,
-                "p95_ms": self.mpc_p95_ms,
-                "p99_ms": self.mpc_p99_ms,
-                "max_ms": self.mpc_max_ms,
+                "timeout_rate": self._safe_float(self.mpc_timeout_rate),
+                "mean_ms": mean_ms,
+                "p50_ms": p50_ms,
+                "p95_ms": p95_ms,
+                "p99_ms": p99_ms,
+                "max_ms": max_ms,
+            },
+            "mpc_timing_contract": {
+                "target_mean_ms": self._safe_float(self.mpc_target_mean_solve_time_ms),
+                "hard_max_ms": self._safe_float(self.mpc_hard_max_solve_time_ms),
+                "enforced": self._safe_bool(self.enforce_mpc_timing_contract),
+                "mean_ms": mean_ms,
+                "max_ms": max_ms,
+                "hard_limit_breaches": self.mpc_hard_limit_breach_count,
+                "hard_limit_breach_rate": hard_rate,
+                "mean_pass": self._safe_bool(mean_pass),
+                "max_pass": self._safe_bool(max_pass),
+                "pass": self._safe_bool(self.mpc_timing_contract_passed),
             },
             "physics": {
                 "step_count": self.physics_step_count,
-                "avg_ms": self.physics_avg_ms,
-                "max_ms": self.physics_max_ms,
+                "avg_ms": self._safe_float(self.physics_avg_ms),
+                "max_ms": self._safe_float(self.physics_max_ms),
             },
             "control_loop": {
                 "loop_count": self.control_loop_count,
                 "timing_violations": self.timing_violations,
-                "violation_rate": self.timing_violation_rate,
-                "avg_ms": self.control_loop_avg_ms,
+                "violation_rate": self._safe_float(self.timing_violation_rate),
+                "avg_ms": self._safe_float(self.control_loop_avg_ms),
             },
             "simulation": {
-                "total_time_s": self.total_simulation_time,
+                "total_time_s": self._safe_float(self.total_simulation_time),
                 "total_steps": self.total_steps,
-                "fps": self.simulation_fps,
-                "peak_memory_mb": self.peak_memory_mb,
+                "fps": self._safe_float(self.simulation_fps),
+                "peak_memory_mb": (
+                    None
+                    if self.peak_memory_mb is None
+                    else self._safe_float(self.peak_memory_mb)
+                ),
             },
         }
 
     def export_to_json(self, file_path: Path) -> None:
         """Export metrics to JSON file."""
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        payload = self.to_dict()
+        tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        tmp_path.replace(file_path)
 
     def print_summary(self) -> None:
         """Log a human-readable performance summary."""
@@ -313,6 +396,18 @@ class PerformanceMetrics:
         if self.mpc_timeout_count > 0:
             lines.append(
                 f"  ⚠️  Timeouts: {self.mpc_timeout_count} ({self.mpc_timeout_rate * 100:.1f}%)"
+            )
+        contract_status = "PASS" if self.mpc_timing_contract_passed else "FAIL"
+        lines.append(
+            "  Timing Contract: "
+            f"{contract_status} "
+            f"(mean {self.mpc_mean_ms:.2f}/{self.mpc_target_mean_solve_time_ms:.2f}ms, "
+            f"max {self.mpc_max_ms:.2f}/{self.mpc_hard_max_solve_time_ms:.2f}ms)"
+        )
+        if self.mpc_hard_limit_breach_count > 0:
+            lines.append(
+                f"  ⚠️  Hard-Limit Breaches: {self.mpc_hard_limit_breach_count} "
+                f"({self.mpc_hard_limit_breach_rate * 100:.2f}%)"
             )
         lines.append("")
         lines.append("Physics Performance:")
@@ -362,6 +457,18 @@ class PerformanceMetrics:
                 f"({timing_violation_rate_threshold * 100:.1f}%)"
             )
 
+        if self.mpc_mean_ms > self.mpc_target_mean_solve_time_ms:
+            warnings.append(
+                f"MPC mean solve time ({self.mpc_mean_ms:.2f}ms) exceeds timing contract target "
+                f"({self.mpc_target_mean_solve_time_ms:.2f}ms)"
+            )
+
+        if self.mpc_max_ms > self.mpc_hard_max_solve_time_ms:
+            warnings.append(
+                f"MPC max solve time ({self.mpc_max_ms:.2f}ms) exceeds hard ceiling "
+                f"({self.mpc_hard_max_solve_time_ms:.2f}ms)"
+            )
+
         return warnings
 
 
@@ -376,6 +483,19 @@ class PerformanceMonitor:
         """Initialize performance monitor."""
         self.metrics = PerformanceMetrics()
         self.metrics.start_simulation()
+
+    def set_mpc_timing_contract(
+        self,
+        target_mean_ms: float,
+        hard_max_ms: float,
+        enforce: bool = False,
+    ) -> None:
+        """Configure MPC timing contract for this run."""
+        self.metrics.set_mpc_timing_contract(
+            target_mean_ms=target_mean_ms,
+            hard_max_ms=hard_max_ms,
+            enforce=enforce,
+        )
 
     def record_mpc_solve(
         self, solve_time: float, timeout: bool = False, failed: bool = False
@@ -423,6 +543,8 @@ class PerformanceMonitor:
             "mpc_solves": self.metrics.mpc_solve_count,
             "mpc_mean_ms": self.metrics.mpc_mean_ms,
             "mpc_max_ms": self.metrics.mpc_max_ms,
+            "mpc_hard_limit_breaches": self.metrics.mpc_hard_limit_breach_count,
+            "mpc_timing_contract_passed": self.metrics.mpc_timing_contract_passed,
             "physics_avg_ms": self.metrics.physics_avg_ms,
             "control_loop_avg_ms": self.metrics.control_loop_avg_ms,
             "timing_violations": self.metrics.control_timing_violations,
@@ -469,6 +591,14 @@ class PerformanceMonitor:
                 )
 
         return warnings
+
+    def timing_contract_violated(self) -> bool:
+        """Return True when the configured MPC timing contract is violated."""
+        return not self.metrics.mpc_timing_contract_passed
+
+    def should_fail_on_timing_contract(self) -> bool:
+        """Return True when strict contract enforcement is enabled and violated."""
+        return self.metrics.enforce_mpc_timing_contract and self.timing_contract_violated()
 
     def reset(self) -> None:
         """Reset all metrics."""

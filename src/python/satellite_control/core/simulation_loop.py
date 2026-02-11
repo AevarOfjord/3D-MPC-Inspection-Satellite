@@ -180,6 +180,8 @@ class SimulationLoop:
             self.simulation.auto_generate_visualizations()
             logger.info("All visualizations complete!")
 
+        self._enforce_timing_contract_if_needed()
+
         return self.simulation.data_save_path
 
     def _run_batch_mode(self) -> Path | None:
@@ -255,7 +257,23 @@ class SimulationLoop:
             self.simulation.auto_generate_visualizations()
             logger.info("All visualizations complete!")
 
+        self._enforce_timing_contract_if_needed()
+
         return self.simulation.data_save_path
+
+    def _enforce_timing_contract_if_needed(self) -> None:
+        """Raise if strict timing contract enforcement is enabled and violated."""
+        monitor = getattr(self.simulation, "performance_monitor", None)
+        if monitor is None or not hasattr(monitor, "should_fail_on_timing_contract"):
+            return
+        if monitor.should_fail_on_timing_contract():
+            summary = monitor.get_summary()
+            raise RuntimeError(
+                "MPC timing contract violated: "
+                f"mean={summary.get('mpc_mean_ms', 0.0):.2f}ms, "
+                f"max={summary.get('mpc_max_ms', 0.0):.2f}ms, "
+                f"hard_limit_breaches={summary.get('mpc_hard_limit_breaches', 0)}"
+            )
 
     def update_step(self, frame: int | None) -> list[Any]:
         """

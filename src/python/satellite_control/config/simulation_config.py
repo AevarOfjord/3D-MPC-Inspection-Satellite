@@ -122,6 +122,13 @@ class SimulationConfig:
             "q_angular_velocity": self.app_config.mpc.q_angular_velocity,
             "r_thrust": self.app_config.mpc.r_thrust,
             "r_rw_torque": self.app_config.mpc.r_rw_torque,
+            "enable_collision_avoidance": self.app_config.mpc.enable_collision_avoidance,
+            "obstacle_margin": self.app_config.mpc.obstacle_margin,
+            "max_linear_velocity": self.app_config.mpc.max_linear_velocity,
+            "max_angular_velocity": self.app_config.mpc.max_angular_velocity,
+            "enable_delta_u_coupling": self.app_config.mpc.enable_delta_u_coupling,
+            "enable_gyro_jacobian": self.app_config.mpc.enable_gyro_jacobian,
+            "enable_auto_state_bounds": self.app_config.mpc.enable_auto_state_bounds,
             "path_speed": self.app_config.mpc.path_speed,
             "progress_taper_distance": self.app_config.mpc.progress_taper_distance,
             "progress_slowdown_distance": self.app_config.mpc.progress_slowdown_distance,
@@ -156,6 +163,9 @@ class SimulationConfig:
             "default_path_speed": self.app_config.simulation.default_path_speed,
             "physics_log_stride": self.app_config.simulation.physics_log_stride,
             "control_log_stride": self.app_config.simulation.control_log_stride,
+            "mpc_target_mean_solve_time_ms": self.app_config.simulation.mpc_target_mean_solve_time_ms,
+            "mpc_hard_max_solve_time_ms": self.app_config.simulation.mpc_hard_max_solve_time_ms,
+            "enforce_mpc_timing_contract": self.app_config.simulation.enforce_mpc_timing_contract,
         }
 
     def to_dict(self) -> dict:
@@ -230,6 +240,13 @@ class SimulationConfig:
             "settings": {
                 "dt": mpc.dt,
                 "thruster_type": mpc.thruster_type,
+                "enable_collision_avoidance": mpc.enable_collision_avoidance,
+                "obstacle_margin": mpc.obstacle_margin,
+                "max_linear_velocity": mpc.max_linear_velocity,
+                "max_angular_velocity": mpc.max_angular_velocity,
+                "enable_delta_u_coupling": mpc.enable_delta_u_coupling,
+                "enable_gyro_jacobian": mpc.enable_gyro_jacobian,
+                "enable_auto_state_bounds": mpc.enable_auto_state_bounds,
             },
         }
 

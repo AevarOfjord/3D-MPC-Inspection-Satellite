@@ -13,7 +13,7 @@ namespace satellite_control {
 
 class Linearizer {
 public:
-    Linearizer(const SatelliteParams& params);
+    Linearizer(const SatelliteParams& params, bool enable_gyro_jacobian = true);
 
     // Returns {A, B}
     std::pair<MatrixXd, MatrixXd> linearize(const VectorXd& x_current);
@@ -26,6 +26,7 @@ private:
     TwoBodyDynamics two_body_dynamics_;
     bool use_two_body_ = true;
     bool freeze_target_ = false;
+    bool enable_gyro_jacobian_ = true;
 
     // Precomputed thruster data in body frame
     std::vector<Vector3d> body_forces_;

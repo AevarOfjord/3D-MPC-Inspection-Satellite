@@ -48,7 +48,7 @@
 # 1. Install dependencies
 pip install -r requirements.txt
 # Optional: dev tools + linters
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 cd ui && npm install && cd ..
 
 # 2. Start the Backend Simulation Server (Term 1)
