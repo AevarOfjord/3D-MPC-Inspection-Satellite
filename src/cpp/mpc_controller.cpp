@@ -790,13 +790,19 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     settings_ = (OSQPSettings*)c_malloc(sizeof(OSQPSettings));
     osqp_set_default_settings(settings_);
     settings_->verbose = mpc_params_.verbose_mpc ? 1 : 0;
-    settings_->time_limit = mpc_params_.solver_time_limit;
+    // Keep solver budget comfortably below control period to absorb update overhead.
+    // This reduces tail-latency breaches in end-to-end MPC step timing.
+    const double effective_time_limit = std::min(
+        mpc_params_.solver_time_limit,
+        std::max(1e-3, 0.70 * dt_)
+    );
+    settings_->time_limit = effective_time_limit;
     settings_->warm_start = 1;
     // Favor deterministic, low-jitter behavior for real-time MPC.
     // Adaptive rho can trigger occasional expensive refactorizations.
     settings_->adaptive_rho = 0;
-    settings_->max_iter = 1200;
-    settings_->check_termination = 5;
+    settings_->max_iter = 800;
+    settings_->check_termination = 1;
 
     if (!mpc_params_.solver_type.empty() && mpc_params_.solver_type != "OSQP") {
         std::cerr << "[MPC] Warning: solver_type '" << mpc_params_.solver_type
@@ -955,8 +961,8 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     update_dynamics(x_curr_aug);
     prev_quat_ = quat;
 
-    update_cost(); // Sets Q cost (will be overwritten for path terms)
-    update_path_cost(x_curr_aug); // Overwrites P/q for path terms
+    // update_path_cost updates both P and q; no need for a redundant q reset/update.
+    update_path_cost(x_curr_aug);
     update_obstacle_constraints(x_curr_aug);
     update_constraints(x_curr_aug);
 
@@ -1361,8 +1367,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         }
 
         // 2c. Attitude tracking:
-        // +X follows path tangent. In scan mode, choose the object-facing side
-        // (+Y or -Y) that is closest to current attitude to avoid roll flips.
+        // Default mode: +X follows path tangent.
+        // Scan mode: enforce body +Z alignment with the mission scan axis.
         if (Q_att > 0.0) {
             Eigen::Vector3d x_axis = t_ref;
             double x_norm = x_axis.norm();
@@ -1375,49 +1381,69 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
 
             if (scan_attitude_enabled_) {
-                Eigen::Vector3d radial_in = scan_center_ - p_ref;
-                radial_in -= radial_in.dot(x_axis) * x_axis;
-                double radial_norm = radial_in.norm();
+                // 1) Lock body +Z to mission scan axis.
+                z_axis = scan_axis_;
+                double z_norm = z_axis.norm();
+                if (z_norm > 1e-9) {
+                    z_axis /= z_norm;
+                } else {
+                    z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                }
 
-                if (radial_norm > 1e-9) {
-                    radial_in /= radial_norm;
-                    y_axis = radial_in;
-                    if (q_curr.norm() > 1e-9) {
+                // 2) Keep +X as close as possible to tangent while orthogonal to +Z.
+                x_axis = x_axis - x_axis.dot(z_axis) * z_axis;
+                x_norm = x_axis.norm();
+
+                if (x_norm <= 1e-9) {
+                    // If tangent is parallel to scan axis, use radial direction in scan plane.
+                    Eigen::Vector3d radial = p_ref - scan_center_;
+                    radial -= radial.dot(z_axis) * z_axis;
+                    double radial_norm = radial.norm();
+                    if (radial_norm > 1e-9) {
+                        x_axis = radial / radial_norm;
+                    } else if (q_curr.norm() > 1e-9) {
+                        // Last fallback: keep previous body +X projected onto scan plane.
                         Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
                         q_curr_eig.normalize();
-                        Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
-                        if (curr_y.norm() > 1e-9 && curr_y.dot(y_axis) < 0.0) {
-                            y_axis = -y_axis;
-                        }
-                    }
-                    z_axis = x_axis.cross(y_axis);
-                    double z_norm = z_axis.norm();
-                    if (z_norm > 1e-9) {
-                        z_axis /= z_norm;
-                        y_axis = z_axis.cross(x_axis);
-                        double y_norm = y_axis.norm();
-                        if (y_norm > 1e-9) {
-                            y_axis /= y_norm;
-                        } else {
-                            y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+                        Eigen::Vector3d curr_x = q_curr_eig * Eigen::Vector3d::UnitX();
+                        curr_x -= curr_x.dot(z_axis) * z_axis;
+                        double curr_x_norm = curr_x.norm();
+                        if (curr_x_norm > 1e-9) {
+                            x_axis = curr_x / curr_x_norm;
                         }
                     }
                 } else {
-                    // Degenerate radial case near scan axis: preserve roll with scan axis.
-                    z_axis = scan_axis_ - scan_axis_.dot(x_axis) * x_axis;
-                    double z_norm = z_axis.norm();
-                    if (z_norm > 1e-9) {
-                        z_axis /= z_norm;
+                    x_axis /= x_norm;
+                }
+
+                if (x_axis.norm() <= 1e-9) {
+                    // Deterministic orthogonal fallback.
+                    Eigen::Vector3d ref =
+                        (std::abs(z_axis.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
+                                                     : Eigen::Vector3d::UnitY();
+                    x_axis = ref.cross(z_axis);
+                    double x_fallback_norm = x_axis.norm();
+                    if (x_fallback_norm > 1e-9) {
+                        x_axis /= x_fallback_norm;
                     } else {
-                        z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                        x_axis = Eigen::Vector3d::UnitX();
                     }
-                    y_axis = z_axis.cross(x_axis);
-                    double y_norm = y_axis.norm();
-                    if (y_norm > 1e-9) {
-                        y_axis /= y_norm;
-                    } else {
-                        y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
-                    }
+                }
+
+                // 3) Complete right-handed orthonormal frame.
+                y_axis = z_axis.cross(x_axis);
+                double y_norm = y_axis.norm();
+                if (y_norm > 1e-9) {
+                    y_axis /= y_norm;
+                } else {
+                    y_axis = Eigen::Vector3d::UnitY();
+                }
+                x_axis = y_axis.cross(z_axis);
+                x_norm = x_axis.norm();
+                if (x_norm > 1e-9) {
+                    x_axis /= x_norm;
+                } else {
+                    x_axis = Eigen::Vector3d::UnitX();
                 }
             } else {
                 Eigen::Vector3d up(0.0, 0.0, 1.0);
