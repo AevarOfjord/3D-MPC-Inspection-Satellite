@@ -38,6 +38,19 @@ async def stop_simulation():
     await manager.stop_simulation()
     return {"status": "stopped"}
 
+@router.get("/config")
+def get_config():
+    """Get the current simulation configuration (defaults + overrides)."""
+    manager = get_runner_manager()
+    return manager.get_config()
+
+@router.post("/config")
+def update_config(overrides: dict):
+    """Update the simulation configuration overrides."""
+    manager = get_runner_manager()
+    manager.update_config(overrides)
+    return {"status": "updated", "config": manager.get_config()}
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for log streaming."""
