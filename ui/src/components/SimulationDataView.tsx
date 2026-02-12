@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, FileText, Film, Image as ImageIcon, FileCode, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { API_BASE_URL } from '../config/endpoints';
-
-interface SimulationRun {
-  id: string;
-  modified: number;
-  steps: number;
-  duration: number;
-}
+import { runEvents } from '../services/runEvents';
+import type { SimulationRun } from '../api/simulations';
 
 interface FileNode {
   path: string;
@@ -30,6 +25,25 @@ export const SimulationDataView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [contentType, setContentType] = useState<'text' | 'image' | 'video' | 'other' | null>(null);
 
+  const applyRunsUpdate = (nextRuns: SimulationRun[]) => {
+    setRuns(nextRuns);
+    setLastRunsRefreshAt(Date.now());
+    if (selectedRunId && !nextRuns.some((run) => run.id === selectedRunId)) {
+      setSelectedRunId(null);
+      setSelectedFile(null);
+      setFiles([]);
+      setFileContent(null);
+      setContentType(null);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = runEvents.subscribe((event) => {
+      applyRunsUpdate(event.runs);
+    });
+    return () => unsubscribe();
+  }, [selectedRunId]);
+
   // Fetch runs on mount
   useEffect(() => {
     let cancelled = false;
@@ -39,8 +53,7 @@ export const SimulationDataView: React.FC = () => {
         .then(res => res.json())
         .then(data => {
           if (cancelled) return;
-          setRuns(data.runs || []);
-          setLastRunsRefreshAt(Date.now());
+          applyRunsUpdate(data.runs || []);
         })
         .catch(err => console.error("Failed to fetch runs:", err))
         .finally(() => {

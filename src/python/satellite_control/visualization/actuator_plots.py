@@ -102,7 +102,7 @@ def generate_thruster_usage_plot(plot_gen: Any, plot_dir: Path) -> None:
         bbox=PlotStyle.TEXTBOX_STYLE,
     )
 
-    PlotStyle.save_figure(fig, plot_dir / "03_thruster_usage.png")
+    PlotStyle.save_figure(fig, plot_dir / "thruster_usage.png")
 
 
 def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -181,11 +181,11 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
         ax_bot.set_xlabel("Time (s)")
 
         plt.tight_layout()
-        plt.savefig(
-            plot_dir / f"03_thruster_{thruster_id}_valve_activity.png",
-            dpi=300,
-            bbox_inches="tight",
+        per_thruster_path = (
+            plot_dir / f"thruster_valve_activity_thruster_{thruster_id:02d}.png"
         )
+        per_thruster_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(per_thruster_path, dpi=300, bbox_inches="tight")
         plt.close(fig_ind)
 
     fig.suptitle(
@@ -196,11 +196,9 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
         axes[idx].axis("off")
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)
-    plt.savefig(
-        plot_dir / "03_thruster_valve_activity.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    aggregate_path = plot_dir / "thruster_valve_activity.png"
+    aggregate_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(aggregate_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -334,7 +332,9 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.1)
-    plt.savefig(plot_dir / "03_pwm_duty_cycles.png", dpi=300, bbox_inches="tight")
+    pwm_path = plot_dir / "pwm_duty_cycles.png"
+    pwm_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(pwm_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -367,7 +367,7 @@ def generate_control_effort_plot(plot_gen: Any, plot_dir: Path) -> None:
     ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
     ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "03_control_effort.png")
+    PlotStyle.save_figure(fig, plot_dir / "control_effort.png")
 
 
 def generate_reaction_wheel_output_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -397,7 +397,7 @@ def generate_reaction_wheel_output_plot(plot_gen: Any, plot_dir: Path) -> None:
         axes[0].set_title(f"Reaction Wheel Output - {plot_gen.system_title}")
         for ax in axes[1:]:
             ax.axis("off")
-        PlotStyle.save_figure(fig, plot_dir / "03_reaction_wheel_output.png")
+        PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
         return
 
     rw_x = normalize_series(get_series(plot_gen, "RW_Torque_X", df, cols), base_len)
@@ -438,7 +438,7 @@ def generate_reaction_wheel_output_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "03_reaction_wheel_output.png")
+    PlotStyle.save_figure(fig, plot_dir / "reaction_wheel_output.png")
 
 
 def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -571,7 +571,7 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
         axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "03_actuator_limits.png")
+    PlotStyle.save_figure(fig, plot_dir / "actuator_limits.png")
 
 
 def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -614,7 +614,7 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
             transform=axes[0].transAxes,
             fontsize=PlotStyle.ANNOTATION_SIZE,
         )
-        PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
+        PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
         return
 
     force_matrix = []
@@ -651,7 +651,7 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
             transform=axes[0].transAxes,
             fontsize=PlotStyle.ANNOTATION_SIZE,
         )
-        PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
+        PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
         return
 
     commands = []
@@ -730,4 +730,206 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "03_thruster_impulse_proxy.png")
+    PlotStyle.save_figure(fig, plot_dir / "thruster_impulse_proxy.png")
+
+
+def _build_thruster_cmd_val_matrices(
+    plot_gen: Any,
+) -> tuple[np.ndarray, list[int], np.ndarray, np.ndarray]:
+    """Build time axis and thruster command/valve matrices from logged columns."""
+    df, cols = resolve_data_frame_and_columns(plot_gen.data_accessor)
+
+    time = None
+    if (
+        hasattr(plot_gen.data_accessor, "_data_backend")
+        and plot_gen.data_accessor._data_backend == "pandas"
+        and hasattr(plot_gen.data_accessor, "data")
+        and plot_gen.data_accessor.data is not None
+        and "Time" in plot_gen.data_accessor.data.columns
+    ):
+        time = np.array(plot_gen.data_accessor.data["Time"].values, dtype=float)
+        df = plot_gen.data_accessor.data
+        cols = df.columns
+    else:
+        time = get_control_time_axis(
+            df=df,
+            cols=cols,
+            fallback_len=plot_gen._get_len(),
+            dt=float(plot_gen.dt),
+        )
+
+    thruster_ids = sorted(
+        {
+            int(col.split("_")[1])
+            for col in cols
+            if col.startswith("Thruster_")
+            and (col.endswith("_Cmd") or col.endswith("_Val"))
+            and col.split("_")[1].isdigit()
+        }
+    )
+    if not thruster_ids:
+        return np.array([]), [], np.zeros((0, 0)), np.zeros((0, 0))
+
+    base_len = len(time)
+    cmd = np.zeros((base_len, len(thruster_ids)), dtype=float)
+    val = np.zeros((base_len, len(thruster_ids)), dtype=float)
+    for i, tid in enumerate(thruster_ids):
+        cmd_col = f"Thruster_{tid}_Cmd"
+        val_col = f"Thruster_{tid}_Val"
+        cmd_vals = get_series(plot_gen, cmd_col, df, cols) if cmd_col in cols else np.zeros(base_len)
+        val_vals = get_series(plot_gen, val_col, df, cols) if val_col in cols else np.zeros(base_len)
+        cmd[:, i] = normalize_series(cmd_vals, base_len)
+        val[:, i] = normalize_series(val_vals, base_len)
+
+    return time, thruster_ids, cmd, val
+
+
+def generate_command_vs_valve_tracking_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Generate commanded-vs-actual valve tracking summary."""
+    fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS, sharex=True)
+    fig.suptitle(f"Command vs Valve Tracking - {plot_gen.system_title}")
+
+    time, thruster_ids, cmd, val = _build_thruster_cmd_val_matrices(plot_gen)
+    if len(time) == 0 or len(thruster_ids) == 0:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "Thruster command/valve data unavailable",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "command_vs_valve_tracking.png")
+        return
+
+    mean_cmd = np.mean(cmd, axis=1)
+    mean_val = np.mean(val, axis=1)
+    abs_err = np.abs(cmd - val)
+    mean_abs_err = np.mean(abs_err, axis=1)
+    max_abs_err = np.max(abs_err, axis=1)
+
+    axes[0].plot(
+        time,
+        mean_cmd,
+        color=PlotStyle.COLOR_SIGNAL_POS,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Mean Commanded Duty",
+    )
+    axes[0].plot(
+        time,
+        mean_val,
+        color=PlotStyle.COLOR_SIGNAL_ANG,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Mean Valve Output",
+    )
+    axes[0].set_ylabel("Duty (0-1)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    axes[1].plot(
+        time,
+        mean_abs_err,
+        color=PlotStyle.COLOR_ERROR,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Mean |Cmd-Val|",
+    )
+    axes[1].plot(
+        time,
+        max_abs_err,
+        color="black",
+        linewidth=PlotStyle.LINEWIDTH,
+        linestyle="--",
+        label="Max |Cmd-Val|",
+    )
+    axes[1].set_ylabel("Tracking Error", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    PlotStyle.save_figure(fig, plot_dir / "command_vs_valve_tracking.png")
+
+
+def generate_cumulative_impulse_delta_v_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Generate cumulative impulse and delta-v proxy from thruster outputs."""
+    fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS, sharex=True)
+    fig.suptitle(f"Cumulative Impulse & Delta-v Proxy - {plot_gen.system_title}")
+
+    time, thruster_ids, cmd, val = _build_thruster_cmd_val_matrices(plot_gen)
+    if len(time) == 0 or len(thruster_ids) == 0:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "Thruster output data unavailable",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "cumulative_impulse_and_delta_v_proxy.png")
+        return
+
+    # Prefer actual valve output where available.
+    output = val if np.any(val > 0) else cmd
+
+    try:
+        if plot_gen.app_config and plot_gen.app_config.physics:
+            physics_cfg = plot_gen.app_config.physics
+        else:
+            from satellite_control.config.simulation_config import SimulationConfig
+
+            physics_cfg = SimulationConfig.create_default().app_config.physics
+        thruster_forces = physics_cfg.thruster_forces
+        thruster_dirs = physics_cfg.thruster_directions
+        mass_kg = float(physics_cfg.total_mass)
+    except Exception:
+        thruster_forces = {}
+        thruster_dirs = {}
+        mass_kg = 1.0
+
+    force_matrix = np.zeros((len(thruster_ids), 3), dtype=float)
+    for i, tid in enumerate(thruster_ids):
+        force = float(thruster_forces.get(tid, 0.0))
+        direction = np.array(thruster_dirs.get(tid, (0.0, 0.0, 0.0)), dtype=float)
+        force_matrix[i, :] = force * direction
+
+    net_force = output @ force_matrix
+    force_mag = np.linalg.norm(net_force, axis=1)
+    dt = np.diff(time, prepend=time[0])
+    if len(dt) > 1 and dt[0] == 0:
+        dt[0] = float(np.median(dt[1:])) if np.any(dt[1:]) else float(plot_gen.dt)
+    cumulative_impulse = np.cumsum(force_mag * dt)
+    delta_v_proxy = cumulative_impulse / max(1e-9, mass_kg)
+
+    axes[0].plot(
+        time,
+        force_mag,
+        color=PlotStyle.COLOR_SIGNAL_POS,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="|Net Force|",
+    )
+    axes[0].set_ylabel("Force (N)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    axes[1].plot(
+        time,
+        cumulative_impulse,
+        color=PlotStyle.COLOR_SIGNAL_ANG,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Cumulative Impulse (N*s)",
+    )
+    axes[1].plot(
+        time,
+        delta_v_proxy,
+        color=PlotStyle.COLOR_ERROR,
+        linewidth=PlotStyle.LINEWIDTH,
+        linestyle="--",
+        label="Delta-v Proxy (m/s)",
+    )
+    axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].set_ylabel("Integrated Output", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    PlotStyle.save_figure(fig, plot_dir / "cumulative_impulse_and_delta_v_proxy.png")

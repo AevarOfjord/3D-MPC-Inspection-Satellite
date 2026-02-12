@@ -86,7 +86,7 @@ def generate_solver_health_plot(plot_gen: Any, plot_dir: Path) -> None:
             fontsize=PlotStyle.ANNOTATION_SIZE,
         )
 
-    PlotStyle.save_figure(fig, plot_dir / "06_solver_health.png")
+    PlotStyle.save_figure(fig, plot_dir / "solver_health.png")
 
 
 def generate_waypoint_progress_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -123,7 +123,7 @@ def generate_waypoint_progress_plot(plot_gen: Any, plot_dir: Path) -> None:
                 transform=ax.transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-        PlotStyle.save_figure(fig, plot_dir / "01_waypoint_progress.png")
+        PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
         return
 
     min_len = min(len(time), len(waypoint_vals), len(phase_vals))
@@ -150,7 +150,7 @@ def generate_waypoint_progress_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[1].set_ylabel("Mission Phase", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-    PlotStyle.save_figure(fig, plot_dir / "01_waypoint_progress.png")
+    PlotStyle.save_figure(fig, plot_dir / "waypoint_progress.png")
 
 
 def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -279,7 +279,7 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
         ax.set_title(f"MPC Computation Time - {plot_gen.system_title}")
 
-    PlotStyle.save_figure(fig, plot_dir / "06_mpc_performance.png")
+    PlotStyle.save_figure(fig, plot_dir / "mpc_performance.png")
 
 
 def generate_timing_intervals_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -336,4 +336,369 @@ def generate_timing_intervals_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
         ax.set_title(f"Timing Intervals - {plot_gen.system_title}")
 
-    PlotStyle.save_figure(fig, plot_dir / "06_timing_intervals.png")
+    PlotStyle.save_figure(fig, plot_dir / "timing_intervals.png")
+
+
+def _extract_obstacles(plot_gen: Any) -> list[dict[str, Any]]:
+    """Return normalized obstacle descriptors with position/radius."""
+    mission_state = getattr(plot_gen.data_accessor, "mission_state", None)
+    if mission_state is None or not getattr(mission_state, "obstacles_enabled", False):
+        return []
+
+    result: list[dict[str, Any]] = []
+    for obs in getattr(mission_state, "obstacles", []) or []:
+        try:
+            if hasattr(obs, "position") and hasattr(obs, "radius"):
+                pos = [float(v) for v in obs.position]
+                radius = float(obs.radius)
+            elif isinstance(obs, dict):
+                pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
+                radius = float(obs.get("radius", 0.0))
+            elif isinstance(obs, (list, tuple)) and len(obs) >= 4:
+                pos = [float(obs[0]), float(obs[1]), float(obs[2])]
+                radius = float(obs[3])
+            else:
+                continue
+            result.append({"position": pos, "radius": radius})
+        except Exception:
+            continue
+    return result
+
+
+def generate_obstacle_clearance_over_time_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Generate obstacle clearance over time with configured safety margin."""
+    fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
+
+    obstacles = _extract_obstacles(plot_gen)
+    if not obstacles:
+        ax.text(
+            0.5,
+            0.5,
+            "No obstacles configured\nfor this run",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=PlotStyle.ANNOTATION_SIZE,
+        )
+        ax.set_title(f"Obstacle Clearance - {plot_gen.system_title}")
+        PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
+        return
+
+    if (
+        hasattr(plot_gen.data_accessor, "_data_backend")
+        and plot_gen.data_accessor._data_backend == "pandas"
+        and getattr(plot_gen.data_accessor, "data", None) is not None
+    ):
+        phys_df = plot_gen.data_accessor.data
+        cols = phys_df.columns
+    else:
+        phys_df = None
+        cols = []
+
+    if phys_df is not None and all(c in cols for c in ("Current_X", "Current_Y", "Current_Z")):
+        x = np.array(phys_df["Current_X"].values, dtype=float)
+        y = np.array(phys_df["Current_Y"].values, dtype=float)
+        z = np.array(phys_df["Current_Z"].values, dtype=float)
+        if "Time" in cols:
+            time = np.array(phys_df["Time"].values, dtype=float)
+        else:
+            time = np.arange(len(x)) * float(plot_gen.dt)
+    else:
+        x = np.array(plot_gen._col("Current_X"), dtype=float)
+        y = np.array(plot_gen._col("Current_Y"), dtype=float)
+        z = np.array(plot_gen._col("Current_Z"), dtype=float)
+        n = min(len(x), len(y), len(z))
+        x, y, z = x[:n], y[:n], z[:n]
+        time = np.arange(n) * float(plot_gen.dt)
+
+    if len(time) == 0:
+        ax.text(
+            0.5,
+            0.5,
+            "Position data unavailable",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=PlotStyle.ANNOTATION_SIZE,
+        )
+        ax.set_title(f"Obstacle Clearance - {plot_gen.system_title}")
+        PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
+        return
+
+    min_clearance = np.full(len(time), np.inf, dtype=float)
+    for idx, obs in enumerate(obstacles, start=1):
+        ox, oy, oz = obs["position"]
+        radius = float(obs["radius"])
+        clearance = np.sqrt((x - ox) ** 2 + (y - oy) ** 2 + (z - oz) ** 2) - radius
+        min_clearance = np.minimum(min_clearance, clearance)
+        ax.plot(
+            time,
+            clearance,
+            linewidth=1.2,
+            alpha=0.8,
+            label=f"Obs {idx}",
+        )
+
+    safety_margin = 0.0
+    if plot_gen.app_config and getattr(plot_gen.app_config, "mpc", None):
+        safety_margin = float(getattr(plot_gen.app_config.mpc, "obstacle_margin", 0.0))
+    if safety_margin > 0.0:
+        ax.axhline(
+            y=safety_margin,
+            color=PlotStyle.COLOR_THRESHOLD,
+            linestyle="--",
+            linewidth=1.5,
+            label=f"Safety Margin ({safety_margin:.2f}m)",
+        )
+
+    ax.plot(
+        time,
+        min_clearance,
+        color="black",
+        linewidth=2.0,
+        label="Min Clearance",
+        zorder=5,
+    )
+    ax.set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    ax.set_ylabel("Clearance (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    ax.set_title(f"Obstacle Clearance Over Time - {plot_gen.system_title}")
+    ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
+    ax.legend(fontsize=max(8, PlotStyle.LEGEND_SIZE - 2), ncol=2)
+
+    PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
+
+
+def generate_solver_iterations_and_status_timeline_plot(
+    plot_gen: Any, plot_dir: Path
+) -> None:
+    """Generate solver iterations/status timeline with limit and fallback markers."""
+    fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS, sharex=True)
+    fig.suptitle(f"Solver Iterations & Status Timeline - {plot_gen.system_title}")
+
+    df, cols = resolve_data_frame_and_columns(plot_gen.data_accessor)
+    time = get_control_time_axis(
+        df=df,
+        cols=cols,
+        fallback_len=plot_gen._get_len(),
+        dt=float(plot_gen.dt),
+    )
+
+    if len(time) == 0:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "Solver timeline data unavailable",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "solver_iterations_and_status_timeline.png")
+        return
+
+    def get_col(name: str) -> np.ndarray:
+        if df is not None and name in cols:
+            return np.array(df[name].values)
+        return np.array(plot_gen._col(name))
+
+    iterations_raw = get_col("MPC_Iterations") if "MPC_Iterations" in cols else np.array([])
+    if len(iterations_raw) == 0:
+        iterations = np.zeros(len(time), dtype=float)
+    else:
+        iterations = np.zeros(len(time), dtype=float)
+        for i in range(min(len(time), len(iterations_raw))):
+            try:
+                iterations[i] = float(iterations_raw[i])
+            except (TypeError, ValueError):
+                iterations[i] = 0.0
+
+    statuses = get_col("MPC_Status") if "MPC_Status" in cols else np.array(["UNKNOWN"] * len(time))
+    status_labels = []
+    status_codes = []
+    for raw in statuses[: len(time)]:
+        label = str(raw).strip() or "UNKNOWN"
+        if label not in status_labels:
+            status_labels.append(label)
+        status_codes.append(status_labels.index(label))
+    status_codes_arr = np.array(status_codes, dtype=float)
+
+    limit_flags = np.zeros(len(time), dtype=float)
+    fallback_flags = np.zeros(len(time), dtype=float)
+    if "MPC_Time_Limit_Exceeded" in cols:
+        raw = get_col("MPC_Time_Limit_Exceeded")
+        for i in range(min(len(time), len(raw))):
+            val = str(raw[i]).strip().lower()
+            limit_flags[i] = 1.0 if val in {"1", "true", "yes", "y", "on"} else 0.0
+    if "MPC_Fallback_Used" in cols:
+        raw = get_col("MPC_Fallback_Used")
+        for i in range(min(len(time), len(raw))):
+            val = str(raw[i]).strip().lower()
+            fallback_flags[i] = 1.0 if val in {"1", "true", "yes", "y", "on"} else 0.0
+
+    axes[0].plot(
+        time,
+        iterations,
+        color=PlotStyle.COLOR_SIGNAL_POS,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Iterations",
+    )
+    axes[0].set_ylabel("Iterations", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    axes[1].step(
+        time[: len(status_codes_arr)],
+        status_codes_arr,
+        where="post",
+        color=PlotStyle.COLOR_SIGNAL_ANG,
+        linewidth=PlotStyle.LINEWIDTH,
+    )
+    axes[1].set_yticks(range(len(status_labels)))
+    axes[1].set_yticklabels(status_labels)
+    axes[1].set_ylabel("Status", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+    axes[2].step(
+        time,
+        limit_flags,
+        where="post",
+        color=PlotStyle.COLOR_ERROR,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Time Limit Exceeded",
+    )
+    axes[2].step(
+        time,
+        fallback_flags,
+        where="post",
+        color=PlotStyle.COLOR_SIGNAL_ANG,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Fallback Used",
+    )
+    axes[2].set_ylim(-0.1, 1.1)
+    axes[2].set_yticks([0, 1])
+    axes[2].set_ylabel("Flag", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
+    axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+    PlotStyle.save_figure(fig, plot_dir / "solver_iterations_and_status_timeline.png")
+
+
+def generate_error_vs_solve_time_scatter_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Generate scatter plot of tracking error vs MPC solve time."""
+    fig, axes = plt.subplots(1, 2, figsize=PlotStyle.FIGSIZE_WIDE)
+    fig.suptitle(f"Error vs Solve Time - {plot_gen.system_title}")
+
+    df, cols = resolve_data_frame_and_columns(plot_gen.data_accessor)
+    if df is None:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "Control data required\nfor scatter plot",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "error_vs_solve_time_scatter.png")
+        return
+
+    if "MPC_Solve_Time" in cols:
+        solve_raw = np.array(df["MPC_Solve_Time"].values, dtype=object)
+    elif "MPC_Computation_Time" in cols:
+        solve_raw = np.array(df["MPC_Computation_Time"].values, dtype=object)
+    else:
+        solve_raw = np.array([], dtype=object)
+
+    if solve_raw.size == 0:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "Solve-time column missing",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "error_vs_solve_time_scatter.png")
+        return
+
+    solve_ms = np.zeros(len(solve_raw), dtype=float)
+    for i, value in enumerate(solve_raw):
+        try:
+            solve_ms[i] = float(value) * 1000.0
+        except (TypeError, ValueError):
+            solve_ms[i] = np.nan
+
+    def col_or_zeros(name: str) -> np.ndarray:
+        if name not in cols:
+            return np.zeros(len(solve_ms), dtype=float)
+        arr = np.array(df[name].values, dtype=object)
+        out = np.zeros(len(solve_ms), dtype=float)
+        for i, value in enumerate(arr[: len(solve_ms)]):
+            try:
+                out[i] = float(value)
+            except (TypeError, ValueError):
+                out[i] = 0.0
+        return out
+
+    ex = col_or_zeros("Error_X")
+    ey = col_or_zeros("Error_Y")
+    ez = col_or_zeros("Error_Z")
+    er = col_or_zeros("Error_Roll")
+    ep = col_or_zeros("Error_Pitch")
+    eyaw = col_or_zeros("Error_Yaw")
+
+    pos_err = np.sqrt(ex**2 + ey**2 + ez**2)
+    ang_err_deg = np.degrees(np.sqrt(er**2 + ep**2 + eyaw**2))
+
+    valid = np.isfinite(solve_ms)
+    if np.any(valid):
+        solve_ms = solve_ms[valid]
+        pos_err = pos_err[valid]
+        ang_err_deg = ang_err_deg[valid]
+    else:
+        solve_ms = np.array([])
+
+    if solve_ms.size == 0:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "No valid solve-time samples",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        PlotStyle.save_figure(fig, plot_dir / "error_vs_solve_time_scatter.png")
+        return
+
+    color_idx = np.arange(len(solve_ms))
+    sc0 = axes[0].scatter(
+        solve_ms,
+        pos_err,
+        c=color_idx,
+        cmap="viridis",
+        s=16,
+        alpha=0.75,
+    )
+    axes[0].set_xlabel("Solve Time (ms)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].set_ylabel("Position Error (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+    axes[1].scatter(
+        solve_ms,
+        ang_err_deg,
+        c=color_idx,
+        cmap="plasma",
+        s=16,
+        alpha=0.75,
+    )
+    axes[1].set_xlabel("Solve Time (ms)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].set_ylabel("Attitude Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+
+    cbar = fig.colorbar(sc0, ax=axes, fraction=0.02, pad=0.02)
+    cbar.set_label("Sample Index")
+
+    PlotStyle.save_figure(fig, plot_dir / "error_vs_solve_time_scatter.png")

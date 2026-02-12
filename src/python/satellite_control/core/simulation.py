@@ -373,6 +373,17 @@ class SatelliteMPCLinearizedSimulation:
         """Generate and save mission summary report (delegated to SimulationIO)."""
         self._io.save_mission_summary()
 
+    def finalize_run_artifacts(
+        self,
+        run_status: str = "completed",
+        status_detail: str | None = None,
+    ) -> None:
+        """Generate post-run artifacts and finalize run metadata."""
+        self._io.finalize_run_artifacts(
+            run_status=run_status,
+            status_detail=status_detail,
+        )
+
     def save_animation_mp4(self, fig: Any, ani: Any) -> str | None:
         """
         Save the animation as MP4 file (delegated to SimulationIO).

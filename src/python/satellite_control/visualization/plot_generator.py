@@ -16,7 +16,9 @@ import numpy as np
 from satellite_control.config.models import AppConfig
 from satellite_control.visualization.actuator_plots import (
     generate_actuator_limits_plot,
+    generate_command_vs_valve_tracking_plot,
     generate_control_effort_plot,
+    generate_cumulative_impulse_delta_v_proxy_plot,
     generate_pwm_quantization_plot,
     generate_reaction_wheel_output_plot,
     generate_thruster_impulse_proxy_plot,
@@ -30,8 +32,11 @@ from satellite_control.visualization.command_utils import (
     parse_command_vector as parse_command_vector_with_context,
 )
 from satellite_control.visualization.diagnostics_plots import (
+    generate_error_vs_solve_time_scatter_plot,
     generate_mpc_performance_plot,
+    generate_obstacle_clearance_over_time_plot,
     generate_solver_health_plot,
+    generate_solver_iterations_and_status_timeline_plot,
     generate_timing_intervals_plot,
     generate_waypoint_progress_plot,
 )
@@ -100,35 +105,54 @@ class PlotGenerator:
             plot_dir: Directory to save plots
         """
         print("Generating performance analysis plots...")
-        plot_dir.mkdir(exist_ok=True)
+        plot_dir.mkdir(parents=True, exist_ok=True)
         print(f" Created Plots directory: {plot_dir}")
 
+        grouped_dirs = {
+            "dashboard": plot_dir / "dashboard",
+            "trajectory": plot_dir / "trajectory",
+            "tracking": plot_dir / "tracking",
+            "error": plot_dir / "error",
+            "actuators": plot_dir / "actuators",
+            "dynamics": plot_dir / "dynamics",
+            "diagnostics": plot_dir / "diagnostics",
+        }
+        for out_dir in grouped_dirs.values():
+            out_dir.mkdir(parents=True, exist_ok=True)
+
         # Generate specific performance plots
-        self.generate_position_tracking_plot(plot_dir)
-        self.generate_position_error_plot(plot_dir)
-        self.generate_angular_tracking_plot(plot_dir)
-        self.generate_angular_error_plot(plot_dir)
-        self.generate_error_norms_plot(plot_dir)
-        self.generate_trajectory_plot(plot_dir)
-        self.generate_trajectory_3d_interactive_plot(plot_dir)
-        self.generate_trajectory_3d_orientation_plot(plot_dir)
-        self.generate_thruster_usage_plot(plot_dir)
-        self.generate_thruster_valve_activity_plot(plot_dir)
-        self.generate_pwm_quantization_plot(plot_dir)
-        self.generate_control_effort_plot(plot_dir)
-        self.generate_actuator_limits_plot(plot_dir)
-        self.generate_constraint_violations_plot(plot_dir)
-        self.generate_reaction_wheel_output_plot(plot_dir)
-        self.generate_z_tilt_coupling_plot(plot_dir)
-        self.generate_thruster_impulse_proxy_plot(plot_dir)
-        self.generate_phase_position_velocity_plot(plot_dir)
-        self.generate_phase_attitude_rate_plot(plot_dir)
-        self.generate_velocity_tracking_plot(plot_dir)
-        self.generate_velocity_magnitude_plot(plot_dir)
-        self.generate_mpc_performance_plot(plot_dir)
-        self.generate_solver_health_plot(plot_dir)
-        self.generate_waypoint_progress_plot(plot_dir)
-        self.generate_timing_intervals_plot(plot_dir)
+        self.generate_position_tracking_plot(grouped_dirs["tracking"])
+        self.generate_position_error_plot(grouped_dirs["error"])
+        self.generate_angular_tracking_plot(grouped_dirs["tracking"])
+        self.generate_angular_error_plot(grouped_dirs["error"])
+        self.generate_error_norms_plot(grouped_dirs["error"])
+        self.generate_trajectory_plot(grouped_dirs["trajectory"])
+        self.generate_trajectory_3d_interactive_plot(grouped_dirs["trajectory"])
+        self.generate_trajectory_3d_orientation_plot(grouped_dirs["trajectory"])
+        self.generate_thruster_usage_plot(grouped_dirs["actuators"])
+        self.generate_thruster_valve_activity_plot(grouped_dirs["actuators"])
+        self.generate_command_vs_valve_tracking_plot(grouped_dirs["actuators"])
+        self.generate_pwm_quantization_plot(grouped_dirs["actuators"])
+        self.generate_control_effort_plot(grouped_dirs["actuators"])
+        self.generate_actuator_limits_plot(grouped_dirs["actuators"])
+        self.generate_constraint_violations_plot(grouped_dirs["diagnostics"])
+        self.generate_reaction_wheel_output_plot(grouped_dirs["actuators"])
+        self.generate_z_tilt_coupling_plot(grouped_dirs["dynamics"])
+        self.generate_thruster_impulse_proxy_plot(grouped_dirs["actuators"])
+        self.generate_cumulative_impulse_delta_v_proxy_plot(grouped_dirs["actuators"])
+        self.generate_phase_position_velocity_plot(grouped_dirs["dynamics"])
+        self.generate_phase_attitude_rate_plot(grouped_dirs["dynamics"])
+        self.generate_velocity_tracking_plot(grouped_dirs["tracking"])
+        self.generate_velocity_magnitude_plot(grouped_dirs["dynamics"])
+        self.generate_mpc_performance_plot(grouped_dirs["diagnostics"])
+        self.generate_solver_health_plot(grouped_dirs["diagnostics"])
+        self.generate_solver_iterations_and_status_timeline_plot(
+            grouped_dirs["diagnostics"]
+        )
+        self.generate_waypoint_progress_plot(grouped_dirs["diagnostics"])
+        self.generate_obstacle_clearance_over_time_plot(grouped_dirs["diagnostics"])
+        self.generate_error_vs_solve_time_scatter_plot(grouped_dirs["diagnostics"])
+        self.generate_timing_intervals_plot(grouped_dirs["diagnostics"])
 
         print(f"Performance plots saved to: {plot_dir}")
 
@@ -204,7 +228,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Tracking")
 
-        PlotStyle.save_figure(fig, plot_dir / "02_tracking_position.png")
+        PlotStyle.save_figure(fig, plot_dir / "position_tracking.png")
 
     def generate_position_error_plot(self, plot_dir: Path) -> None:
         """Generate position error plot."""
@@ -261,7 +285,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Z Position Error")
 
-        PlotStyle.save_figure(fig, plot_dir / "02_error_position.png")
+        PlotStyle.save_figure(fig, plot_dir / "position_error.png")
 
     def generate_angular_tracking_plot(self, plot_dir: Path) -> None:
         """Generate angular tracking plot."""
@@ -334,7 +358,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Tracking")
 
-        PlotStyle.save_figure(fig, plot_dir / "02_tracking_attitude.png")
+        PlotStyle.save_figure(fig, plot_dir / "attitude_tracking.png")
 
     def generate_angular_error_plot(self, plot_dir: Path) -> None:
         """Generate angular error plot."""
@@ -396,7 +420,7 @@ class PlotGenerator:
         axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
         axes[2].set_title("Yaw Error")
 
-        PlotStyle.save_figure(fig, plot_dir / "02_error_attitude.png")
+        PlotStyle.save_figure(fig, plot_dir / "attitude_error.png")
 
     def generate_error_norms_plot(self, plot_dir: Path) -> None:
         """Generate error norm summary plot."""
@@ -479,7 +503,7 @@ class PlotGenerator:
         axes[1, 1].grid(True, alpha=PlotStyle.GRID_ALPHA)
         axes[1, 1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-        PlotStyle.save_figure(fig, plot_dir / "02_error_norms.png")
+        PlotStyle.save_figure(fig, plot_dir / "error_norms.png")
 
     def generate_trajectory_plot(self, plot_dir: Path) -> None:
         """Generate trajectory plot."""
@@ -500,6 +524,10 @@ class PlotGenerator:
     def generate_thruster_valve_activity_plot(self, plot_dir: Path) -> None:
         """Generate detailed valve activity plot for each thruster (0.0 to 1.0)."""
         generate_thruster_valve_activity_plot(self, plot_dir)
+
+    def generate_command_vs_valve_tracking_plot(self, plot_dir: Path) -> None:
+        """Generate commanded-vs-actual valve tracking summary."""
+        generate_command_vs_valve_tracking_plot(self, plot_dir)
 
     def generate_pwm_quantization_plot(self, plot_dir: Path) -> None:
         """Generate PWM duty cycle plot showing MPC u-values vs time."""
@@ -551,6 +579,10 @@ class PlotGenerator:
         """Generate thruster impulse proxy plot."""
         generate_thruster_impulse_proxy_plot(self, plot_dir)
 
+    def generate_cumulative_impulse_delta_v_proxy_plot(self, plot_dir: Path) -> None:
+        """Generate cumulative impulse and delta-v proxy plot."""
+        generate_cumulative_impulse_delta_v_proxy_plot(self, plot_dir)
+
     def generate_phase_position_velocity_plot(self, plot_dir: Path) -> None:
         """Generate position vs velocity phase plots."""
         generate_phase_position_velocity_plot(self, plot_dir)
@@ -567,6 +599,10 @@ class PlotGenerator:
         """Generate waypoint/mission phase progress plot."""
         generate_waypoint_progress_plot(self, plot_dir)
 
+    def generate_obstacle_clearance_over_time_plot(self, plot_dir: Path) -> None:
+        """Generate obstacle clearance over time plot."""
+        generate_obstacle_clearance_over_time_plot(self, plot_dir)
+
     def generate_velocity_tracking_plot(self, plot_dir: Path) -> None:
         """Generate velocity tracking over time plot."""
         generate_velocity_tracking_plot(self, plot_dir)
@@ -578,6 +614,16 @@ class PlotGenerator:
     def generate_mpc_performance_plot(self, plot_dir: Path) -> None:
         """Generate MPC performance plot."""
         generate_mpc_performance_plot(self, plot_dir)
+
+    def generate_solver_iterations_and_status_timeline_plot(
+        self, plot_dir: Path
+    ) -> None:
+        """Generate solver iterations and status timeline plot."""
+        generate_solver_iterations_and_status_timeline_plot(self, plot_dir)
+
+    def generate_error_vs_solve_time_scatter_plot(self, plot_dir: Path) -> None:
+        """Generate error-vs-solve-time scatter plot."""
+        generate_error_vs_solve_time_scatter_plot(self, plot_dir)
 
     def generate_timing_intervals_plot(self, plot_dir: Path) -> None:
         """Generate timing intervals plot."""

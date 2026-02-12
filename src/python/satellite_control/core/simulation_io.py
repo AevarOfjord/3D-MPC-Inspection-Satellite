@@ -7,6 +7,13 @@ Extracted from SatelliteMPCLinearizedSimulation to reduce class size.
 
 import json
 import logging
+import hashlib
+import os
+import platform
+import subprocess
+import csv
+import math
+import mimetypes
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -57,6 +64,12 @@ class SimulationIO:
 
         # Create directories
         timestamped_path.mkdir(parents=True, exist_ok=True)
+        self._write_run_status(
+            run_dir=timestamped_path,
+            status="running",
+            status_detail="Simulation initialized and data directory created",
+            final=False,
+        )
 
         logger.info(f"Created data directory: {timestamped_path}")
         return timestamped_path
@@ -110,6 +123,7 @@ class SimulationIO:
             test_mode="SIMULATION",
         )
         self._save_mission_metadata()
+        self._save_reproducibility_manifest()
 
     def _save_mission_metadata(self) -> None:
         """Save mission metadata used by the web visualizer."""
@@ -139,6 +153,1254 @@ class SimulationIO:
             metadata_path.write_text(json.dumps(metadata, indent=2))
         except Exception as exc:
             logger.warning(f"Failed to save mission metadata: {exc}")
+
+    def _save_reproducibility_manifest(self) -> None:
+        """Save run reproducibility metadata for traceability/debugging."""
+        if not self.sim.data_save_path:
+            return
+
+        sim_config = getattr(self.sim, "simulation_config", None)
+        app_config = getattr(sim_config, "app_config", None)
+        if app_config is None:
+            return
+
+        try:
+            app_config_dict = app_config.model_dump()
+            config_json = json.dumps(app_config_dict, sort_keys=True, separators=(",", ":"))
+            computed_config_hash = hashlib.sha256(config_json.encode("utf-8")).hexdigest()[:12]
+
+            solver_type = str(app_config_dict.get("mpc", {}).get("solver_type", "unknown"))
+            manifest = {
+                "schema_version": "run_reproducibility_manifest_v1",
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "run_id": self.sim.data_save_path.name,
+                "run_path": str(self.sim.data_save_path),
+                "mission": {
+                    "name": os.environ.get("SATCTRL_RUNNER_MISSION_NAME"),
+                    "path": os.environ.get("SATCTRL_RUNNER_MISSION_PATH")
+                    or app_config_dict.get("input_file_path"),
+                },
+                "preset": {
+                    "name": os.environ.get("SATCTRL_RUNNER_PRESET_NAME"),
+                },
+                "configuration": {
+                    "config_version": os.environ.get("SATCTRL_RUNNER_CONFIG_VERSION"),
+                    "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH")
+                    or computed_config_hash,
+                    "computed_config_hash": computed_config_hash,
+                    "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
+                    "app_config": app_config_dict,
+                },
+                "solver": {
+                    "type": solver_type,
+                    "backend_version": self._detect_solver_backend_version(solver_type),
+                },
+                "software": {
+                    "satellite_control_version": self._get_package_version(),
+                    "python_version": platform.python_version(),
+                    "platform": platform.platform(),
+                    "git": self._get_git_metadata(),
+                },
+            }
+
+            manifest_path = self.sim.data_save_path / "reproducibility_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning(f"Failed to save reproducibility manifest: {exc}")
+
+    def finalize_run_artifacts(
+        self,
+        run_status: str = "completed",
+        status_detail: str | None = None,
+    ) -> None:
+        """Generate post-run artifacts and finalize run status/index files."""
+        if not self.sim.data_save_path:
+            return
+
+        run_dir = self.sim.data_save_path
+
+        try:
+            control_stats = self._generate_mpc_step_stats(run_dir)
+            physics_stats = self._collect_physics_stats(run_dir)
+            mission_stats = self._collect_mission_stats()
+
+            kpi_summary = self._build_kpi_summary(
+                run_dir=run_dir,
+                control_stats=control_stats,
+                physics_stats=physics_stats,
+                mission_stats=mission_stats,
+            )
+            self._write_json(run_dir / "kpi_summary.json", kpi_summary)
+
+            constraints = self._build_constraint_violations(
+                run_dir=run_dir,
+                control_stats=control_stats,
+                physics_stats=physics_stats,
+                mission_stats=mission_stats,
+            )
+            self._write_json(run_dir / "constraint_violations.json", constraints)
+
+            self._write_event_timeline(
+                run_dir=run_dir,
+                control_stats=control_stats,
+                physics_stats=physics_stats,
+                run_status=run_status,
+                status_detail=status_detail,
+            )
+
+            plots_index = self._build_plots_index(run_dir)
+            self._write_json(run_dir / "plots_index.json", plots_index)
+
+            media_metadata = self._build_media_metadata(
+                run_dir=run_dir, kpi_summary=kpi_summary
+            )
+            self._write_json(run_dir / "media_metadata.json", media_metadata)
+
+            compare_signature = self._build_compare_signature(
+                run_dir=run_dir,
+                kpi_summary=kpi_summary,
+                control_stats=control_stats,
+            )
+            self._write_json(run_dir / "compare_signature.json", compare_signature)
+
+            self._write_run_notes(
+                run_dir=run_dir,
+                kpi_summary=kpi_summary,
+                constraints=constraints,
+                compare_signature=compare_signature,
+            )
+
+            self._write_run_status(
+                run_dir=run_dir,
+                status=run_status,
+                status_detail=status_detail,
+                final=True,
+                kpi_summary=kpi_summary,
+                constraints=constraints,
+            )
+
+            # Regenerate summary after final status/constraints are written so
+            # mission_summary.txt includes final lifecycle and artifact context.
+            self.save_mission_summary()
+
+            self._write_checksums_file(run_dir)
+            self._write_artifacts_manifest(run_dir)
+            self._update_global_run_indexes(run_dir)
+        except Exception as exc:
+            logger.warning(f"Failed while generating run artifacts: {exc}")
+
+    def _write_run_status(
+        self,
+        run_dir: Path,
+        status: str,
+        status_detail: str | None = None,
+        final: bool = False,
+        kpi_summary: dict[str, Any] | None = None,
+        constraints: dict[str, Any] | None = None,
+    ) -> None:
+        """Create/update run_status.json with lifecycle and summary metadata."""
+        status_path = run_dir / "run_status.json"
+        payload: dict[str, Any] = {}
+        if status_path.exists():
+            try:
+                payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+
+        now_iso = datetime.utcnow().isoformat() + "Z"
+        sim_config = getattr(self.sim, "simulation_config", None)
+        app_config = getattr(sim_config, "app_config", None)
+        app_config_dict = app_config.model_dump() if app_config is not None else {}
+        cfg_json = json.dumps(app_config_dict, sort_keys=True, separators=(",", ":"))
+        cfg_hash = hashlib.sha256(cfg_json.encode("utf-8")).hexdigest()[:12]
+        config_meta = {
+            "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH") or cfg_hash,
+            "config_version": os.environ.get("SATCTRL_RUNNER_CONFIG_VERSION")
+            or "app_config_v1",
+            "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
+        }
+
+        payload.setdefault("schema_version", "run_status_v1")
+        payload.setdefault("run_id", run_dir.name)
+        payload.setdefault("run_path", str(run_dir))
+        payload.setdefault("started_at", now_iso)
+        payload["updated_at"] = now_iso
+        payload["status"] = status
+        payload["status_detail"] = status_detail
+        payload["mission"] = {
+            "name": os.environ.get("SATCTRL_RUNNER_MISSION_NAME"),
+            "path": os.environ.get("SATCTRL_RUNNER_MISSION_PATH")
+            or app_config_dict.get("input_file_path"),
+        }
+        payload["preset"] = {"name": os.environ.get("SATCTRL_RUNNER_PRESET_NAME")}
+        payload["config"] = config_meta
+
+        if final:
+            payload["completed_at"] = now_iso
+            payload["final_simulation_time_s"] = float(
+                getattr(self.sim, "simulation_time", 0.0)
+            )
+            try:
+                start_dt = datetime.fromisoformat(
+                    str(payload.get("started_at", now_iso)).replace("Z", "+00:00")
+                )
+                end_dt = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+                payload["wall_clock_duration_s"] = max(
+                    0.0, (end_dt - start_dt).total_seconds()
+                )
+            except Exception:
+                payload["wall_clock_duration_s"] = None
+            payload["success"] = bool(status == "completed")
+            if kpi_summary:
+                payload["kpi_snapshot"] = {
+                    "final_position_error_m": kpi_summary.get(
+                        "final_position_error_m"
+                    ),
+                    "final_angle_error_deg": kpi_summary.get("final_angle_error_deg"),
+                    "mpc_mean_solve_time_ms": kpi_summary.get("mpc_mean_solve_time_ms"),
+                    "mpc_max_solve_time_ms": kpi_summary.get("mpc_max_solve_time_ms"),
+                }
+            if constraints:
+                payload["constraints_pass"] = constraints.get("pass")
+
+        status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def _to_float(value: Any, default: float = 0.0) -> float:
+        """Convert values from CSV/JSON to float safely."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _to_bool_flag(value: Any) -> bool:
+        """Normalize various boolean-like string values."""
+        if isinstance(value, bool):
+            return value
+        text = str(value or "").strip().lower()
+        return text in {"1", "true", "yes", "y", "on"}
+
+    @staticmethod
+    def _vector_norm3(x: float, y: float, z: float) -> float:
+        """Fast Euclidean norm for 3-vector."""
+        return math.sqrt(x * x + y * y + z * z)
+
+    def _generate_mpc_step_stats(self, run_dir: Path) -> dict[str, Any]:
+        """Generate mpc_step_stats.csv and aggregate control-loop statistics."""
+        control_csv = run_dir / "control_data.csv"
+        output_csv = run_dir / "mpc_step_stats.csv"
+        if not control_csv.exists():
+            return {
+                "control_steps": 0,
+                "solve_times_ms": [],
+                "timing_violation_count": 0,
+                "time_limit_exceeded_count": 0,
+                "final_time_s": 0.0,
+                "final_position_error_m": 0.0,
+                "final_angle_error_deg": 0.0,
+            }
+
+        solve_times_ms: list[float] = []
+        control_steps = 0
+        timing_violation_count = 0
+        time_limit_exceeded_count = 0
+        total_active_thrusters = 0.0
+        total_thruster_switches = 0
+        final_time_s = 0.0
+        final_position_error_m = 0.0
+        final_angle_error_deg = 0.0
+        final_path_progress = 0.0
+        final_path_remaining_m = 0.0
+        max_position_error = {"value": 0.0, "time": 0.0}
+        max_angle_error = {"value": 0.0, "time": 0.0}
+        first_time_limit_exceeded_time: float | None = None
+        first_timing_violation_time: float | None = None
+
+        output_headers = [
+            "Step",
+            "Control_Time_s",
+            "Solve_Time_s",
+            "Solve_Time_ms",
+            "Pos_Error_m",
+            "Ang_Error_deg",
+            "Linear_Speed_mps",
+            "Angular_Rate_radps",
+            "Active_Thrusters",
+            "Thruster_Switches",
+            "Path_S_m",
+            "Path_Progress",
+            "Path_Remaining_m",
+            "Path_Error_m",
+            "Path_Endpoint_Error_m",
+            "Timing_Violation",
+            "MPC_Time_Limit_Exceeded",
+            "MPC_Status",
+            "MPC_Iterations",
+        ]
+
+        with control_csv.open("r", encoding="utf-8", newline="") as src, output_csv.open(
+            "w", encoding="utf-8", newline=""
+        ) as dst:
+            reader = csv.DictReader(src)
+            writer = csv.DictWriter(dst, fieldnames=output_headers)
+            writer.writeheader()
+
+            for row in reader:
+                control_steps += 1
+                t = self._to_float(row.get("Control_Time"), self._to_float(row.get("Time")))
+                solve_time_s = self._to_float(
+                    row.get("MPC_Solve_Time"), self._to_float(row.get("Solve_Time"))
+                )
+                solve_time_ms = solve_time_s * 1000.0
+                pos_error_m = self._vector_norm3(
+                    self._to_float(row.get("Error_X")),
+                    self._to_float(row.get("Error_Y")),
+                    self._to_float(row.get("Error_Z")),
+                )
+                ang_error_rad = self._vector_norm3(
+                    self._to_float(row.get("Error_Roll")),
+                    self._to_float(row.get("Error_Pitch")),
+                    self._to_float(row.get("Error_Yaw")),
+                )
+                ang_error_deg = math.degrees(ang_error_rad)
+                speed_mps = self._vector_norm3(
+                    self._to_float(row.get("Current_VX")),
+                    self._to_float(row.get("Current_VY")),
+                    self._to_float(row.get("Current_VZ")),
+                )
+                rate_radps = self._vector_norm3(
+                    self._to_float(row.get("Current_WX")),
+                    self._to_float(row.get("Current_WY")),
+                    self._to_float(row.get("Current_WZ")),
+                )
+                active_thrusters = int(self._to_float(row.get("Total_Active_Thrusters")))
+                thruster_switches = int(self._to_float(row.get("Thruster_Switches")))
+                path_s = self._to_float(row.get("Path_S"))
+                path_progress = self._to_float(row.get("Path_Progress"))
+                path_remaining = self._to_float(row.get("Path_Remaining"))
+                path_error = self._to_float(row.get("Path_Error"))
+                endpoint_error = self._to_float(row.get("Path_Endpoint_Error"))
+                timing_violation = str(row.get("Timing_Violation", "")).strip().upper() in {
+                    "YES",
+                    "TRUE",
+                    "1",
+                }
+                time_limit_exceeded = str(
+                    row.get("MPC_Time_Limit_Exceeded", "")
+                ).strip().upper() in {"YES", "TRUE", "1"}
+
+                writer.writerow(
+                    {
+                        "Step": row.get("Step", control_steps),
+                        "Control_Time_s": f"{t:.6f}",
+                        "Solve_Time_s": f"{solve_time_s:.6f}",
+                        "Solve_Time_ms": f"{solve_time_ms:.3f}",
+                        "Pos_Error_m": f"{pos_error_m:.6f}",
+                        "Ang_Error_deg": f"{ang_error_deg:.6f}",
+                        "Linear_Speed_mps": f"{speed_mps:.6f}",
+                        "Angular_Rate_radps": f"{rate_radps:.6f}",
+                        "Active_Thrusters": active_thrusters,
+                        "Thruster_Switches": thruster_switches,
+                        "Path_S_m": f"{path_s:.6f}",
+                        "Path_Progress": f"{path_progress:.6f}",
+                        "Path_Remaining_m": f"{path_remaining:.6f}",
+                        "Path_Error_m": f"{path_error:.6f}",
+                        "Path_Endpoint_Error_m": f"{endpoint_error:.6f}",
+                        "Timing_Violation": int(timing_violation),
+                        "MPC_Time_Limit_Exceeded": int(time_limit_exceeded),
+                        "MPC_Status": row.get("MPC_Status", ""),
+                        "MPC_Iterations": row.get("MPC_Iterations", ""),
+                    }
+                )
+
+                solve_times_ms.append(solve_time_ms)
+                total_active_thrusters += active_thrusters
+                total_thruster_switches += thruster_switches
+                final_time_s = t
+                final_position_error_m = pos_error_m
+                final_angle_error_deg = ang_error_deg
+                final_path_progress = path_progress
+                final_path_remaining_m = path_remaining
+
+                if pos_error_m >= max_position_error["value"]:
+                    max_position_error = {"value": pos_error_m, "time": t}
+                if ang_error_deg >= max_angle_error["value"]:
+                    max_angle_error = {"value": ang_error_deg, "time": t}
+
+                if timing_violation:
+                    timing_violation_count += 1
+                    if first_timing_violation_time is None:
+                        first_timing_violation_time = t
+                if time_limit_exceeded:
+                    time_limit_exceeded_count += 1
+                    if first_time_limit_exceeded_time is None:
+                        first_time_limit_exceeded_time = t
+
+        mean_active_thrusters = (
+            total_active_thrusters / control_steps if control_steps > 0 else 0.0
+        )
+
+        return {
+            "control_steps": control_steps,
+            "solve_times_ms": solve_times_ms,
+            "timing_violation_count": timing_violation_count,
+            "time_limit_exceeded_count": time_limit_exceeded_count,
+            "first_time_limit_exceeded_time_s": first_time_limit_exceeded_time,
+            "first_timing_violation_time_s": first_timing_violation_time,
+            "final_time_s": final_time_s,
+            "final_position_error_m": final_position_error_m,
+            "final_angle_error_deg": final_angle_error_deg,
+            "final_path_progress": final_path_progress,
+            "final_path_remaining_m": final_path_remaining_m,
+            "max_position_error": max_position_error,
+            "max_angle_error": max_angle_error,
+            "mean_active_thrusters": mean_active_thrusters,
+            "total_thruster_switches": total_thruster_switches,
+        }
+
+    def _collect_physics_stats(self, run_dir: Path) -> dict[str, Any]:
+        """Collect high-frequency stats from physics_data.csv."""
+        physics_csv = run_dir / "physics_data.csv"
+        if not physics_csv.exists():
+            return {
+                "physics_steps": 0,
+                "max_linear_speed_mps": 0.0,
+                "max_angular_rate_radps": 0.0,
+                "max_linear_speed_time_s": 0.0,
+                "max_angular_rate_time_s": 0.0,
+                "linear_speed_violation_count": 0,
+                "angular_rate_violation_count": 0,
+                "obstacle_margin_breach_count": 0,
+                "obstacle_min_clearance_m": None,
+                "obstacle_breach_events": [],
+            }
+
+        sim_config = getattr(self.sim, "simulation_config", None)
+        app_config = getattr(sim_config, "app_config", None)
+        mpc_cfg = getattr(app_config, "mpc", None)
+        linear_limit = (
+            float(getattr(mpc_cfg, "max_linear_velocity", 0.0)) if mpc_cfg else 0.0
+        )
+        angular_limit = (
+            float(getattr(mpc_cfg, "max_angular_velocity", 0.0)) if mpc_cfg else 0.0
+        )
+        obstacle_margin = (
+            float(getattr(mpc_cfg, "obstacle_margin", 0.0)) if mpc_cfg else 0.0
+        )
+        obstacles = self._normalized_obstacles()
+
+        physics_steps = 0
+        max_linear_speed_mps = 0.0
+        max_angular_rate_radps = 0.0
+        max_linear_speed_time_s = 0.0
+        max_angular_rate_time_s = 0.0
+        linear_speed_violation_count = 0
+        angular_rate_violation_count = 0
+        obstacle_margin_breach_count = 0
+        obstacle_min_clearance_m: float | None = None
+        obstacle_breach_events: list[dict[str, Any]] = []
+        max_logged_obstacle_events = 50
+
+        with physics_csv.open("r", encoding="utf-8", newline="") as src:
+            reader = csv.DictReader(src)
+            for row in reader:
+                physics_steps += 1
+                t = self._to_float(row.get("Time"))
+                x = self._to_float(row.get("Current_X"))
+                y = self._to_float(row.get("Current_Y"))
+                z = self._to_float(row.get("Current_Z"))
+                vx = self._to_float(row.get("Current_VX"))
+                vy = self._to_float(row.get("Current_VY"))
+                vz = self._to_float(row.get("Current_VZ"))
+                wx = self._to_float(row.get("Current_WX"))
+                wy = self._to_float(row.get("Current_WY"))
+                wz = self._to_float(row.get("Current_WZ"))
+
+                linear_speed = self._vector_norm3(vx, vy, vz)
+                angular_rate = self._vector_norm3(wx, wy, wz)
+                if linear_speed >= max_linear_speed_mps:
+                    max_linear_speed_mps = linear_speed
+                    max_linear_speed_time_s = t
+                if angular_rate >= max_angular_rate_radps:
+                    max_angular_rate_radps = angular_rate
+                    max_angular_rate_time_s = t
+
+                if linear_limit > 0.0 and linear_speed > linear_limit:
+                    linear_speed_violation_count += 1
+                if angular_limit > 0.0 and angular_rate > angular_limit:
+                    angular_rate_violation_count += 1
+
+                if obstacles:
+                    for idx, obs in enumerate(obstacles):
+                        ox, oy, oz = obs["position"]
+                        clearance = self._vector_norm3(x - ox, y - oy, z - oz) - float(
+                            obs["radius"]
+                        )
+                        if (
+                            obstacle_min_clearance_m is None
+                            or clearance < obstacle_min_clearance_m
+                        ):
+                            obstacle_min_clearance_m = clearance
+                        if clearance < obstacle_margin:
+                            obstacle_margin_breach_count += 1
+                            if len(obstacle_breach_events) < max_logged_obstacle_events:
+                                obstacle_breach_events.append(
+                                    {
+                                        "time_s": t,
+                                        "obstacle_index": idx,
+                                        "clearance_m": clearance,
+                                        "required_margin_m": obstacle_margin,
+                                    }
+                                )
+
+        return {
+            "physics_steps": physics_steps,
+            "max_linear_speed_mps": max_linear_speed_mps,
+            "max_angular_rate_radps": max_angular_rate_radps,
+            "max_linear_speed_time_s": max_linear_speed_time_s,
+            "max_angular_rate_time_s": max_angular_rate_time_s,
+            "linear_speed_violation_count": linear_speed_violation_count,
+            "angular_rate_violation_count": angular_rate_violation_count,
+            "obstacle_margin_breach_count": obstacle_margin_breach_count,
+            "obstacle_min_clearance_m": obstacle_min_clearance_m,
+            "obstacle_breach_events": obstacle_breach_events,
+        }
+
+    def _collect_mission_stats(self) -> dict[str, Any]:
+        """Collect mission-level values available from runtime state."""
+        mission_state = getattr(self.sim, "mission_state", None)
+        if mission_state is None and getattr(self.sim, "simulation_config", None):
+            mission_state = getattr(self.sim.simulation_config, "mission_state", None)
+
+        path_length = 0.0
+        path_points = 0
+        path_completed = False
+        if mission_state is not None:
+            try:
+                path_waypoints = mission_state.get_resolved_path_waypoints()
+                path_points = len(path_waypoints or [])
+            except Exception:
+                path_points = len(getattr(mission_state, "path_waypoints", []) or [])
+            try:
+                path_length = float(
+                    mission_state.get_resolved_path_length(compute_if_missing=True)
+                )
+            except Exception:
+                path_length = float(getattr(mission_state, "path_length", 0.0) or 0.0)
+
+        try:
+            path_completed = bool(self.sim.check_path_complete())
+        except Exception:
+            path_completed = False
+
+        return {
+            "path_length_m": path_length,
+            "path_waypoint_count": path_points,
+            "path_completed": path_completed,
+            "trajectory_endpoint_reached_time_s": getattr(
+                self.sim, "trajectory_endpoint_reached_time", None
+            ),
+        }
+
+    def _build_kpi_summary(
+        self,
+        run_dir: Path,
+        control_stats: dict[str, Any],
+        physics_stats: dict[str, Any],
+        mission_stats: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build compact KPI summary JSON for quick run-level comparison."""
+        solve_times = control_stats.get("solve_times_ms", [])
+        solve_mean = sum(solve_times) / len(solve_times) if solve_times else 0.0
+        solve_max = max(solve_times) if solve_times else 0.0
+
+        def percentile(data: list[float], p: float) -> float:
+            if not data:
+                return 0.0
+            sorted_vals = sorted(data)
+            idx = int(round((len(sorted_vals) - 1) * p))
+            return sorted_vals[max(0, min(idx, len(sorted_vals) - 1))]
+
+        perf_metrics_path = run_dir / "performance_metrics.json"
+        perf_metrics = {}
+        if perf_metrics_path.exists():
+            try:
+                perf_metrics = json.loads(perf_metrics_path.read_text(encoding="utf-8"))
+            except Exception:
+                perf_metrics = {}
+
+        return {
+            "schema_version": "kpi_summary_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "final_time_s": control_stats.get("final_time_s", 0.0),
+            "final_position_error_m": control_stats.get("final_position_error_m", 0.0),
+            "final_angle_error_deg": control_stats.get("final_angle_error_deg", 0.0),
+            "max_position_error_m": control_stats.get("max_position_error", {}).get(
+                "value", 0.0
+            ),
+            "max_angle_error_deg": control_stats.get("max_angle_error", {}).get(
+                "value", 0.0
+            ),
+            "mpc_control_steps": control_stats.get("control_steps", 0),
+            "physics_steps": physics_stats.get("physics_steps", 0),
+            "mpc_mean_solve_time_ms": solve_mean,
+            "mpc_p95_solve_time_ms": percentile(solve_times, 0.95),
+            "mpc_max_solve_time_ms": solve_max,
+            "timing_violation_count": control_stats.get("timing_violation_count", 0),
+            "solver_time_limit_exceeded_count": control_stats.get(
+                "time_limit_exceeded_count", 0
+            ),
+            "mean_active_thrusters": control_stats.get("mean_active_thrusters", 0.0),
+            "total_thruster_switches": control_stats.get("total_thruster_switches", 0),
+            "max_linear_speed_mps": physics_stats.get("max_linear_speed_mps", 0.0),
+            "max_angular_rate_degps": math.degrees(
+                physics_stats.get("max_angular_rate_radps", 0.0)
+            ),
+            "final_path_progress": control_stats.get("final_path_progress", 0.0),
+            "final_path_remaining_m": control_stats.get("final_path_remaining_m", 0.0),
+            "path_length_m": mission_stats.get("path_length_m", 0.0),
+            "path_waypoint_count": mission_stats.get("path_waypoint_count", 0),
+            "path_completed": mission_stats.get("path_completed", False),
+            "performance_metrics_ref": perf_metrics.get("simulation", {}),
+        }
+
+    def _build_constraint_violations(
+        self,
+        run_dir: Path,
+        control_stats: dict[str, Any],
+        physics_stats: dict[str, Any],
+        mission_stats: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build explicit list of threshold/constraint violations."""
+        sim_config = getattr(self.sim, "simulation_config", None)
+        app_config = getattr(sim_config, "app_config", None)
+        mpc_cfg = getattr(app_config, "mpc", None)
+
+        linear_limit = (
+            float(getattr(mpc_cfg, "max_linear_velocity", 0.0)) if mpc_cfg else 0.0
+        )
+        angular_limit = (
+            float(getattr(mpc_cfg, "max_angular_velocity", 0.0)) if mpc_cfg else 0.0
+        )
+        obstacle_margin = (
+            float(getattr(mpc_cfg, "obstacle_margin", 0.0)) if mpc_cfg else 0.0
+        )
+        solver_time_limit_s = (
+            float(getattr(mpc_cfg, "solver_time_limit", 0.0)) if mpc_cfg else 0.0
+        )
+
+        violations: list[dict[str, Any]] = []
+
+        linear_count = int(physics_stats.get("linear_speed_violation_count", 0))
+        if linear_count > 0 and linear_limit > 0.0:
+            violations.append(
+                {
+                    "type": "max_linear_velocity",
+                    "count": linear_count,
+                    "limit_mps": linear_limit,
+                    "max_observed_mps": physics_stats.get("max_linear_speed_mps"),
+                    "max_observed_time_s": physics_stats.get("max_linear_speed_time_s"),
+                }
+            )
+
+        angular_count = int(physics_stats.get("angular_rate_violation_count", 0))
+        if angular_count > 0 and angular_limit > 0.0:
+            violations.append(
+                {
+                    "type": "max_angular_velocity",
+                    "count": angular_count,
+                    "limit_radps": angular_limit,
+                    "max_observed_radps": physics_stats.get("max_angular_rate_radps"),
+                    "max_observed_time_s": physics_stats.get("max_angular_rate_time_s"),
+                }
+            )
+
+        timing_count = int(control_stats.get("timing_violation_count", 0))
+        if timing_count > 0:
+            violations.append(
+                {
+                    "type": "control_timing_violation",
+                    "count": timing_count,
+                    "first_time_s": control_stats.get("first_timing_violation_time_s"),
+                }
+            )
+
+        solver_limit_count = int(control_stats.get("time_limit_exceeded_count", 0))
+        if solver_limit_count > 0:
+            violations.append(
+                {
+                    "type": "mpc_solver_time_limit_exceeded",
+                    "count": solver_limit_count,
+                    "solver_time_limit_s": solver_time_limit_s,
+                    "first_time_s": control_stats.get(
+                        "first_time_limit_exceeded_time_s"
+                    ),
+                }
+            )
+
+        obstacle_count = int(physics_stats.get("obstacle_margin_breach_count", 0))
+        if obstacle_count > 0:
+            violations.append(
+                {
+                    "type": "obstacle_margin_breach",
+                    "count": obstacle_count,
+                    "required_margin_m": obstacle_margin,
+                    "minimum_clearance_m": physics_stats.get("obstacle_min_clearance_m"),
+                    "sample_events": physics_stats.get("obstacle_breach_events", []),
+                }
+            )
+
+        return {
+            "schema_version": "constraint_violations_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "path_completed": mission_stats.get("path_completed", False),
+            "limits": {
+                "max_linear_velocity_mps": linear_limit,
+                "max_angular_velocity_radps": angular_limit,
+                "obstacle_margin_m": obstacle_margin,
+                "solver_time_limit_s": solver_time_limit_s,
+            },
+            "violations": violations,
+            "pass": len(violations) == 0,
+        }
+
+    def _write_event_timeline(
+        self,
+        run_dir: Path,
+        control_stats: dict[str, Any],
+        physics_stats: dict[str, Any],
+        run_status: str,
+        status_detail: str | None,
+    ) -> None:
+        """Write coarse event timeline as JSON-lines for easy streaming/grep."""
+        events: list[dict[str, Any]] = []
+        events.append(
+            {
+                "time_s": 0.0,
+                "event": "run_started",
+                "details": {"run_id": run_dir.name},
+            }
+        )
+
+        max_pos = control_stats.get("max_position_error", {})
+        max_ang = control_stats.get("max_angle_error", {})
+        if max_pos.get("value", 0.0) > 0.0:
+            events.append(
+                {
+                    "time_s": max_pos.get("time", 0.0),
+                    "event": "max_position_error",
+                    "details": {"value_m": max_pos.get("value", 0.0)},
+                }
+            )
+        if max_ang.get("value", 0.0) > 0.0:
+            events.append(
+                {
+                    "time_s": max_ang.get("time", 0.0),
+                    "event": "max_angle_error",
+                    "details": {"value_deg": max_ang.get("value", 0.0)},
+                }
+            )
+
+        first_timeout = control_stats.get("first_time_limit_exceeded_time_s")
+        if first_timeout is not None:
+            events.append(
+                {
+                    "time_s": first_timeout,
+                    "event": "first_solver_time_limit_exceeded",
+                    "details": {},
+                }
+            )
+
+        first_timing_violation = control_stats.get("first_timing_violation_time_s")
+        if first_timing_violation is not None:
+            events.append(
+                {
+                    "time_s": first_timing_violation,
+                    "event": "first_control_timing_violation",
+                    "details": {},
+                }
+            )
+
+        max_lin_t = physics_stats.get("max_linear_speed_time_s", 0.0)
+        max_lin_v = physics_stats.get("max_linear_speed_mps", 0.0)
+        if max_lin_v > 0.0:
+            events.append(
+                {
+                    "time_s": max_lin_t,
+                    "event": "max_linear_speed",
+                    "details": {"value_mps": max_lin_v},
+                }
+            )
+
+        for breach in physics_stats.get("obstacle_breach_events", []):
+            events.append(
+                {
+                    "time_s": breach.get("time_s", 0.0),
+                    "event": "obstacle_margin_breach",
+                    "details": breach,
+                }
+            )
+
+        final_time_s = control_stats.get("final_time_s", 0.0)
+        events.append(
+            {
+                "time_s": final_time_s,
+                "event": "run_finished",
+                "details": {"status": run_status, "status_detail": status_detail},
+            }
+        )
+
+        events.sort(key=lambda item: self._to_float(item.get("time_s")))
+        timeline_path = run_dir / "event_timeline.jsonl"
+        with timeline_path.open("w", encoding="utf-8") as handle:
+            for event in events:
+                handle.write(json.dumps(event) + "\n")
+
+    def _build_plots_index(self, run_dir: Path) -> dict[str, Any]:
+        """Index static/interactive plot outputs for quick UI consumption."""
+        plots_dir = run_dir / "Plots"
+        plot_files: list[dict[str, Any]] = []
+
+        if plots_dir.exists():
+            for path in sorted(plots_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(run_dir)
+                plot_files.append(
+                    {
+                        "path": str(rel),
+                        "name": path.name,
+                        "size_bytes": path.stat().st_size,
+                        "format": path.suffix.lower().lstrip("."),
+                        "interactive": path.suffix.lower() == ".html",
+                    }
+                )
+
+        top_level_html = []
+        for path in sorted(run_dir.glob("*.html")):
+            top_level_html.append(
+                {
+                    "path": path.name,
+                    "name": path.name,
+                    "size_bytes": path.stat().st_size,
+                    "format": "html",
+                    "interactive": True,
+                }
+            )
+
+        return {
+            "schema_version": "plots_index_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "plot_files": plot_files,
+            "top_level_html": top_level_html,
+            "plot_count": len(plot_files),
+        }
+
+    def _build_media_metadata(
+        self, run_dir: Path, kpi_summary: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Collect media output metadata (video/images) for player UX."""
+        media_extensions = {".mp4", ".gif", ".webm", ".png", ".jpg", ".jpeg"}
+        media_items: list[dict[str, Any]] = []
+
+        for path in sorted(run_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            suffix = path.suffix.lower()
+            if suffix not in media_extensions:
+                continue
+            rel = path.relative_to(run_dir)
+            item: dict[str, Any] = {
+                "path": str(rel),
+                "name": path.name,
+                "format": suffix.lstrip("."),
+                "size_bytes": path.stat().st_size,
+                "kind": "video" if suffix in {".mp4", ".gif", ".webm"} else "image",
+            }
+            if item["kind"] == "video":
+                item["duration_s"] = self._probe_video_duration_seconds(path)
+                if item["duration_s"] is None:
+                    item["duration_s"] = self._to_float(
+                        kpi_summary.get("final_time_s"), 0.0
+                    )
+            media_items.append(item)
+
+        return {
+            "schema_version": "media_metadata_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "items": media_items,
+            "video_count": sum(1 for item in media_items if item["kind"] == "video"),
+            "image_count": sum(1 for item in media_items if item["kind"] == "image"),
+        }
+
+    def _probe_video_duration_seconds(self, path: Path) -> float | None:
+        """Best-effort ffprobe duration extraction for video files."""
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            if result.returncode != 0:
+                return None
+            value = self._to_float(result.stdout.strip(), default=-1.0)
+            return value if value >= 0.0 else None
+        except Exception:
+            return None
+
+    def _build_compare_signature(
+        self,
+        run_dir: Path,
+        kpi_summary: dict[str, Any],
+        control_stats: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build compact deterministic signature for run-to-run comparisons."""
+        status_path = run_dir / "run_status.json"
+        status_payload: dict[str, Any] = {}
+        if status_path.exists():
+            try:
+                status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except Exception:
+                status_payload = {}
+
+        basis = {
+            "mission_name": status_payload.get("mission", {}).get("name"),
+            "preset_name": status_payload.get("preset", {}).get("name"),
+            "config_hash": status_payload.get("config", {}).get("config_hash"),
+            "path_length_m": kpi_summary.get("path_length_m"),
+            "final_position_error_m": kpi_summary.get("final_position_error_m"),
+            "final_angle_error_deg": kpi_summary.get("final_angle_error_deg"),
+            "final_time_s": kpi_summary.get("final_time_s"),
+            "mpc_mean_solve_time_ms": kpi_summary.get("mpc_mean_solve_time_ms"),
+            "mpc_max_solve_time_ms": kpi_summary.get("mpc_max_solve_time_ms"),
+            "timing_violation_count": control_stats.get("timing_violation_count"),
+            "solver_time_limit_exceeded_count": control_stats.get(
+                "time_limit_exceeded_count"
+            ),
+        }
+        basis_json = json.dumps(basis, sort_keys=True, separators=(",", ":"))
+        signature = hashlib.sha256(basis_json.encode("utf-8")).hexdigest()[:24]
+
+        return {
+            "schema_version": "compare_signature_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "signature": signature,
+            "basis": basis,
+        }
+
+    def _write_run_notes(
+        self,
+        run_dir: Path,
+        kpi_summary: dict[str, Any],
+        constraints: dict[str, Any],
+        compare_signature: dict[str, Any],
+    ) -> None:
+        """Write lightweight markdown notes for humans reviewing run outputs."""
+        status_payload = {}
+        status_path = run_dir / "run_status.json"
+        if status_path.exists():
+            try:
+                status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except Exception:
+                status_payload = {}
+
+        lines = [
+            f"# Run Notes: {run_dir.name}",
+            "",
+            f"- Generated: {datetime.utcnow().isoformat()}Z",
+            f"- Status: {status_payload.get('status', 'unknown')}",
+            f"- Mission: {status_payload.get('mission', {}).get('name') or 'n/a'}",
+            f"- Preset: {status_payload.get('preset', {}).get('name') or 'n/a'}",
+            f"- Config Hash: {status_payload.get('config', {}).get('config_hash') or 'n/a'}",
+            "",
+            "## KPI Snapshot",
+            "",
+            f"- Final Time: {self._to_float(kpi_summary.get('final_time_s')):.3f} s",
+            f"- Final Position Error: {self._to_float(kpi_summary.get('final_position_error_m')):.6f} m",
+            f"- Final Angle Error: {self._to_float(kpi_summary.get('final_angle_error_deg')):.6f} deg",
+            f"- MPC Mean Solve: {self._to_float(kpi_summary.get('mpc_mean_solve_time_ms')):.3f} ms",
+            f"- MPC Max Solve: {self._to_float(kpi_summary.get('mpc_max_solve_time_ms')):.3f} ms",
+            f"- Timing Violations: {int(self._to_float(kpi_summary.get('timing_violation_count')))}",
+            f"- Solver Time-Limit Exceeded: {int(self._to_float(kpi_summary.get('solver_time_limit_exceeded_count')))}",
+            "",
+            "## Constraints",
+            "",
+            f"- Pass: {bool(constraints.get('pass'))}",
+            f"- Violations: {len(constraints.get('violations', []))}",
+            "",
+            "## Compare Signature",
+            "",
+            f"- Signature: `{compare_signature.get('signature', '')}`",
+            "",
+        ]
+        (run_dir / "run_notes.md").write_text("\n".join(lines), encoding="utf-8")
+
+    def _write_checksums_file(self, run_dir: Path) -> None:
+        """Write sha256 checksums for all run files (except this checksum file)."""
+        checksum_path = run_dir / "checksums.sha256"
+        lines: list[str] = []
+        for path in sorted(run_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            if path.name == "checksums.sha256":
+                continue
+            rel = path.relative_to(run_dir)
+            digest = self._sha256_file(path)
+            lines.append(f"{digest}  {rel}")
+        checksum_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+    def _write_artifacts_manifest(self, run_dir: Path) -> None:
+        """Write structured manifest for every generated file in run directory."""
+        checksums = self._load_checksums_map(run_dir / "checksums.sha256")
+        files: list[dict[str, Any]] = []
+        total_size = 0
+        for path in sorted(run_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(run_dir)
+            if rel.name == "artifacts_manifest.json":
+                continue
+            size = path.stat().st_size
+            total_size += size
+            mime_type, _ = mimetypes.guess_type(str(path))
+            files.append(
+                {
+                    "path": str(rel),
+                    "size_bytes": size,
+                    "sha256": checksums.get(str(rel)),
+                    "mime_type": mime_type,
+                    "category": self._artifact_category(rel),
+                }
+            )
+
+        payload = {
+            "schema_version": "artifacts_manifest_v1",
+            "run_id": run_dir.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "file_count": len(files),
+            "total_size_bytes": total_size,
+            "files": files,
+        }
+        (run_dir / "artifacts_manifest.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
+    def _update_global_run_indexes(self, run_dir: Path, max_runs: int = 500) -> None:
+        """Update Data/Simulation/runs_index.json and latest_run.txt."""
+        base_dir = run_dir.parent
+        latest_run_path = base_dir / "latest_run.txt"
+        latest_run_path.write_text(run_dir.name + "\n", encoding="utf-8")
+
+        runs: list[dict[str, Any]] = []
+        for candidate in sorted(base_dir.iterdir(), reverse=True):
+            if not candidate.is_dir():
+                continue
+            status_path = candidate / "run_status.json"
+            kpi_path = candidate / "kpi_summary.json"
+            if not status_path.exists() and not (candidate / "physics_data.csv").exists():
+                continue
+
+            status_payload: dict[str, Any] = {}
+            kpi_payload: dict[str, Any] = {}
+            try:
+                if status_path.exists():
+                    status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except Exception:
+                status_payload = {}
+            try:
+                if kpi_path.exists():
+                    kpi_payload = json.loads(kpi_path.read_text(encoding="utf-8"))
+            except Exception:
+                kpi_payload = {}
+
+            runs.append(
+                {
+                    "id": candidate.name,
+                    "modified": candidate.stat().st_mtime,
+                    "status": status_payload.get("status", "unknown"),
+                    "mission_name": status_payload.get("mission", {}).get("name"),
+                    "preset_name": status_payload.get("preset", {}).get("name"),
+                    "config_hash": status_payload.get("config", {}).get("config_hash"),
+                    "final_time_s": kpi_payload.get("final_time_s"),
+                    "final_position_error_m": kpi_payload.get(
+                        "final_position_error_m"
+                    ),
+                    "final_angle_error_deg": kpi_payload.get("final_angle_error_deg"),
+                    "path_completed": kpi_payload.get("path_completed"),
+                }
+            )
+
+            if len(runs) >= max_runs:
+                break
+
+        index_payload = {
+            "schema_version": "runs_index_v1",
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "latest_run_id": run_dir.name,
+            "run_count": len(runs),
+            "runs": runs,
+        }
+        (base_dir / "runs_index.json").write_text(
+            json.dumps(index_payload, indent=2), encoding="utf-8"
+        )
+
+    def _artifact_category(self, rel_path: Path) -> str:
+        """Classify artifact type for manifest consumers."""
+        suffix = rel_path.suffix.lower()
+        if suffix in {".mp4", ".gif", ".webm"}:
+            return "media"
+        if suffix in {".png", ".jpg", ".jpeg", ".svg", ".html"}:
+            return "plot"
+        if suffix in {".csv"}:
+            return "data"
+        if suffix in {".json", ".jsonl", ".txt", ".md", ".sha256"}:
+            return "metadata"
+        return "other"
+
+    def _load_checksums_map(self, checksum_path: Path) -> dict[str, str]:
+        """Parse checksums.sha256 into a map for manifest assembly."""
+        mapping: dict[str, str] = {}
+        if not checksum_path.exists():
+            return mapping
+        try:
+            for line in checksum_path.read_text(encoding="utf-8").splitlines():
+                parts = line.split("  ", 1)
+                if len(parts) != 2:
+                    continue
+                digest, rel = parts
+                mapping[rel.strip()] = digest.strip()
+        except Exception:
+            return {}
+        return mapping
+
+    def _sha256_file(self, path: Path) -> str:
+        """Compute SHA-256 digest for a file path."""
+        hasher = hashlib.sha256()
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    def _normalized_obstacles(self) -> list[dict[str, Any]]:
+        """Extract obstacle list from mission state in uniform shape."""
+        mission_state = getattr(self.sim, "mission_state", None)
+        if mission_state is None and getattr(self.sim, "simulation_config", None):
+            mission_state = getattr(self.sim.simulation_config, "mission_state", None)
+        if mission_state is None:
+            return []
+
+        if not getattr(mission_state, "obstacles_enabled", False):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        for obs in getattr(mission_state, "obstacles", []) or []:
+            try:
+                if hasattr(obs, "position") and hasattr(obs, "radius"):
+                    pos = [float(v) for v in obs.position]
+                    rad = float(obs.radius)
+                elif isinstance(obs, dict):
+                    pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
+                    rad = float(obs.get("radius", 0.0))
+                elif isinstance(obs, (list, tuple)) and len(obs) >= 4:
+                    pos = [float(obs[0]), float(obs[1]), float(obs[2])]
+                    rad = float(obs[3])
+                else:
+                    continue
+                normalized.append({"position": pos, "radius": rad})
+            except Exception:
+                continue
+        return normalized
+
+    def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
+        """Write JSON atomically via temporary file replacement."""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.replace(path)
+
+    def _get_package_version(self) -> str:
+        try:
+            from satellite_control import __version__
+
+            return str(__version__)
+        except Exception:
+            return "unknown"
+
+    def _detect_solver_backend_version(self, solver_type: str) -> str | None:
+        solver = str(solver_type or "").upper()
+        if solver == "OSQP":
+            try:
+                import osqp
+
+                return str(getattr(osqp, "__version__", "unknown"))
+            except Exception:
+                return None
+        return None
+
+    def _get_git_metadata(self) -> dict[str, Any]:
+        repo_root = Path(__file__).resolve().parents[4]
+        result = {
+            "commit": None,
+            "branch": None,
+            "dirty": None,
+        }
+
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            result["commit"] = commit.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            result["branch"] = branch.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            dirty = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            result["dirty"] = bool(dirty.stdout.strip())
+        except Exception:
+            pass
+
+        return result
 
     def _load_history_from_csv(self) -> np.ndarray | None:
         """

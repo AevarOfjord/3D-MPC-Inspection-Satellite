@@ -52,6 +52,7 @@ Startup behavior:
 - Hovering/focusing `Viewer`, `Mission Planner`, or `Scan Planner` prefetches 3D modules for faster open.
 - `Viewer`, `Mission Planner`, and `Scan Planner` are loaded as separate lazy mode chunks.
 - Playback/Data run lists auto-refresh every 5 seconds and when the window regains focus.
+- Playback/Data also receive backend push updates over `/simulations/runs/ws` for near-instant new-run discovery.
 
 ## Production build
 
