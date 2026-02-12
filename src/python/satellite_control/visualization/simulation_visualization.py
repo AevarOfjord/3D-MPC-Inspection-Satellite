@@ -458,6 +458,69 @@ class SimulationVisualizationManager:
         )
         self.satellite.ax_main.add_patch(center_marker)
 
+        # Draw body-frame axis hints on the satellite body:
+        # +X (red), +Y (green), +Z (blue marker at center for 2D view).
+        axis_len = 0.75 * radius
+        pos2d = np.array(self.satellite.position[:2], dtype=float)
+        x_dir = rotation_matrix @ np.array([1.0, 0.0], dtype=float)
+        y_dir = rotation_matrix @ np.array([0.0, 1.0], dtype=float)
+
+        x_end = pos2d + axis_len * x_dir
+        y_end = pos2d + axis_len * y_dir
+
+        self.satellite.ax_main.plot(
+            [pos2d[0], x_end[0]],
+            [pos2d[1], x_end[1]],
+            color="red",
+            linewidth=2.2,
+            zorder=11,
+        )
+        self.satellite.ax_main.plot(
+            [pos2d[0], y_end[0]],
+            [pos2d[1], y_end[1]],
+            color="green",
+            linewidth=2.2,
+            zorder=11,
+        )
+        self.satellite.ax_main.scatter(
+            pos2d[0],
+            pos2d[1],
+            s=26,
+            c="blue",
+            alpha=0.95,
+            zorder=12,
+            edgecolors="white",
+            linewidths=0.6,
+        )
+
+        self.satellite.ax_main.text(
+            x_end[0],
+            x_end[1],
+            "+X",
+            color="red",
+            fontsize=8,
+            fontweight="bold",
+            zorder=13,
+        )
+        self.satellite.ax_main.text(
+            y_end[0],
+            y_end[1],
+            "+Y",
+            color="green",
+            fontsize=8,
+            fontweight="bold",
+            zorder=13,
+        )
+        self.satellite.ax_main.text(
+            pos2d[0] + 0.015,
+            pos2d[1] + 0.015,
+            "+Z",
+            color="blue",
+            fontsize=8,
+            fontweight="bold",
+            zorder=13,
+        )
+
         # Draw thrusters with color coding
         for thruster_id, local_pos in self.satellite.thrusters.items():
             global_pos = (

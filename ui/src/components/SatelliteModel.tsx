@@ -1,7 +1,8 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Text } from '@react-three/drei';
  
-import { Group, Mesh } from 'three';
+import { DoubleSide, Group, Mesh } from 'three';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
 
@@ -68,11 +69,37 @@ export function SatelliteModel() {
 
   return (
     <group ref={groupRef}>
-      {/* Main Bus - Gold Foil */}
+      {/* Main Bus with axis face colors:
+          +X red, +Y green, +Z blue (negative faces darker variants). */}
       <mesh castShadow receiveShadow>
         <boxGeometry args={[0.3, 0.3, 0.3]} />
-        <meshStandardMaterial color="#D4AF37" metalness={0.7} roughness={0.3} />
+        <meshStandardMaterial attach="material-0" side={DoubleSide} color="#ff3b30" emissive="#7f1d1d" emissiveIntensity={0.25} metalness={0.45} roughness={0.25} />
+        <meshStandardMaterial attach="material-1" side={DoubleSide} color="#ff8a80" emissive="#7f1d1d" emissiveIntensity={0.15} metalness={0.35} roughness={0.35} />
+        <meshStandardMaterial attach="material-2" side={DoubleSide} color="#39ff14" emissive="#14532d" emissiveIntensity={0.25} metalness={0.45} roughness={0.25} />
+        <meshStandardMaterial attach="material-3" side={DoubleSide} color="#86efac" emissive="#14532d" emissiveIntensity={0.15} metalness={0.35} roughness={0.35} />
+        <meshStandardMaterial attach="material-4" side={DoubleSide} color="#00c2ff" emissive="#1e3a8a" emissiveIntensity={0.25} metalness={0.45} roughness={0.25} />
+        <meshStandardMaterial attach="material-5" side={DoubleSide} color="#93c5fd" emissive="#1e3a8a" emissiveIntensity={0.15} metalness={0.35} roughness={0.35} />
       </mesh>
+
+      {/* Face labels */}
+      <Text position={[0.155, 0, 0]} rotation={[0, Math.PI / 2, 0]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        +X
+      </Text>
+      <Text position={[-0.155, 0, 0]} rotation={[0, -Math.PI / 2, 0]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        -X
+      </Text>
+      <Text position={[0, 0.155, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        +Y
+      </Text>
+      <Text position={[0, -0.155, 0]} rotation={[Math.PI / 2, 0, 0]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        -Y
+      </Text>
+      <Text position={[0, 0, 0.155]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        +Z
+      </Text>
+      <Text position={[0, 0, -0.155]} rotation={[0, Math.PI, 0]} fontSize={0.055} color="#ffffff" anchorX="center" anchorY="middle">
+        -Z
+      </Text>
 
       {/* Solar Panel Left - REMOVED */}
       {/* <mesh position={[-0.35, 0, 0]} castShadow receiveShadow>

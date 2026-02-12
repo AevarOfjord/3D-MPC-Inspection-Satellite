@@ -193,9 +193,13 @@ class SimulationInitializer:
             elif hasattr(self.simulation.mpc_controller, "clear_obstacles"):
                 self.simulation.mpc_controller.clear_obstacles()
 
-        # Path-only runtime: clear optional scan attitude context.
+        # Configure optional scan attitude context from mission runtime metadata.
         if hasattr(self.simulation.mpc_controller, "set_scan_attitude_context"):
-            self.simulation.mpc_controller.set_scan_attitude_context(None, None, "CW")
+            self.simulation.mpc_controller.set_scan_attitude_context(
+                getattr(mission_state, "scan_attitude_center", None),
+                getattr(mission_state, "scan_attitude_axis", None),
+                getattr(mission_state, "scan_attitude_direction", "CW"),
+            )
 
         # Initialize state validator
         self._initialize_state_validator()

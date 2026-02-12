@@ -1390,49 +1390,63 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                     z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
                 }
 
-                // 2) Keep +X as close as possible to tangent while orthogonal to +Z.
-                x_axis = x_axis - x_axis.dot(z_axis) * z_axis;
-                x_norm = x_axis.norm();
-
-                if (x_norm <= 1e-9) {
-                    // If tangent is parallel to scan axis, use radial direction in scan plane.
-                    Eigen::Vector3d radial = p_ref - scan_center_;
-                    radial -= radial.dot(z_axis) * z_axis;
-                    double radial_norm = radial.norm();
-                    if (radial_norm > 1e-9) {
-                        x_axis = radial / radial_norm;
-                    } else if (q_curr.norm() > 1e-9) {
-                        // Last fallback: keep previous body +X projected onto scan plane.
-                        Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
-                        q_curr_eig.normalize();
-                        Eigen::Vector3d curr_x = q_curr_eig * Eigen::Vector3d::UnitX();
-                        curr_x -= curr_x.dot(z_axis) * z_axis;
-                        double curr_x_norm = curr_x.norm();
-                        if (curr_x_norm > 1e-9) {
-                            x_axis = curr_x / curr_x_norm;
-                        }
+                // 2) Build +Y to face the object center in the scan plane.
+                Eigen::Vector3d radial_in = scan_center_ - p_ref;
+                radial_in -= radial_in.dot(z_axis) * z_axis;
+                double radial_norm = radial_in.norm();
+                if (radial_norm > 1e-9) {
+                    y_axis = radial_in / radial_norm;
+                } else if (q_curr.norm() > 1e-9) {
+                    Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
+                    q_curr_eig.normalize();
+                    Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
+                    curr_y -= curr_y.dot(z_axis) * z_axis;
+                    double curr_y_norm = curr_y.norm();
+                    if (curr_y_norm > 1e-9) {
+                        y_axis = curr_y / curr_y_norm;
                     }
-                } else {
-                    x_axis /= x_norm;
                 }
-
-                if (x_axis.norm() <= 1e-9) {
-                    // Deterministic orthogonal fallback.
+                double y_norm = y_axis.norm();
+                if (y_norm > 1e-9) {
+                    y_axis /= y_norm;
+                } else {
+                    // Deterministic fallback orthogonal to +Z.
                     Eigen::Vector3d ref =
                         (std::abs(z_axis.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
-                                                     : Eigen::Vector3d::UnitY();
-                    x_axis = ref.cross(z_axis);
-                    double x_fallback_norm = x_axis.norm();
-                    if (x_fallback_norm > 1e-9) {
-                        x_axis /= x_fallback_norm;
+                                                     : Eigen::Vector3d::UnitX();
+                    y_axis = z_axis.cross(ref);
+                    y_norm = y_axis.norm();
+                    if (y_norm > 1e-9) {
+                        y_axis /= y_norm;
                     } else {
-                        x_axis = Eigen::Vector3d::UnitX();
+                        y_axis = Eigen::Vector3d::UnitY();
                     }
                 }
 
-                // 3) Complete right-handed orthonormal frame.
+                // 3) Compute +X from (+Y,+Z), then orient +X to match travel direction.
+                x_axis = y_axis.cross(z_axis);
+                x_norm = x_axis.norm();
+                if (x_norm > 1e-9) {
+                    x_axis /= x_norm;
+                } else {
+                    x_axis = Eigen::Vector3d::UnitX();
+                }
+
+                Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_axis) * z_axis;
+                double t_plane_norm = t_plane.norm();
+                if (t_plane_norm > 1e-9) {
+                    t_plane /= t_plane_norm;
+                    // Flip both X and Y so +X stays forward; this still satisfies
+                    // "either +Y or -Y faces the object".
+                    if (x_axis.dot(t_plane) < 0.0) {
+                        x_axis = -x_axis;
+                        y_axis = -y_axis;
+                    }
+                }
+
+                // Re-orthonormalize to control numerical drift.
                 y_axis = z_axis.cross(x_axis);
-                double y_norm = y_axis.norm();
+                y_norm = y_axis.norm();
                 if (y_norm > 1e-9) {
                     y_axis /= y_norm;
                 } else {
