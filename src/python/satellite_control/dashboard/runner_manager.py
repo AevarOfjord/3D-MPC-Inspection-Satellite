@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,7 +33,9 @@ class RunnerManager:
         self._log_history: list[str] = []
         self.max_history_lines = 1000
         self._custom_config: dict | None = None
+        self._active_preset_name: str | None = None
         self._temp_config_path: str | None = None
+        self._current_run_dir: Path | None = None
         self._presets_path = PRESETS_FILE
         self._presets: dict[str, dict[str, Any]] = self._load_presets()
 
@@ -248,22 +251,26 @@ class RunnerManager:
             "config_hash": config_hash,
             "config_version": "app_config_v1",
             "overrides_active": bool(self._custom_config),
+            "active_preset_name": self._active_preset_name,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
         return ui_config
 
-    def update_config(self, overrides: dict):
+    def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
         normalized = self._normalize_overrides(overrides)
         self._custom_config = normalized if normalized else None
+        self._active_preset_name = active_preset_name if normalized else None
         logger.info(
-            "Updated custom configuration overrides: sections=%s",
+            "Updated custom configuration overrides: sections=%s, preset=%s",
             list(normalized.keys()),
+            self._active_preset_name,
         )
 
     def reset_config(self):
         """Clear custom overrides and revert to default configuration."""
         self._custom_config = None
+        self._active_preset_name = None
         logger.info("Reset custom configuration overrides to defaults")
 
     def list_presets(self) -> dict[str, dict[str, Any]]:
@@ -333,7 +340,7 @@ class RunnerManager:
         config = preset.get("config")
         if not isinstance(config, dict):
             raise ValueError("Preset config is invalid")
-        self.update_config(config)
+        self.update_config(config, active_preset_name=name)
         return self.get_config()
 
     async def connect(self, websocket: WebSocket):
@@ -381,8 +388,10 @@ class RunnerManager:
             return
 
         self._log_history.clear()
+        self._current_run_dir = None
         
         cmd_args = [str(SIMULATION_SCRIPT)]
+        resolved_mission_path: str | None = None
         if mission_name:
             try:
                 # Resolve mission path
@@ -391,6 +400,7 @@ class RunnerManager:
                 )
                 mission_path = resolve_mission_file(mission_name, source_priority=("local",))
                 cmd_args.extend(["--mission", str(mission_path)])
+                resolved_mission_path = str(mission_path)
                 await self._broadcast(f">>> Selected mission: {mission_name}\n")
             except Exception as e:
                 await self._broadcast(f">>> Error resolving mission '{mission_name}': {e}\n")
@@ -426,6 +436,18 @@ class RunnerManager:
             src_python = str(PROJECT_ROOT / "src" / "python")
             if src_python not in python_path:
                 env["PYTHONPATH"] = f"{src_python}:{python_path}" if python_path else src_python
+            config_meta = self.get_config().get("config_meta", {})
+            env["SATCTRL_RUNNER_CONFIG_HASH"] = str(config_meta.get("config_hash", ""))
+            env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(config_meta.get("config_version", ""))
+            env["SATCTRL_RUNNER_OVERRIDES_ACTIVE"] = (
+                "1" if bool(config_meta.get("overrides_active")) else "0"
+            )
+            if self._active_preset_name:
+                env["SATCTRL_RUNNER_PRESET_NAME"] = self._active_preset_name
+            if mission_name:
+                env["SATCTRL_RUNNER_MISSION_NAME"] = mission_name
+            if resolved_mission_path:
+                env["SATCTRL_RUNNER_MISSION_PATH"] = resolved_mission_path
 
             # Use sys.executable to ensure we use the same virtualenv python
             cmd = [sys.executable] + cmd_args
@@ -497,6 +519,7 @@ class RunnerManager:
             line = await stream.readline()
             if line:
                 decoded = line.decode('utf-8', errors='replace')
+                self._maybe_capture_run_dir(decoded)
                 # We broadcast the raw line including newline chars usually, 
                 # but let's ensure it handles buffering correctly on frontend.
                 await self._broadcast(decoded)
@@ -507,4 +530,108 @@ class RunnerManager:
         """Wait for the process to finish and broadcast the result."""
         if self.process:
             return_code = await self.process.wait()
+            self._finalize_run_status_from_process_exit(return_code)
             await self._broadcast(f"\n>>> Simulation finished with return code {return_code}.\n")
+
+    def _maybe_capture_run_dir(self, line: str) -> None:
+        """Extract run directory from process logs when available."""
+        if self._current_run_dir is not None:
+            return
+        match = re.search(r"Created data directory:\s*(.+?)\s*$", line.strip())
+        if not match:
+            return
+        raw_path = match.group(1).strip().strip("'\"")
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = (PROJECT_ROOT / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        if candidate.exists() and candidate.is_dir():
+            self._current_run_dir = candidate
+
+    def _finalize_run_status_from_process_exit(self, return_code: int) -> None:
+        """
+        Ensure run_status reflects subprocess exit state when process exits early.
+
+        Normal successful runs update run_status in simulation code. This path
+        only patches status when we detect non-zero exits or stale in-progress
+        statuses.
+        """
+        run_dir = self._current_run_dir
+        if run_dir is None:
+            return
+        status_path = run_dir / "run_status.json"
+        if not status_path.exists():
+            return
+
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+
+        status = str(payload.get("status", "running")).lower()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updated = False
+
+        if return_code != 0:
+            payload["status"] = "failed"
+            payload["status_detail"] = (
+                f"Simulation process exited with non-zero return code {return_code}"
+            )
+            payload["success"] = False
+            payload["updated_at"] = now_iso
+            payload.setdefault("completed_at", now_iso)
+            updated = True
+        elif status in {"running", "initializing"}:
+            payload["status"] = "completed"
+            payload["status_detail"] = "Simulation process exited with return code 0"
+            payload["success"] = True
+            payload["updated_at"] = now_iso
+            payload.setdefault("completed_at", now_iso)
+            updated = True
+
+        if updated:
+            status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            self._update_global_run_index_files(run_dir.parent, run_dir.name)
+
+    def _update_global_run_index_files(self, base_dir: Path, latest_run_id: str) -> None:
+        """Best-effort refresh of runs_index/latest_run pointers."""
+        try:
+            (base_dir / "latest_run.txt").write_text(latest_run_id + "\n", encoding="utf-8")
+            runs: list[dict[str, Any]] = []
+            for candidate in sorted(base_dir.iterdir(), reverse=True):
+                if not candidate.is_dir():
+                    continue
+                status_path = candidate / "run_status.json"
+                if not status_path.exists() and not (candidate / "physics_data.csv").exists():
+                    continue
+                status_payload: dict[str, Any] = {}
+                try:
+                    if status_path.exists():
+                        status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+                except Exception:
+                    status_payload = {}
+                runs.append(
+                    {
+                        "id": candidate.name,
+                        "modified": candidate.stat().st_mtime,
+                        "status": status_payload.get("status", "unknown"),
+                        "mission_name": status_payload.get("mission", {}).get("name"),
+                        "preset_name": status_payload.get("preset", {}).get("name"),
+                        "config_hash": status_payload.get("config", {}).get("config_hash"),
+                    }
+                )
+                if len(runs) >= 500:
+                    break
+            payload = {
+                "schema_version": "runs_index_v1",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "latest_run_id": latest_run_id,
+                "run_count": len(runs),
+                "runs": runs,
+            }
+            (base_dir / "runs_index.json").write_text(
+                json.dumps(payload, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            return

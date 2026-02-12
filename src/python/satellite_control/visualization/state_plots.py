@@ -53,7 +53,7 @@ def generate_constraint_violations_plot(plot_gen: Any, plot_dir: Path) -> None:
                 transform=ax.transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-        PlotStyle.save_figure(fig, plot_dir / "06_constraint_violations.png")
+        PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
         return
 
     pos_violation = np.maximum(
@@ -100,7 +100,7 @@ def generate_constraint_violations_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "06_constraint_violations.png")
+    PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
 
 
 def generate_z_tilt_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -133,7 +133,7 @@ def generate_z_tilt_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
                 transform=ax.transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-        PlotStyle.save_figure(fig, plot_dir / "04_z_tilt_coupling.png")
+        PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
         return
 
     axes[0].plot(
@@ -177,7 +177,7 @@ def generate_z_tilt_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "04_z_tilt_coupling.png")
+    PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
 
 
 def generate_phase_position_velocity_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -207,7 +207,7 @@ def generate_phase_position_velocity_plot(plot_gen: Any, plot_dir: Path) -> None
     axes[2].set_ylabel("VZ (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-    PlotStyle.save_figure(fig, plot_dir / "05_phase_plot_pos_vel.png")
+    PlotStyle.save_figure(fig, plot_dir / "phase_position_velocity.png")
 
 
 def generate_phase_attitude_rate_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -243,7 +243,7 @@ def generate_phase_attitude_rate_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
-    PlotStyle.save_figure(fig, plot_dir / "05_phase_plot_att_rate.png")
+    PlotStyle.save_figure(fig, plot_dir / "phase_attitude_rate.png")
 
 
 def generate_velocity_tracking_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -287,7 +287,7 @@ def generate_velocity_tracking_plot(plot_gen: Any, plot_dir: Path) -> None:
     plot_velocity(axes[2], "Z", "Current_VZ", "Reference_VZ")
     axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "02_tracking_velocity.png")
+    PlotStyle.save_figure(fig, plot_dir / "velocity_tracking.png")
 
 
 def generate_velocity_magnitude_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -304,7 +304,7 @@ def generate_velocity_magnitude_plot(plot_gen: Any, plot_dir: Path) -> None:
             va="center",
             transform=ax.transAxes,
         )
-        PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
+        PlotStyle.save_figure(fig, plot_dir / "velocity_magnitude.png")
         return
 
     time = np.arange(n) * float(plot_gen.dt)
@@ -334,4 +334,4 @@ def generate_velocity_magnitude_plot(plot_gen: Any, plot_dir: Path) -> None:
     ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
     ax.legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "04_velocity_magnitude.png")
+    PlotStyle.save_figure(fig, plot_dir / "velocity_magnitude.png")

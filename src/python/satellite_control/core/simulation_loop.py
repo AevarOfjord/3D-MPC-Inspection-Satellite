@@ -127,24 +127,53 @@ class SimulationLoop:
             self.simulation.is_running = False
 
             # Save data when interrupted
-            if (
-                self.simulation.data_save_path is not None
-                and self.simulation.data_logger.get_log_count() > 0
-            ):
-                logger.info("Saving simulation data...")
-                self.simulation.save_csv_data()
-                self.simulation.visualizer.sync_from_controller()
-                self.simulation.save_mission_summary()
-                logger.info("Data saved to: %s", self.simulation.data_save_path)
+            if self.simulation.data_save_path is not None:
+                if self.simulation.data_logger.get_log_count() > 0:
+                    logger.info("Saving simulation data...")
+                    self.simulation.save_csv_data()
+                    self.simulation.visualizer.sync_from_controller()
+                    self.simulation.save_mission_summary()
+                    logger.info("Data saved to: %s", self.simulation.data_save_path)
 
-                # Try to generate visualizations if we have enough data
-                if self.simulation.data_logger.get_log_count() > 10:
-                    try:
-                        logger.info("Auto-generating visualizations...")
-                        self.simulation.auto_generate_visualizations()
-                        logger.info("All visualizations complete!")
-                    except Exception as e:
-                        logger.warning("Could not generate visualizations: %s", e)
+                    # Try to generate visualizations if we have enough data
+                    if self.simulation.data_logger.get_log_count() > 10:
+                        try:
+                            logger.info("Auto-generating visualizations...")
+                            self.simulation.auto_generate_visualizations()
+                            logger.info("All visualizations complete!")
+                        except Exception as e:
+                            logger.warning("Could not generate visualizations: %s", e)
+                try:
+                    self.simulation.finalize_run_artifacts(
+                        run_status="interrupted",
+                        status_detail="Simulation interrupted by user",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to finalize run artifacts after interruption: %s", exc
+                    )
+        except Exception as exc:
+            logger.exception("Unhandled simulation loop failure: %s", exc)
+            self.simulation.is_running = False
+            if self.simulation.data_save_path is not None:
+                try:
+                    if self.simulation.data_logger.get_log_count() > 0:
+                        self.simulation.save_csv_data()
+                        self.simulation.visualizer.sync_from_controller()
+                        self.simulation.save_mission_summary()
+                except Exception as save_exc:
+                    logger.warning("Failed to save partial data after failure: %s", save_exc)
+                try:
+                    self.simulation.finalize_run_artifacts(
+                        run_status="failed",
+                        status_detail=f"{type(exc).__name__}: {exc}",
+                    )
+                except Exception as finalize_exc:
+                    logger.warning(
+                        "Failed to finalize run artifacts after failure: %s",
+                        finalize_exc,
+                    )
+            raise
 
         finally:
             # Cleanup
@@ -179,6 +208,10 @@ class SimulationLoop:
             logger.info("Auto-generating performance plots...")
             self.simulation.auto_generate_visualizations()
             logger.info("All visualizations complete!")
+            self.simulation.finalize_run_artifacts(
+                run_status="completed",
+                status_detail="Simulation completed in animation mode",
+            )
 
         self._enforce_timing_contract_if_needed()
 
@@ -256,6 +289,10 @@ class SimulationLoop:
             logger.info("Auto-generating visualizations...")
             self.simulation.auto_generate_visualizations()
             logger.info("All visualizations complete!")
+            self.simulation.finalize_run_artifacts(
+                run_status="completed",
+                status_detail="Simulation completed in batch mode",
+            )
 
         self._enforce_timing_contract_if_needed()
 

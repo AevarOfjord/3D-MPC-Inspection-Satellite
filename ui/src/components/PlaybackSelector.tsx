@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { simulationsApi, type SimulationRun } from '../api/simulations';
 import { telemetry, type TelemetryData } from '../services/telemetry';
+import { runEvents } from '../services/runEvents';
 import { useTelemetryStore } from '../store/telemetryStore';
 
 const MAX_PLAYBACK_SAMPLES = 1000000;
@@ -34,11 +35,9 @@ export function PlaybackSelector() {
     setPlaying(false);
   }, []);
 
-  const refreshRuns = useCallback(async () => {
-    setRefreshingRuns(true);
-    try {
-      const response = await simulationsApi.list();
-      const nextRuns = response.runs.filter((run) => run.has_physics);
+  const applyRunsUpdate = useCallback(
+    (incomingRuns: SimulationRun[]) => {
+      const nextRuns = incomingRuns.filter((run) => run.has_physics);
       setRuns(nextRuns);
       setLastRunsRefreshAt(Date.now());
       if (selectedId && !nextRuns.some((run) => run.id === selectedId)) {
@@ -51,12 +50,21 @@ export function PlaybackSelector() {
         useTelemetryStore.getState().setPlaybackFinalState(null);
         setSelectedId('');
       }
+    },
+    [resetTelemetry, selectedId, stopPlayback]
+  );
+
+  const refreshRuns = useCallback(async () => {
+    setRefreshingRuns(true);
+    try {
+      const response = await simulationsApi.list();
+      applyRunsUpdate(response.runs);
     } catch (error) {
       console.error(error);
     } finally {
       setRefreshingRuns(false);
     }
-  }, [resetTelemetry, selectedId, stopPlayback]);
+  }, [applyRunsUpdate]);
 
   const findIndexForTime = (
     data: TelemetryData[],
@@ -135,6 +143,13 @@ export function PlaybackSelector() {
     lastEmitRef.current = indexRef.current;
     rafRef.current = window.requestAnimationFrame(tick);
   }, [stopPlayback, tick]);
+
+  useEffect(() => {
+    const unsubscribe = runEvents.subscribe((event) => {
+      applyRunsUpdate(event.runs);
+    });
+    return () => unsubscribe();
+  }, [applyRunsUpdate]);
 
   useEffect(() => {
     void refreshRuns();

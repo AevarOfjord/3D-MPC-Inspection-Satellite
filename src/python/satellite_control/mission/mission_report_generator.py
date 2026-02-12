@@ -19,6 +19,8 @@ Output formats:
 - Summary statistics for comparison
 """
 
+import csv
+import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
@@ -131,6 +133,7 @@ class MissionReportGenerator:
                     angle_tolerance,
                     control_update_interval,
                     check_path_complete_func,
+                    output_path.parent,
                 )
 
                 # Footer
@@ -459,6 +462,380 @@ class MissionReportGenerator:
             f"  HEADLESS_MODE:                 {self.app_config.simulation.headless}\n\n"
         )
 
+    def _read_json_file(self, path: Path) -> dict[str, Any]:
+        """Best-effort JSON reader that returns an empty dict on failure."""
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    def _extract_obstacles(self) -> list[tuple[np.ndarray, float]]:
+        """Extract configured obstacles as (center, radius)."""
+        if not getattr(self.mission_state, "obstacles_enabled", False):
+            return []
+        obstacles = getattr(self.mission_state, "obstacles", None) or []
+        normalized: list[tuple[np.ndarray, float]] = []
+        for obs in obstacles:
+            try:
+                if hasattr(obs, "position"):
+                    center = np.array(obs.position, dtype=float)
+                    radius = float(obs.radius)
+                else:
+                    ox, oy, oz, radius = obs
+                    center = np.array([ox, oy, oz], dtype=float)
+                if center.size >= 3 and radius >= 0.0:
+                    normalized.append((center[:3], radius))
+            except Exception:
+                continue
+        return normalized
+
+    def _compute_obstacle_clearance(
+        self,
+        state_history: list[np.ndarray],
+        control_time: float,
+    ) -> dict[str, Any]:
+        """Compute obstacle clearance metrics from sampled state history."""
+        obstacles = self._extract_obstacles()
+        if not obstacles or not state_history:
+            return {}
+
+        min_clearance = float("inf")
+        min_clearance_idx = 0
+        min_clearance_obs = -1
+        min_clearance_per_step: list[float] = []
+
+        for idx, state in enumerate(state_history):
+            pos = np.array(state[:3], dtype=float)
+            step_min = float("inf")
+            step_obs_idx = -1
+            for obs_idx, (center, radius) in enumerate(obstacles):
+                clearance = float(np.linalg.norm(pos - center) - radius)
+                if clearance < step_min:
+                    step_min = clearance
+                    step_obs_idx = obs_idx
+            min_clearance_per_step.append(step_min)
+            if step_min < min_clearance:
+                min_clearance = step_min
+                min_clearance_idx = idx
+                min_clearance_obs = step_obs_idx
+
+        step_dt = 0.0
+        if control_time > 0.0 and len(state_history) > 1:
+            step_dt = control_time / float(len(state_history) - 1)
+
+        obstacle_margin = float(getattr(self.app_config.mpc, "obstacle_margin", 0.0))
+        margin_breach_count = int(
+            sum(1 for clearance in min_clearance_per_step if clearance < obstacle_margin)
+        )
+        collision_count = int(sum(1 for clearance in min_clearance_per_step if clearance < 0.0))
+
+        return {
+            "obstacle_count": len(obstacles),
+            "minimum_clearance_m": min_clearance,
+            "minimum_clearance_time_s": min_clearance_idx * step_dt,
+            "minimum_clearance_obstacle_index": min_clearance_obs + 1
+            if min_clearance_obs >= 0
+            else None,
+            "required_margin_m": obstacle_margin,
+            "minimum_margin_delta_m": min_clearance - obstacle_margin,
+            "margin_breach_count": margin_breach_count,
+            "collision_count": collision_count,
+        }
+
+    def _compute_actuator_tracking_summary(self, run_dir: Path) -> dict[str, Any]:
+        """Estimate command-vs-valve tracking quality from physics CSV logs."""
+        physics_csv = run_dir / "physics_data.csv"
+        if not physics_csv.exists():
+            return {}
+
+        try:
+            with physics_csv.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames:
+                    return {}
+
+                channel_pairs: list[tuple[str, str, str]] = []
+                for name in reader.fieldnames:
+                    if not name.startswith("Thruster_") or not name.endswith("_Cmd"):
+                        continue
+                    thruster_label = name[: -len("_Cmd")]
+                    val_name = f"{thruster_label}_Val"
+                    if val_name in reader.fieldnames:
+                        channel_pairs.append((name, val_name, thruster_label))
+
+                if not channel_pairs:
+                    return {}
+
+                sample_count = 0
+                channel_sample_count = 0
+                total_abs_error = 0.0
+                max_abs_error = 0.0
+                max_abs_error_time = 0.0
+                max_abs_error_channel = ""
+                per_thruster_totals: dict[str, float] = {
+                    label: 0.0 for _, _, label in channel_pairs
+                }
+                per_thruster_samples: dict[str, int] = {
+                    label: 0 for _, _, label in channel_pairs
+                }
+
+                for row in reader:
+                    sample_count += 1
+                    time_s = float(row.get("Time", 0.0) or 0.0)
+                    for cmd_key, val_key, thruster in channel_pairs:
+                        cmd = float(row.get(cmd_key, 0.0) or 0.0)
+                        val = float(row.get(val_key, 0.0) or 0.0)
+                        err = abs(val - cmd)
+                        total_abs_error += err
+                        channel_sample_count += 1
+                        per_thruster_totals[thruster] += err
+                        per_thruster_samples[thruster] += 1
+                        if err > max_abs_error:
+                            max_abs_error = err
+                            max_abs_error_time = time_s
+                            max_abs_error_channel = thruster
+
+                if channel_sample_count == 0:
+                    return {}
+
+                thruster_mean_errors = {
+                    thruster: per_thruster_totals[thruster]
+                    / float(max(1, per_thruster_samples[thruster]))
+                    for thruster in per_thruster_totals
+                }
+                worst_thruster = max(
+                    thruster_mean_errors, key=lambda key: thruster_mean_errors[key]
+                )
+
+                return {
+                    "samples": sample_count,
+                    "thruster_count": len(channel_pairs),
+                    "mean_abs_error": total_abs_error / float(channel_sample_count),
+                    "max_abs_error": max_abs_error,
+                    "max_abs_error_time_s": max_abs_error_time,
+                    "max_abs_error_channel": max_abs_error_channel,
+                    "worst_thruster": worst_thruster,
+                    "worst_thruster_mean_abs_error": thruster_mean_errors[worst_thruster],
+                }
+        except Exception:
+            return {}
+
+    def _scan_artifact_index(self, run_dir: Path) -> dict[str, Any]:
+        """Build compact artifact inventory directly from files on disk."""
+        if not run_dir.exists():
+            return {}
+
+        category_counts = {
+            "plot": 0,
+            "media": 0,
+            "data": 0,
+            "metadata": 0,
+            "other": 0,
+        }
+        total_size_bytes = 0
+        file_count = 0
+        plots_by_group: dict[str, int] = {}
+
+        for artifact in sorted(run_dir.rglob("*")):
+            if not artifact.is_file():
+                continue
+            rel = artifact.relative_to(run_dir)
+            rel_posix = rel.as_posix()
+            file_count += 1
+            total_size_bytes += artifact.stat().st_size
+
+            suffix = artifact.suffix.lower()
+            if suffix in {".mp4", ".gif", ".webm"}:
+                category = "media"
+            elif suffix in {".png", ".jpg", ".jpeg", ".svg", ".html"}:
+                category = "plot"
+            elif suffix in {".csv"}:
+                category = "data"
+            elif suffix in {".json", ".jsonl", ".txt", ".md", ".sha256"}:
+                category = "metadata"
+            else:
+                category = "other"
+            category_counts[category] += 1
+
+            if rel_posix.startswith("Plots/"):
+                parts = rel.parts
+                plot_group = parts[1] if len(parts) > 2 else "root"
+                plots_by_group[plot_group] = plots_by_group.get(plot_group, 0) + 1
+
+        return {
+            "file_count": file_count,
+            "total_size_bytes": total_size_bytes,
+            "category_counts": category_counts,
+            "plots_by_group": plots_by_group,
+        }
+
+    def _write_run_identity_and_termination(self, f, run_dir: Path) -> None:
+        """Write run identity block and termination reason details."""
+        status_payload = self._read_json_file(run_dir / "run_status.json")
+        mission = status_payload.get("mission", {}) or {}
+        preset = status_payload.get("preset", {}) or {}
+        config = status_payload.get("config", {}) or {}
+        started_at = status_payload.get("started_at")
+        completed_at = status_payload.get("completed_at")
+        wall_clock_s = status_payload.get("wall_clock_duration_s")
+
+        f.write("\nRUN IDENTITY & TERMINATION\n")
+        f.write("-" * 50 + "\n")
+        f.write(f"Run ID:                    {run_dir.name}\n")
+        f.write(f"Run Directory:             {run_dir}\n")
+        f.write(f"Mission Name:              {mission.get('name') or 'n/a'}\n")
+        f.write(f"Mission Path:              {mission.get('path') or 'n/a'}\n")
+        f.write(f"Preset Name:               {preset.get('name') or 'n/a'}\n")
+        f.write(f"Config Version:            {config.get('config_version') or 'n/a'}\n")
+        f.write(f"Config Hash:               {config.get('config_hash') or 'n/a'}\n")
+        f.write(
+            f"Overrides Active:          {'YES' if config.get('overrides_active') else 'NO'}\n"
+        )
+        f.write(f"Started At:                {started_at or 'n/a'}\n")
+        f.write(f"Completed At:              {completed_at or 'n/a'}\n")
+        if isinstance(wall_clock_s, (int, float)):
+            f.write(f"Wall Clock Duration:       {float(wall_clock_s):.2f} s\n")
+        else:
+            f.write("Wall Clock Duration:       n/a\n")
+        f.write(f"Termination Status:        {status_payload.get('status') or 'unknown'}\n")
+        f.write(
+            f"Termination Detail:        {status_payload.get('status_detail') or 'n/a'}\n"
+        )
+
+    def _write_constraints_summary(
+        self,
+        f,
+        run_dir: Path,
+        timing_violations: int,
+        solver_limit_exceeded: int,
+    ) -> None:
+        """Write explicit constraints pass/fail summary."""
+        payload = self._read_json_file(run_dir / "constraint_violations.json")
+        f.write("\nCONSTRAINTS SUMMARY\n")
+        f.write("-" * 50 + "\n")
+
+        if payload:
+            violations = payload.get("violations", []) or []
+            f.write(f"Constraints Pass:          {'YES' if payload.get('pass') else 'NO'}\n")
+            f.write(f"Violation Types:           {len(violations)}\n")
+            limits = payload.get("limits", {}) or {}
+            if limits:
+                lin_lim = float(limits.get("max_linear_velocity_mps", 0.0) or 0.0)
+                ang_lim = float(limits.get("max_angular_velocity_radps", 0.0) or 0.0)
+                margin = float(limits.get("obstacle_margin_m", 0.0) or 0.0)
+                solve_lim = float(limits.get("solver_time_limit_s", 0.0) or 0.0)
+                f.write(f"Max Linear Velocity:       {lin_lim:.3f} m/s\n")
+                f.write(f"Max Angular Velocity:      {np.degrees(ang_lim):.2f}°/s\n")
+                f.write(f"Obstacle Margin:           {margin:.3f} m\n")
+                f.write(f"Solver Time Limit:         {solve_lim * 1000.0:.1f} ms\n")
+            for item in violations:
+                vtype = str(item.get("type", "unknown"))
+                count = int(item.get("count", 0) or 0)
+                f.write(f"- {vtype}: {count}\n")
+            if not violations:
+                f.write("- No violations detected\n")
+            return
+
+        f.write("Constraints Pass:          n/a (artifact not available yet)\n")
+        f.write(f"Timing Violations:         {timing_violations}\n")
+        f.write(f"Solver Limit Exceeded:     {solver_limit_exceeded}\n")
+
+    def _write_obstacle_clearance_summary(
+        self,
+        f,
+        state_history: list[np.ndarray],
+        control_time: float,
+    ) -> None:
+        """Write minimum clearance and margin-breach summary."""
+        f.write("\nOBSTACLE CLEARANCE SUMMARY\n")
+        f.write("-" * 50 + "\n")
+        clearance = self._compute_obstacle_clearance(
+            state_history=state_history,
+            control_time=control_time,
+        )
+        if not clearance:
+            f.write("Obstacle Data:             n/a (obstacles disabled or unavailable)\n")
+            return
+
+        f.write(f"Obstacle Count:            {int(clearance['obstacle_count'])}\n")
+        f.write(
+            f"Min Clearance:             {float(clearance['minimum_clearance_m']):.4f} m\n"
+        )
+        f.write(
+            f"Min Clearance Time:        {float(clearance['minimum_clearance_time_s']):.3f} s\n"
+        )
+        obs_idx = clearance.get("minimum_clearance_obstacle_index")
+        f.write(f"Closest Obstacle Index:    {obs_idx if obs_idx is not None else 'n/a'}\n")
+        f.write(
+            f"Required Margin:           {float(clearance['required_margin_m']):.4f} m\n"
+        )
+        f.write(
+            f"Clearance-Margin Delta:    {float(clearance['minimum_margin_delta_m']):.4f} m\n"
+        )
+        f.write(
+            f"Margin Breach Samples:     {int(clearance['margin_breach_count'])}\n"
+        )
+        f.write(f"Collision Samples:         {int(clearance['collision_count'])}\n")
+
+    def _write_actuator_tracking_summary(self, f, run_dir: Path) -> None:
+        """Write command-vs-actual actuator tracking quality metrics."""
+        f.write("\nACTUATOR TRACKING SUMMARY\n")
+        f.write("-" * 50 + "\n")
+        tracking = self._compute_actuator_tracking_summary(run_dir)
+        if not tracking:
+            f.write("Tracking Data:             n/a (physics_data.csv unavailable)\n")
+            return
+
+        f.write(f"Samples:                   {int(tracking['samples'])}\n")
+        f.write(f"Thrusters Tracked:         {int(tracking['thruster_count'])}\n")
+        f.write(
+            f"Mean |Valve-Cmd|:          {float(tracking['mean_abs_error']):.4f} "
+            f"({100.0 * float(tracking['mean_abs_error']):.2f}%)\n"
+        )
+        f.write(
+            f"Max |Valve-Cmd|:           {float(tracking['max_abs_error']):.4f} "
+            f"({100.0 * float(tracking['max_abs_error']):.2f}%)\n"
+        )
+        f.write(
+            f"Max Error Channel:         {tracking.get('max_abs_error_channel') or 'n/a'}\n"
+        )
+        f.write(
+            f"Max Error Time:            {float(tracking['max_abs_error_time_s']):.3f} s\n"
+        )
+        f.write(
+            f"Worst Mean Tracking:       {tracking.get('worst_thruster') or 'n/a'} "
+            f"({float(tracking['worst_thruster_mean_abs_error']):.4f})\n"
+        )
+
+    def _write_artifact_index(self, f, run_dir: Path) -> None:
+        """Write compact artifact inventory and grouped plot counts."""
+        f.write("\nARTIFACT INDEX\n")
+        f.write("-" * 50 + "\n")
+        index = self._scan_artifact_index(run_dir)
+        if not index:
+            f.write("Artifacts:                 n/a\n")
+            return
+
+        file_count = int(index["file_count"])
+        total_size_mb = float(index["total_size_bytes"]) / (1024.0 * 1024.0)
+        counts = index["category_counts"]
+        f.write(f"Total Files:               {file_count}\n")
+        f.write(f"Total Size:                {total_size_mb:.2f} MB\n")
+        f.write(f"Plot Files:                {int(counts['plot'])}\n")
+        f.write(f"Data Files:                {int(counts['data'])}\n")
+        f.write(f"Media Files:               {int(counts['media'])}\n")
+        f.write(f"Metadata Files:            {int(counts['metadata'])}\n")
+        f.write(f"Other Files:               {int(counts['other'])}\n")
+
+        plots_by_group = index.get("plots_by_group", {}) or {}
+        if plots_by_group:
+            f.write("Plot Groups:\n")
+            for group in sorted(plots_by_group.keys()):
+                f.write(f"- {group}: {int(plots_by_group[group])}\n")
+
     def _write_performance_results(
         self,
         f,
@@ -472,6 +849,7 @@ class MissionReportGenerator:
         angle_tolerance: float,
         control_update_interval: float,
         check_path_complete_func: Callable[..., Any],
+        run_dir: Path,
     ) -> None:
         """Write performance results section."""
         f.write("=" * 80 + "\n")
@@ -539,6 +917,8 @@ class MissionReportGenerator:
 
         success = check_path_complete_func()
         vel_magnitude_final = np.linalg.norm(final_state[7:10])
+        timing_violations = 0
+        solver_limit_exceeded = 0
 
         # Position & Trajectory Analysis
         f.write("[POSITION] POSITION & TRAJECTORY ANALYSIS\n")
@@ -634,6 +1014,13 @@ class MissionReportGenerator:
                 f"(mean {mean_ms:.2f}/{mean_target_ms:.2f} ms, "
                 f"max {max_ms:.2f}/{hard_max_ms:.2f} ms)\n"
             )
+            solver_limit_exceeded = int(
+                sum(
+                    1
+                    for t in mpc_convergence_times
+                    if t > float(self.app_config.mpc.solver_time_limit)
+                )
+            )
         f.write("\n")
 
         # Control Effort Analysis
@@ -670,7 +1057,9 @@ class MissionReportGenerator:
 
         # Precision Analysis
         f.write(f"Achieved Precision:        {pos_error_final:.4f}m\n")
-        precision_ratio = pos_error_final / 0.050
+        precision_ratio = (
+            pos_error_final / position_tolerance if position_tolerance > 0 else float("inf")
+        )
         if precision_ratio <= 1.0:
             f.write(f"Precision Ratio:           {precision_ratio:.2f} (PASSED)\n")
         else:
@@ -696,6 +1085,21 @@ class MissionReportGenerator:
             f.write(
                 f"Remaining Angle Error:     {np.degrees(remaining_ang_error):.2f}°\n"
             )
+
+        self._write_run_identity_and_termination(f, run_dir=run_dir)
+        self._write_constraints_summary(
+            f,
+            run_dir=run_dir,
+            timing_violations=timing_violations,
+            solver_limit_exceeded=solver_limit_exceeded,
+        )
+        self._write_obstacle_clearance_summary(
+            f,
+            state_history=state_history,
+            control_time=control_time,
+        )
+        self._write_actuator_tracking_summary(f, run_dir=run_dir)
+        self._write_artifact_index(f, run_dir=run_dir)
 
 
 def create_mission_report_generator(config: SimulationConfig) -> MissionReportGenerator:

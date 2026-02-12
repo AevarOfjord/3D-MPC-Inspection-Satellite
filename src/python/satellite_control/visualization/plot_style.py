@@ -72,6 +72,7 @@ class PlotStyle:
     @staticmethod
     def save_figure(fig, path, close: bool = True):
         """Save figure with consistent settings."""
+        path.parent.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
         fig.savefig(path, dpi=PlotStyle.DPI, bbox_inches="tight")
         if close:

@@ -148,7 +148,7 @@ def generate_trajectory_plot(plot_gen: Any, plot_dir: Path) -> None:
         bbox=PlotStyle.TEXTBOX_STYLE,
     )
 
-    PlotStyle.save_figure(fig, plot_dir / "01_trajectory_2d.png")
+    PlotStyle.save_figure(fig, plot_dir / "trajectory_2d.png")
 
 
 def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -282,13 +282,16 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
         opacity=0.8,
     )
 
-    output_path = plot_dir.parent / "01_trajectory_3d_interactive.html"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    output_path = plot_dir / "trajectory_3d_interactive.html"
     fig.write_html(output_path, include_plotlyjs="cdn")
     print(f"Interactive 3D plot saved to: {output_path}")
 
-    output_path = plot_dir / "00_mission_dashboard.html"
-    fig.write_html(output_path, include_plotlyjs="cdn")
-    print(f"Interactive mission dashboard saved to: {output_path}")
+    dashboard_dir = plot_dir.parent / "dashboard"
+    dashboard_dir.mkdir(parents=True, exist_ok=True)
+    dashboard_path = dashboard_dir / "mission_dashboard.html"
+    fig.write_html(dashboard_path, include_plotlyjs="cdn")
+    print(f"Interactive mission dashboard saved to: {dashboard_path}")
 
 
 def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -382,4 +385,4 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
     ax.set_title(f"3D Trajectory with Orientation - {plot_gen.system_title}")
     ax.legend()
 
-    PlotStyle.save_figure(fig, plot_dir / "01_trajectory_3d_orientation.png")
+    PlotStyle.save_figure(fig, plot_dir / "trajectory_3d_orientation.png")

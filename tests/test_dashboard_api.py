@@ -5,6 +5,8 @@ Tests FastAPI endpoints for the dashboard backend.
 Combines `test_dashboard.py` and `test_mission_saving.py`.
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from satellite_control.dashboard.app import app
@@ -162,7 +164,15 @@ class TestDashboardAPI:
         cfg = cfg_resp.json()
         assert cfg["mpc"]["prediction_horizon"] == 33
         assert cfg.get("config_meta", {}).get("overrides_active") is True
+        assert cfg.get("config_meta", {}).get("active_preset_name") == "fast-test"
 
         delete_resp = client.delete("/runner/presets/fast-test")
         assert delete_resp.status_code == 200
         assert delete_resp.json().get("status") == "deleted"
+
+    def test_simulations_runs_ws_snapshot(self, client):
+        """Runs websocket should push an initial snapshot payload."""
+        with client.websocket_connect("/simulations/runs/ws") as ws:
+            payload = json.loads(ws.receive_text())
+            assert payload.get("type") == "runs_snapshot"
+            assert isinstance(payload.get("runs"), list)

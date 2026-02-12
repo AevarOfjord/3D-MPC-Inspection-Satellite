@@ -1,8 +1,10 @@
 """Simulation browser & live-control routes."""
 
+import asyncio
 import csv
 import json
 import logging
+import time
 from pathlib import Path
 
 import numpy as np
@@ -43,41 +45,62 @@ def _get_run_dir(rid: str) -> Path:
     return rdir
 
 
-@router.get("/simulations")
-async def list_simulations():
+def _collect_runs(limit: int = 50) -> list[dict]:
+    """Collect simulation run metadata from disk."""
     assert _data_dir is not None
     runs: list[dict] = []
-    if _data_dir.exists():
-        count = 0
-        for run_dir in sorted(_data_dir.iterdir(), reverse=True):
-            if not run_dir.is_dir():
-                continue
-            physics_path = run_dir / "physics_data.csv"
-            if not physics_path.exists():
-                continue
-            metrics_path = run_dir / "performance_metrics.json"
-            metrics: dict = {}
-            if metrics_path.exists():
-                try:
-                    metrics = json.loads(metrics_path.read_text())
-                except Exception as exc:
-                    logger.error(f"Failed to read metrics for {run_dir.name}: {exc}")
-            sim_metrics = (
-                metrics.get("simulation", {}) if isinstance(metrics, dict) else {}
-            )
-            runs.append(
-                {
-                    "id": run_dir.name,
-                    "modified": run_dir.stat().st_mtime,
-                    "has_physics": True,
-                    "has_metrics": metrics_path.exists(),
-                    "steps": sim_metrics.get("total_steps"),
-                    "duration": sim_metrics.get("total_time_s"),
-                }
-            )
-            count += 1
-            if count >= 50:
-                break
+    if not _data_dir.exists():
+        return runs
+
+    count = 0
+    for run_dir in sorted(_data_dir.iterdir(), reverse=True):
+        if not run_dir.is_dir():
+            continue
+        physics_path = run_dir / "physics_data.csv"
+        if not physics_path.exists():
+            continue
+        metrics_path = run_dir / "performance_metrics.json"
+        metrics: dict = {}
+        if metrics_path.exists():
+            try:
+                metrics = json.loads(metrics_path.read_text())
+            except Exception as exc:
+                logger.error(f"Failed to read metrics for {run_dir.name}: {exc}")
+        sim_metrics = metrics.get("simulation", {}) if isinstance(metrics, dict) else {}
+        runs.append(
+            {
+                "id": run_dir.name,
+                "modified": run_dir.stat().st_mtime,
+                "has_physics": True,
+                "has_metrics": metrics_path.exists(),
+                "steps": sim_metrics.get("total_steps"),
+                "duration": sim_metrics.get("total_time_s"),
+            }
+        )
+        count += 1
+        if count >= limit:
+            break
+    return runs
+
+
+def _runs_signature(runs: list[dict]) -> str:
+    """Stable signature used to detect run-list changes."""
+    compact = [
+        (
+            run.get("id"),
+            run.get("modified"),
+            run.get("steps"),
+            run.get("duration"),
+            run.get("has_metrics"),
+        )
+        for run in runs
+    ]
+    return json.dumps(compact, separators=(",", ":"))
+
+
+@router.get("/simulations")
+async def list_simulations():
+    runs = _collect_runs()
     return {"runs": runs}
 
 
@@ -352,3 +375,30 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         mgr.connection_manager.disconnect(websocket)
+
+
+@router.websocket("/simulations/runs/ws")
+async def runs_updates_websocket(websocket: WebSocket):
+    """Push simulation run list updates to clients in near-real-time."""
+    await websocket.accept()
+    last_signature: str | None = None
+
+    try:
+        while True:
+            runs = _collect_runs()
+            signature = _runs_signature(runs)
+            if signature != last_signature:
+                await websocket.send_json(
+                    {
+                        "type": "runs_snapshot" if last_signature is None else "runs_updated",
+                        "runs": runs,
+                        "latest_run_id": runs[0]["id"] if runs else None,
+                        "updated_at": time.time(),
+                    }
+                )
+                last_signature = signature
+            await asyncio.sleep(1.5)
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:
+        logger.debug("Runs updates websocket closed: %s", exc)
