@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshCcw } from 'lucide-react';
 import { simulationsApi, type SimulationRun } from '../api/simulations';
 import { telemetry, type TelemetryData } from '../services/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
 
 const MAX_PLAYBACK_SAMPLES = 1000000;
+const RUN_LIST_REFRESH_MS = 5000;
 
 export function PlaybackSelector() {
   const [runs, setRuns] = useState<SimulationRun[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshingRuns, setRefreshingRuns] = useState(false);
+  const [lastRunsRefreshAt, setLastRunsRefreshAt] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [uiIndex, setUiIndex] = useState(0);
@@ -29,6 +33,30 @@ export function PlaybackSelector() {
     }
     setPlaying(false);
   }, []);
+
+  const refreshRuns = useCallback(async () => {
+    setRefreshingRuns(true);
+    try {
+      const response = await simulationsApi.list();
+      const nextRuns = response.runs.filter((run) => run.has_physics);
+      setRuns(nextRuns);
+      setLastRunsRefreshAt(Date.now());
+      if (selectedId && !nextRuns.some((run) => run.id === selectedId)) {
+        stopPlayback();
+        dataRef.current = [];
+        indexRef.current = 0;
+        setUiIndex(0);
+        setDuration(0);
+        resetTelemetry();
+        useTelemetryStore.getState().setPlaybackFinalState(null);
+        setSelectedId('');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRefreshingRuns(false);
+    }
+  }, [resetTelemetry, selectedId, stopPlayback]);
 
   const findIndexForTime = (
     data: TelemetryData[],
@@ -109,20 +137,19 @@ export function PlaybackSelector() {
   }, [stopPlayback, tick]);
 
   useEffect(() => {
-    let mounted = true;
-    simulationsApi
-      .list()
-      .then((response) => {
-        if (!mounted) return;
-        setRuns(response.runs.filter(run => run.has_physics));
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-    return () => {
-      mounted = false;
+    void refreshRuns();
+    const timer = window.setInterval(() => {
+      void refreshRuns();
+    }, RUN_LIST_REFRESH_MS);
+    const onFocus = () => {
+      void refreshRuns();
     };
-  }, []);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshRuns]);
 
   useEffect(() => {
     return () => {
@@ -208,14 +235,21 @@ export function PlaybackSelector() {
 
 
   const currentTime = dataRef.current[uiIndex]?.time ?? 0;
+  const lastRefreshLabel = lastRunsRefreshAt
+    ? new Date(lastRunsRefreshAt).toLocaleTimeString()
+    : '--:--:--';
 
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] uppercase text-gray-400">Playback</span>
+      <span className="text-[10px] text-gray-500">
+        {refreshingRuns ? 'Refreshing...' : `Updated ${lastRefreshLabel}`}
+      </span>
       <select
         className="bg-gray-900 text-gray-200 text-[11px] px-2 py-1 rounded border border-gray-700 focus:outline-none"
         value={selectedId}
         onChange={(event) => handleSelect(event.target.value)}
+        onFocus={() => void refreshRuns()}
       >
         <option value="">Select run...</option>
         {runs.map((run) => (
@@ -225,6 +259,18 @@ export function PlaybackSelector() {
         ))}
       </select>
       <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => void refreshRuns()}
+          className={`px-2 py-1 text-[10px] uppercase rounded border ${
+            refreshingRuns
+              ? 'border-blue-500 text-blue-300'
+              : 'border-gray-500 text-gray-200 hover:border-blue-500'
+          }`}
+          title="Refresh run list"
+        >
+          <RefreshCcw size={12} className={refreshingRuns ? 'animate-spin' : ''} />
+        </button>
         <button
           type="button"
           onClick={startPlayback}

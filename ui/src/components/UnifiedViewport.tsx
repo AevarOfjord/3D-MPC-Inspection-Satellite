@@ -1,38 +1,55 @@
-import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
+import { lazy, useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { TrackballControls, Stars, GizmoHelper, GizmoViewport, Line, Text, useGLTF } from '@react-three/drei';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewport, Line, Text } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 
 import { CameraManager } from './CameraManager';
 import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 
-import { SatelliteModel } from './SatelliteModel';
-import { ReferenceMarker } from './Earth';
-import { Trajectory } from './Trajectory';
-import { PlannedPath } from './PlannedPath';
-// LiveObstaclesRender handles obstacles internally.
-// To save time, I will reimplement LiveObstacles here using telemetry.
-
 // --- Live Telemetry Components ---
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
-import { StarlinkModel } from './StarlinkModel';
-import { ISSModel } from './ISSModel';
-import { CustomMeshModel } from './CustomMeshModel';
-import { HudPanel } from './HudComponents';
 import type { useMissionBuilder } from '../hooks/useMissionBuilder';
-import { EditableTrajectory } from './EditableTrajectory';
-import { ConstraintVisualizer } from './ConstraintVisualizer';
-import { OrbitSnapshotLayer } from './OrbitSnapshotLayer';
-import { SolarSystemLayer } from './SolarSystemLayer';
-import { SplineControlGizmos } from './SplineControlGizmos';
 import { ORBIT_SCALE, EARTH_RADIUS_M, orbitSnapshot } from '../data/orbitSnapshot';
 import { API_BASE_URL } from '../config/endpoints';
+import { HudPanel } from './HudComponents';
+
+const SatelliteModel = lazy(() =>
+  import('./SatelliteModel').then((m) => ({ default: m.SatelliteModel }))
+);
+const ReferenceMarker = lazy(() =>
+  import('./Earth').then((m) => ({ default: m.ReferenceMarker }))
+);
+const Trajectory = lazy(() => import('./Trajectory').then((m) => ({ default: m.Trajectory })));
+const PlannedPath = lazy(() => import('./PlannedPath').then((m) => ({ default: m.PlannedPath })));
+const StarlinkModel = lazy(() =>
+  import('./StarlinkModel').then((m) => ({ default: m.StarlinkModel }))
+);
+const ISSModel = lazy(() => import('./ISSModel').then((m) => ({ default: m.ISSModel })));
+const CustomMeshModel = lazy(() =>
+  import('./CustomMeshModel').then((m) => ({ default: m.CustomMeshModel }))
+);
+const EditableTrajectory = lazy(() =>
+  import('./EditableTrajectory').then((m) => ({ default: m.EditableTrajectory }))
+);
+const ConstraintVisualizer = lazy(() =>
+  import('./ConstraintVisualizer').then((m) => ({ default: m.ConstraintVisualizer }))
+);
+const OrbitSnapshotLayer = lazy(() =>
+  import('./OrbitSnapshotLayer').then((m) => ({ default: m.OrbitSnapshotLayer }))
+);
+const SolarSystemLayer = lazy(() =>
+  import('./SolarSystemLayer').then((m) => ({ default: m.SolarSystemLayer }))
+);
+const SplineControlGizmos = lazy(() =>
+  import('./SplineControlGizmos').then((m) => ({ default: m.SplineControlGizmos }))
+);
+const EarthModelLayer = lazy(() =>
+  import('./viewport/EarthModelLayer').then((m) => ({ default: m.EarthModelLayer }))
+);
 
 function LiveObstaclesRender() {
   const [params, setParams] = useState<{
@@ -61,11 +78,13 @@ function LiveObstaclesRender() {
 
   return (
     <group>
-      <ReferenceMarker
-        position={params.referencePos}
-        orientation={params.referenceOri}
-        quaternion={params.referenceQuat}
-      />
+      <Suspense fallback={null}>
+        <ReferenceMarker
+          position={params.referencePos}
+          orientation={params.referenceOri}
+          quaternion={params.referenceQuat}
+        />
+      </Suspense>
       {params.scanObject && params.scanObject.type === 'cylinder' && (
         <group
           position={new THREE.Vector3(...params.scanObject.position)}
@@ -128,39 +147,49 @@ function ObjWithMtl({ objPath }: { objPath: string }) {
     const mtlPath = objPath.replace(/\.obj$/i, '.mtl');
     const mtlUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(mtlPath)}`;
 
-    const objLoader = new OBJLoader();
-    const applyFallback = () => {
-      objLoader.load(objUrl, (obj) => {
-        if (cancelled) return;
-        obj.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            const mesh = child as THREE.Mesh;
-            mesh.material = new THREE.MeshStandardMaterial({
-              color: '#8b8b8b',
-              metalness: 0.2,
-              roughness: 0.7,
-            });
-          }
-        });
-        setObject(obj);
-      });
-    };
+    const loadModel = async () => {
+      const [{ OBJLoader }, { MTLLoader }] = await Promise.all([
+        import('three/examples/jsm/loaders/OBJLoader.js'),
+        import('three/examples/jsm/loaders/MTLLoader.js'),
+      ]);
+      if (cancelled) return;
 
-    const mtlLoader = new MTLLoader();
-    mtlLoader.load(
-      mtlUrl,
-      (materials) => {
-        if (cancelled) return;
-        materials.preload();
-        objLoader.setMaterials(materials);
+      const objLoader = new OBJLoader();
+      const applyFallback = () => {
         objLoader.load(objUrl, (obj) => {
           if (cancelled) return;
+          obj.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              const mesh = child as THREE.Mesh;
+              mesh.material = new THREE.MeshStandardMaterial({
+                color: '#8b8b8b',
+                metalness: 0.2,
+                roughness: 0.7,
+              });
+            }
+          });
           setObject(obj);
         });
-      },
-      undefined,
-      () => applyFallback()
-    );
+      };
+
+      const mtlLoader = new MTLLoader();
+      mtlLoader.load(
+        mtlUrl,
+        (materials) => {
+          if (cancelled) return;
+          materials.preload();
+          objLoader.setMaterials(materials);
+          objLoader.load(objUrl, (obj) => {
+            if (cancelled) return;
+            setObject(obj);
+          });
+        },
+        undefined,
+        () => applyFallback()
+      );
+    };
+
+    void loadModel();
 
     return () => {
       cancelled = true;
@@ -323,19 +352,9 @@ function OrbitRingsLayer() {
 
 function EarthLayer() {
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
-  const earthGltf = useGLTF('/model_files/Earth/Earth.glb');
-  const earthScale = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(earthGltf.scene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (!Number.isFinite(maxDim) || maxDim <= 0) return 1;
-    return (earthRadius * 2) / maxDim;
-  }, [earthGltf, earthRadius]);
-
   return (
     <Suspense fallback={null}>
-      <primitive object={earthGltf.scene} scale={[earthScale, earthScale, earthScale]} />
+      <EarthModelLayer earthRadius={earthRadius} />
       <mesh>
         <sphereGeometry args={[earthRadius * 1.02, 32, 32]} />
         <meshStandardMaterial color="#4cc9f0" transparent opacity={0.08} />
@@ -509,11 +528,15 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                 <OrbitRingsLayer />
                 <OrbitObjectsLayer />
                 <LiveObstaclesRender />
-                <SatelliteModel />
+                <Suspense fallback={null}>
+                  <SatelliteModel />
+                </Suspense>
             </group>
             {/* Trajectory and PlannedPath rendered with floating origin subtraction to prevent jitter */}
-            <Trajectory origin={viewerOrigin} />
-            <PlannedPath origin={viewerOrigin} />
+            <Suspense fallback={null}>
+              <Trajectory origin={viewerOrigin} />
+              <PlannedPath origin={viewerOrigin} />
+            </Suspense>
           </>
         )}
 

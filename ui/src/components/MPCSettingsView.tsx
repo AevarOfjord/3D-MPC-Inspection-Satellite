@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -8,8 +8,7 @@ import {
   RotateCcw,
   Save,
 } from 'lucide-react';
-
-const API_BASE = 'http://localhost:8000';
+import { RUNNER_API_URL } from '../config/endpoints';
 
 interface MpcSettings {
   prediction_horizon: number;
@@ -60,6 +59,15 @@ interface SimulationSettings {
 interface SettingsConfig {
   mpc: MpcSettings;
   simulation: SimulationSettings;
+}
+
+interface PresetPayload {
+  config: SettingsConfig;
+  updated_at?: string;
+}
+
+interface MPCSettingsViewProps {
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 interface SettingReferenceItem {
@@ -453,35 +461,169 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
   };
 }
 
-export function MPCSettingsView() {
+function stableSerializeConfig(config: SettingsConfig): string {
+  return JSON.stringify(config);
+}
+
+function deepCloneConfig(config: SettingsConfig): SettingsConfig {
+  return JSON.parse(JSON.stringify(config)) as SettingsConfig;
+}
+
+function parseApiErrorText(payload: string): string {
+  if (!payload) return '';
+  try {
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    return String(parsed.detail ?? parsed.message ?? payload);
+  } catch {
+    return payload;
+  }
+}
+
+async function parseApiError(res: Response, fallback: string): Promise<string> {
+  const text = await res.text();
+  const detail = parseApiErrorText(text);
+  return detail
+    ? `${fallback} (HTTP ${res.status}): ${detail}`
+    : `${fallback} (HTTP ${res.status})`;
+}
+
+function isNonNegative(n: number): boolean {
+  return Number.isFinite(n) && n >= 0;
+}
+
+function validateConfig(config: SettingsConfig): string[] {
+  const issues: string[] = [];
+  const { mpc, simulation } = config;
+
+  if (mpc.prediction_horizon < 1) issues.push('Prediction horizon must be >= 1.');
+  if (mpc.control_horizon < 1) issues.push('Control horizon must be >= 1.');
+  if (mpc.control_horizon > mpc.prediction_horizon) {
+    issues.push('Control horizon cannot exceed prediction horizon.');
+  }
+  if (mpc.dt <= 0 || mpc.dt > 1.0) issues.push('Control dt must be in (0, 1.0].');
+  if (simulation.dt <= 0 || simulation.dt > 0.1) {
+    issues.push('Simulation dt must be in (0, 0.1].');
+  }
+  if (mpc.dt < simulation.dt) {
+    issues.push('Control dt must be >= simulation dt.');
+  }
+  if (mpc.solver_time_limit <= 0 || mpc.solver_time_limit > 10.0) {
+    issues.push('Solver time limit must be in (0, 10].');
+  }
+  if (mpc.path_speed_min < 0 || mpc.path_speed_min > 1.0) {
+    issues.push('Path speed min must be in [0, 1].');
+  }
+  if (mpc.path_speed_max <= 0 || mpc.path_speed_max > 1.0) {
+    issues.push('Path speed max must be in (0, 1].');
+  }
+  if (mpc.path_speed_min > mpc.path_speed_max) {
+    issues.push('Path speed min cannot exceed path speed max.');
+  }
+  if (mpc.path_speed < mpc.path_speed_min || mpc.path_speed > mpc.path_speed_max) {
+    issues.push('Path speed must be within [path speed min, path speed max].');
+  }
+  if (!isNonNegative(mpc.max_linear_velocity)) issues.push('Max linear velocity must be >= 0.');
+  if (!isNonNegative(mpc.max_angular_velocity)) issues.push('Max angular velocity must be >= 0.');
+  if (!isNonNegative(mpc.obstacle_margin)) issues.push('Obstacle margin must be >= 0.');
+
+  const nonNegativeWeights: Array<[string, number]> = [
+    ['Q_contour', mpc.Q_contour],
+    ['Q_progress', mpc.Q_progress],
+    ['Q_lag', mpc.Q_lag],
+    ['Q_smooth', mpc.Q_smooth],
+    ['Q_attitude', mpc.Q_attitude],
+    ['Q_terminal_pos', mpc.Q_terminal_pos],
+    ['Q_terminal_s', mpc.Q_terminal_s],
+    ['q_angular_velocity', mpc.q_angular_velocity],
+    ['r_thrust', mpc.r_thrust],
+    ['r_rw_torque', mpc.r_rw_torque],
+    ['thrust_l1_weight', mpc.thrust_l1_weight],
+    ['thrust_pair_weight', mpc.thrust_pair_weight],
+    ['coast_pos_tolerance', mpc.coast_pos_tolerance],
+    ['coast_vel_tolerance', mpc.coast_vel_tolerance],
+    ['coast_min_speed', mpc.coast_min_speed],
+  ];
+  nonNegativeWeights.forEach(([name, value]) => {
+    if (!isNonNegative(value)) issues.push(`${name} must be >= 0.`);
+  });
+
+  return issues;
+}
+
+export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [config, setConfig] = useState<SettingsConfig | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [presetName, setPresetName] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState('');
+  const [presets, setPresets] = useState<Record<string, SettingsConfig>>({});
   const [showBasic, setShowBasic] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showExpert, setShowExpert] = useState(false);
   const [showReference, setShowReference] = useState(false);
+  const validationErrors = useMemo(() => (config ? validateConfig(config) : []), [config]);
+  const isDirty = useMemo(
+    () => (config ? stableSerializeConfig(config) !== savedSnapshot : false),
+    [config, savedSnapshot]
+  );
 
   useEffect(() => {
     void fetchConfig();
+    void fetchPresets();
   }, []);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isDirty]);
 
   const fetchConfig = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/runner/config`);
-      if (!res.ok) throw new Error('Failed to fetch config');
+      const res = await fetch(`${RUNNER_API_URL}/config`);
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch config'));
       const data = await res.json();
       const normalized = normalizeConfig(data);
       if (!normalized) throw new Error('Backend returned invalid config format');
       setConfig(normalized);
+      setSavedSnapshot(stableSerializeConfig(normalized));
     } catch (err) {
       setError(String(err));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchPresets = async () => {
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/presets`);
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch presets'));
+      const data = (await res.json()) as { presets?: Record<string, PresetPayload> };
+      const next: Record<string, SettingsConfig> = {};
+      const presetsMap = data.presets ?? {};
+      Object.entries(presetsMap).forEach(([name, payload]) => {
+        const normalized = normalizeConfig(payload?.config);
+        if (normalized) next[name] = normalized;
+      });
+      setPresets(next);
+      if (selectedPreset && !next[selectedPreset]) {
+        setSelectedPreset('');
+      }
+    } catch (err) {
+      setError(`Failed to load presets: ${String(err)}`);
     }
   };
 
@@ -490,10 +632,10 @@ export function MPCSettingsView() {
     setError(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/runner/config/reset`, {
+      const res = await fetch(`${RUNNER_API_URL}/config/reset`, {
         method: 'POST',
       });
-      if (!res.ok) throw new Error('Failed to reset config');
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to reset config'));
       await fetchConfig();
       setSuccessMsg('Configuration reset to defaults.');
       setTimeout(() => setSuccessMsg(null), 2500);
@@ -505,6 +647,10 @@ export function MPCSettingsView() {
 
   const handleSave = async () => {
     if (!config) return;
+    if (validationErrors.length > 0) {
+      setError('Please fix validation errors before saving.');
+      return;
+    }
     setIsSaving(true);
     setError(null);
     setSuccessMsg(null);
@@ -517,14 +663,15 @@ export function MPCSettingsView() {
         },
       };
 
-      const res = await fetch(`${API_BASE}/runner/config`, {
+      const res = await fetch(`${RUNNER_API_URL}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(overrides),
       });
 
-      if (!res.ok) throw new Error('Failed to save config');
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save config'));
 
+      setSavedSnapshot(stableSerializeConfig(config));
       setSuccessMsg('Configuration saved successfully. Next run will use these settings.');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err) {
@@ -575,6 +722,66 @@ export function MPCSettingsView() {
     setConfig(newConfig as unknown as SettingsConfig);
   };
 
+  const handleSavePreset = async () => {
+    if (!config) return;
+    const name = presetName.trim();
+    if (!name) {
+      setError('Preset name is required.');
+      return;
+    }
+    setError(null);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/presets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          config: deepCloneConfig(config),
+        }),
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save preset'));
+      await fetchPresets();
+      setSelectedPreset(name);
+      setSuccessMsg(`Preset "${name}" saved.`);
+      setTimeout(() => setSuccessMsg(null), 2000);
+    } catch (err) {
+      setError(`Failed to save preset: ${String(err)}`);
+    }
+  };
+
+  const handleLoadPreset = () => {
+    if (!selectedPreset) {
+      setError('Select a preset to load.');
+      return;
+    }
+    const preset = presets[selectedPreset];
+    if (!preset) {
+      setError(`Preset "${selectedPreset}" not found.`);
+      return;
+    }
+    setConfig(deepCloneConfig(preset));
+    setSuccessMsg(`Preset "${selectedPreset}" loaded (not saved to backend yet).`);
+    setTimeout(() => setSuccessMsg(null), 2500);
+  };
+
+  const handleDeletePreset = async () => {
+    if (!selectedPreset) return;
+    setError(null);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/presets/${encodeURIComponent(selectedPreset)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to delete preset'));
+      const deleted = selectedPreset;
+      await fetchPresets();
+      setSelectedPreset('');
+      setSuccessMsg(`Preset "${deleted}" deleted.`);
+      setTimeout(() => setSuccessMsg(null), 1500);
+    } catch (err) {
+      setError(`Failed to delete preset: ${String(err)}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center text-slate-400">
@@ -603,20 +810,71 @@ export function MPCSettingsView() {
       <div className="flex-none p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
         <div>
           <h2 className="text-lg font-bold text-white">MPC Settings</h2>
-          <p className="text-xs text-slate-400">Controller tuning, bounds, and solver options</p>
+          <p className="text-xs text-slate-300">Controller tuning, bounds, and solver options</p>
+          <p className={`text-[11px] mt-1 ${isDirty ? 'text-amber-300' : 'text-emerald-300'}`}>
+            {isDirty ? 'Unsaved changes' : 'All changes saved'}
+          </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="Preset name"
+            aria-label="Preset name"
+            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-32 focus:outline-none focus:border-blue-500"
+          />
+          <button
+            onClick={handleSavePreset}
+            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100"
+            aria-label="Save preset"
+          >
+            Save Preset
+          </button>
+          <select
+            value={selectedPreset}
+            onChange={(e) => setSelectedPreset(e.target.value)}
+            aria-label="Preset selection"
+            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-40 focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Load preset...</option>
+            {Object.keys(presets)
+              .sort()
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </select>
+          <button
+            onClick={handleLoadPreset}
+            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100 disabled:opacity-40"
+            disabled={!selectedPreset}
+            aria-label="Load selected preset"
+          >
+            Load
+          </button>
+          <button
+            onClick={handleDeletePreset}
+            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100 disabled:opacity-40"
+            disabled={!selectedPreset}
+            aria-label="Delete selected preset"
+          >
+            Delete
+          </button>
           <button
             onClick={() => void handleReset()}
             className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition"
+            aria-label="Reset configuration to defaults"
           >
             <RotateCcw size={14} /> Reset
           </button>
           <button
             onClick={() => void handleSave()}
-            disabled={isSaving}
+            disabled={isSaving || validationErrors.length > 0}
             className="flex items-center gap-2 px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-sm disabled:opacity-50"
+            aria-label="Save settings"
           >
             {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Save Changes
@@ -634,6 +892,16 @@ export function MPCSettingsView() {
           {successMsg && (
             <div className="p-3 bg-green-900/20 border border-green-800 rounded text-green-200 text-sm flex items-center gap-2">
               <Check size={16} /> {successMsg}
+            </div>
+          )}
+          {validationErrors.length > 0 && (
+            <div className="p-3 bg-amber-900/20 border border-amber-700 rounded text-amber-200 text-sm">
+              <p className="font-semibold mb-1">Validation issues ({validationErrors.length}):</p>
+              <ul className="list-disc ml-5 space-y-0.5">
+                {validationErrors.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -1004,18 +1272,21 @@ interface ConfigFieldProps {
 function ConfigField({ label, value, onChange, isNumber, desc, step }: ConfigFieldProps) {
   const inputValue =
     typeof value === 'string' || typeof value === 'number' ? value : '';
+  const inputId = `cfg-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-slate-400 uppercase">{label}</label>
+      <label htmlFor={inputId} className="text-xs font-semibold text-slate-300 uppercase">{label}</label>
       <input
+        id={inputId}
+        aria-label={label}
         type={isNumber ? 'number' : 'text'}
         step={step ?? (isNumber ? 1 : undefined)}
         value={inputValue}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+        className="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
       />
-      {desc && <span className="text-[10px] text-slate-500">{desc}</span>}
+      {desc && <span className="text-[10px] text-slate-400">{desc}</span>}
     </div>
   );
 }
@@ -1027,10 +1298,15 @@ interface ToggleFieldProps {
 }
 
 function ToggleField({ label, checked, onChange }: ToggleFieldProps) {
+  const inputId = `toggle-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
     <div className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800">
-      <span className="text-sm font-medium text-slate-300">{label}</span>
+      <label htmlFor={inputId} className="text-sm font-medium text-slate-200">
+        {label}
+      </label>
       <input
+        id={inputId}
+        aria-label={label}
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
@@ -1054,13 +1330,16 @@ interface SelectFieldProps {
 }
 
 function SelectField({ label, value, onChange, options, desc }: SelectFieldProps) {
+  const selectId = `sel-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-slate-400 uppercase">{label}</label>
+      <label htmlFor={selectId} className="text-xs font-semibold text-slate-300 uppercase">{label}</label>
       <select
+        id={selectId}
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+        className="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -1068,7 +1347,7 @@ function SelectField({ label, value, onChange, options, desc }: SelectFieldProps
           </option>
         ))}
       </select>
-      {desc && <span className="text-[10px] text-slate-500">{desc}</span>}
+      {desc && <span className="text-[10px] text-slate-400">{desc}</span>}
     </div>
   );
 }
