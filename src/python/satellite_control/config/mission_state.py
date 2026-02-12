@@ -75,6 +75,10 @@ class MissionState:
     path_tracking_trajectory_dt: float = timing.CONTROL_DT
     # Origin of the simulation frame in ECI coordinates [x, y, z]
     frame_origin: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Optional scan-attitude context for MPC (+Z alignment and object-facing side).
+    scan_attitude_center: tuple[float, float, float] | None = None
+    scan_attitude_axis: tuple[float, float, float] | None = None
+    scan_attitude_direction: str = "CW"
 
     # --- Path Following ---
 
@@ -151,6 +155,9 @@ class MissionState:
         self.path_tracking_return_angle = (0.0, 0.0, 0.0)
         self.path_tracking_trajectory = None
         self.path_tracking_trajectory_dt = timing.CONTROL_DT
+        self.scan_attitude_center = None
+        self.scan_attitude_axis = None
+        self.scan_attitude_direction = "CW"
 
     def get_current_mission_type(self) -> str:
         """
