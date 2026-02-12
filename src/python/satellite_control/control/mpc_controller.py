@@ -334,7 +334,7 @@ class MPCController(Controller):
         axis: tuple[float, float, float] | None,
         direction: str = "CW",
     ) -> None:
-        """Configure scan attitude context for stable object-facing camera alignment."""
+        """Configure scan attitude context (+Z aligns with mission scan axis)."""
         if center is None or axis is None:
             if hasattr(self._cpp_controller, "clear_scan_attitude_context"):
                 self._cpp_controller.clear_scan_attitude_context()
@@ -790,10 +790,31 @@ class MPCController(Controller):
             if s_proj_filtered < float(self.s) - backtrack_tol:
                 s_proj_filtered = float(self.s)
 
-            if self.s < s_proj_filtered:
-                self.s = float(s_proj_filtered)
-            if self.s > s_proj_filtered + lead_max:
-                self.s = float(s_proj_filtered) + lead_max
+            # If projection is at the very end but endpoint distance is still large,
+            # force a small rollback window so MPCC can reacquire before terminal mode.
+            terminal_reacquire_active = False
+            terminal_capture_tol = 1.0  # [m] require true proximity before locking at s ~= L
+            if self._path_length > 0.0 and endpoint_error is not None:
+                L = float(self._path_length)
+                near_end_margin = max(0.1, 2.0 * float(self.path_speed) * float(self.dt))
+                if (
+                    s_proj_filtered >= (L - near_end_margin)
+                    and float(endpoint_error) > terminal_capture_tol
+                ):
+                    rollback_dist = max(
+                        1.0, 0.5 * float(self.path_speed) * float(self.dt) * float(self.N)
+                    )
+                    s_reacquire = max(0.0, L - rollback_dist)
+                    s_proj_filtered = min(s_proj_filtered, s_reacquire)
+                    # Explicitly allow rollback in this recovery mode.
+                    self.s = float(s_proj_filtered)
+                    terminal_reacquire_active = True
+
+            if not terminal_reacquire_active:
+                if self.s < s_proj_filtered:
+                    self.s = float(s_proj_filtered)
+                if self.s > s_proj_filtered + lead_max:
+                    self.s = float(s_proj_filtered) + lead_max
 
             s_for_state = float(self.s)
 
@@ -806,6 +827,7 @@ class MPCController(Controller):
                 "endpoint_error": endpoint_error,
                 "lead_max": lead_max,
                 "backtrack_tol": backtrack_tol,
+                "terminal_reacquire_active": terminal_reacquire_active,
             }
 
         if len(x_current) == 16:
@@ -864,13 +886,16 @@ class MPCController(Controller):
 
         extras = {
             "status": result.status,
+            "status_name": "SUCCESS" if int(getattr(result, "status", -1)) == 1 else "FAILED",
             "solver_status": getattr(result, "solver_status", None),
             "timeout": bool(getattr(result, "timeout", False)),
             "solve_time": result.solve_time,
             "iterations": getattr(result, "iterations", None),
             "objective_value": getattr(result, "objective", None),
+            "optimality_gap": None,
             "solver_type": self.solver_type,
             "solver_time_limit": self.solver_time_limit,
+            "solver_fallback": bool(int(getattr(result, "status", -1)) != 1),
             "time_limit_exceeded": bool(getattr(result, "timeout", False))
             or (float(result.solve_time) > float(self.solver_time_limit)),
             "path_s": float(s_for_state),
