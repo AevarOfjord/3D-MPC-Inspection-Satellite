@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, FileText, Film, Image as ImageIcon, FileCode, ChevronRight, ChevronDown, Download } from 'lucide-react';
+import { API_BASE_URL } from '../config/endpoints';
 
 interface SimulationRun {
   id: string;
@@ -16,10 +17,12 @@ interface FileNode {
   children?: FileNode[];
 }
 
-const API_BASE = "http://localhost:8000";
+const RUN_LIST_REFRESH_MS = 5000;
 
 export const SimulationDataView: React.FC = () => {
   const [runs, setRuns] = useState<SimulationRun[]>([]);
+  const [refreshingRuns, setRefreshingRuns] = useState(false);
+  const [lastRunsRefreshAt, setLastRunsRefreshAt] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [files, setFiles] = useState<FileNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
@@ -29,10 +32,30 @@ export const SimulationDataView: React.FC = () => {
 
   // Fetch runs on mount
   useEffect(() => {
-    fetch(`${API_BASE}/simulations`)
-      .then(res => res.json())
-      .then(data => setRuns(data.runs || []))
-      .catch(err => console.error("Failed to fetch runs:", err));
+    let cancelled = false;
+    const loadRuns = () => {
+      setRefreshingRuns(true);
+      fetch(`${API_BASE_URL}/simulations`)
+        .then(res => res.json())
+        .then(data => {
+          if (cancelled) return;
+          setRuns(data.runs || []);
+          setLastRunsRefreshAt(Date.now());
+        })
+        .catch(err => console.error("Failed to fetch runs:", err))
+        .finally(() => {
+          if (!cancelled) setRefreshingRuns(false);
+        });
+    };
+    loadRuns();
+    const timer = window.setInterval(loadRuns, RUN_LIST_REFRESH_MS);
+    const onFocus = () => loadRuns();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   // Fetch files when run is selected
@@ -42,7 +65,7 @@ export const SimulationDataView: React.FC = () => {
         return;
     }
     
-    fetch(`${API_BASE}/simulations/${selectedRunId}/files`)
+    fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files`)
       .then(res => res.json())
       .then(data => {
           // Flattened list from API, let's keep it simple or tree-ify if needed.
@@ -66,14 +89,14 @@ export const SimulationDataView: React.FC = () => {
     
     if (['png', 'jpg', 'jpeg', 'gif'].includes(ext || '')) {
         setContentType('image');
-        setFileContent(`${API_BASE}/simulations/${selectedRunId}/files/${selectedFile.path}`);
+        setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
     } else if (['mp4', 'webm'].includes(ext || '')) {
         setContentType('video');
-        setFileContent(`${API_BASE}/simulations/${selectedRunId}/files/${selectedFile.path}`);
+        setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
     } else if (['txt', 'log', 'csv', 'json', 'md', 'py'].includes(ext || '')) {
         setContentType('text');
         setIsLoading(true);
-        fetch(`${API_BASE}/simulations/${selectedRunId}/files/${selectedFile.path}`)
+        fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`)
             .then(res => res.text())
             .then(text => {
                 setFileContent(text);
@@ -97,6 +120,15 @@ export const SimulationDataView: React.FC = () => {
       <div className="w-64 border-r border-slate-700 flex flex-col bg-slate-900/50">
         <div className="p-3 border-b border-slate-700 font-bold text-slate-300">
           Simulation Runs
+          <div className="text-[10px] font-normal text-slate-500 mt-1">
+            {refreshingRuns
+              ? 'Refreshing...'
+              : `Updated ${
+                  lastRunsRefreshAt
+                    ? new Date(lastRunsRefreshAt).toLocaleTimeString()
+                    : '--:--:--'
+                }`}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {runs.map(run => (
@@ -155,7 +187,7 @@ export const SimulationDataView: React.FC = () => {
           </span>
           {selectedFile && selectedRunId && (
              <a 
-                href={`${API_BASE}/simulations/${selectedRunId}/files/${selectedFile.path}`} 
+                href={`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`} 
                 target="_blank" 
                 rel="noreferrer"
                 className="flex items-center gap-2 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded transition-colors"

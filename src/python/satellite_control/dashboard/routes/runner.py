@@ -1,6 +1,8 @@
 """
 Routes for controlling the simulation runner.
 """
+from typing import Any
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from satellite_control.dashboard.runner_manager import RunnerManager
 
@@ -19,9 +21,19 @@ def get_runner_manager() -> RunnerManager:
     return _runner_manager
 
 from pydantic import BaseModel
+from fastapi import HTTPException
 
 class StartSimulationRequest(BaseModel):
     mission_name: str | None = None
+
+
+class PresetSaveRequest(BaseModel):
+    name: str
+    config: dict[str, Any]
+
+
+class PresetApplyRequest(BaseModel):
+    name: str
 
 @router.post("/start")
 async def start_simulation(request: StartSimulationRequest | None = None):
@@ -57,6 +69,55 @@ def reset_config():
     manager = get_runner_manager()
     manager.reset_config()
     return {"status": "reset", "config": manager.get_config()}
+
+
+@router.get("/presets")
+def list_presets():
+    """List all saved presets."""
+    manager = get_runner_manager()
+    return {"presets": manager.list_presets()}
+
+
+@router.post("/presets")
+def save_preset(payload: PresetSaveRequest):
+    """Create or update a preset."""
+    manager = get_runner_manager()
+    try:
+        saved = manager.save_preset(payload.name, payload.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "saved", "name": payload.name.strip(), "preset": saved}
+
+
+@router.delete("/presets/{preset_name}")
+def delete_preset(preset_name: str):
+    """Delete a preset by name."""
+    manager = get_runner_manager()
+    deleted = manager.delete_preset(preset_name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Preset '{preset_name}' not found")
+    return {"status": "deleted", "name": preset_name}
+
+
+@router.post("/presets/apply")
+def apply_preset(payload: PresetApplyRequest):
+    """Apply a saved preset to active runner config overrides."""
+    manager = get_runner_manager()
+    try:
+        config = manager.apply_preset(payload.name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Preset '{payload.name}' not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "applied", "name": payload.name, "config": config}
+
+
+@router.post("/presets/reset")
+def reset_presets():
+    """Clear all saved presets."""
+    manager = get_runner_manager()
+    manager.clear_presets()
+    return {"status": "reset"}
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

@@ -76,3 +76,93 @@ class TestDashboardAPI:
         # Empty dict should fail validation
         response = client.post("/mission_v2", json={})
         assert response.status_code == 422  # Validation Error
+
+    def test_runner_config_update_and_reset(self, client):
+        """Runner config overrides should apply, then reset to defaults."""
+        # Ensure clean default baseline
+        reset_resp = client.post("/runner/config/reset")
+        assert reset_resp.status_code == 200
+        assert reset_resp.json().get("status") == "reset"
+
+        base_resp = client.get("/runner/config")
+        assert base_resp.status_code == 200
+        base_cfg = base_resp.json()
+        base_horizon = base_cfg["mpc"]["prediction_horizon"]
+        assert isinstance(base_horizon, int)
+        assert base_cfg.get("config_meta", {}).get("overrides_active") is False
+
+        # Apply one override
+        target_horizon = base_horizon + 7
+        update_resp = client.post(
+            "/runner/config",
+            json={
+                "mpc": {
+                    "prediction_horizon": target_horizon,
+                }
+            },
+        )
+        assert update_resp.status_code == 200
+        assert update_resp.json().get("status") == "updated"
+
+        after_update = client.get("/runner/config")
+        assert after_update.status_code == 200
+        updated_cfg = after_update.json()
+        assert updated_cfg["mpc"]["prediction_horizon"] == target_horizon
+        meta = updated_cfg.get("config_meta", {})
+        assert meta.get("overrides_active") is True
+        assert isinstance(meta.get("config_hash"), str)
+        assert len(meta["config_hash"]) == 12
+
+        # Reset should restore defaults
+        reset_again = client.post("/runner/config/reset")
+        assert reset_again.status_code == 200
+        reset_cfg = reset_again.json().get("config", {})
+        assert reset_cfg["mpc"]["prediction_horizon"] == base_horizon
+        assert reset_cfg.get("config_meta", {}).get("overrides_active") is False
+
+    def test_runner_presets_crud_and_apply(self, client):
+        """Runner presets should persist via API and be applicable."""
+        clear_resp = client.post("/runner/presets/reset")
+        assert clear_resp.status_code == 200
+        assert clear_resp.json().get("status") == "reset"
+
+        save_resp = client.post(
+            "/runner/presets",
+            json={
+                "name": "fast-test",
+                "config": {
+                    "mpc": {
+                        "prediction_horizon": 33,
+                        "control_horizon": 33,
+                        "dt": 0.05,
+                    },
+                    "simulation": {
+                        "dt": 0.001,
+                        "control_dt": 0.05,
+                        "max_duration": 120.0,
+                    },
+                },
+            },
+        )
+        assert save_resp.status_code == 200
+        assert save_resp.json().get("status") == "saved"
+
+        list_resp = client.get("/runner/presets")
+        assert list_resp.status_code == 200
+        presets = list_resp.json().get("presets", {})
+        assert "fast-test" in presets
+        assert presets["fast-test"]["config"]["mpc"]["prediction_horizon"] == 33
+
+        apply_resp = client.post("/runner/presets/apply", json={"name": "fast-test"})
+        assert apply_resp.status_code == 200
+        assert apply_resp.json().get("status") == "applied"
+
+        cfg_resp = client.get("/runner/config")
+        assert cfg_resp.status_code == 200
+        cfg = cfg_resp.json()
+        assert cfg["mpc"]["prediction_horizon"] == 33
+        assert cfg.get("config_meta", {}).get("overrides_active") is True
+
+        delete_resp = client.delete("/runner/presets/fast-test")
+        assert delete_resp.status_code == 200
+        assert delete_resp.json().get("status") == "deleted"

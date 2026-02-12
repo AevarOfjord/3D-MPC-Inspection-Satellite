@@ -1,57 +1,102 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal, Play, Square, Trash2, RefreshCw } from 'lucide-react';
+import { MISSIONS_API_URL, RUNNER_API_URL, RUNNER_WS_URL } from '../config/endpoints';
 
-const RUNNER_WS_URL = 'ws://localhost:8000/runner/ws';
-const RUNNER_API_URL = 'http://localhost:8000/runner';
-const MISSIONS_API_URL = 'http://localhost:8000/saved_missions_v2'; 
+interface RunnerConfigMeta {
+  config_hash: string;
+  config_version?: string;
+  overrides_active: boolean;
+  generated_at: string;
+}
 
-export const RunnerView: React.FC = () => {
+interface RunnerConfigResponse {
+  config_meta?: RunnerConfigMeta;
+}
+
+interface RunnerViewProps {
+  hasUnsavedSettings?: boolean;
+}
+
+async function parseApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const text = await res.text();
+    if (!text) return `${fallback} (HTTP ${res.status})`;
+    try {
+      const json = JSON.parse(text) as Record<string, unknown>;
+      const detail = String(json.detail ?? json.message ?? text);
+      return `${fallback} (HTTP ${res.status}): ${detail}`;
+    } catch {
+      return `${fallback} (HTTP ${res.status}): ${text}`;
+    }
+  } catch {
+    return `${fallback} (HTTP ${res.status})`;
+  }
+}
+
+export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = false }) => {
   const [logs, setLogs] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [missions, setMissions] = useState<string[]>([]);
   const [selectedMission, setSelectedMission] = useState<string>('');
+  const [configMeta, setConfigMeta] = useState<RunnerConfigMeta | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
 
-  // Auto-scroll 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Fetch missions on mount
+  const fetchConfigMeta = async () => {
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/config`);
+      if (!res.ok) return;
+      const data = (await res.json()) as RunnerConfigResponse;
+      if (data.config_meta) {
+        setConfigMeta(data.config_meta);
+      }
+    } catch {
+      // Non-fatal; metadata is secondary UI.
+    }
+  };
+
+  const fetchMissions = async () => {
+    try {
+      const res = await fetch(MISSIONS_API_URL);
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch missions'));
+      const data = (await res.json()) as { missions?: string[] };
+      const missionList = data.missions || [];
+      setMissions(missionList);
+      if (missionList.length > 0 && !selectedMission) {
+        setSelectedMission(missionList[0]);
+      }
+    } catch (err) {
+      setLogs((prev) => [...prev, `>>> ${String(err)}\n`]);
+    }
+  };
+
   useEffect(() => {
-    fetch(MISSIONS_API_URL)
-        .then(res => res.json())
-        .then(data => {
-            const missionList = data.missions || [];
-            setMissions(missionList);
-            if (missionList.length > 0 && !selectedMission) {
-                setSelectedMission(missionList[0]);
-            }
-        })
-        .catch(err => console.error("Failed to fetch missions:", err));
-  }, []); // Run once on mount
+    void fetchMissions();
+    void fetchConfigMeta();
+  }, []);
 
-
-  // Connect WebSocket
   useEffect(() => {
     let socket: WebSocket | null = null;
     let mounted = true;
     const buffer: string[] = [];
-    
-    // Flush buffer every 500ms to avoid React render thrashing
+
     const flushInterval = setInterval(() => {
-        if (buffer.length > 0) {
-            const chunk = [...buffer]; // Capture current buffer
-            buffer.length = 0; // Clear buffer immediately
-            
-            setLogs(prev => {
-                const newLogs = [...prev, ...chunk];
-                // Limit to last 2000 lines to prevent memory issues
-                return newLogs.slice(-2000); 
-            });
-        }
+      if (buffer.length > 0) {
+        const chunk = [...buffer];
+        buffer.length = 0;
+
+        setLogs((prev) => {
+          const newLogs = [...prev, ...chunk];
+          return newLogs.slice(-2000);
+        });
+      }
     }, 500);
 
     const connect = () => {
@@ -59,8 +104,8 @@ export const RunnerView: React.FC = () => {
 
       socket.onopen = () => {
         if (!mounted) {
-            socket?.close();
-            return;
+          socket?.close();
+          return;
         }
         setIsConnected(true);
         buffer.push('>>> Connected to backend\n');
@@ -70,25 +115,35 @@ export const RunnerView: React.FC = () => {
         if (!mounted) return;
         setIsConnected(false);
         setIsRunning(false);
+        setIsStarting(false);
+        setIsStopping(false);
         buffer.push('>>> Disconnected\n');
         ws.current = null;
       };
 
-      socket.onerror = (error) => {
+      socket.onerror = () => {
         if (!mounted) return;
-        console.error("Runner WS Error:", error);
+        buffer.push('>>> WebSocket error\n');
       };
 
       socket.onmessage = (event) => {
         if (!mounted) return;
-        buffer.push(event.data);
-        if (event.data.includes("Process started")) setIsRunning(true);
-        if (event.data.includes("Simulation finished") || event.data.includes("Simulation stopped")) setIsRunning(false);
+        const message = String(event.data);
+        buffer.push(message);
+        if (message.includes('Process started')) {
+          setIsRunning(true);
+          setIsStarting(false);
+        }
+        if (message.includes('Simulation finished') || message.includes('Simulation stopped')) {
+          setIsRunning(false);
+          setIsStopping(false);
+          void fetchConfigMeta();
+        }
       };
 
       ws.current = socket;
-    }
-    
+    };
+
     connect();
 
     return () => {
@@ -96,9 +151,7 @@ export const RunnerView: React.FC = () => {
       clearInterval(flushInterval);
       if (socket) {
         if (socket.readyState === WebSocket.OPEN) {
-             socket.close();
-        } else if (socket.readyState === WebSocket.CONNECTING) {
-             // Do not close immediately to avoid console error.
+          socket.close();
         }
       }
       ws.current = null;
@@ -107,26 +160,45 @@ export const RunnerView: React.FC = () => {
 
   const handleStart = async () => {
     if (!selectedMission) {
-        setLogs(prev => [...prev, '>>> Please select a mission first.\n']);
-        return;
+      setLogs((prev) => [...prev, '>>> Please select a mission first.\n']);
+      return;
     }
+
+    if (hasUnsavedSettings) {
+      const proceed = window.confirm(
+        'You have unsaved Settings changes. Run simulation with last saved settings?'
+      );
+      if (!proceed) return;
+    }
+
+    setIsStarting(true);
     try {
-      await fetch(`${RUNNER_API_URL}/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mission_name: selectedMission })
+      const res = await fetch(`${RUNNER_API_URL}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_name: selectedMission }),
       });
-      setIsRunning(true); 
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Error starting simulation'));
+      }
+      setIsRunning(true);
+      await fetchConfigMeta();
     } catch (e) {
-      setLogs(prev => [...prev, `>>> Error starting: ${e}\n`]);
+      setLogs((prev) => [...prev, `>>> ${String(e)}\n`]);
+      setIsStarting(false);
     }
   };
 
   const handleStop = async () => {
+    setIsStopping(true);
     try {
-      await fetch(`${RUNNER_API_URL}/stop`, { method: 'POST' });
+      const res = await fetch(`${RUNNER_API_URL}/stop`, { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Error stopping simulation'));
+      }
     } catch (e) {
-      setLogs(prev => [...prev, `>>> Error stopping: ${e}\n`]);
+      setLogs((prev) => [...prev, `>>> ${String(e)}\n`]);
+      setIsStopping(false);
     }
   };
 
@@ -134,93 +206,112 @@ export const RunnerView: React.FC = () => {
     setLogs([]);
   };
 
+  const controlsDisabled = isRunning || isStarting || isStopping;
+
   return (
     <div className="flex flex-col h-full w-full bg-slate-900 font-mono text-sm">
-      {/* Header / Controls */}
       <div className="bg-slate-800 p-4 flex items-center gap-4 border-b border-slate-700">
         <div className="flex items-center gap-2 text-slate-200 font-bold mr-4">
           <Terminal size={18} />
           <span>SIMULATION RUNNER</span>
-          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span
+            aria-label={isConnected ? 'Backend connected' : 'Backend disconnected'}
+            className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+          />
         </div>
 
-        <div className="flex items-center gap-2 flex-1 max-w-2xl">
-            <span className="text-slate-400 text-xs text-nowrap">MISSION:</span>
-            <select 
-                title="Select Mission"
-                value={selectedMission} 
-                onChange={(e) => setSelectedMission(e.target.value)}
-                className="bg-slate-900 border border-slate-600 text-slate-200 text-sm py-1.5 px-3 rounded flex-1 focus:outline-none focus:border-cyan-500"
-                disabled={isRunning}
-            >
-                <option value="" disabled>Select a Mission...</option>
-                {missions.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                ))}
-            </select>
-            <button 
-                title="Refresh Missions"
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-700 rounded"
-                onClick={() => {
-                     fetch(MISSIONS_API_URL)
-                        .then(res => res.json())
-                        .then(data => setMissions(data.missions || []));
-                }}
-            >
-                <RefreshCw size={14} />
-            </button>
+        <div className="flex items-center gap-2 flex-1 max-w-3xl">
+          <span className="text-slate-300 text-xs text-nowrap">MISSION:</span>
+          <select
+            title="Select Mission"
+            aria-label="Select mission"
+            value={selectedMission}
+            onChange={(e) => setSelectedMission(e.target.value)}
+            className="bg-slate-900 border border-slate-600 text-slate-100 text-sm py-1.5 px-3 rounded flex-1 focus:outline-none focus:border-cyan-500"
+            disabled={controlsDisabled}
+          >
+            <option value="" disabled>Select a Mission...</option>
+            {missions.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <button
+            title="Refresh Missions"
+            aria-label="Refresh mission list"
+            className="text-slate-300 hover:text-white p-2 hover:bg-slate-700 rounded disabled:opacity-40"
+            onClick={() => void fetchMissions()}
+            disabled={controlsDisabled}
+          >
+            <RefreshCw size={14} />
+          </button>
         </div>
 
-        <div className="h-6 w-px bg-slate-700 mx-2"></div>
+        <div className="h-6 w-px bg-slate-700 mx-2" />
 
         {!isRunning ? (
           <button
-            onClick={handleStart}
-            disabled={!isConnected || !selectedMission}
-            className={`flex items-center gap-2 px-6 py-2 rounded text-white font-bold transition-colors shadow-lg
-              ${isConnected && selectedMission ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}
-            `}
+            onClick={() => void handleStart()}
+            disabled={!isConnected || !selectedMission || isStarting}
+            aria-label="Run simulation"
+            className={`flex items-center gap-2 px-6 py-2 rounded text-white font-bold transition-colors shadow-lg ${
+              isConnected && selectedMission && !isStarting
+                ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'
+                : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+            }`}
           >
             <Play size={16} fill="currentColor" />
-            <span>RUN SIMULATION</span>
+            <span>{isStarting ? 'STARTING...' : 'RUN SIMULATION'}</span>
           </button>
         ) : (
           <button
-            onClick={handleStop}
-            className="flex items-center gap-2 px-6 py-2 rounded bg-red-600 hover:bg-red-500 text-white font-bold transition-colors shadow-lg shadow-red-900/20"
+            onClick={() => void handleStop()}
+            aria-label="Stop simulation"
+            disabled={isStopping}
+            className="flex items-center gap-2 px-6 py-2 rounded bg-red-600 hover:bg-red-500 text-white font-bold transition-colors shadow-lg shadow-red-900/20 disabled:opacity-60"
           >
             <Square size={16} fill="currentColor" />
-            <span>STOP</span>
+            <span>{isStopping ? 'STOPPING...' : 'STOP'}</span>
           </button>
         )}
-        
+
         <button
           onClick={handleClear}
-          className="ml-auto text-slate-400 hover:text-white flex items-center gap-2 px-3 py-1 hover:bg-slate-800 rounded transition-colors"
+          className="ml-auto text-slate-300 hover:text-white flex items-center gap-2 px-3 py-1 hover:bg-slate-800 rounded transition-colors"
+          aria-label="Clear console output"
         >
           <Trash2 size={16} />
           <span>Clear Console</span>
         </button>
       </div>
 
-      {/* Terminal Output */}
-      <div className="flex-1 bg-black p-6 overflow-y-auto font-mono text-sm leading-6">
+      <div className="bg-slate-900/80 border-b border-slate-800 px-4 py-2 text-xs flex justify-between">
+        <span className="text-slate-300">
+          Config Hash: <code className="text-cyan-300">{configMeta?.config_hash ?? 'unknown'}</code>
+          {configMeta?.config_version && (
+            <span className="ml-3 text-slate-400">Version: {configMeta.config_version}</span>
+          )}
+        </span>
+        <span className={configMeta?.overrides_active ? 'text-amber-300' : 'text-emerald-300'}>
+          {configMeta?.overrides_active ? 'Overrides Active' : 'Defaults Active'}
+        </span>
+      </div>
+
+      <div className="flex-1 bg-black p-6 overflow-y-auto font-mono text-sm leading-6" role="log" aria-live="polite">
         {logs.length === 0 && (
-          <div className="text-slate-500 italic flex flex-col items-center justify-center h-full gap-4">
-             <Terminal size={48} className="opacity-20" />
-             <p>Select a mission and click 'Run Simulation' to start.</p>
+          <div className="text-slate-400 italic flex flex-col items-center justify-center h-full gap-4">
+            <Terminal size={48} className="opacity-20" />
+            <p>Select a mission and click "Run Simulation" to start.</p>
           </div>
         )}
         {logs.map((log, i) => (
-          <div key={i} className="whitespace-pre-wrap text-slate-300 break-words">
+          <div key={i} className="whitespace-pre-wrap text-slate-200 break-words">
             {log}
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
 
-      {/* Footer Status */}
-      <div className="bg-slate-950 border-t border-slate-800 px-4 py-1.5 flex justify-between text-xs text-slate-500 uppercase tracking-wider font-semibold">
+      <div className="bg-slate-950 border-t border-slate-800 px-4 py-1.5 flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
         <span>{isConnected ? 'Connected to backend' : 'Disconnected'}</span>
         <span>{isRunning ? 'Running...' : 'Idle'}</span>
       </div>

@@ -2,9 +2,12 @@
 Manager for running background simulation processes and streaming logs.
 """
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +19,7 @@ logger = logging.getLogger("dashboard.runner")
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
+PRESETS_FILE = PROJECT_ROOT / "Data" / "Dashboard" / "runner_presets.json"
 
 class RunnerManager:
     """
@@ -29,6 +33,42 @@ class RunnerManager:
         self.max_history_lines = 1000
         self._custom_config: dict | None = None
         self._temp_config_path: str | None = None
+        self._presets_path = PRESETS_FILE
+        self._presets: dict[str, dict[str, Any]] = self._load_presets()
+
+    def _load_presets(self) -> dict[str, dict[str, Any]]:
+        """Load persisted presets from disk."""
+        try:
+            if not self._presets_path.exists():
+                return {}
+            payload = json.loads(self._presets_path.read_text(encoding="utf-8"))
+            presets = payload.get("presets") if isinstance(payload, dict) else None
+            if not isinstance(presets, dict):
+                return {}
+            normalized: dict[str, dict[str, Any]] = {}
+            for name, item in presets.items():
+                if not isinstance(name, str) or not isinstance(item, dict):
+                    continue
+                config = item.get("config")
+                if not isinstance(config, dict):
+                    continue
+                normalized[name] = {
+                    "config": config,
+                    "updated_at": str(item.get("updated_at", "")),
+                }
+            return normalized
+        except Exception as exc:
+            logger.warning("Failed to load presets from %s: %s", self._presets_path, exc)
+            return {}
+
+    def _persist_presets(self) -> None:
+        """Persist in-memory presets to disk."""
+        self._presets_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "presets": self._presets,
+        }
+        self._presets_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     @staticmethod
     def _map_legacy_mpc_overrides(legacy_mpc: dict[str, Any]) -> dict[str, Any]:
@@ -202,6 +242,14 @@ class RunnerManager:
         ui_config["mpc"] = app_config.get("mpc", {})
         ui_config["simulation"] = app_config.get("simulation", {})
         ui_config["input_file_path"] = app_config.get("input_file_path")
+        config_json = json.dumps(app_config, sort_keys=True, separators=(",", ":"))
+        config_hash = hashlib.sha256(config_json.encode("utf-8")).hexdigest()[:12]
+        ui_config["config_meta"] = {
+            "config_hash": config_hash,
+            "config_version": "app_config_v1",
+            "overrides_active": bool(self._custom_config),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
         return ui_config
 
     def update_config(self, overrides: dict):
@@ -217,6 +265,76 @@ class RunnerManager:
         """Clear custom overrides and revert to default configuration."""
         self._custom_config = None
         logger.info("Reset custom configuration overrides to defaults")
+
+    def list_presets(self) -> dict[str, dict[str, Any]]:
+        """List available named presets."""
+        return {
+            name: {
+                "config": data.get("config", {}),
+                "updated_at": data.get("updated_at"),
+            }
+            for name, data in sorted(self._presets.items())
+        }
+
+    def get_preset(self, name: str) -> dict[str, Any] | None:
+        """Fetch a single preset by name."""
+        return self._presets.get(name)
+
+    def save_preset(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
+        """Create or update a named preset."""
+        trimmed = name.strip()
+        if not trimmed:
+            raise ValueError("Preset name cannot be empty")
+        normalized = self._normalize_overrides(config)
+        if not normalized:
+            raise ValueError("Preset config is empty or invalid")
+        try:
+            from satellite_control.config.simulation_config import SimulationConfig
+
+            base = SimulationConfig.create_default()
+            resolved = SimulationConfig.create_with_overrides(normalized, base_config=base)
+            resolved_config = resolved.app_config.model_dump()
+            normalized = {
+                section: resolved_config[section]
+                for section in ("physics", "mpc", "simulation")
+                if isinstance(resolved_config.get(section), dict)
+            }
+            input_path = resolved_config.get("input_file_path")
+            if input_path:
+                normalized["input_file_path"] = input_path
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+        item = {
+            "config": normalized,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._presets[trimmed] = item
+        self._persist_presets()
+        return item
+
+    def delete_preset(self, name: str) -> bool:
+        """Delete a named preset."""
+        if name in self._presets:
+            del self._presets[name]
+            self._persist_presets()
+            return True
+        return False
+
+    def clear_presets(self) -> None:
+        """Delete all saved presets."""
+        self._presets.clear()
+        self._persist_presets()
+
+    def apply_preset(self, name: str) -> dict[str, Any]:
+        """Apply a preset as active run overrides."""
+        preset = self.get_preset(name)
+        if not preset:
+            raise KeyError(name)
+        config = preset.get("config")
+        if not isinstance(config, dict):
+            raise ValueError("Preset config is invalid")
+        self.update_config(config)
+        return self.get_config()
 
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection and send history."""
