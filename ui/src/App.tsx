@@ -8,15 +8,16 @@ import { useTelemetryStore } from './store/telemetryStore';
 import { useCameraStore } from './store/cameraStore';
 import { PlaybackSelector } from './components/PlaybackSelector';
 import { FocusButton } from './components/FocusButton';
+import { RunnerView } from './components/RunnerWindow'; // Renamed import, file same
 import { TrajectoryStudioLayout } from './components/TrajectoryStudio/TrajectoryStudioLayout';
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Calculator, ScanLine } from 'lucide-react';
+import { Monitor, Calculator, ScanLine, Terminal } from 'lucide-react';
 import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
 import { ORBIT_SCALE, orbitSnapshot } from './data/orbitSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
-  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan'>('viewer');
+  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan' | 'runner'>('viewer');
   const [eventLogOpen, setEventLogOpen] = useState(false);
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
@@ -39,6 +40,10 @@ function App() {
   const switchToScanPlanner = () => {
       setAppMode('scan');
       setViewMode('free'); // Free cam for scan planning
+  };
+
+  const switchToRunner = () => {
+      setAppMode('runner');
   };
 
   useEffect(() => {
@@ -105,6 +110,12 @@ function App() {
                     className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'scan' ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'text-slate-500 hover:text-white'}`}
                 >
                     <ScanLine size={14} /> SCAN PLANNER
+                </button>
+                <button
+                    onClick={switchToRunner}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'runner' ? 'bg-purple-500/20 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'text-slate-500 hover:text-white'}`}
+                >
+                    <Terminal size={14} /> RUNNER
                 </button>
             </div>
         </div>
@@ -236,6 +247,10 @@ function App() {
                     </div>
                 }
             />
+        ) : appMode === 'runner' ? (
+            <div className="flex-1 relative bg-slate-900">
+                <RunnerView />
+            </div>
         ) : (
             <div className="flex-1 relative">
                 <UnifiedViewport 

@@ -9,7 +9,8 @@ ifeq ($(UNAME_S),Darwin)
   PLATFORM := macos
   EXT_SUFFIX := .so
   BUILD_GLOB := build/cp3*-cp3*-macosx_*/*.so
-  KILL_PORT = lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+  KILL_BACKEND = lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+  KILL_FRONTEND = lsof -ti:5173 | xargs kill -9 2>/dev/null || true
   SYSTEM_PYTHON := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g; s|$(CURDIR)/$(VENV_BIN)||g') command -v python3.11 2>/dev/null || echo "")
   INSTALL_HINT := brew install python@3.11
 else ifeq ($(UNAME_S),Linux)
@@ -17,7 +18,8 @@ else ifeq ($(UNAME_S),Linux)
   PLATFORM := linux
   EXT_SUFFIX := .so
   BUILD_GLOB := build/cp3*-cp3*-linux_*/*.so
-  KILL_PORT = fuser -k 8000/tcp 2>/dev/null || true
+  KILL_BACKEND = fuser -k 8000/tcp 2>/dev/null || true
+  KILL_FRONTEND = fuser -k 5173/tcp 2>/dev/null || true
   SYSTEM_PYTHON := $(shell command -v python3.11 2>/dev/null || echo "")
   INSTALL_HINT := sudo apt install python3.11
 else
@@ -25,7 +27,8 @@ else
   PLATFORM := windows
   EXT_SUFFIX := .pyd
   BUILD_GLOB := build/cp3*-cp3*-win_*/*.pyd
-  KILL_PORT = taskkill /F /PID $$(netstat -ano | findstr :8000 | head -1 | awk '{print $$NF}') 2>NUL || true
+  KILL_BACKEND = taskkill /F /PID $$(netstat -ano | findstr :8000 | head -1 | awk '{print $$NF}') 2>NUL || true
+  KILL_FRONTEND = taskkill /F /PID $$(netstat -ano | findstr :5173 | head -1 | awk '{print $$NF}') 2>NUL || true
   SYSTEM_PYTHON := $(shell command -v python 2>/dev/null || command -v py 2>/dev/null || echo "")
   INSTALL_HINT := Download from https://python.org or: winget install Python.Python.3.11
 endif
@@ -59,7 +62,8 @@ help:
 	@echo ""
 	@echo "  make build        Build everything (venv + deps + C++ extensions)"
 	@echo "  make rebuild      Clean build artifacts, then build from scratch"
-	@echo "  make run          Start backend + frontend together"
+	@echo "  make run          Start backend + frontend together (stops existing instances first)"
+	@echo "  make stop         Stop running backend and frontend processes"
 	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make lint         Lint Python + UI"
@@ -92,14 +96,18 @@ check-cmake:
 # Run targets
 # ============================================================================
 
-run:
+run: stop
 	@$(MAKE) -j2 backend frontend
+
+stop:
+	@echo "Stopping any existing process on port 8000 (Backend)..."
+	@$(KILL_BACKEND)
+	@echo "Stopping any existing process on port 5173 (Frontend)..."
+	@$(KILL_FRONTEND)
 
 dashboard: run
 
 backend:
-	@echo "Stopping any existing process on port 8000..."
-	@$(KILL_PORT)
 	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
 
 frontend:
