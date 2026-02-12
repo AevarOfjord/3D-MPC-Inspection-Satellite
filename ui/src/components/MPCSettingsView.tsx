@@ -1,48 +1,471 @@
-import React, { useState, useEffect } from 'react';
-import { Save, RotateCcw, AlertCircle, Check, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  RotateCcw,
+  Save,
+} from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000'; // Adjust if needed
+const API_BASE = 'http://localhost:8000';
 
-interface MPCConfig {
-  control: {
-    mpc: {
-      prediction_horizon: number;
-      control_horizon: number;
-      weights: {
-        Q_contour: number;
-        Q_progress: number;
-        Q_smooth: number;
-        Q_attitude: number;
-        thrust: number;
-        rw_torque: number;
-      };
-      settings: {
-        dt: number;
-        max_linear_velocity: number;
-        max_angular_velocity: number;
-        enable_collision_avoidance: boolean;
-        enable_auto_state_bounds: boolean;
-      };
-      path_following: {
-        path_speed: number;
-      }
+interface MpcSettings {
+  prediction_horizon: number;
+  control_horizon: number;
+  dt: number;
+  solver_time_limit: number;
+  solver_type: string;
+  Q_contour: number;
+  Q_progress: number;
+  progress_reward: number;
+  Q_lag: number;
+  Q_smooth: number;
+  Q_attitude: number;
+  Q_terminal_pos: number;
+  Q_terminal_s: number;
+  q_angular_velocity: number;
+  r_thrust: number;
+  r_rw_torque: number;
+  thrust_l1_weight: number;
+  thrust_pair_weight: number;
+  coast_pos_tolerance: number;
+  coast_vel_tolerance: number;
+  coast_min_speed: number;
+  thruster_type: 'PWM' | 'CON';
+  verbose_mpc: boolean;
+  obstacle_margin: number;
+  enable_collision_avoidance: boolean;
+  path_speed: number;
+  path_speed_min: number;
+  path_speed_max: number;
+  progress_taper_distance: number;
+  progress_slowdown_distance: number;
+  max_linear_velocity: number;
+  max_angular_velocity: number;
+  enable_delta_u_coupling: boolean;
+  enable_gyro_jacobian: boolean;
+  enable_auto_state_bounds: boolean;
+  [key: string]: unknown;
+}
+
+interface SimulationSettings {
+  dt: number;
+  max_duration: number;
+  control_dt: number;
+  [key: string]: unknown;
+}
+
+interface SettingsConfig {
+  mpc: MpcSettings;
+  simulation: SimulationSettings;
+}
+
+interface SettingReferenceItem {
+  key: string;
+  label: string;
+  description: string;
+  impact: string;
+}
+
+interface SettingReferenceSection {
+  title: string;
+  items: SettingReferenceItem[];
+}
+
+const DEFAULT_MPC_SETTINGS: MpcSettings = {
+  prediction_horizon: 50,
+  control_horizon: 50,
+  dt: 0.05,
+  solver_time_limit: 0.04,
+  solver_type: 'OSQP',
+  Q_contour: 2000.0,
+  Q_progress: 100.0,
+  progress_reward: 0.0,
+  Q_lag: 0.0,
+  Q_smooth: 10.0,
+  Q_attitude: 50.0,
+  Q_terminal_pos: 0.0,
+  Q_terminal_s: 0.0,
+  q_angular_velocity: 1000.0,
+  r_thrust: 0.1,
+  r_rw_torque: 0.1,
+  thrust_l1_weight: 0.1,
+  thrust_pair_weight: 2.0,
+  coast_pos_tolerance: 0.1,
+  coast_vel_tolerance: 0.02,
+  coast_min_speed: 0.02,
+  thruster_type: 'CON',
+  verbose_mpc: false,
+  obstacle_margin: 0.1,
+  enable_collision_avoidance: false,
+  path_speed: 0.1,
+  path_speed_min: 0.01,
+  path_speed_max: 0.1,
+  progress_taper_distance: 0.0,
+  progress_slowdown_distance: 0.0,
+  max_linear_velocity: 0.0,
+  max_angular_velocity: 0.0,
+  enable_delta_u_coupling: false,
+  enable_gyro_jacobian: false,
+  enable_auto_state_bounds: false,
+};
+
+const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
+  dt: 0.001,
+  max_duration: 0.0,
+  control_dt: 0.05,
+};
+
+const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
+  {
+    title: 'Basic - Timing and Horizons',
+    items: [
+      {
+        key: 'simulation.max_duration',
+        label: 'Simulation Duration (s)',
+        description: 'Maximum run time before simulation stop. A value of 0 disables duration-based stopping.',
+        impact: 'Higher values allow long missions; lower values stop early for faster iteration.',
+      },
+      {
+        key: 'mpc.dt',
+        label: 'Control Step dt (s)',
+        description: 'MPC update interval. This is synced to simulation control_dt when saved.',
+        impact: 'Smaller dt reacts faster but increases compute load.',
+      },
+      {
+        key: 'mpc.prediction_horizon',
+        label: 'Prediction Horizon',
+        description: 'Number of future timesteps the optimizer predicts.',
+        impact: 'Longer horizon improves foresight but raises solve time.',
+      },
+      {
+        key: 'mpc.control_horizon',
+        label: 'Control Horizon',
+        description: 'Number of steps with independent control actions (must be <= prediction horizon).',
+        impact: 'Lower values smooth commands and reduce optimization complexity.',
+      },
+      {
+        key: 'mpc.solver_time_limit',
+        label: 'Solver Time Limit (s)',
+        description: 'Maximum per-step optimizer runtime budget.',
+        impact: 'Lower values improve real-time reliability but may reduce solution quality.',
+      },
+    ],
+  },
+  {
+    title: 'Basic - Tracking Weights',
+    items: [
+      {
+        key: 'mpc.Q_contour',
+        label: 'Contour Error (Q_contour)',
+        description: 'Penalty on distance from the reference path.',
+        impact: 'Higher values force tighter path adherence.',
+      },
+      {
+        key: 'mpc.Q_progress',
+        label: 'Progress (Q_progress)',
+        description: 'Penalty tied to path progress-speed tracking.',
+        impact: 'Higher values prioritize consistent forward progress.',
+      },
+      {
+        key: 'mpc.Q_attitude',
+        label: 'Attitude (Q_attitude)',
+        description: 'Penalty on orientation error relative to path tangent behavior.',
+        impact: 'Higher values keep body alignment tighter.',
+      },
+      {
+        key: 'mpc.Q_smooth',
+        label: 'Smoothness (Q_smooth)',
+        description: 'Penalty on control increments (delta-u).',
+        impact: 'Higher values reduce command jitter but can slow response.',
+      },
+      {
+        key: 'mpc.q_angular_velocity',
+        label: 'Angular Velocity (q_angular_velocity)',
+        description: 'Penalty on rotational rate in the cost function.',
+        impact: 'Higher values damp angular motion and reduce spin.',
+      },
+      {
+        key: 'mpc.Q_lag',
+        label: 'Lag Error (Q_lag)',
+        description: 'Penalty on along-track lag relative to the path parameterization.',
+        impact: 'Higher values reduce behind-path drift.',
+      },
+    ],
+  },
+  {
+    title: 'Basic - Actuation and Path',
+    items: [
+      {
+        key: 'mpc.r_thrust',
+        label: 'Thrust Cost (r_thrust)',
+        description: 'Penalty on thruster usage.',
+        impact: 'Higher values save thrust/fuel but can slow translational response.',
+      },
+      {
+        key: 'mpc.r_rw_torque',
+        label: 'RW Torque Cost (r_rw_torque)',
+        description: 'Penalty on reaction wheel torque usage.',
+        impact: 'Higher values reduce wheel effort but may weaken attitude authority.',
+      },
+      {
+        key: 'mpc.path_speed',
+        label: 'Path Speed (m/s)',
+        description: 'Nominal desired progress speed along path.',
+        impact: 'Higher values speed mission completion but demand more control effort.',
+      },
+    ],
+  },
+  {
+    title: 'Basic - Constraints and Safety',
+    items: [
+      {
+        key: 'mpc.max_linear_velocity',
+        label: 'Max Linear Velocity (m/s)',
+        description: 'State bound for translational speed. 0 means automatic bound behavior.',
+        impact: 'Lower bounds reduce aggressive motion and increase safety margin.',
+      },
+      {
+        key: 'mpc.max_angular_velocity',
+        label: 'Max Angular Velocity (rad/s)',
+        description: 'State bound for rotational speed. 0 means automatic bound behavior.',
+        impact: 'Lower bounds reduce spin and improve stability.',
+      },
+      {
+        key: 'mpc.obstacle_margin',
+        label: 'Obstacle Margin (m)',
+        description: 'Extra safety clearance around modeled obstacles.',
+        impact: 'Higher margin is safer but may make pathing more conservative.',
+      },
+      {
+        key: 'mpc.enable_auto_state_bounds',
+        label: 'Enable Auto State Bounds',
+        description: 'Automatically derives velocity bounds when explicit bounds are unset.',
+        impact: 'Improves robustness when limits are left at defaults.',
+      },
+      {
+        key: 'mpc.enable_collision_avoidance',
+        label: 'Enable Collision Avoidance',
+        description: 'Enables online obstacle constraints in MPC.',
+        impact: 'Improves safety around obstacles but can increase solver complexity.',
+      },
+    ],
+  },
+  {
+    title: 'Advanced Settings',
+    items: [
+      {
+        key: 'mpc.path_speed_min',
+        label: 'Path Speed Min (m/s)',
+        description: 'Lower clamp for path progress speed.',
+        impact: 'Higher minimum prevents stalling but can reduce precision near hard sections.',
+      },
+      {
+        key: 'mpc.path_speed_max',
+        label: 'Path Speed Max (m/s)',
+        description: 'Upper clamp for path progress speed.',
+        impact: 'Lower maximum limits aggressiveness and compute stress.',
+      },
+      {
+        key: 'mpc.progress_taper_distance',
+        label: 'Progress Taper Distance (m)',
+        description: 'Distance-to-end region where path speed can taper. 0 uses auto behavior.',
+        impact: 'Higher values start slowing earlier near endpoint.',
+      },
+      {
+        key: 'mpc.progress_slowdown_distance',
+        label: 'Progress Slowdown Distance (m)',
+        description: 'Error-trigger distance used to reduce progress when tracking quality degrades.',
+        impact: 'Higher values trigger slowdown earlier for safer tracking.',
+      },
+      {
+        key: 'mpc.Q_terminal_pos',
+        label: 'Terminal Position (Q_terminal_pos)',
+        description: 'Terminal-stage position weight. 0 means automatic scaling.',
+        impact: 'Higher values enforce stronger endpoint position convergence.',
+      },
+      {
+        key: 'mpc.Q_terminal_s',
+        label: 'Terminal Progress (Q_terminal_s)',
+        description: 'Terminal-stage progress/path-parameter weight. 0 means automatic scaling.',
+        impact: 'Higher values enforce stronger endpoint progress completion.',
+      },
+      {
+        key: 'mpc.progress_reward',
+        label: 'Progress Reward',
+        description: 'Linear reward term for moving forward along the path.',
+        impact: 'Higher values bias toward faster forward motion.',
+      },
+      {
+        key: 'mpc.thruster_type',
+        label: 'Thruster Type',
+        description: 'Thruster actuation mode: CON for continuous or PWM for binary-like behavior.',
+        impact: 'Changes control style and can alter smoothness/realism tradeoffs.',
+      },
+      {
+        key: 'mpc.solver_type',
+        label: 'Solver',
+        description: 'Optimizer backend selector.',
+        impact: 'Currently OSQP is the supported runtime path in this stack.',
+      },
+      {
+        key: 'mpc.enable_delta_u_coupling',
+        label: 'Enable Delta-U Coupling',
+        description: 'Uses full temporal coupling for smoothness cost terms.',
+        impact: 'Can improve smoothness fidelity but increases solve load.',
+      },
+      {
+        key: 'mpc.enable_gyro_jacobian',
+        label: 'Enable Gyro Jacobian',
+        description: 'Includes gyroscopic Jacobian terms in angular linearization.',
+        impact: 'Improves high-rate rotational accuracy with extra computation.',
+      },
+      {
+        key: 'mpc.verbose_mpc',
+        label: 'Verbose MPC Solver Logs',
+        description: 'Enables detailed solver logging output.',
+        impact: 'Useful for tuning/debugging; increases log noise.',
+      },
+    ],
+  },
+  {
+    title: 'Expert Settings',
+    items: [
+      {
+        key: 'mpc.thrust_l1_weight',
+        label: 'Thruster L1 Weight',
+        description: 'Linear thruster usage penalty (fuel-bias term).',
+        impact: 'Higher values promote coasting and sparse thrust usage.',
+      },
+      {
+        key: 'mpc.thrust_pair_weight',
+        label: 'Thruster Pair Weight',
+        description: 'Penalty on opposing thrusters firing together.',
+        impact: 'Higher values discourage wasteful opposing pair usage.',
+      },
+      {
+        key: 'mpc.coast_pos_tolerance',
+        label: 'Coast Position Tol. (m)',
+        description: 'Position-error band where coasting logic may engage.',
+        impact: 'Higher tolerance enters coast mode more easily.',
+      },
+      {
+        key: 'mpc.coast_vel_tolerance',
+        label: 'Coast Velocity Tol. (m/s)',
+        description: 'Lateral velocity threshold for coasting behavior.',
+        impact: 'Higher tolerance allows coasting at larger residual velocity.',
+      },
+      {
+        key: 'mpc.coast_min_speed',
+        label: 'Coast Min Speed (m/s)',
+        description: 'Minimum forward speed maintained when coasting logic is active.',
+        impact: 'Higher values keep progress moving even in coast mode.',
+      },
+    ],
+  },
+];
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function normalizeConfig(raw: unknown): SettingsConfig | null {
+  const root = asRecord(raw);
+  if (!root) return null;
+
+  const mpc = asRecord(root.mpc);
+  const simulation = asRecord(root.simulation);
+
+  if (mpc && simulation) {
+    const normalizedMpc = {
+      ...DEFAULT_MPC_SETTINGS,
+      ...(mpc as Partial<MpcSettings>),
     };
+    const normalizedSimulation = {
+      ...DEFAULT_SIMULATION_SETTINGS,
+      ...(simulation as Partial<SimulationSettings>),
+    };
+    if (typeof normalizedMpc.dt === 'number') {
+      normalizedSimulation.control_dt = normalizedMpc.dt;
+    }
+    return {
+      mpc: normalizedMpc,
+      simulation: normalizedSimulation,
+    };
+  }
+
+  // Legacy shape fallback
+  const legacyControl = asRecord(root.control);
+  const legacyMpc = asRecord(legacyControl?.mpc);
+  const legacyWeights = asRecord(legacyMpc?.weights);
+  const legacySettings = asRecord(legacyMpc?.settings);
+  const legacyPath = asRecord(legacyMpc?.path_following);
+  const legacySim = asRecord(root.sim);
+
+  const normalizedMpc = {
+    ...DEFAULT_MPC_SETTINGS,
+    ...(legacyMpc as Partial<MpcSettings>),
   };
-  sim: {
-    dt: number;
-    duration: number;
+
+  if (legacyWeights) {
+    if (typeof legacyWeights.Q_contour === 'number') normalizedMpc.Q_contour = legacyWeights.Q_contour;
+    if (typeof legacyWeights.Q_progress === 'number') normalizedMpc.Q_progress = legacyWeights.Q_progress;
+    if (typeof legacyWeights.Q_smooth === 'number') normalizedMpc.Q_smooth = legacyWeights.Q_smooth;
+    if (typeof legacyWeights.Q_attitude === 'number') normalizedMpc.Q_attitude = legacyWeights.Q_attitude;
+    if (typeof legacyWeights.angular_velocity === 'number') normalizedMpc.q_angular_velocity = legacyWeights.angular_velocity;
+    if (typeof legacyWeights.thrust === 'number') normalizedMpc.r_thrust = legacyWeights.thrust;
+    if (typeof legacyWeights.rw_torque === 'number') normalizedMpc.r_rw_torque = legacyWeights.rw_torque;
+  }
+
+  if (legacySettings) {
+    if (typeof legacySettings.dt === 'number') normalizedMpc.dt = legacySettings.dt;
+    if (typeof legacySettings.max_linear_velocity === 'number') normalizedMpc.max_linear_velocity = legacySettings.max_linear_velocity;
+    if (typeof legacySettings.max_angular_velocity === 'number') normalizedMpc.max_angular_velocity = legacySettings.max_angular_velocity;
+    if (typeof legacySettings.enable_collision_avoidance === 'boolean') {
+      normalizedMpc.enable_collision_avoidance = legacySettings.enable_collision_avoidance;
+    }
+    if (typeof legacySettings.enable_auto_state_bounds === 'boolean') {
+      normalizedMpc.enable_auto_state_bounds = legacySettings.enable_auto_state_bounds;
+    }
+  }
+
+  if (legacyPath) {
+    if (typeof legacyPath.path_speed === 'number') normalizedMpc.path_speed = legacyPath.path_speed;
+  }
+
+  const normalizedSimulation: SimulationSettings = {
+    ...DEFAULT_SIMULATION_SETTINGS,
+    ...(legacySim as Partial<SimulationSettings>),
+  };
+  if (typeof legacySim?.duration === 'number') {
+    normalizedSimulation.max_duration = legacySim.duration;
+  }
+  normalizedSimulation.control_dt = normalizedMpc.dt;
+
+  return {
+    mpc: normalizedMpc,
+    simulation: normalizedSimulation,
   };
 }
 
 export function MPCSettingsView() {
-  const [config, setConfig] = useState<MPCConfig | null>(null);
+  const [config, setConfig] = useState<SettingsConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showBasic, setShowBasic] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showExpert, setShowExpert] = useState(false);
+  const [showReference, setShowReference] = useState(false);
 
   useEffect(() => {
-    fetchConfig();
+    void fetchConfig();
   }, []);
 
   const fetchConfig = async () => {
@@ -52,10 +475,30 @@ export function MPCSettingsView() {
       const res = await fetch(`${API_BASE}/runner/config`);
       if (!res.ok) throw new Error('Failed to fetch config');
       const data = await res.json();
-      setConfig(data);
+      const normalized = normalizeConfig(data);
+      if (!normalized) throw new Error('Backend returned invalid config format');
+      setConfig(normalized);
     } catch (err) {
       setError(String(err));
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setIsLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/runner/config/reset`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to reset config');
+      await fetchConfig();
+      setSuccessMsg('Configuration reset to defaults.');
+      setTimeout(() => setSuccessMsg(null), 2500);
+    } catch (err) {
+      setError(`Failed to reset: ${String(err)}`);
       setIsLoading(false);
     }
   };
@@ -66,298 +509,566 @@ export function MPCSettingsView() {
     setError(null);
     setSuccessMsg(null);
     try {
-        // We send back the structured overrides. 
-        // The backend expects a dictionary that merges into AppConfig.
-        // We can just send the whole 'control' and 'sim' sections since we are editing them.
-        
-        const overrides = {
-            control: config.control,
-            sim: config.sim
-        };
+      const overrides = {
+        mpc: config.mpc,
+        simulation: {
+          ...config.simulation,
+          control_dt: config.mpc.dt,
+        },
+      };
 
-        const res = await fetch(`${API_BASE}/runner/config`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(overrides)
-        });
-        
-        if (!res.ok) throw new Error('Failed to save config');
-        
-        setSuccessMsg('Configuration saved successfully. Next run will use these settings.');
-        setTimeout(() => setSuccessMsg(null), 3000);
+      const res = await fetch(`${API_BASE}/runner/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(overrides),
+      });
+
+      if (!res.ok) throw new Error('Failed to save config');
+
+      setSuccessMsg('Configuration saved successfully. Next run will use these settings.');
+      setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err) {
-        setError("Failed to save: " + String(err));
+      setError(`Failed to save: ${String(err)}`);
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
 
-  const updateConfig = (path: string, value: any) => {
+  const updateConfig = (path: string, value: unknown) => {
     if (!config) return;
-    
-    // Deep clone to avoid direct mutation
-    const newConfig = JSON.parse(JSON.stringify(config));
-    
-    // Config path traversal
+
+    const newConfig = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
     const parts = path.split('.');
     let current = newConfig;
+
     for (let i = 0; i < parts.length - 1; i++) {
-        current = current[parts[i]];
+      const next = current[parts[i]];
+      if (!next || typeof next !== 'object') {
+        current[parts[i]] = {};
+      }
+      current = current[parts[i]] as Record<string, unknown>;
     }
-    
-    // Type conversion for numbers
-    if (typeof current[parts[parts.length - 1]] === 'number') {
-        const numVal = parseFloat(value);
-        if (!isNaN(numVal)) {
-            current[parts[parts.length - 1]] = numVal;
-        }
-    } else if (typeof current[parts[parts.length - 1]] === 'boolean') {
-        current[parts[parts.length - 1]] = value;
+
+    const leaf = parts[parts.length - 1];
+    const previous = current[leaf];
+
+    if (typeof previous === 'number') {
+      const parsed = typeof value === 'string' ? parseFloat(value) : Number(value);
+      if (!Number.isNaN(parsed)) {
+        current[leaf] = parsed;
+      }
+    } else if (typeof previous === 'boolean') {
+      current[leaf] = Boolean(value);
     } else {
-        current[parts[parts.length - 1]] = value;
+      current[leaf] = value;
     }
-    
-    setConfig(newConfig);
+
+    // Keep simulation control_dt synchronized with mpc.dt
+    if (path === 'mpc.dt') {
+      const mpcObj = asRecord(newConfig.mpc);
+      const simObj = asRecord(newConfig.simulation);
+      if (mpcObj && simObj && typeof mpcObj.dt === 'number') {
+        simObj.control_dt = mpcObj.dt;
+      }
+    }
+
+    setConfig(newConfig as unknown as SettingsConfig);
   };
 
   if (isLoading) {
     return (
-        <div className="h-full flex items-center justify-center text-slate-400">
-            <Loader2 className="animate-spin mr-2" /> Loading configuration...
-        </div>
+      <div className="h-full flex items-center justify-center text-slate-400">
+        <Loader2 className="animate-spin mr-2" /> Loading configuration...
+      </div>
     );
   }
 
   if (error && !config) {
-      return (
-          <div className="h-full flex flex-col items-center justify-center text-red-400">
-              <AlertCircle className="mb-2" size={32} />
-              <p>{error}</p>
-              <button 
-                onClick={fetchConfig}
-                className="mt-4 px-4 py-2 bg-slate-800 rounded hover:bg-slate-700 transition"
-              >
-                  Retry
-              </button>
-          </div>
-      );
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-red-400">
+        <AlertCircle className="mb-2" size={32} />
+        <p>{error}</p>
+        <button
+          onClick={() => void fetchConfig()}
+          className="mt-4 px-4 py-2 bg-slate-800 rounded hover:bg-slate-700 transition"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-200 overflow-hidden">
-      {/* Header */}
       <div className="flex-none p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
-          <div>
-              <h2 className="text-lg font-bold text-white">MPC Settings</h2>
-              <p className="text-xs text-slate-400">Configure solver parameters and limits</p>
-          </div>
-          
-          <div className="flex gap-2">
-              <button
-                onClick={fetchConfig}
-                className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition"
-              >
-                  <RotateCcw size={14} /> Reset
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="flex items-center gap-2 px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-sm disabled:opacity-50"
-              >
-                  {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Save Changes
-              </button>
-          </div>
+        <div>
+          <h2 className="text-lg font-bold text-white">MPC Settings</h2>
+          <p className="text-xs text-slate-400">Controller tuning, bounds, and solver options</p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => void handleReset()}
+            className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition"
+          >
+            <RotateCcw size={14} /> Reset
+          </button>
+          <button
+            onClick={() => void handleSave()}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-sm disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Save Changes
+          </button>
+        </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-4xl mx-auto space-y-8">
-              
-              {/* Messages */}
-              {error && (
-                  <div className="p-3 bg-red-900/20 border border-red-800 rounded text-red-200 text-sm flex items-center gap-2">
-                      <AlertCircle size={16} /> {error}
-                  </div>
-              )}
-              {successMsg && (
-                  <div className="p-3 bg-green-900/20 border border-green-800 rounded text-green-200 text-sm flex items-center gap-2">
-                      <Check size={16} /> {successMsg}
-                  </div>
-              )}
+        <div className="max-w-6xl mx-auto space-y-8">
+          {error && (
+            <div className="p-3 bg-red-900/20 border border-red-800 rounded text-red-200 text-sm flex items-center gap-2">
+              <AlertCircle size={16} /> {error}
+            </div>
+          )}
+          {successMsg && (
+            <div className="p-3 bg-green-900/20 border border-green-800 rounded text-green-200 text-sm flex items-center gap-2">
+              <Check size={16} /> {successMsg}
+            </div>
+          )}
 
-              {/* General Simulation Settings */}
-              <section>
+          <section>
+            <button
+              onClick={() => setShowBasic((v) => !v)}
+              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
+            >
+              <span className="text-sm uppercase tracking-wider text-blue-400 font-bold">
+                Basic Settings
+              </span>
+              {showBasic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+
+            {showBasic && (
+              <div className="mt-4 space-y-8">
+                <section>
                   <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                      Simulation & Time
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <ConfigField 
-                        label="Simulation Duration (s)" 
-                        value={config?.sim?.duration} 
-                        onChange={(v) => updateConfig('sim.duration', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Control Step (dt)" 
-                        value={config?.control?.mpc?.settings?.dt} 
-                        onChange={(v) => updateConfig('control.mpc.settings.dt', v)}
-                        isNumber
-                        step={0.01}
-                      />
-                  </div>
-              </section>
-
-              {/* Horizons */}
-              <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                      Horizons
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <ConfigField 
-                        label="Prediction Horizon (Steps)" 
-                        value={config?.control?.mpc?.prediction_horizon} 
-                        onChange={(v) => updateConfig('control.mpc.prediction_horizon', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Control Horizon (Steps)" 
-                        value={config?.control?.mpc?.control_horizon} 
-                        onChange={(v) => updateConfig('control.mpc.control_horizon', v)}
-                        isNumber
-                      />
-                  </div>
-              </section>
-
-              {/* Cost Weights */}
-              <section>
-                  <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
-                      Objective Weights (Tuning)
+                    Basic - Timing and Horizons
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      <ConfigField 
-                        label="Contour Error (Q_contour)" 
-                        value={config?.control?.mpc?.weights?.Q_contour} 
-                        onChange={(v) => updateConfig('control.mpc.weights.Q_contour', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Progress (Q_progress)" 
-                        value={config?.control?.mpc?.weights?.Q_progress} 
-                        onChange={(v) => updateConfig('control.mpc.weights.Q_progress', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Attitude Alignment (Q_attitude)" 
-                        value={config?.control?.mpc?.weights?.Q_attitude} 
-                        onChange={(v) => updateConfig('control.mpc.weights.Q_attitude', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Input Smoothness (Q_smooth)" 
-                        value={config?.control?.mpc?.weights?.Q_smooth} 
-                        onChange={(v) => updateConfig('control.mpc.weights.Q_smooth', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="Thrust Usage (R_thrust)" 
-                        value={config?.control?.mpc?.weights?.thrust} 
-                        onChange={(v) => updateConfig('control.mpc.weights.thrust', v)}
-                        isNumber
-                      />
-                      <ConfigField 
-                        label="RW Torque Usage (R_rw_torque)" 
-                        value={config?.control?.mpc?.weights?.rw_torque} 
-                        onChange={(v) => updateConfig('control.mpc.weights.rw_torque', v)}
-                        isNumber
-                      />
+                    <ConfigField
+                      label="Simulation Duration (s)"
+                      value={config?.simulation.max_duration}
+                      onChange={(v) => updateConfig('simulation.max_duration', v)}
+                      isNumber
+                      step={1}
+                      desc="0 = no hard duration limit"
+                    />
+                    <ConfigField
+                      label="Control Step dt (s)"
+                      value={config?.mpc.dt}
+                      onChange={(v) => updateConfig('mpc.dt', v)}
+                      isNumber
+                      step={0.001}
+                    />
+                    <ConfigField
+                      label="Prediction Horizon"
+                      value={config?.mpc.prediction_horizon}
+                      onChange={(v) => updateConfig('mpc.prediction_horizon', v)}
+                      isNumber
+                      step={1}
+                    />
+                    <ConfigField
+                      label="Control Horizon"
+                      value={config?.mpc.control_horizon}
+                      onChange={(v) => updateConfig('mpc.control_horizon', v)}
+                      isNumber
+                      step={1}
+                    />
+                    <ConfigField
+                      label="Solver Time Limit (s)"
+                      value={config?.mpc.solver_time_limit}
+                      onChange={(v) => updateConfig('mpc.solver_time_limit', v)}
+                      isNumber
+                      step={0.001}
+                    />
                   </div>
-              </section>
+                </section>
 
-               {/* Constraints */}
-              <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                      Constraints & Limits
+                <section>
+                  <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
+                    Basic - Tracking Weights
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <ConfigField 
-                        label="Max Linear Velocity (m/s)" 
-                        value={config?.control?.mpc?.settings?.max_linear_velocity} 
-                        onChange={(v) => updateConfig('control.mpc.settings.max_linear_velocity', v)}
-                        isNumber
-                        desc="0 = Auto"
-                      />
-                      <ConfigField 
-                        label="Max Angular Velocity (rad/s)" 
-                        value={config?.control?.mpc?.settings?.max_angular_velocity} 
-                        onChange={(v) => updateConfig('control.mpc.settings.max_angular_velocity', v)}
-                        isNumber
-                        desc="0 = Auto"
-                      />
-                      <div className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800">
-                          <span className="text-sm font-medium text-slate-300">Enable Collision Avoidance</span>
-                          <input 
-                              type="checkbox" 
-                              checked={config?.control?.mpc?.settings?.enable_collision_avoidance || false} 
-                              onChange={(e) => updateConfig('control.mpc.settings.enable_collision_avoidance', e.target.checked)}
-                              className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-offset-slate-900"
-                          />
-                      </div>
-                       <div className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800">
-                          <span className="text-sm font-medium text-slate-300">Auto State Bounds</span>
-                          <input 
-                              type="checkbox" 
-                              checked={config?.control?.mpc?.settings?.enable_auto_state_bounds || false} 
-                              onChange={(e) => updateConfig('control.mpc.settings.enable_auto_state_bounds', e.target.checked)}
-                              className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-offset-slate-900"
-                          />
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <ConfigField
+                      label="Contour Error (Q_contour)"
+                      value={config?.mpc.Q_contour}
+                      onChange={(v) => updateConfig('mpc.Q_contour', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Progress (Q_progress)"
+                      value={config?.mpc.Q_progress}
+                      onChange={(v) => updateConfig('mpc.Q_progress', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Attitude (Q_attitude)"
+                      value={config?.mpc.Q_attitude}
+                      onChange={(v) => updateConfig('mpc.Q_attitude', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Smoothness (Q_smooth)"
+                      value={config?.mpc.Q_smooth}
+                      onChange={(v) => updateConfig('mpc.Q_smooth', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Angular Velocity (q_angular_velocity)"
+                      value={config?.mpc.q_angular_velocity}
+                      onChange={(v) => updateConfig('mpc.q_angular_velocity', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Lag Error (Q_lag)"
+                      value={config?.mpc.Q_lag}
+                      onChange={(v) => updateConfig('mpc.Q_lag', v)}
+                      isNumber
+                    />
                   </div>
-              </section>
-              
-               {/* Path Following */}
-              <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                     Path Following
-                  </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <ConfigField 
-                        label="Reference Path Speed (m/s)" 
-                        value={config?.control?.mpc?.path_following?.path_speed} 
-                        onChange={(v) => updateConfig('control.mpc.path_following.path_speed', v)}
-                        isNumber
-                        step={0.01}
-                      />
-                   </div>
-              </section>
+                </section>
 
-          </div>
+                <section>
+                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
+                    Basic - Actuation and Path
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <ConfigField
+                      label="Thrust Cost (r_thrust)"
+                      value={config?.mpc.r_thrust}
+                      onChange={(v) => updateConfig('mpc.r_thrust', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="RW Torque Cost (r_rw_torque)"
+                      value={config?.mpc.r_rw_torque}
+                      onChange={(v) => updateConfig('mpc.r_rw_torque', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Path Speed (m/s)"
+                      value={config?.mpc.path_speed}
+                      onChange={(v) => updateConfig('mpc.path_speed', v)}
+                      isNumber
+                      step={0.001}
+                    />
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
+                    Basic - Constraints and Safety
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <ConfigField
+                      label="Max Linear Velocity (m/s)"
+                      value={config?.mpc.max_linear_velocity}
+                      onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
+                      isNumber
+                      desc="0 = auto bound"
+                    />
+                    <ConfigField
+                      label="Max Angular Velocity (rad/s)"
+                      value={config?.mpc.max_angular_velocity}
+                      onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
+                      isNumber
+                      desc="0 = auto bound"
+                    />
+                    <ConfigField
+                      label="Obstacle Margin (m)"
+                      value={config?.mpc.obstacle_margin}
+                      onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
+                      isNumber
+                      step={0.01}
+                    />
+                    <ToggleField
+                      label="Enable Auto State Bounds"
+                      checked={Boolean(config?.mpc.enable_auto_state_bounds)}
+                      onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
+                    />
+                    <ToggleField
+                      label="Enable Collision Avoidance"
+                      checked={Boolean(config?.mpc.enable_collision_avoidance)}
+                      onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
+                    />
+                  </div>
+                </section>
+              </div>
+            )}
+          </section>
+
+          <section>
+            <button
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
+            >
+              <span className="text-sm uppercase tracking-wider text-cyan-400 font-bold">
+                Advanced Settings
+              </span>
+              {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ConfigField
+                  label="Path Speed Min (m/s)"
+                  value={config?.mpc.path_speed_min}
+                  onChange={(v) => updateConfig('mpc.path_speed_min', v)}
+                  isNumber
+                  step={0.001}
+                />
+                <ConfigField
+                  label="Path Speed Max (m/s)"
+                  value={config?.mpc.path_speed_max}
+                  onChange={(v) => updateConfig('mpc.path_speed_max', v)}
+                  isNumber
+                  step={0.001}
+                />
+                <ConfigField
+                  label="Progress Taper Distance (m)"
+                  value={config?.mpc.progress_taper_distance}
+                  onChange={(v) => updateConfig('mpc.progress_taper_distance', v)}
+                  isNumber
+                  step={0.01}
+                  desc="0 = auto"
+                />
+                <ConfigField
+                  label="Progress Slowdown Distance (m)"
+                  value={config?.mpc.progress_slowdown_distance}
+                  onChange={(v) => updateConfig('mpc.progress_slowdown_distance', v)}
+                  isNumber
+                  step={0.01}
+                  desc="0 = auto"
+                />
+                <ConfigField
+                  label="Terminal Position (Q_terminal_pos)"
+                  value={config?.mpc.Q_terminal_pos}
+                  onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)}
+                  isNumber
+                  desc="0 = auto"
+                />
+                <ConfigField
+                  label="Terminal Progress (Q_terminal_s)"
+                  value={config?.mpc.Q_terminal_s}
+                  onChange={(v) => updateConfig('mpc.Q_terminal_s', v)}
+                  isNumber
+                  desc="0 = auto"
+                />
+                <ConfigField
+                  label="Progress Reward"
+                  value={config?.mpc.progress_reward}
+                  onChange={(v) => updateConfig('mpc.progress_reward', v)}
+                  isNumber
+                />
+                <SelectField
+                  label="Thruster Type"
+                  value={String(config?.mpc.thruster_type ?? 'CON')}
+                  onChange={(v) => updateConfig('mpc.thruster_type', v)}
+                  options={[
+                    { label: 'Continuous (CON)', value: 'CON' },
+                    { label: 'PWM', value: 'PWM' },
+                  ]}
+                />
+                <SelectField
+                  label="Solver"
+                  value={String(config?.mpc.solver_type ?? 'OSQP')}
+                  onChange={(v) => updateConfig('mpc.solver_type', v)}
+                  options={[{ label: 'OSQP', value: 'OSQP' }]}
+                />
+                <ToggleField
+                  label="Enable Delta-U Coupling"
+                  checked={Boolean(config?.mpc.enable_delta_u_coupling)}
+                  onChange={(checked) => updateConfig('mpc.enable_delta_u_coupling', checked)}
+                />
+                <ToggleField
+                  label="Enable Gyro Jacobian"
+                  checked={Boolean(config?.mpc.enable_gyro_jacobian)}
+                  onChange={(checked) => updateConfig('mpc.enable_gyro_jacobian', checked)}
+                />
+                <ToggleField
+                  label="Verbose MPC Solver Logs"
+                  checked={Boolean(config?.mpc.verbose_mpc)}
+                  onChange={(checked) => updateConfig('mpc.verbose_mpc', checked)}
+                />
+              </div>
+            )}
+          </section>
+
+          <section>
+            <button
+              onClick={() => setShowExpert((v) => !v)}
+              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
+            >
+              <span className="text-sm uppercase tracking-wider text-orange-400 font-bold">
+                Expert Settings
+              </span>
+              {showExpert ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+
+            {showExpert && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ConfigField
+                  label="Thruster L1 Weight"
+                  value={config?.mpc.thrust_l1_weight}
+                  onChange={(v) => updateConfig('mpc.thrust_l1_weight', v)}
+                  isNumber
+                />
+                <ConfigField
+                  label="Thruster Pair Weight"
+                  value={config?.mpc.thrust_pair_weight}
+                  onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)}
+                  isNumber
+                />
+                <ConfigField
+                  label="Coast Position Tol. (m)"
+                  value={config?.mpc.coast_pos_tolerance}
+                  onChange={(v) => updateConfig('mpc.coast_pos_tolerance', v)}
+                  isNumber
+                />
+                <ConfigField
+                  label="Coast Velocity Tol. (m/s)"
+                  value={config?.mpc.coast_vel_tolerance}
+                  onChange={(v) => updateConfig('mpc.coast_vel_tolerance', v)}
+                  isNumber
+                />
+                <ConfigField
+                  label="Coast Min Speed (m/s)"
+                  value={config?.mpc.coast_min_speed}
+                  onChange={(v) => updateConfig('mpc.coast_min_speed', v)}
+                  isNumber
+                />
+              </div>
+            )}
+          </section>
+
+          <section>
+            <button
+              onClick={() => setShowReference((v) => !v)}
+              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
+            >
+              <span className="text-sm uppercase tracking-wider text-emerald-400 font-bold">
+                Settings Reference
+              </span>
+              {showReference ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+
+            {showReference && (
+              <div className="mt-4 space-y-4">
+                {SETTING_REFERENCE_SECTIONS.map((section) => (
+                  <div key={section.title} className="rounded border border-slate-800 bg-slate-900/70 p-4">
+                    <h4 className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-3">
+                      {section.title}
+                    </h4>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {section.items.map((item) => (
+                        <div key={item.key} className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <p className="text-sm font-semibold text-slate-200">{item.label}</p>
+                            <span className="text-[10px] text-slate-500 font-mono">{item.key}</span>
+                          </div>
+                          <p className="text-xs text-slate-300 mb-1">{item.description}</p>
+                          <p className="text-[11px] text-emerald-300/90">{item.impact}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
 }
 
 interface ConfigFieldProps {
-    label: string;
-    value: any;
-    onChange: (value: any) => void;
-    isNumber?: boolean;
-    desc?: string;
-    step?: number;
+  label: string;
+  value: unknown;
+  onChange: (value: string) => void;
+  isNumber?: boolean;
+  desc?: string;
+  step?: number;
 }
 
 function ConfigField({ label, value, onChange, isNumber, desc, step }: ConfigFieldProps) {
-    return (
-        <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-slate-400 uppercase">{label}</label>
-            <input 
-                type={isNumber ? "number" : "text"}
-                step={step || (isNumber ? 1 : undefined)}
-                value={value ?? ''}
-                onChange={(e) => onChange(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            {desc && <span className="text-[10px] text-slate-500">{desc}</span>}
-        </div>
-    );
+  const inputValue =
+    typeof value === 'string' || typeof value === 'number' ? value : '';
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-slate-400 uppercase">{label}</label>
+      <input
+        type={isNumber ? 'number' : 'text'}
+        step={step ?? (isNumber ? 1 : undefined)}
+        value={inputValue}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+      />
+      {desc && <span className="text-[10px] text-slate-500">{desc}</span>}
+    </div>
+  );
+}
+
+interface ToggleFieldProps {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+function ToggleField({ label, checked, onChange }: ToggleFieldProps) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800">
+      <span className="text-sm font-medium text-slate-300">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-offset-slate-900"
+      />
+    </div>
+  );
+}
+
+interface SelectFieldOption {
+  label: string;
+  value: string;
+}
+
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectFieldOption[];
+  desc?: string;
+}
+
+function SelectField({ label, value, onChange, options, desc }: SelectFieldProps) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-slate-400 uppercase">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {desc && <span className="text-[10px] text-slate-500">{desc}</span>}
+    </div>
+  );
 }

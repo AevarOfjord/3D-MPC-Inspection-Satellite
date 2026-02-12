@@ -51,6 +51,13 @@ def update_config(overrides: dict):
     manager.update_config(overrides)
     return {"status": "updated", "config": manager.get_config()}
 
+@router.post("/config/reset")
+def reset_config():
+    """Reset simulation configuration overrides back to defaults."""
+    manager = get_runner_manager()
+    manager.reset_config()
+    return {"status": "reset", "config": manager.get_config()}
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for log streaming."""

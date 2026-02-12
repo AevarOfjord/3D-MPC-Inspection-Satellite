@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -30,6 +30,158 @@ class RunnerManager:
         self._custom_config: dict | None = None
         self._temp_config_path: str | None = None
 
+    @staticmethod
+    def _map_legacy_mpc_overrides(legacy_mpc: dict[str, Any]) -> dict[str, Any]:
+        """Map legacy UI payload shape (control.mpc.*) to AppConfig.mpc fields."""
+        mapped: dict[str, Any] = {}
+
+        direct_fields = {
+            "prediction_horizon",
+            "control_horizon",
+            "dt",
+            "solver_time_limit",
+            "solver_type",
+            "verbose_mpc",
+            "Q_contour",
+            "Q_progress",
+            "progress_reward",
+            "Q_lag",
+            "Q_smooth",
+            "Q_attitude",
+            "Q_terminal_pos",
+            "Q_terminal_s",
+            "q_angular_velocity",
+            "r_thrust",
+            "r_rw_torque",
+            "thrust_l1_weight",
+            "thrust_pair_weight",
+            "coast_pos_tolerance",
+            "coast_vel_tolerance",
+            "coast_min_speed",
+            "thruster_type",
+            "obstacle_margin",
+            "enable_collision_avoidance",
+            "path_speed",
+            "path_speed_min",
+            "path_speed_max",
+            "progress_taper_distance",
+            "progress_slowdown_distance",
+            "max_linear_velocity",
+            "max_angular_velocity",
+            "enable_delta_u_coupling",
+            "enable_gyro_jacobian",
+            "enable_auto_state_bounds",
+        }
+
+        for key, value in legacy_mpc.items():
+            if key in direct_fields:
+                mapped[key] = value
+
+        weights = legacy_mpc.get("weights")
+        if isinstance(weights, dict):
+            weight_map = {
+                "Q_contour": "Q_contour",
+                "Q_progress": "Q_progress",
+                "Q_lag": "Q_lag",
+                "Q_smooth": "Q_smooth",
+                "Q_attitude": "Q_attitude",
+                "Q_terminal_pos": "Q_terminal_pos",
+                "Q_terminal_s": "Q_terminal_s",
+                "angular_velocity": "q_angular_velocity",
+                "thrust": "r_thrust",
+                "rw_torque": "r_rw_torque",
+                "progress_reward": "progress_reward",
+                "thrust_l1_weight": "thrust_l1_weight",
+                "thrust_pair_weight": "thrust_pair_weight",
+            }
+            for src, dst in weight_map.items():
+                if src in weights:
+                    mapped[dst] = weights[src]
+
+        settings = legacy_mpc.get("settings")
+        if isinstance(settings, dict):
+            settings_map = {
+                "dt": "dt",
+                "thruster_type": "thruster_type",
+                "enable_collision_avoidance": "enable_collision_avoidance",
+                "obstacle_margin": "obstacle_margin",
+                "max_linear_velocity": "max_linear_velocity",
+                "max_angular_velocity": "max_angular_velocity",
+                "enable_delta_u_coupling": "enable_delta_u_coupling",
+                "enable_gyro_jacobian": "enable_gyro_jacobian",
+                "enable_auto_state_bounds": "enable_auto_state_bounds",
+                "verbose_mpc": "verbose_mpc",
+            }
+            for src, dst in settings_map.items():
+                if src in settings:
+                    mapped[dst] = settings[src]
+
+        path_following = legacy_mpc.get("path_following")
+        if isinstance(path_following, dict):
+            path_map = {
+                "path_speed": "path_speed",
+                "path_speed_min": "path_speed_min",
+                "path_speed_max": "path_speed_max",
+                "progress_taper_distance": "progress_taper_distance",
+                "progress_slowdown_distance": "progress_slowdown_distance",
+                "coast_pos_tolerance": "coast_pos_tolerance",
+                "coast_vel_tolerance": "coast_vel_tolerance",
+                "coast_min_speed": "coast_min_speed",
+            }
+            for src, dst in path_map.items():
+                if src in path_following:
+                    mapped[dst] = path_following[src]
+
+        return mapped
+
+    def _normalize_overrides(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Accept both new AppConfig shape and legacy UI shape."""
+        normalized: dict[str, Any] = {}
+
+        for section in ("physics", "mpc", "simulation", "input_file_path"):
+            if section in overrides:
+                normalized[section] = overrides[section]
+
+        # Legacy UI payload: { control: { mpc: ... }, sim: ... }
+        control = overrides.get("control")
+        if isinstance(control, dict):
+            legacy_mpc = control.get("mpc")
+            if isinstance(legacy_mpc, dict):
+                mapped_mpc = self._map_legacy_mpc_overrides(legacy_mpc)
+                if mapped_mpc:
+                    existing_mpc = normalized.get("mpc")
+                    if isinstance(existing_mpc, dict):
+                        existing_mpc.update(mapped_mpc)
+                    else:
+                        normalized["mpc"] = mapped_mpc
+
+        legacy_sim = overrides.get("sim")
+        if isinstance(legacy_sim, dict):
+            sim_updates: dict[str, Any] = {}
+            if "duration" in legacy_sim:
+                sim_updates["max_duration"] = legacy_sim["duration"]
+            if "dt" in legacy_sim:
+                sim_updates["dt"] = legacy_sim["dt"]
+            if "control_dt" in legacy_sim:
+                sim_updates["control_dt"] = legacy_sim["control_dt"]
+            if sim_updates:
+                existing_sim = normalized.get("simulation")
+                if isinstance(existing_sim, dict):
+                    existing_sim.update(sim_updates)
+                else:
+                    normalized["simulation"] = sim_updates
+
+        # Keep control_dt aligned with MPC dt when dt is explicitly overridden.
+        mpc_section = normalized.get("mpc")
+        if isinstance(mpc_section, dict) and "dt" in mpc_section:
+            simulation_section = normalized.get("simulation")
+            if isinstance(simulation_section, dict):
+                simulation_section.setdefault("control_dt", mpc_section["dt"])
+            else:
+                normalized["simulation"] = {"control_dt": mpc_section["dt"]}
+
+        return normalized
+
     def get_config(self) -> dict:
         """Get the current configuration (default + overrides)."""
         from satellite_control.config.simulation_config import SimulationConfig
@@ -42,13 +194,29 @@ class RunnerManager:
             config = SimulationConfig.create_with_overrides(
                 self._custom_config, base_config=config
             )
-            
-        return config.to_dict()
+
+        # Preserve legacy UI shape while also exposing full AppConfig sections.
+        ui_config = config.to_dict()
+        app_config = config.app_config.model_dump()
+        ui_config["physics"] = app_config.get("physics", {})
+        ui_config["mpc"] = app_config.get("mpc", {})
+        ui_config["simulation"] = app_config.get("simulation", {})
+        ui_config["input_file_path"] = app_config.get("input_file_path")
+        return ui_config
 
     def update_config(self, overrides: dict):
         """Update the custom configuration overrides."""
-        self._custom_config = overrides
-        logger.info("Updated custom configuration overrides")
+        normalized = self._normalize_overrides(overrides)
+        self._custom_config = normalized if normalized else None
+        logger.info(
+            "Updated custom configuration overrides: sections=%s",
+            list(normalized.keys()),
+        )
+
+    def reset_config(self):
+        """Clear custom overrides and revert to default configuration."""
+        self._custom_config = None
+        logger.info("Reset custom configuration overrides to defaults")
 
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection and send history."""
@@ -222,4 +390,3 @@ class RunnerManager:
         if self.process:
             return_code = await self.process.wait()
             await self._broadcast(f"\n>>> Simulation finished with return code {return_code}.\n")
-
