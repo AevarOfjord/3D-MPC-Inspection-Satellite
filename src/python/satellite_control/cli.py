@@ -91,6 +91,9 @@ def run(
     mission_file: str | None = typer.Option(
         None, "--mission", "-m", help="Path to mission file (JSON) to execute"
     ),
+    config_file: str | None = typer.Option(
+        None, "--config", "-c", help="Path to config overrides file (JSON)"
+    ),
 ):
     """
     Run the Satellite MPC Simulation.
@@ -108,6 +111,27 @@ def run(
     sim_start_angle: tuple[float, float, float] | None = None
     sim_end_angle: tuple[float, float, float] | None = None
     config_overrides: dict[str, dict[str, Any]] | None = None
+
+    # Load config file if provided
+    if config_file:
+        import json
+        from pathlib import Path
+        
+        cfg_path = Path(config_file)
+        if not cfg_path.exists():
+             console.print(f"[red]Config file not found: {cfg_path}[/red]")
+             raise typer.Exit(code=1)
+        
+        try:
+            loaded_overrides = json.loads(cfg_path.read_text())
+            if not isinstance(loaded_overrides, dict):
+                 console.print(f"[red]Config file must contain a JSON object.[/red]")
+                 raise typer.Exit(code=1)
+            config_overrides = loaded_overrides
+            console.print(f"[green]Loaded configuration overrides from {cfg_path}[/green]")
+        except json.JSONDecodeError as e:
+             console.print(f"[red]Invalid JSON in config file: {e}[/red]")
+             raise typer.Exit(code=1)
 
     # Import SimulationConfig for Pydantic configuration
     from satellite_control.config.simulation_config import SimulationConfig

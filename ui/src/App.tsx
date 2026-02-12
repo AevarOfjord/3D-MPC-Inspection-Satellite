@@ -11,14 +11,15 @@ import { FocusButton } from './components/FocusButton';
 import { RunnerView } from './components/RunnerWindow'; 
 import { TrajectoryStudioLayout } from './components/TrajectoryStudio/TrajectoryStudioLayout';
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Calculator, ScanLine, Terminal, Rocket, Database, FileText, Target } from 'lucide-react';
+import { Monitor, Calculator, ScanLine, Terminal, Rocket, Database, FileText, Target, Settings } from 'lucide-react';
 import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
 import { SimulationDataView } from './components/SimulationDataView';
+import { MPCSettingsView } from './components/MPCSettingsView';
 import { ORBIT_SCALE, orbitSnapshot } from './data/orbitSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
-  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan' | 'runner' | 'data'>('viewer');
+  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan' | 'runner' | 'data' | 'settings'>('viewer');
   const [eventLogOpen, setEventLogOpen] = useState(false);
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
@@ -49,6 +50,10 @@ function App() {
 
   const switchToDataView = () => {
       setAppMode('data');
+  };
+
+  const switchToSettings = () => {
+      setAppMode('settings');
   };
 
   useEffect(() => {
@@ -152,6 +157,17 @@ function App() {
             >
               <Database size={14} />
               DATA
+            </button>
+            <button
+              onClick={switchToSettings}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'settings' 
+                  ? 'bg-slate-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Settings size={14} />
+              SETTINGS
             </button>
           </div>
         </div>
@@ -294,6 +310,7 @@ function App() {
         )}
 
         {appMode === 'data' && <SimulationDataView />}
+        {appMode === 'settings' && <MPCSettingsView />}
 
         {appMode === 'viewer' && (
             <div className="flex-1 relative">

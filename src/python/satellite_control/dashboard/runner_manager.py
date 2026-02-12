@@ -27,6 +27,28 @@ class RunnerManager:
         self.active_websockets: list[WebSocket] = []
         self._log_history: list[str] = []
         self.max_history_lines = 1000
+        self._custom_config: dict | None = None
+        self._temp_config_path: str | None = None
+
+    def get_config(self) -> dict:
+        """Get the current configuration (default + overrides)."""
+        from satellite_control.config.simulation_config import SimulationConfig
+        
+        # Start with default
+        config = SimulationConfig.create_default()
+        
+        # Apply overrides if present
+        if self._custom_config:
+            config = SimulationConfig.create_with_overrides(
+                self._custom_config, base_config=config
+            )
+            
+        return config.to_dict()
+
+    def update_config(self, overrides: dict):
+        """Update the custom configuration overrides."""
+        self._custom_config = overrides
+        logger.info("Updated custom configuration overrides")
 
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection and send history."""
@@ -88,6 +110,26 @@ class RunnerManager:
                 await self._broadcast(f">>> Error resolving mission '{mission_name}': {e}\n")
                 return
 
+        # Inject custom config if present
+        if self._custom_config:
+            import json
+            import tempfile
+            
+            try:
+                # Create a temporary file to store the config overrides
+                # We use a named temporary file that persists until we delete it
+                # Note: On Windows, opening a temp file twice can be an issue, but we're passing path to subprocess
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+                    json.dump(self._custom_config, tmp)
+                    config_path = tmp.name
+                
+                cmd_args.extend(["--config", config_path])
+                self._temp_config_path = config_path # Store to clean up later
+                await self._broadcast(f">>> Using custom configuration overrides\n")
+            except Exception as e:
+                 logger.error(f"Failed to create config file: {e}")
+                 await self._broadcast(f">>> Warning: Failed to apply custom config: {e}\n")
+
         await self._broadcast(f">>> Starting simulation: python {' '.join(cmd_args)}\n")
 
         try:
@@ -125,6 +167,12 @@ class RunnerManager:
             logger.error(f"Failed to start simulation: {e}")
             await self._broadcast(f"\n>>> Error starting simulation: {e}\n")
             self.process = None
+            if self._temp_config_path and os.path.exists(self._temp_config_path):
+                try:
+                    os.unlink(self._temp_config_path)
+                except:
+                    pass
+            self._temp_config_path = None
 
     async def stop_simulation(self):
         """Stop the currently running simulation."""
@@ -146,6 +194,14 @@ class RunnerManager:
                 await self._broadcast(f">>> Error stopping process: {e}\n")
         else:
             await self._broadcast("\n>>> No simulation is running to stop.\n")
+            
+        # Cleanup temp file if it exists
+        if self._temp_config_path and os.path.exists(self._temp_config_path):
+             try:
+                 os.unlink(self._temp_config_path)
+             except:
+                 pass
+        self._temp_config_path = None
 
     async def _monitor_stream(self, stream: asyncio.StreamReader, stream_name: str):
         """Read lines from a stream and broadcast them."""
