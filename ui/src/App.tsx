@@ -8,16 +8,17 @@ import { useTelemetryStore } from './store/telemetryStore';
 import { useCameraStore } from './store/cameraStore';
 import { PlaybackSelector } from './components/PlaybackSelector';
 import { FocusButton } from './components/FocusButton';
-import { RunnerView } from './components/RunnerWindow'; // Renamed import, file same
+import { RunnerView } from './components/RunnerWindow'; 
 import { TrajectoryStudioLayout } from './components/TrajectoryStudio/TrajectoryStudioLayout';
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Calculator, ScanLine, Terminal } from 'lucide-react';
+import { Monitor, Calculator, ScanLine, Terminal, Rocket, Database, FileText, Target } from 'lucide-react';
 import { OrbitTargetsPanel } from './components/OrbitTargetsPanel';
+import { SimulationDataView } from './components/SimulationDataView';
 import { ORBIT_SCALE, orbitSnapshot } from './data/orbitSnapshot';
 
 function App() {
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>('free');
-  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan' | 'runner'>('viewer');
+  const [appMode, setAppMode] = useState<'viewer' | 'mission' | 'scan' | 'runner' | 'data'>('viewer');
   const [eventLogOpen, setEventLogOpen] = useState(false);
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
@@ -44,6 +45,10 @@ function App() {
 
   const switchToRunner = () => {
       setAppMode('runner');
+  };
+
+  const switchToDataView = () => {
+      setAppMode('data');
   };
 
   useEffect(() => {
@@ -81,43 +86,74 @@ function App() {
   }, [appMode, builder.state.previewPath]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-black text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
       <TelemetryBridge />
 
       {/* Header */}
-      <header className="h-14 bg-slate-950/90 border-b border-slate-800 flex justify-between items-center px-4 shrink-0 z-30">
+      <header className="flex-none h-12 bg-slate-900 border-b border-slate-800 flex items-center px-4 justify-between select-none z-50">
         <div className="flex items-center gap-6">
-            <h1 className="text-xl font-bold flex items-center gap-2 tracking-wider text-cyan-400 text-shadow-glow">
-              <span>🛰️</span> MISSION CONTROL
-            </h1>
-            
-            {/* Mode Tabs */}
-            <div className="flex bg-slate-900 rounded p-1 border border-slate-800">
-                <button
-                    onClick={switchToViewer}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'viewer' ? 'bg-cyan-500/20 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <Monitor size={14} /> VIEWER
-                </button>
-                <button
-                    onClick={switchToMissionPlanner}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'mission' ? 'bg-orange-500/20 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <Calculator size={14} /> MISSION PLANNER
-                </button>
-                <button
-                    onClick={switchToScanPlanner}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'scan' ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <ScanLine size={14} /> SCAN PLANNER
-                </button>
-                <button
-                    onClick={switchToRunner}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold uppercase transition-all ${appMode === 'runner' ? 'bg-purple-500/20 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <Terminal size={14} /> RUNNER
-                </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <Rocket className="text-blue-500" size={20} />
+            <span className="font-bold tracking-wide text-blue-100">MISSION CONTROL</span>
+          </div>
+          
+          <div className="flex bg-slate-800 rounded-md p-1 gap-1">
+            <button
+              onClick={switchToViewer}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'viewer' 
+                  ? 'bg-blue-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Monitor size={14} />
+              VIEWER
+            </button>
+            <button
+              onClick={switchToMissionPlanner}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'mission' 
+                  ? 'bg-purple-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <FileText size={14} />
+              MISSION PLANNER
+            </button>
+            <button
+              onClick={switchToScanPlanner}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'scan' 
+                  ? 'bg-emerald-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Target size={14} />
+              SCAN PLANNER
+            </button>
+            <button
+              onClick={switchToRunner}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'runner' 
+                  ? 'bg-indigo-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Terminal size={14} />
+              RUNNER
+            </button>
+            <button
+              onClick={switchToDataView}
+              className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                appMode === 'data' 
+                  ? 'bg-orange-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Database size={14} />
+              DATA
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-4 items-center">
@@ -177,7 +213,7 @@ function App() {
       {/* Main Layout Area */}
       <main className="flex-1 relative flex overflow-hidden">
         
-        {appMode === 'mission' ? (
+        {appMode === 'mission' && (
             <TrajectoryStudioLayout 
                 builder={builder}
                 showPathStudio={false}
@@ -229,7 +265,9 @@ function App() {
                     </div>
                 }
             />
-        ) : appMode === 'scan' ? (
+        )}
+
+        {appMode === 'scan' && (
             <TrajectoryStudioLayout 
                 builder={builder}
                 showPathStudio={true}
@@ -247,11 +285,17 @@ function App() {
                     </div>
                 }
             />
-        ) : appMode === 'runner' ? (
+        )}
+
+        {appMode === 'runner' && (
             <div className="flex-1 relative bg-slate-900">
                 <RunnerView />
             </div>
-        ) : (
+        )}
+
+        {appMode === 'data' && <SimulationDataView />}
+
+        {appMode === 'viewer' && (
             <div className="flex-1 relative">
                 <UnifiedViewport 
                     mode={appMode} 
@@ -259,8 +303,7 @@ function App() {
                     builderState={builder.state}
                     builderActions={builder.actions}
                 />
-                {appMode === 'viewer' && (
-                  <OrbitTargetsPanel
+                <OrbitTargetsPanel
                     className="fixed right-6 top-1/2 -translate-y-1/2"
                     selectedTargetId={null}
                     ownSatellite={{
@@ -278,8 +321,7 @@ function App() {
                     onFocusTarget={(targetId, positionScene, focusDistance) => {
                       useCameraStore.getState().requestFocus(positionScene, focusDistance);
                     }}
-                  />
-                )}
+                />
                 
                 {/* Overlay (Viewer Mode Only) */}
                 <Overlay />
