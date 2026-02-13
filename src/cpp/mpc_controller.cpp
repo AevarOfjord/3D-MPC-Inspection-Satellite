@@ -965,6 +965,68 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     VectorXd x_curr_aug = x_current;
     A_dirty_ = false;
 
+    double s_proj_raw = s_runtime_;
+    double path_error = std::numeric_limits<double>::infinity();
+    double endpoint_error = std::numeric_limits<double>::infinity();
+
+    if (path_data_valid_ && x_current.size() >= 3) {
+        Eigen::Vector3d p_curr = x_current.segment<3>(0);
+        Eigen::Vector3d proj_point = Eigen::Vector3d::Zero();
+        std::tie(s_proj_raw, proj_point, path_error, endpoint_error) = project_onto_path(p_curr);
+        (void)proj_point;
+
+        if (!s_runtime_initialized_) {
+            if (x_current.size() >= 17) {
+                s_runtime_ = clamp_path_s(x_current(16));
+            } else {
+                s_runtime_ = clamp_path_s(s_proj_raw);
+            }
+            s_runtime_initialized_ = true;
+        } else {
+            double lead_max = 0.5 * mpc_params_.path_speed * dt_ * static_cast<double>(N_);
+            lead_max = std::max(0.2, std::min(1.0, lead_max));
+            if (path_total_length_ > 0.0) {
+                lead_max = std::min(lead_max, path_total_length_);
+            }
+            double backtrack_tol = std::max(0.1, 0.5 * mpc_params_.path_speed * dt_);
+            if (path_total_length_ > 0.0) {
+                backtrack_tol = std::min(backtrack_tol, path_total_length_);
+            }
+
+            double s_filtered = clamp_path_s(s_proj_raw);
+            if (s_filtered < s_runtime_ - backtrack_tol) {
+                s_filtered = s_runtime_;
+            }
+            if (s_filtered > s_runtime_ + lead_max) {
+                s_filtered = s_runtime_ + lead_max;
+            }
+            if (s_filtered > s_runtime_) {
+                s_runtime_ = clamp_path_s(s_filtered);
+            }
+        }
+    } else if (!s_runtime_initialized_) {
+        if (x_current.size() >= 17) {
+            s_runtime_ = clamp_path_s(x_current(16));
+        } else {
+            s_runtime_ = 0.0;
+        }
+        s_runtime_initialized_ = true;
+    }
+
+    if (x_current.size() == 16) {
+        x_curr_aug.resize(17);
+        x_curr_aug.head(16) = x_current;
+        x_curr_aug(16) = s_runtime_;
+    } else if (x_current.size() >= 17) {
+        x_curr_aug = x_current;
+        x_curr_aug(16) = s_runtime_;
+    }
+    result.path_s = s_runtime_;
+    result.path_s_proj = s_proj_raw;
+    result.path_error = path_error;
+    result.path_endpoint_error = endpoint_error;
+    result.path_s_pred = s_runtime_;
+
     // Update s_guess mechanism (Warm Start)
     // Shift s_guess_: s[0] = s[1], s[N] = s[N-1] + v*dt
     if (s_guess_.size() == N_ + 1) {
@@ -972,8 +1034,8 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
         s_guess_.back() += mpc_params_.path_speed * dt_;
 
         double s_curr = s_guess_.front();
-        if (x_current.size() >= 17) {
-            s_curr = x_current(16);
+        if (x_curr_aug.size() >= 17) {
+            s_curr = x_curr_aug(16);
         }
         double delta = s_curr - s_guess_.front();
         for (double &s_k : s_guess_) {
@@ -1063,6 +1125,7 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
         if (has_last_feasible_control_ && last_feasible_control_.size() == nu_) {
             result.u = last_feasible_control_;
         }
+        result.path_s_pred = s_runtime_;
         return result;
     }
 
@@ -1081,13 +1144,18 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 
     // Clip to bounds (safety)
     VectorXd lower = control_lower_;
-    if (x_current.size() >= 17) {
-        lower(nu_ - 1) = compute_dynamic_vs_min(x_current(16));
+    if (x_curr_aug.size() >= 17) {
+        lower(nu_ - 1) = compute_dynamic_vs_min(x_curr_aug(16));
     }
     result.u = result.u.cwiseMax(lower).cwiseMin(control_upper_);
     result.status = 1;
     last_feasible_control_ = result.u;
     has_last_feasible_control_ = true;
+    if (result.u.size() == nu_) {
+        double s_next = s_runtime_ + result.u(nu_ - 1) * dt_;
+        s_runtime_ = clamp_path_s(s_next);
+    }
+    result.path_s_pred = s_runtime_;
 
     // --- Velocity Governor Safety Check (Post-Solve) ---
     // If strict velocity limit is enabled and we are overspeeding,
@@ -1424,153 +1492,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         // Scan mode: keep +X forward, +Y object-facing, and +Z aligned to scan axis.
         bool build_attitude_ref = (Q_att > 0.0) || scan_attitude_enabled_;
         if (build_attitude_ref) {
-            Eigen::Vector3d x_axis = t_ref;
-            double x_norm = x_axis.norm();
-            if (x_norm > 1e-9) {
-                x_axis /= x_norm;
-            } else {
-                x_axis = Eigen::Vector3d(1.0, 0.0, 0.0);
-            }
-            Eigen::Vector3d y_axis(0.0, 1.0, 0.0);
-            Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
-
-            if (scan_attitude_enabled_) {
-                // 1) Use the scan axis line as +Z/-Z reference.
-                Eigen::Vector3d z_line = scan_axis_;
-                double z_line_norm = z_line.norm();
-                if (z_line_norm > 1e-9) {
-                    z_line /= z_line_norm;
-                } else {
-                    z_line = Eigen::Vector3d::UnitZ();
-                }
-
-                // 2) Build object-facing radial direction in the scan plane (+Y target).
-                Eigen::Vector3d radial_in = scan_center_ - p_ref;
-                radial_in -= radial_in.dot(z_line) * z_line;
-                double radial_norm = radial_in.norm();
-                Eigen::Vector3d radial_dir = Eigen::Vector3d::UnitY();
-                bool has_radial = false;
-                if (radial_norm > 1e-9) {
-                    radial_dir = radial_in / radial_norm;
-                    has_radial = true;
-                } else if (q_curr.norm() > 1e-9) {
-                    Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
-                    q_curr_eig.normalize();
-                    Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
-                    curr_y -= curr_y.dot(z_line) * z_line;
-                    double curr_y_norm = curr_y.norm();
-                    if (curr_y_norm > 1e-9) {
-                        radial_dir = curr_y / curr_y_norm;
-                        has_radial = true;
-                    }
-                }
-                if (!has_radial) {
-                    // Deterministic fallback orthogonal to scan axis.
-                    Eigen::Vector3d ref =
-                        (std::abs(z_line.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
-                                                     : Eigen::Vector3d::UnitX();
-                    radial_dir = z_line.cross(ref);
-                    double fallback_norm = radial_dir.norm();
-                    if (fallback_norm > 1e-9) {
-                        radial_dir /= fallback_norm;
-                    } else {
-                        radial_dir = Eigen::Vector3d::UnitY();
-                    }
-                    has_radial = true;
-                }
-
-                // 3) Keep +X aligned with path travel in the scan plane.
-                Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_line) * z_line;
-                double t_plane_norm = t_plane.norm();
-                if (t_plane_norm > 1e-9) {
-                    x_axis = t_plane / t_plane_norm;
-                    // Choose +Z or -Z (same axis line) so +Y points toward the object.
-                    Eigen::Vector3d y_plus = z_line.cross(x_axis);
-                    double y_plus_norm = y_plus.norm();
-                    if (y_plus_norm > 1e-9) {
-                        y_plus /= y_plus_norm;
-                        bool use_positive_z = (y_plus.dot(radial_dir) >= 0.0);
-                        z_axis = use_positive_z ? z_line : -z_line;
-                    } else {
-                        z_axis = z_line;
-                    }
-                    y_axis = z_axis.cross(x_axis);
-                } else {
-                    // Degenerate tangent (parallel to scan axis): keep +Y object-facing and
-                    // choose +X from direction preference.
-                    z_axis = z_line;
-                    y_axis = radial_dir;
-                    x_axis = scan_direction_cw_ ? z_axis.cross(y_axis)
-                                                : y_axis.cross(z_axis);
-                }
-
-                // Re-orthonormalize and keep +Y object-facing without sacrificing +X.
-                x_axis -= x_axis.dot(z_axis) * z_axis;
-                x_norm = x_axis.norm();
-                if (x_norm > 1e-9) {
-                    x_axis /= x_norm;
-                } else {
-                    x_axis = scan_direction_cw_ ? z_axis.cross(radial_dir)
-                                                : radial_dir.cross(z_axis);
-                    x_norm = x_axis.norm();
-                    if (x_norm > 1e-9) {
-                        x_axis /= x_norm;
-                    } else {
-                        x_axis = Eigen::Vector3d::UnitX();
-                    }
-                }
-                y_axis = z_axis.cross(x_axis);
-                double y_norm = y_axis.norm();
-                if (y_norm > 1e-9) {
-                    y_axis /= y_norm;
-                } else {
-                    y_axis = radial_dir;
-                }
-                if (has_radial && y_axis.dot(radial_dir) < 0.0) {
-                    y_axis = -y_axis;
-                    z_axis = -z_axis;
-                }
-                x_axis = y_axis.cross(z_axis);
-                x_norm = x_axis.norm();
-                if (x_norm > 1e-9) {
-                    x_axis /= x_norm;
-                } else {
-                    x_axis = Eigen::Vector3d::UnitX();
-                }
-
-                // Keep +X forward along path travel (use forward branch).
-                if (x_axis.dot(t_ref) < 0.0) {
-                    x_axis = -x_axis;
-                    y_axis = -y_axis;
-                }
-            } else {
-                Eigen::Vector3d up(0.0, 0.0, 1.0);
-                if (std::abs(x_axis.dot(up)) > 0.95) {
-                    up = Eigen::Vector3d(0.0, 1.0, 0.0);
-                }
-                z_axis = up - up.dot(x_axis) * x_axis;
-                double z_norm = z_axis.norm();
-                if (z_norm > 1e-9) {
-                    z_axis /= z_norm;
-                } else {
-                    z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
-                }
-                y_axis = z_axis.cross(x_axis);
-                double y_norm = y_axis.norm();
-                if (y_norm > 1e-9) {
-                    y_axis /= y_norm;
-                } else {
-                    y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
-                }
-            }
-
-            Eigen::Matrix3d R;
-            R.col(0) = x_axis;
-            R.col(1) = y_axis;
-            R.col(2) = z_axis;
-            Eigen::Quaterniond q_ref_eig(R);
-            Eigen::Vector4d q_ref(q_ref_eig.w(), q_ref_eig.x(), q_ref_eig.y(), q_ref_eig.z());
-
+            Eigen::Vector4d q_ref = build_reference_quaternion(p_ref, t_ref, q_curr);
             if (has_q_prev_ref && q_prev_ref.dot(q_ref) < 0.0) {
                 q_ref = -q_ref;
             } else if (!has_q_prev_ref && q_curr.dot(q_ref) < 0.0) {
@@ -1755,6 +1677,8 @@ void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& p
     if (path_data.empty()) {
         path_data_valid_ = false;
         path_total_length_ = 0.0;
+        s_runtime_ = 0.0;
+        s_runtime_initialized_ = false;
         return;
     }
 
@@ -1771,6 +1695,8 @@ void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& p
 
     // Reset s guess when path changes
     s_guess_.clear();
+    s_runtime_ = 0.0;
+    s_runtime_initialized_ = false;
 
     // Update s bounds with actual path length (if solver initialized)
     if (work_ != nullptr) {
@@ -1839,6 +1765,181 @@ Eigen::Vector3d MPCControllerCpp::get_path_tangent(double s) const {
     }
 
     return diff / len;  // Normalized tangent
+}
+
+double MPCControllerCpp::clamp_path_s(double s) const {
+    if (!path_data_valid_ || path_total_length_ <= 0.0) {
+        return std::max(0.0, s);
+    }
+    return std::max(0.0, std::min(s, path_total_length_));
+}
+
+Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
+    const Eigen::Vector3d& p_ref,
+    const Eigen::Vector3d& t_ref,
+    const Eigen::Vector4d& q_curr
+) const {
+    Eigen::Vector3d x_axis = t_ref;
+    double x_norm = x_axis.norm();
+    if (x_norm > 1e-9) {
+        x_axis /= x_norm;
+    } else {
+        x_axis = Eigen::Vector3d(1.0, 0.0, 0.0);
+    }
+    Eigen::Vector3d y_axis(0.0, 1.0, 0.0);
+    Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
+
+    if (scan_attitude_enabled_) {
+        // 1) Use the scan axis line as +Z/-Z reference.
+        Eigen::Vector3d z_line = scan_axis_;
+        double z_line_norm = z_line.norm();
+        if (z_line_norm > 1e-9) {
+            z_line /= z_line_norm;
+        } else {
+            z_line = Eigen::Vector3d::UnitZ();
+        }
+
+        // 2) Build object-facing radial direction in the scan plane (+Y target).
+        Eigen::Vector3d radial_in = scan_center_ - p_ref;
+        radial_in -= radial_in.dot(z_line) * z_line;
+        double radial_norm = radial_in.norm();
+        Eigen::Vector3d radial_dir = Eigen::Vector3d::UnitY();
+        bool has_radial = false;
+        if (radial_norm > 1e-9) {
+            radial_dir = radial_in / radial_norm;
+            has_radial = true;
+        } else if (q_curr.norm() > 1e-9) {
+            Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
+            q_curr_eig.normalize();
+            Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
+            curr_y -= curr_y.dot(z_line) * z_line;
+            double curr_y_norm = curr_y.norm();
+            if (curr_y_norm > 1e-9) {
+                radial_dir = curr_y / curr_y_norm;
+                has_radial = true;
+            }
+        }
+        if (!has_radial) {
+            Eigen::Vector3d ref =
+                (std::abs(z_line.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
+                                             : Eigen::Vector3d::UnitX();
+            radial_dir = z_line.cross(ref);
+            double fallback_norm = radial_dir.norm();
+            if (fallback_norm > 1e-9) {
+                radial_dir /= fallback_norm;
+            } else {
+                radial_dir = Eigen::Vector3d::UnitY();
+            }
+            has_radial = true;
+        }
+
+        // 3) Keep +X aligned with path travel in the scan plane.
+        Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_line) * z_line;
+        double t_plane_norm = t_plane.norm();
+        if (t_plane_norm > 1e-9) {
+            x_axis = t_plane / t_plane_norm;
+            // Choose +Z or -Z (same axis line) so +Y points toward the object.
+            Eigen::Vector3d y_plus = z_line.cross(x_axis);
+            double y_plus_norm = y_plus.norm();
+            if (y_plus_norm > 1e-9) {
+                y_plus /= y_plus_norm;
+                bool use_positive_z = (y_plus.dot(radial_dir) >= 0.0);
+                z_axis = use_positive_z ? z_line : -z_line;
+            } else {
+                z_axis = z_line;
+            }
+            y_axis = z_axis.cross(x_axis);
+        } else {
+            // Degenerate tangent (parallel to scan axis): keep +Y object-facing and
+            // choose +X from direction preference.
+            z_axis = z_line;
+            y_axis = radial_dir;
+            x_axis = scan_direction_cw_ ? z_axis.cross(y_axis)
+                                        : y_axis.cross(z_axis);
+        }
+
+        // Re-orthonormalize and keep +Y object-facing without sacrificing +X.
+        x_axis -= x_axis.dot(z_axis) * z_axis;
+        x_norm = x_axis.norm();
+        if (x_norm > 1e-9) {
+            x_axis /= x_norm;
+        } else {
+            x_axis = scan_direction_cw_ ? z_axis.cross(radial_dir)
+                                        : radial_dir.cross(z_axis);
+            x_norm = x_axis.norm();
+            if (x_norm > 1e-9) {
+                x_axis /= x_norm;
+            } else {
+                x_axis = Eigen::Vector3d::UnitX();
+            }
+        }
+        y_axis = z_axis.cross(x_axis);
+        double y_norm = y_axis.norm();
+        if (y_norm > 1e-9) {
+            y_axis /= y_norm;
+        } else {
+            y_axis = radial_dir;
+        }
+        if (has_radial && y_axis.dot(radial_dir) < 0.0) {
+            y_axis = -y_axis;
+            z_axis = -z_axis;
+        }
+        x_axis = y_axis.cross(z_axis);
+        x_norm = x_axis.norm();
+        if (x_norm > 1e-9) {
+            x_axis /= x_norm;
+        } else {
+            x_axis = Eigen::Vector3d::UnitX();
+        }
+
+        // Keep +X forward along path travel (use forward branch).
+        if (x_axis.dot(t_ref) < 0.0) {
+            x_axis = -x_axis;
+            y_axis = -y_axis;
+        }
+    } else {
+        Eigen::Vector3d up(0.0, 0.0, 1.0);
+        if (std::abs(x_axis.dot(up)) > 0.95) {
+            up = Eigen::Vector3d(0.0, 1.0, 0.0);
+        }
+        z_axis = up - up.dot(x_axis) * x_axis;
+        double z_norm = z_axis.norm();
+        if (z_norm > 1e-9) {
+            z_axis /= z_norm;
+        } else {
+            z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+        }
+        y_axis = z_axis.cross(x_axis);
+        double y_norm = y_axis.norm();
+        if (y_norm > 1e-9) {
+            y_axis /= y_norm;
+        } else {
+            y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+        }
+    }
+
+    Eigen::Matrix3d R;
+    R.col(0) = x_axis;
+    R.col(1) = y_axis;
+    R.col(2) = z_axis;
+    Eigen::Quaterniond q_ref_eig(R);
+    Eigen::Vector4d q_ref(q_ref_eig.w(), q_ref_eig.x(), q_ref_eig.y(), q_ref_eig.z());
+
+    if (q_curr.norm() > 1e-9 && q_curr.dot(q_ref) < 0.0) {
+        q_ref = -q_ref;
+    }
+    return q_ref;
+}
+
+std::tuple<Eigen::Vector3d, Eigen::Vector3d, Eigen::Vector4d> MPCControllerCpp::get_reference_at_s(
+    double s_query,
+    const Eigen::Vector4d& q_current
+) const {
+    double s_ref = clamp_path_s(s_query);
+    Eigen::Vector3d p_ref = get_path_point(s_ref);
+    Eigen::Vector3d t_ref = get_path_tangent(s_ref);
+    Eigen::Vector4d q_ref = build_reference_quaternion(p_ref, t_ref, q_current);
+    return {p_ref, t_ref, q_ref};
 }
 
 std::tuple<double, Eigen::Vector3d, double, double> MPCControllerCpp::project_onto_path(

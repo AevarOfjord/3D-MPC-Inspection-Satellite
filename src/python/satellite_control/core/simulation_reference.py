@@ -287,29 +287,57 @@ def update_path_reference_state(
         return
 
     # Always MPCC mode
-    pos_ref, tangent = sim.mpc_controller.get_path_reference()
+    q_ref_from_controller = None
+    can_query_cpp_ref = (
+        hasattr(sim.mpc_controller, "_cpp_controller")
+        and hasattr(sim.mpc_controller._cpp_controller, "get_reference_at_s")
+    )
+    if can_query_cpp_ref and hasattr(sim.mpc_controller, "get_path_reference_state"):
+        try:
+            q_curr = (
+                np.array(current_state[3:7], dtype=float)
+                if current_state.shape[0] >= 7
+                else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+            )
+            pos_ref, tangent, q_ref_from_controller = (
+                sim.mpc_controller.get_path_reference_state(q_current=q_curr)
+            )
+        except Exception:
+            logger.debug(
+                "C++ reference frame query failed, using Python frame fallback",
+                exc_info=True,
+            )
+            pos_ref, tangent = sim.mpc_controller.get_path_reference()
+            q_ref_from_controller = None
+    else:
+        pos_ref, tangent = sim.mpc_controller.get_path_reference()
+
     reference_state = _REF_BUF
     reference_state[:] = 0.0
     reference_state[0:3] = pos_ref
 
     tangent_norm = _norm3(tangent)
     if tangent_norm > 1e-6:
-        x_axis = tangent / tangent_norm
-        scan_context = _get_scan_attitude_context(sim)
-        if scan_context is not None:
-            scan_center, scan_axis, scan_direction_cw = scan_context
-            x_axis, y_axis, z_axis = _compute_scan_path_frame(
-                pos_ref=np.array(pos_ref, dtype=float),
-                x_axis=np.array(x_axis, dtype=float),
-                center=scan_center,
-                scan_axis=scan_axis,
-                scan_direction_cw=scan_direction_cw,
-                current_state=current_state,
-            )
+        if q_ref_from_controller is not None and np.linalg.norm(q_ref_from_controller) > 1e-9:
+            q_norm = float(np.linalg.norm(q_ref_from_controller))
+            reference_state[3:7] = np.array(q_ref_from_controller, dtype=float) / q_norm
         else:
-            x_axis, y_axis, z_axis = _compute_continuous_path_frame(sim, x_axis)
+            x_axis = tangent / tangent_norm
+            scan_context = _get_scan_attitude_context(sim)
+            if scan_context is not None:
+                scan_center, scan_axis, scan_direction_cw = scan_context
+                x_axis, y_axis, z_axis = _compute_scan_path_frame(
+                    pos_ref=np.array(pos_ref, dtype=float),
+                    x_axis=np.array(x_axis, dtype=float),
+                    center=scan_center,
+                    scan_axis=scan_axis,
+                    scan_direction_cw=scan_direction_cw,
+                    current_state=current_state,
+                )
+            else:
+                x_axis, y_axis, z_axis = _compute_continuous_path_frame(sim, x_axis)
 
-        reference_state[3:7] = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
+            reference_state[3:7] = quat_wxyz_from_basis(x_axis, y_axis, z_axis)
     else:
         # Maintain current orientation if stationary
         reference_state[3:7] = current_state[3:7]

@@ -8,6 +8,7 @@
 #include <tuple>
 #include <string>
 #include <algorithm>
+#include <limits>
 #include "osqp.h"
 #include "linearizer.hpp"
 #include "obstacle.hpp"
@@ -82,6 +83,11 @@ struct ControlResult {
     double objective;   ///< Solver objective value
     double solve_time;  ///< Time taken to solve [s]
     bool timeout;       ///< Whether the solver timed out
+    double path_s = 0.0;        ///< Path progress value used by MPC this step
+    double path_s_proj = 0.0;   ///< Raw geometric projection on path
+    double path_s_pred = 0.0;   ///< Predicted next progress (s + v_s*dt)
+    double path_error = std::numeric_limits<double>::infinity(); ///< Distance to path
+    double path_endpoint_error = std::numeric_limits<double>::infinity(); ///< Distance to path endpoint
 };
 
 /**
@@ -134,10 +140,17 @@ public:
     double dt() const { return dt_; }
     double path_length() const { return path_total_length_; }
     bool has_path() const { return path_data_valid_; }
+    double current_path_s() const { return s_runtime_; }
 
     // Path utilities (for fast projection in Python)
     std::tuple<double, Eigen::Vector3d, double, double> project_onto_path(
         const Eigen::Vector3d& position) const;
+
+    // Reference utilities (single source of truth for path/scan attitude frame).
+    std::tuple<Eigen::Vector3d, Eigen::Vector3d, Eigen::Vector4d> get_reference_at_s(
+        double s_query,
+        const Eigen::Vector4d& q_current
+    ) const;
 
     /**
      * @brief Provide a warm-start control guess.
@@ -311,10 +324,18 @@ private:
     bool scan_attitude_hard_constraint_ = false; // Soft-only by default (use Q_attitude cost)
     std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
     bool scan_q_ref_valid_ = false;
+    double s_runtime_ = 0.0;
+    bool s_runtime_initialized_ = false;
 
     // Helper methods for path interpolation
     Eigen::Vector3d get_path_point(double s) const;
     Eigen::Vector3d get_path_tangent(double s) const;
+    double clamp_path_s(double s) const;
+    Eigen::Vector4d build_reference_quaternion(
+        const Eigen::Vector3d& p_ref,
+        const Eigen::Vector3d& t_ref,
+        const Eigen::Vector4d& q_curr
+    ) const;
 
 public:
     // Set path data for general path following

@@ -87,7 +87,12 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("iterations", &ControlResult::iterations)
         .def_readwrite("objective", &ControlResult::objective)
         .def_readwrite("solve_time", &ControlResult::solve_time)
-        .def_readwrite("timeout", &ControlResult::timeout);
+        .def_readwrite("timeout", &ControlResult::timeout)
+        .def_readwrite("path_s", &ControlResult::path_s)
+        .def_readwrite("path_s_proj", &ControlResult::path_s_proj)
+        .def_readwrite("path_s_pred", &ControlResult::path_s_pred)
+        .def_readwrite("path_error", &ControlResult::path_error)
+        .def_readwrite("path_endpoint_error", &ControlResult::path_endpoint_error);
 
     // Obstacle Types
     py::enum_<ObstacleType>(m, "ObstacleType")
@@ -133,9 +138,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("project_onto_path", &MPCControllerCpp::project_onto_path,
              py::arg("position"),
              "Project a position onto the current path. Returns (s, point, distance, endpoint_error).")
+        .def("get_reference_at_s", &MPCControllerCpp::get_reference_at_s,
+             py::arg("s_query"), py::arg("q_current"),
+             "Get path reference at arc-length s: returns (position, tangent, quaternion_ref).")
         .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
         .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
         .def_property_readonly("dt", &MPCControllerCpp::dt)
         .def_property_readonly("path_length", &MPCControllerCpp::path_length)
-        .def_property_readonly("has_path", &MPCControllerCpp::has_path);
+        .def_property_readonly("has_path", &MPCControllerCpp::has_path)
+        .def_property_readonly("current_path_s", &MPCControllerCpp::current_path_s);
 }

@@ -29,7 +29,10 @@ from satellite_control.mission.mission_report_generator import (
     create_mission_report_generator,
 )
 from satellite_control.utils.data_logger import create_data_logger
-from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+from satellite_control.utils.orientation_utils import (
+    euler_xyz_to_quat_wxyz,
+    quat_wxyz_to_euler_xyz,
+)
 from satellite_control.utils.simulation_state_validator import (
     create_state_validator_from_config,
 )
@@ -327,6 +330,39 @@ class SimulationInitializer:
         if x_norm <= 1e-9:
             return start_angle
         x_axis = x_axis / x_norm
+
+        # Prefer C++ reference frame so startup orientation matches MPC attitude
+        # target exactly (single source of truth).
+        if (
+            hasattr(self.simulation, "mpc_controller")
+            and hasattr(self.simulation.mpc_controller, "get_path_reference_state")
+            and hasattr(self.simulation.mpc_controller, "_cpp_controller")
+            and hasattr(
+                self.simulation.mpc_controller._cpp_controller, "get_reference_at_s"
+            )
+        ):
+            try:
+                q_start = euler_xyz_to_quat_wxyz(start_angle)
+                _, _, q_ref = self.simulation.mpc_controller.get_path_reference_state(
+                    s_query=0.0, q_current=q_start
+                )
+                q_ref_arr = np.array(q_ref, dtype=float).reshape(-1)
+                if q_ref_arr.size >= 4:
+                    q_ref_arr = q_ref_arr[:4]
+                    q_norm = float(np.linalg.norm(q_ref_arr))
+                    if q_norm > 1e-9:
+                        q_ref_arr = q_ref_arr / q_norm
+                        euler_xyz = quat_wxyz_to_euler_xyz(q_ref_arr)
+                        return (
+                            float(euler_xyz[0]),
+                            float(euler_xyz[1]),
+                            float(euler_xyz[2]),
+                        )
+            except Exception:
+                logger.debug(
+                    "C++ startup reference query failed, using Python frame fallback",
+                    exc_info=True,
+                )
 
         z_axis: np.ndarray
         y_axis: np.ndarray
