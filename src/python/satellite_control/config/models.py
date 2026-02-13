@@ -293,6 +293,24 @@ class MPCParams(BaseModel):
         le=100000.0,
         description="Lag weight - penalizes along-track error (0 = auto)",
     )
+    Q_lag_default: float = Field(
+        constants.Constants.Q_LAG_DEFAULT,
+        ge=-1.0,
+        le=100000.0,
+        description="Default lag weight when Q_lag <= 0 (-1 keeps auto behavior)",
+    )
+    Q_velocity_align: float = Field(
+        constants.Constants.Q_VELOCITY_ALIGN,
+        ge=0.0,
+        le=100000.0,
+        description="Velocity alignment weight (0 reuses Q_progress)",
+    )
+    Q_s_anchor: float = Field(
+        constants.Constants.Q_S_ANCHOR,
+        ge=-1.0,
+        le=100000.0,
+        description="Progress-state anchor weight (-1 keeps auto behavior)",
+    )
     Q_smooth: float = Field(
         constants.Constants.Q_SMOOTH,
         ge=0.0,
@@ -467,6 +485,9 @@ class MPCParams(BaseModel):
     )
     ADVANCED_FIELDS: ClassVar[tuple[str, ...]] = (
         "Q_lag",
+        "Q_lag_default",
+        "Q_velocity_align",
+        "Q_s_anchor",
         "path_speed_min",
         "path_speed_max",
         "progress_taper_distance",
@@ -539,6 +560,8 @@ class MPCParams(BaseModel):
             self.Q_contour
             + self.Q_progress
             + self.Q_lag
+            + max(self.Q_velocity_align, 0.0)
+            + max(self.Q_s_anchor, 0.0)
             + self.Q_smooth
             + self.Q_attitude
             + self.Q_terminal_pos

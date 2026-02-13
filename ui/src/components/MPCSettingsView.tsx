@@ -20,6 +20,9 @@ interface MpcSettings {
   Q_progress: number;
   progress_reward: number;
   Q_lag: number;
+  Q_lag_default: number;
+  Q_velocity_align: number;
+  Q_s_anchor: number;
   Q_smooth: number;
   Q_attitude: number;
   Q_terminal_pos: number;
@@ -88,17 +91,20 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   dt: 0.05,
   solver_time_limit: 0.04,
   solver_type: 'OSQP',
-  Q_contour: 2000.0,
+  Q_contour: 100000.0,
   Q_progress: 100.0,
   progress_reward: 0.0,
   Q_lag: 0.0,
+  Q_lag_default: -1.0,
+  Q_velocity_align: 0.0,
+  Q_s_anchor: -1.0,
   Q_smooth: 10.0,
-  Q_attitude: 50.0,
+  Q_attitude: 5000.0,
   Q_terminal_pos: 0.0,
   Q_terminal_s: 0.0,
   q_angular_velocity: 1000.0,
   r_thrust: 0.1,
-  r_rw_torque: 0.1,
+  r_rw_torque: 0.01,
   thrust_l1_weight: 0.1,
   thrust_pair_weight: 2.0,
   coast_pos_tolerance: 0.1,
@@ -228,6 +234,24 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         label: 'Lag Error (Q_lag)',
         description: 'Penalty on along-track lag relative to the path parameterization.',
         impact: 'Higher values reduce behind-path drift.',
+      },
+      {
+        key: 'mpc.Q_lag_default',
+        label: 'Lag Default (Q_lag_default)',
+        description: 'Fallback lag weight when Q_lag <= 0. Use -1 to keep auto behavior.',
+        impact: 'Controls default lag coupling without forcing it to contour weight.',
+      },
+      {
+        key: 'mpc.Q_velocity_align',
+        label: 'Velocity Align (Q_velocity_align)',
+        description: 'Weight for velocity alignment along path tangent. 0 reuses Q_progress.',
+        impact: 'Separates speed-tracking pressure from velocity-direction tracking.',
+      },
+      {
+        key: 'mpc.Q_s_anchor',
+        label: 'S Anchor (Q_s_anchor)',
+        description: 'Weight anchoring path parameter state to the linearization reference. -1 keeps auto behavior.',
+        impact: 'Lets you tune path-parameter anchoring strength explicitly.',
       },
       {
         key: 'mpc.path_speed_min',
@@ -520,11 +544,14 @@ function validateConfig(config: SettingsConfig): string[] {
   if (!isNonNegative(mpc.max_linear_velocity)) issues.push('Max linear velocity must be >= 0.');
   if (!isNonNegative(mpc.max_angular_velocity)) issues.push('Max angular velocity must be >= 0.');
   if (!isNonNegative(mpc.obstacle_margin)) issues.push('Obstacle margin must be >= 0.');
+  if (mpc.Q_lag_default < -1) issues.push('Q_lag_default must be >= -1.');
+  if (mpc.Q_s_anchor < -1) issues.push('Q_s_anchor must be >= -1.');
 
   const nonNegativeWeights: Array<[string, number]> = [
     ['Q_contour', mpc.Q_contour],
     ['Q_progress', mpc.Q_progress],
     ['Q_lag', mpc.Q_lag],
+    ['Q_velocity_align', mpc.Q_velocity_align],
     ['Q_smooth', mpc.Q_smooth],
     ['Q_attitude', mpc.Q_attitude],
     ['Q_terminal_pos', mpc.Q_terminal_pos],
@@ -1044,6 +1071,27 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   value={config?.mpc.Q_lag}
                   onChange={(v) => updateConfig('mpc.Q_lag', v)}
                   isNumber
+                />
+                <ConfigField
+                  label="Lag Default (Q_lag_default)"
+                  value={config?.mpc.Q_lag_default}
+                  onChange={(v) => updateConfig('mpc.Q_lag_default', v)}
+                  isNumber
+                  desc="-1 = auto fallback"
+                />
+                <ConfigField
+                  label="Velocity Align (Q_velocity_align)"
+                  value={config?.mpc.Q_velocity_align}
+                  onChange={(v) => updateConfig('mpc.Q_velocity_align', v)}
+                  isNumber
+                  desc="0 = reuse Q_progress"
+                />
+                <ConfigField
+                  label="S Anchor (Q_s_anchor)"
+                  value={config?.mpc.Q_s_anchor}
+                  onChange={(v) => updateConfig('mpc.Q_s_anchor', v)}
+                  isNumber
+                  desc="-1 = auto fallback"
                 />
                 <ConfigField
                   label="Path Speed Min (m/s)"

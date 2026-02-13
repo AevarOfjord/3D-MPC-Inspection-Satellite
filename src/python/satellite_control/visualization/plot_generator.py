@@ -510,9 +510,6 @@ class PlotGenerator:
         err_vx = get_series("Error_VX")
         err_vy = get_series("Error_VY")
         err_vz = get_series("Error_VZ")
-        err_roll = get_series("Error_Roll")
-        err_pitch = get_series("Error_Pitch")
-        err_yaw = get_series("Error_Yaw")
         err_wx = get_series("Error_WX")
         err_wy = get_series("Error_WY")
         err_wz = get_series("Error_WZ")
@@ -534,7 +531,11 @@ class PlotGenerator:
                 pad = np.full(len(time) - q_len, ang_err_norm[-1], dtype=float)
                 ang_err_norm = np.concatenate([ang_err_norm, pad])
         else:
-            ang_err_norm = np.degrees(np.sqrt(err_roll**2 + err_pitch**2 + err_yaw**2))
+            err_angle_rad = get_series("Error_Angle_Rad")
+            if len(err_angle_rad) == len(time):
+                ang_err_norm = np.degrees(err_angle_rad)
+            else:
+                ang_err_norm = np.zeros_like(time)
         angvel_err_norm = np.degrees(np.sqrt(err_wx**2 + err_wy**2 + err_wz**2))
 
         axes[0, 0].plot(

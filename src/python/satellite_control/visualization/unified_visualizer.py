@@ -1066,18 +1066,14 @@ class UnifiedVisualizationGenerator:
         err_x = abs(current_data["Error_X"])
         err_y = abs(current_data["Error_Y"])
         err_z = abs(current_data.get("Error_Z", 0.0))
-        err_roll = abs(np.degrees(current_data.get("Error_Roll", 0.0)))
-        err_pitch = abs(np.degrees(current_data.get("Error_Pitch", 0.0)))
-        err_yaw = abs(np.degrees(current_data.get("Error_Yaw", 0.0)))
+        err_ang = abs(np.degrees(current_data.get("Error_Angle_Rad", 0.0)))
 
         error_lines = [
             "ERRORS",
             f"  Err X:   {err_x:.3f} m",
             f"  Err Y:   {err_y:.3f} m",
             f"  Err Z:   {err_z:.3f} m",
-            f"  Err Roll:  {err_roll:.1f}°",
-            f"  Err Pitch: {err_pitch:.1f}°",
-            f"  Err Yaw:   {err_yaw:.1f}°",
+            f"  Att Err:  {err_ang:.1f}°",
         ]
 
         # Group 5: SYSTEM (Black) - Usage & Perf

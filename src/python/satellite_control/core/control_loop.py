@@ -23,7 +23,6 @@ def update_mpc_control_step(sim: Any) -> None:
             mpc_controller=sim.mpc_controller,
             config=sim.structured_config,
             state_validator=sim.state_validator,
-            max_command_history=getattr(sim, "history_max_steps", 0),
         )
 
     current_state = sim.get_current_state()

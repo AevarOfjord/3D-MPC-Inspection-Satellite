@@ -119,11 +119,19 @@ async def get_simulation_telemetry(
     # Playback should be interpreted as LVLH by default.
     frame = "LVLH"
     frame_origin = [0.0, 0.0, 0.0]
+    planned_path_frame = "LVLH"
     if metadata_path.exists():
         try:
             metadata = json.loads(metadata_path.read_text())
             scan_object = metadata.get("scan_object")
             planned_path = metadata.get("planned_path")
+            planned_path_frame_raw = str(
+                metadata.get("planned_path_frame", "LVLH")
+            ).upper()
+            planned_path_frame = (
+                planned_path_frame_raw if planned_path_frame_raw in {"LVLH", "ECI"} else "LVLH"
+            )
+            frame = planned_path_frame
             meta_origin = metadata.get("frame_origin")
             if isinstance(meta_origin, list) and len(meta_origin) >= 3:
                 frame_origin = [float(meta_origin[0]), float(meta_origin[1]), float(meta_origin[2])]
@@ -144,8 +152,8 @@ async def get_simulation_telemetry(
         )
 
     from satellite_control.utils.orientation_utils import (
-        euler_xyz_to_quat_wxyz,
         quat_angle_error,
+        quat_wxyz_to_euler_xyz,
     )
 
     def to_float(value: str | None, default: float = 0.0) -> float:
@@ -155,28 +163,20 @@ async def get_simulation_telemetry(
             return default
 
     def parse_quat_wxyz(row: dict[str, str | None], prefix: str) -> np.ndarray:
-        """Parse quaternion columns with Euler fallback for backward compatibility."""
+        """Parse quaternion columns in wxyz order."""
         qw = row.get(f"{prefix}_QW")
         qx = row.get(f"{prefix}_QX")
         qy = row.get(f"{prefix}_QY")
         qz = row.get(f"{prefix}_QZ")
-        has_quat = any(v not in (None, "") for v in (qw, qx, qy, qz))
-
-        if has_quat:
-            quat = np.array(
-                [
-                    to_float(qw, 1.0),
-                    to_float(qx, 0.0),
-                    to_float(qy, 0.0),
-                    to_float(qz, 0.0),
-                ],
-                dtype=float,
-            )
-        else:
-            roll = to_float(row.get(f"{prefix}_Roll"))
-            pitch = to_float(row.get(f"{prefix}_Pitch"))
-            yaw = to_float(row.get(f"{prefix}_Yaw"))
-            quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
+        quat = np.array(
+            [
+                to_float(qw, 1.0),
+                to_float(qx, 0.0),
+                to_float(qy, 0.0),
+                to_float(qz, 0.0),
+            ],
+            dtype=float,
+        )
 
         norm = float(np.linalg.norm(quat))
         if norm <= 1e-12:
@@ -203,6 +203,8 @@ async def get_simulation_telemetry(
             computed_path: list[list[float]] = []
             last_ref = None
             min_ref_step = 0.02
+            last_curr_yaw_deg: float | None = None
+            curr_yaw_unwrapped_deg: float | None = None
 
             for idx, row in enumerate(reader):
                 ref_x = to_float(row.get("Reference_X"))
@@ -222,23 +224,42 @@ async def get_simulation_telemetry(
                             last_ref = (ref_x, ref_y, ref_z)
 
                 if idx % stride != 0:
+                    # Keep yaw unwrapping continuous even when downsampling output rows.
+                    quat_skip = parse_quat_wxyz(row, "Current")
+                    curr_euler_skip = quat_wxyz_to_euler_xyz(quat_skip)
+                    curr_yaw_deg_skip = float(np.degrees(curr_euler_skip[2]))
+                    if last_curr_yaw_deg is None:
+                        curr_yaw_unwrapped_deg = curr_yaw_deg_skip
+                    else:
+                        delta = curr_yaw_deg_skip - last_curr_yaw_deg
+                        delta = ((delta + 180.0) % 360.0) - 180.0
+                        curr_yaw_unwrapped_deg = (curr_yaw_unwrapped_deg or 0.0) + delta
+                    last_curr_yaw_deg = curr_yaw_deg_skip
                     continue
 
                 quat = parse_quat_wxyz(row, "Current")
+                curr_euler = quat_wxyz_to_euler_xyz(quat)
+                curr_pitch_deg = float(np.degrees(curr_euler[1]))
+                curr_yaw_deg = float(np.degrees(curr_euler[2]))
+                if last_curr_yaw_deg is None:
+                    curr_yaw_unwrapped_deg = curr_yaw_deg
+                else:
+                    delta = curr_yaw_deg - last_curr_yaw_deg
+                    delta = ((delta + 180.0) % 360.0) - 180.0
+                    curr_yaw_unwrapped_deg = (curr_yaw_unwrapped_deg or 0.0) + delta
+                last_curr_yaw_deg = curr_yaw_deg
 
-                reference_roll = to_float(row.get("Reference_Roll"))
-                reference_pitch = to_float(row.get("Reference_Pitch"))
-                reference_yaw = to_float(row.get("Reference_Yaw"))
                 reference_quat = parse_quat_wxyz(row, "Reference")
+                reference_euler = quat_wxyz_to_euler_xyz(reference_quat)
 
                 err_x = to_float(row.get("Error_X"))
                 err_y = to_float(row.get("Error_Y"))
                 err_z = to_float(row.get("Error_Z"))
 
                 # Determine Frame Origin from CSV (preferred) or Metadata
-                current_origin = frame_origin
+                current_origin = frame_origin if frame == "LVLH" else None
                 current_frame = frame
-                if "Frame_Origin_X" in row:
+                if frame == "LVLH" and "Frame_Origin_X" in row:
                     ox = to_float(row.get("Frame_Origin_X"))
                     oy = to_float(row.get("Frame_Origin_Y"))
                     oz = to_float(row.get("Frame_Origin_Z"))
@@ -246,7 +267,7 @@ async def get_simulation_telemetry(
                     # even if the origin is [0,0,0] (which would just be ECI centered)
                     current_origin = [ox, oy, oz]
                     current_frame = "LVLH"
-                elif current_origin is None:
+                elif current_frame == "LVLH" and current_origin is None:
                     current_origin = [0.0, 0.0, 0.0]
 
                 telemetry.append(
@@ -270,9 +291,9 @@ async def get_simulation_telemetry(
                         ],
                         "reference_position": [ref_x, ref_y, ref_z],
                         "reference_orientation": [
-                            reference_roll,
-                            reference_pitch,
-                            reference_yaw,
+                            float(reference_euler[0]),
+                            float(reference_euler[1]),
+                            float(reference_euler[2]),
                         ],
                         "reference_quaternion": list(reference_quat),
                         "scan_object": scan_object,
@@ -286,6 +307,8 @@ async def get_simulation_telemetry(
                         "solve_time": to_float(row.get("Solve_Time", 0.0)) / 1000.0,
                         "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
                         "ang_error": float(quat_angle_error(reference_quat, quat)),
+                        "yaw_unwrapped_deg": float(curr_yaw_unwrapped_deg or 0.0),
+                        "euler_unreliable": bool(abs(curr_pitch_deg) > 85.0),
                         "frame": current_frame,
                         "frame_origin": current_origin,
                     }
@@ -296,6 +319,8 @@ async def get_simulation_telemetry(
             "run_id": run_id,
             "telemetry": telemetry,
             "planned_path": planned_path or [],
+            "planned_path_frame": planned_path_frame,
+            "frame_origin": frame_origin,
         }
     except Exception as e:
         logger.error(f"Error processing telemetry for {run_id}: {e}")
