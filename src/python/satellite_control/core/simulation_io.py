@@ -137,6 +137,16 @@ class SimulationIO:
             return
 
         metadata = {"mission_type": "path_following"}
+        metadata["planned_path_frame"] = "LVLH"
+        frame_origin = getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0))
+        try:
+            metadata["frame_origin"] = [
+                float(frame_origin[0]),
+                float(frame_origin[1]),
+                float(frame_origin[2]),
+            ]
+        except Exception:
+            metadata["frame_origin"] = [0.0, 0.0, 0.0]
 
         planned_path = getattr(mission_state, "path_waypoints", None)
         if not planned_path:

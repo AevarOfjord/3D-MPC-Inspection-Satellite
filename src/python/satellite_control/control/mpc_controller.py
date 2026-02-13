@@ -803,7 +803,10 @@ class MPCController(Controller):
                 path_s_pred = max(0.0, min(float(path_s_pred), float(self._path_length)))
         else:
             path_s_pred = float(path_s_pred_raw)
-        self.s = path_s_pred
+        # Use current-step path progress for external reference consumers
+        # (viewer ghost/reference), while still exposing predicted progress
+        # separately via `path_s_pred` telemetry.
+        self.s = path_s
         self._last_path_projection = {
             "s": path_s,
             "s_proj": float(path_s_proj) if path_s_proj is not None else None,

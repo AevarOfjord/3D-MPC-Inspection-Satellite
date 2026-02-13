@@ -194,14 +194,14 @@ class _MPCDefaults:
     MPC_CONTROL_HORIZON: int = 50
     MPC_SOLVER_TIME_LIMIT: float = 0.04
     MPC_SOLVER_TYPE: str = "OSQP"
-    Q_CONTOUR: float = 2000.0
+    Q_CONTOUR: float = 100000.0
     Q_PROGRESS: float = 100.0
     PROGRESS_REWARD: float = 0.0
     PATH_SPEED_MIN: float = 0.01
     PATH_SPEED_MAX: float = 0.1
     Q_SMOOTH: float = 10.0
     Q_ATTITUDE: float = 5000.0
-    Q_ANGULAR_VELOCITY: float = 2000.0
+    Q_ANGULAR_VELOCITY: float = 1000.0
     R_THRUST: float = 0.1
     R_RW_TORQUE: float = 0.01
     THRUST_L1_WEIGHT: float = 0.1
