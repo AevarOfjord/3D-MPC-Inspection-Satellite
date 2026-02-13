@@ -138,13 +138,45 @@ async def get_simulation_telemetry(
             f"[TELEMETRY] No planned_path in metadata for {run_id}, will compute from CSV"
         )
 
-    from satellite_control.utils.orientation_utils import euler_xyz_to_quat_wxyz
+    from satellite_control.utils.orientation_utils import (
+        euler_xyz_to_quat_wxyz,
+        quat_angle_error,
+    )
 
     def to_float(value: str | None, default: float = 0.0) -> float:
         try:
             return float(value)
         except (TypeError, ValueError):
             return default
+
+    def parse_quat_wxyz(row: dict[str, str | None], prefix: str) -> np.ndarray:
+        """Parse quaternion columns with Euler fallback for backward compatibility."""
+        qw = row.get(f"{prefix}_QW")
+        qx = row.get(f"{prefix}_QX")
+        qy = row.get(f"{prefix}_QY")
+        qz = row.get(f"{prefix}_QZ")
+        has_quat = any(v not in (None, "") for v in (qw, qx, qy, qz))
+
+        if has_quat:
+            quat = np.array(
+                [
+                    to_float(qw, 1.0),
+                    to_float(qx, 0.0),
+                    to_float(qy, 0.0),
+                    to_float(qz, 0.0),
+                ],
+                dtype=float,
+            )
+        else:
+            roll = to_float(row.get(f"{prefix}_Roll"))
+            pitch = to_float(row.get(f"{prefix}_Pitch"))
+            yaw = to_float(row.get(f"{prefix}_Yaw"))
+            quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
+
+        norm = float(np.linalg.norm(quat))
+        if norm <= 1e-12:
+            return np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        return quat / norm
 
     try:
         with physics_path.open() as handle:
@@ -187,24 +219,16 @@ async def get_simulation_telemetry(
                 if idx % stride != 0:
                     continue
 
-                roll = to_float(row.get("Current_Roll"))
-                pitch = to_float(row.get("Current_Pitch"))
-                yaw = to_float(row.get("Current_Yaw"))
-                quat = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
+                quat = parse_quat_wxyz(row, "Current")
 
                 reference_roll = to_float(row.get("Reference_Roll"))
                 reference_pitch = to_float(row.get("Reference_Pitch"))
                 reference_yaw = to_float(row.get("Reference_Yaw"))
-                reference_quat = euler_xyz_to_quat_wxyz(
-                    (reference_roll, reference_pitch, reference_yaw)
-                )
+                reference_quat = parse_quat_wxyz(row, "Reference")
 
                 err_x = to_float(row.get("Error_X"))
                 err_y = to_float(row.get("Error_Y"))
                 err_z = to_float(row.get("Error_Z"))
-                err_roll = to_float(row.get("Error_Roll"))
-                err_pitch = to_float(row.get("Error_Pitch"))
-                err_yaw = to_float(row.get("Error_Yaw"))
 
                 # Determine Frame Origin from CSV (preferred) or Metadata
                 current_origin = frame_origin
@@ -254,9 +278,7 @@ async def get_simulation_telemetry(
                         "obstacles": [],
                         "solve_time": to_float(row.get("Solve_Time", 0.0)) / 1000.0,
                         "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
-                        "ang_error": float(
-                            np.linalg.norm([err_roll, err_pitch, err_yaw])
-                        ),
+                        "ang_error": float(quat_angle_error(reference_quat, quat)),
                         "frame": current_frame,
                         "frame_origin": current_origin,
                     }

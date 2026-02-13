@@ -22,6 +22,26 @@ class SimulationLogger:
 
     def __init__(self, data_logger: DataLogger):
         self.data_logger = data_logger
+        self._prev_curr_euler_control: np.ndarray | None = None
+        self._prev_ref_euler_control: np.ndarray | None = None
+        self._prev_curr_euler_physics: np.ndarray | None = None
+        self._prev_ref_euler_physics: np.ndarray | None = None
+
+    @staticmethod
+    def _unwrap_to_previous(
+        curr_euler: np.ndarray, prev_euler: np.ndarray | None
+    ) -> np.ndarray:
+        """
+        Keep Euler sequence continuous by selecting the nearest 2*pi branch.
+
+        This preserves visual continuity in logged Current/Reference roll/pitch/yaw
+        while still representing the same physical orientation.
+        """
+        if prev_euler is None:
+            return curr_euler
+        delta = curr_euler - prev_euler
+        delta = np.arctan2(np.sin(delta), np.cos(delta))
+        return prev_euler + delta
 
     def log_step(
         self,
@@ -64,6 +84,13 @@ class SimulationLogger:
 
         q_scipy = [q[1], q[2], q[3], q[0]]  # xyzw for scipy, wxyz input
         curr_euler = Rotation.from_quat(q_scipy).as_euler("xyz", degrees=False)
+        if step_number == 0:
+            self._prev_curr_euler_control = None
+            self._prev_ref_euler_control = None
+        curr_euler = self._unwrap_to_previous(
+            curr_euler, self._prev_curr_euler_control
+        )
+        self._prev_curr_euler_control = curr_euler.copy()
         curr_roll, curr_pitch, curr_yaw = curr_euler
 
         q_ref = np.array(reference_state[3:7], dtype=float)
@@ -71,6 +98,8 @@ class SimulationLogger:
             q_ref = np.array([1.0, 0.0, 0.0, 0.0])
         q_ref_scipy = [q_ref[1], q_ref[2], q_ref[3], q_ref[0]]
         ref_euler = Rotation.from_quat(q_ref_scipy).as_euler("xyz", degrees=False)
+        ref_euler = self._unwrap_to_previous(ref_euler, self._prev_ref_euler_control)
+        self._prev_ref_euler_control = ref_euler.copy()
         ref_roll, ref_pitch, ref_yaw = ref_euler
 
         # Vel
@@ -261,6 +290,13 @@ class SimulationLogger:
         if np.linalg.norm(q) == 0:
             q = np.array([1.0, 0.0, 0.0, 0.0])
         curr_roll, curr_pitch, curr_yaw = quat_wxyz_to_euler_xyz(q)
+        curr_euler = np.array([curr_roll, curr_pitch, curr_yaw], dtype=float)
+        if simulation_time <= 1e-9:
+            self._prev_curr_euler_physics = None
+            self._prev_ref_euler_physics = None
+        curr_euler = self._unwrap_to_previous(curr_euler, self._prev_curr_euler_physics)
+        self._prev_curr_euler_physics = curr_euler.copy()
+        curr_roll, curr_pitch, curr_yaw = curr_euler
 
         curr_vx, curr_vy, curr_vz = current_state[7:10]
         curr_wx, curr_wy, curr_wz = current_state[10:13]
@@ -271,6 +307,10 @@ class SimulationLogger:
         if np.linalg.norm(q_ref) == 0:
             q_ref = np.array([1.0, 0.0, 0.0, 0.0])
         ref_roll, ref_pitch, ref_yaw = quat_wxyz_to_euler_xyz(q_ref)
+        ref_euler = np.array([ref_roll, ref_pitch, ref_yaw], dtype=float)
+        ref_euler = self._unwrap_to_previous(ref_euler, self._prev_ref_euler_physics)
+        self._prev_ref_euler_physics = ref_euler.copy()
+        ref_roll, ref_pitch, ref_yaw = ref_euler
 
         # Calculate errors
         error_x = ref_x - curr_x
@@ -304,6 +344,10 @@ class SimulationLogger:
             "Current_X": f"{curr_x:.5f}",
             "Current_Y": f"{curr_y:.5f}",
             "Current_Z": f"{curr_z:.5f}",
+            "Current_QW": f"{q[0]:.6f}",
+            "Current_QX": f"{q[1]:.6f}",
+            "Current_QY": f"{q[2]:.6f}",
+            "Current_QZ": f"{q[3]:.6f}",
             "Current_Roll": f"{curr_roll:.5f}",
             "Current_Pitch": f"{curr_pitch:.5f}",
             "Current_Yaw": f"{curr_yaw:.5f}",
@@ -316,6 +360,10 @@ class SimulationLogger:
             "Reference_X": f"{ref_x:.5f}",
             "Reference_Y": f"{ref_y:.5f}",
             "Reference_Z": f"{ref_z:.5f}",
+            "Reference_QW": f"{q_ref[0]:.6f}",
+            "Reference_QX": f"{q_ref[1]:.6f}",
+            "Reference_QY": f"{q_ref[2]:.6f}",
+            "Reference_QZ": f"{q_ref[3]:.6f}",
             "Reference_Roll": f"{ref_roll:.5f}",
             "Reference_Pitch": f"{ref_pitch:.5f}",
             "Reference_Yaw": f"{ref_yaw:.5f}",

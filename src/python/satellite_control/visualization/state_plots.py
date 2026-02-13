@@ -6,6 +6,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
+from satellite_control.utils.orientation_utils import quat_angle_error
 from satellite_control.visualization.plot_style import PlotStyle
 
 
@@ -103,81 +104,152 @@ def generate_constraint_violations_plot(plot_gen: Any, plot_dir: Path) -> None:
     PlotStyle.save_figure(fig, plot_dir / "constraint_violations.png")
 
 
-def generate_z_tilt_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
-    """Generate Z-tilt coupling plot."""
+def generate_translation_attitude_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Generate frame-agnostic translation-attitude coupling diagnostics."""
     fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
-    fig.suptitle(f"Z Tilt Coupling - {plot_gen.system_title}")
+    fig.suptitle(f"Translation-Attitude Coupling - {plot_gen.system_title}")
 
     time = np.arange(plot_gen._get_len()) * float(plot_gen.dt)
 
-    err_z = plot_gen._col("Error_Z")
-    if len(err_z) == 0:
-        current_z = plot_gen._col("Current_Z")
-        reference_z = plot_gen._col("Reference_Z")
-        min_len = min(len(current_z), len(reference_z))
-        err_z = current_z[:min_len] - reference_z[:min_len]
-
-    roll = np.degrees(plot_gen._col("Current_Roll"))
-    pitch = np.degrees(plot_gen._col("Current_Pitch"))
+    cx = plot_gen._col("Current_X")
+    cy = plot_gen._col("Current_Y")
+    cz = plot_gen._col("Current_Z")
+    rx = plot_gen._col("Reference_X")
+    ry = plot_gen._col("Reference_Y")
+    rz = plot_gen._col("Reference_Z")
+    vx = plot_gen._col("Current_VX")
+    vy = plot_gen._col("Current_VY")
     vz = plot_gen._col("Current_VZ")
+    wx = plot_gen._col("Current_WX")
+    wy = plot_gen._col("Current_WY")
+    wz = plot_gen._col("Current_WZ")
+    q_cur = (
+        plot_gen._get_quaternion_series("Current")
+        if hasattr(plot_gen, "_get_quaternion_series")
+        else np.zeros((0, 4), dtype=float)
+    )
+    q_ref = (
+        plot_gen._get_quaternion_series("Reference")
+        if hasattr(plot_gen, "_get_quaternion_series")
+        else np.zeros((0, 4), dtype=float)
+    )
 
-    min_len = min(len(time), len(err_z), len(roll), len(pitch), len(vz))
+    length_candidates = [
+        len(time),
+        len(cx),
+        len(cy),
+        len(cz),
+        len(rx),
+        len(ry),
+        len(rz),
+        len(vx),
+        len(vy),
+        len(vz),
+        len(wx),
+        len(wy),
+        len(wz),
+    ]
+    has_quat = len(q_cur) > 0 and len(q_ref) > 0
+    if has_quat:
+        length_candidates.extend([len(q_cur), len(q_ref)])
+    min_len = min(length_candidates)
     if min_len == 0:
         for ax in axes:
             ax.text(
                 0.5,
                 0.5,
-                "Z tilt data\nnot available",
+                "Coupling data\nnot available",
                 ha="center",
                 va="center",
                 transform=ax.transAxes,
                 fontsize=PlotStyle.ANNOTATION_SIZE,
             )
-        PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+        PlotStyle.save_figure(fig, plot_dir / "translation_attitude_coupling.png")
         return
+
+    pos_err_norm = np.sqrt(
+        (cx[:min_len] - rx[:min_len]) ** 2
+        + (cy[:min_len] - ry[:min_len]) ** 2
+        + (cz[:min_len] - rz[:min_len]) ** 2
+    )
+    vel_norm = np.sqrt(vx[:min_len] ** 2 + vy[:min_len] ** 2 + vz[:min_len] ** 2)
+    if has_quat and len(q_cur) >= min_len and len(q_ref) >= min_len:
+        att_err_norm_deg = np.degrees(
+            np.array(
+                [quat_angle_error(q_ref[i], q_cur[i]) for i in range(min_len)],
+                dtype=float,
+            )
+        )
+    else:
+        # Legacy fallback.
+        er = plot_gen._col("Error_Roll")
+        ep = plot_gen._col("Error_Pitch")
+        ey = plot_gen._col("Error_Yaw")
+        att_err_norm_deg = np.degrees(
+            np.sqrt(er[:min_len] ** 2 + ep[:min_len] ** 2 + ey[:min_len] ** 2)
+        )
+    ang_rate_norm_degps = np.degrees(
+        np.sqrt(wx[:min_len] ** 2 + wy[:min_len] ** 2 + wz[:min_len] ** 2)
+    )
+
+    dt = max(float(plot_gen.dt), 1e-9)
+    accel_norm = np.gradient(vel_norm, dt)
+    coupling_indicator = np.abs(accel_norm) * np.radians(att_err_norm_deg)
 
     axes[0].plot(
         time[:min_len],
-        err_z[:min_len],
+        pos_err_norm,
         color=PlotStyle.COLOR_ERROR,
         linewidth=PlotStyle.LINEWIDTH,
-        label="Z Error",
+        label="Position Error Norm",
     )
-    axes[0].set_ylabel("Z Error (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].plot(
+        time[:min_len],
+        vel_norm,
+        color=PlotStyle.COLOR_SIGNAL_POS,
+        linewidth=PlotStyle.LINEWIDTH,
+        label="Velocity Norm",
+    )
+    axes[0].set_ylabel("m / m/s", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
     axes[1].plot(
         time[:min_len],
-        roll[:min_len],
-        color=PlotStyle.COLOR_SIGNAL_POS,
+        att_err_norm_deg,
+        color=PlotStyle.COLOR_SIGNAL_ANG,
         linewidth=PlotStyle.LINEWIDTH,
-        label="Roll",
+        label="Attitude Error Norm",
     )
     axes[1].plot(
         time[:min_len],
-        pitch[:min_len],
-        color=PlotStyle.COLOR_SIGNAL_ANG,
+        ang_rate_norm_degps,
+        color=PlotStyle.COLOR_SIGNAL_POS,
         linewidth=PlotStyle.LINEWIDTH,
-        label="Pitch",
+        label="Angular Rate Norm",
     )
-    axes[1].set_ylabel("Angle (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].set_ylabel("deg / deg/s", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
     axes[2].plot(
         time[:min_len],
-        vz[:min_len],
-        color=PlotStyle.COLOR_SIGNAL_POS,
+        coupling_indicator,
+        color=PlotStyle.COLOR_SECONDARY,
         linewidth=PlotStyle.LINEWIDTH,
-        label="VZ",
+        label="|d|v|/dt| * attitude error (rad)",
     )
     axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-    axes[2].set_ylabel("Vertical Velocity (m/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[2].set_ylabel("Coupling Indicator", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
     axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
 
-    PlotStyle.save_figure(fig, plot_dir / "z_tilt_coupling.png")
+    PlotStyle.save_figure(fig, plot_dir / "translation_attitude_coupling.png")
+
+
+def generate_z_tilt_coupling_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Backward-compatible wrapper for legacy callsites."""
+    generate_translation_attitude_coupling_plot(plot_gen, plot_dir)
 
 
 def generate_phase_position_velocity_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -211,35 +283,52 @@ def generate_phase_position_velocity_plot(plot_gen: Any, plot_dir: Path) -> None
 
 
 def generate_phase_attitude_rate_plot(plot_gen: Any, plot_dir: Path) -> None:
-    """Generate attitude vs rate phase plots."""
+    """Generate quaternion-component vs rate phase plots."""
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    fig.suptitle(f"Phase Plot: Attitude vs Rates - {plot_gen.system_title}")
+    fig.suptitle(f"Phase Plot: Quaternion vs Rates - {plot_gen.system_title}")
 
-    roll = np.degrees(plot_gen._col("Current_Roll"))
-    pitch = np.degrees(plot_gen._col("Current_Pitch"))
-    yaw = np.degrees(plot_gen._col("Current_Yaw"))
+    q_cur = (
+        plot_gen._get_quaternion_series("Current")
+        if hasattr(plot_gen, "_get_quaternion_series")
+        else np.zeros((0, 4), dtype=float)
+    )
     wx = np.degrees(plot_gen._col("Current_WX"))
     wy = np.degrees(plot_gen._col("Current_WY"))
     wz = np.degrees(plot_gen._col("Current_WZ"))
 
+    if len(q_cur) == 0:
+        # Legacy fallback.
+        roll = np.degrees(plot_gen._col("Current_Roll"))
+        pitch = np.degrees(plot_gen._col("Current_Pitch"))
+        yaw = np.degrees(plot_gen._col("Current_Yaw"))
+        qx = roll
+        qy = pitch
+        qz = yaw
+        xlabels = ("Roll (deg)", "Pitch (deg)", "Yaw (deg)")
+    else:
+        qx = q_cur[:, 1]
+        qy = q_cur[:, 2]
+        qz = q_cur[:, 3]
+        xlabels = ("qx", "qy", "qz")
+
     axes[0].plot(
-        roll, wx, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        qx, wx, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
     )
-    axes[0].set_xlabel("Roll (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[0].set_xlabel(xlabels[0], fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[0].set_ylabel("WX (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
     axes[1].plot(
-        pitch, wy, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        qy, wy, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
     )
-    axes[1].set_xlabel("Pitch (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[1].set_xlabel(xlabels[1], fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[1].set_ylabel("WY (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
 
     axes[2].plot(
-        yaw, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
+        qz, wz, color=PlotStyle.COLOR_SIGNAL_ANG, linewidth=PlotStyle.LINEWIDTH
     )
-    axes[2].set_xlabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+    axes[2].set_xlabel(xlabels[2], fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].set_ylabel("WZ (deg/s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
     axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
 

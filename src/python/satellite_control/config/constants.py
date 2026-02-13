@@ -200,10 +200,10 @@ class _MPCDefaults:
     PATH_SPEED_MIN: float = 0.01
     PATH_SPEED_MAX: float = 0.1
     Q_SMOOTH: float = 10.0
-    Q_ATTITUDE: float = 50.0
-    Q_ANGULAR_VELOCITY: float = 1000.0
+    Q_ATTITUDE: float = 5000.0
+    Q_ANGULAR_VELOCITY: float = 2000.0
     R_THRUST: float = 0.1
-    R_RW_TORQUE: float = 0.1
+    R_RW_TORQUE: float = 0.01
     THRUST_L1_WEIGHT: float = 0.1
     THRUST_PAIR_WEIGHT: float = 2.0
     COAST_POS_TOLERANCE: float = 0.1

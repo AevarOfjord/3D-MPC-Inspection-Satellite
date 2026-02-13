@@ -12,8 +12,10 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from satellite_control.config.models import AppConfig
+from satellite_control.utils.orientation_utils import quat_angle_error
 from satellite_control.visualization.actuator_plots import (
     generate_actuator_limits_plot,
     generate_command_vs_valve_tracking_plot,
@@ -45,9 +47,9 @@ from satellite_control.visualization.state_plots import (
     generate_constraint_violations_plot,
     generate_phase_attitude_rate_plot,
     generate_phase_position_velocity_plot,
+    generate_translation_attitude_coupling_plot,
     generate_velocity_magnitude_plot,
     generate_velocity_tracking_plot,
-    generate_z_tilt_coupling_plot,
 )
 from satellite_control.visualization.trajectory_plots import (
     generate_trajectory_3d_interactive_plot,
@@ -97,6 +99,49 @@ class PlotGenerator:
         """Get data length from data accessor."""
         return self.data_accessor._get_len()
 
+    def _get_quaternion_series(self, prefix: str) -> np.ndarray:
+        """
+        Get continuous quaternion series [N,4] in wxyz order.
+
+        Prefers logged quaternion columns and falls back to Euler->quaternion
+        conversion for legacy data files.
+        """
+        n = self._get_len()
+        if n <= 0:
+            return np.zeros((0, 4), dtype=float)
+
+        qw = self._col(f"{prefix}_QW")
+        qx = self._col(f"{prefix}_QX")
+        qy = self._col(f"{prefix}_QY")
+        qz = self._col(f"{prefix}_QZ")
+        has_quat_cols = (
+            len(qw) == n and len(qx) == n and len(qy) == n and len(qz) == n
+        )
+
+        if has_quat_cols:
+            q = np.column_stack((qw, qx, qy, qz)).astype(float, copy=False)
+        else:
+            r = self._col(f"{prefix}_Roll")
+            p = self._col(f"{prefix}_Pitch")
+            y = self._col(f"{prefix}_Yaw")
+            if len(r) != n or len(p) != n or len(y) != n:
+                return np.zeros((0, 4), dtype=float)
+            q_xyzw = Rotation.from_euler(
+                "xyz", np.column_stack((r, p, y)), degrees=False
+            ).as_quat()
+            q = np.column_stack(
+                (q_xyzw[:, 3], q_xyzw[:, 0], q_xyzw[:, 1], q_xyzw[:, 2])
+            )
+
+        # Normalize and enforce sign continuity (q and -q represent same rotation).
+        norms = np.linalg.norm(q, axis=1, keepdims=True)
+        norms[norms <= 1e-12] = 1.0
+        q = q / norms
+        for i in range(1, len(q)):
+            if float(np.dot(q[i], q[i - 1])) < 0.0:
+                q[i] = -q[i]
+        return q
+
     def generate_all_plots(self, plot_dir: Path) -> None:
         """
         Generate all performance analysis plots.
@@ -137,13 +182,14 @@ class PlotGenerator:
         self.generate_actuator_limits_plot(grouped_dirs["actuators"])
         self.generate_constraint_violations_plot(grouped_dirs["diagnostics"])
         self.generate_reaction_wheel_output_plot(grouped_dirs["actuators"])
-        self.generate_z_tilt_coupling_plot(grouped_dirs["dynamics"])
+        self.generate_translation_attitude_coupling_plot(grouped_dirs["dynamics"])
         self.generate_thruster_impulse_proxy_plot(grouped_dirs["actuators"])
         self.generate_cumulative_impulse_delta_v_proxy_plot(grouped_dirs["actuators"])
         self.generate_phase_position_velocity_plot(grouped_dirs["dynamics"])
         self.generate_phase_attitude_rate_plot(grouped_dirs["dynamics"])
         self.generate_velocity_tracking_plot(grouped_dirs["tracking"])
         self.generate_velocity_magnitude_plot(grouped_dirs["dynamics"])
+        self.generate_quaternion_attitude_error_plot(grouped_dirs["diagnostics"])
         self.generate_mpc_performance_plot(grouped_dirs["diagnostics"])
         self.generate_solver_health_plot(grouped_dirs["diagnostics"])
         self.generate_solver_iterations_and_status_timeline_plot(
@@ -288,139 +334,164 @@ class PlotGenerator:
         PlotStyle.save_figure(fig, plot_dir / "position_error.png")
 
     def generate_angular_tracking_plot(self, plot_dir: Path) -> None:
-        """Generate angular tracking plot."""
-        fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
-        fig.suptitle(f"Angular Tracking - {self.system_title}")
+        """Generate quaternion-component tracking plot."""
+        fig, axes = plt.subplots(4, 1, figsize=(10, 10))
+        fig.suptitle(f"Quaternion Tracking - {self.system_title}")
 
         time = np.arange(self._get_len()) * float(self.dt)
+        q_cur = self._get_quaternion_series("Current")
+        q_ref = self._get_quaternion_series("Reference")
+        min_len = min(len(time), len(q_cur), len(q_ref))
 
-        # Roll tracking
-        axes[0].plot(
-            time,
-            np.degrees(self._col("Current_Roll")),
-            color=PlotStyle.COLOR_SIGNAL_ANG,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Current Roll",
-        )
-        axes[0].plot(
-            time,
-            np.degrees(self._col("Reference_Roll")),
-            color=PlotStyle.COLOR_TARGET,
-            linestyle="--",
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Reference Roll",
-        )
-        axes[0].set_ylabel("Roll (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[0].set_title("Roll Tracking")
+        if min_len == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Quaternion tracking data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+                ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
+            PlotStyle.save_figure(fig, plot_dir / "attitude_tracking.png")
+            return
 
-        # Pitch tracking
-        axes[1].plot(
-            time,
-            np.degrees(self._col("Current_Pitch")),
-            color=PlotStyle.COLOR_SIGNAL_ANG,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Current Pitch",
-        )
-        axes[1].plot(
-            time,
-            np.degrees(self._col("Reference_Pitch")),
-            color=PlotStyle.COLOR_TARGET,
-            linestyle="--",
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Reference Pitch",
-        )
-        axes[1].set_ylabel("Pitch (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[1].set_title("Pitch Tracking")
+        comp_labels = ("w", "x", "y", "z")
+        for i, comp in enumerate(comp_labels):
+            axes[i].plot(
+                time[:min_len],
+                q_cur[:min_len, i],
+                color=PlotStyle.COLOR_SIGNAL_ANG,
+                linewidth=PlotStyle.LINEWIDTH,
+                label=f"Current q{comp}",
+            )
+            axes[i].plot(
+                time[:min_len],
+                q_ref[:min_len, i],
+                color=PlotStyle.COLOR_TARGET,
+                linestyle="--",
+                linewidth=PlotStyle.LINEWIDTH,
+                label=f"Reference q{comp}",
+            )
+            axes[i].set_ylabel(f"q{comp}", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[i].grid(True, alpha=PlotStyle.GRID_ALPHA)
+            axes[i].legend(fontsize=PlotStyle.LEGEND_SIZE)
+            axes[i].set_title(f"q{comp} Tracking")
 
-        # Yaw tracking
-        axes[2].plot(
-            time,
-            np.degrees(self._col("Current_Yaw")),
-            color=PlotStyle.COLOR_SIGNAL_ANG,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Current Yaw",
-        )
-        axes[2].plot(
-            time,
-            np.degrees(self._col("Reference_Yaw")),
-            color=PlotStyle.COLOR_TARGET,
-            linestyle="--",
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Reference Yaw",
-        )
-        axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[2].set_ylabel("Yaw (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[2].set_title("Yaw Tracking")
+        axes[3].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
         PlotStyle.save_figure(fig, plot_dir / "attitude_tracking.png")
 
     def generate_angular_error_plot(self, plot_dir: Path) -> None:
-        """Generate angular error plot."""
-        fig, axes = plt.subplots(3, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS)
-        fig.suptitle(f"Angular Error - {self.system_title}")
+        """Generate quaternion-component error plot."""
+        fig, axes = plt.subplots(4, 1, figsize=(10, 10))
+        fig.suptitle(f"Quaternion Component Error - {self.system_title}")
 
         time = np.arange(self._get_len()) * float(self.dt)
+        q_cur = self._get_quaternion_series("Current")
+        q_ref = self._get_quaternion_series("Reference")
+        min_len = min(len(time), len(q_cur), len(q_ref))
 
-        # Calculate errors
-        error_roll = self._col("Current_Roll") - self._col("Reference_Roll")
-        error_pitch = self._col("Current_Pitch") - self._col("Reference_Pitch")
-        error_yaw = self._col("Current_Yaw") - self._col("Reference_Yaw")
+        if min_len == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Quaternion error data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+                ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
+            PlotStyle.save_figure(fig, plot_dir / "attitude_error.png")
+            return
 
-        # Normalize angles to [-180, 180] degrees
-        error_roll = np.degrees(np.arctan2(np.sin(error_roll), np.cos(error_roll)))
-        error_pitch = np.degrees(np.arctan2(np.sin(error_pitch), np.cos(error_pitch)))
-        error_yaw = np.degrees(np.arctan2(np.sin(error_yaw), np.cos(error_yaw)))
+        # Use shortest-sign representation per sample.
+        dot = np.sum(q_cur[:min_len] * q_ref[:min_len], axis=1)
+        sign = np.where(dot < 0.0, -1.0, 1.0).reshape(-1, 1)
+        q_err = q_cur[:min_len] - sign * q_ref[:min_len]
 
-        # Roll error
-        axes[0].plot(
-            time,
-            error_roll,
-            color=PlotStyle.COLOR_ERROR,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Roll Error",
-        )
-        axes[0].axhline(y=0, color="black", linestyle="-", linewidth=0.5, alpha=0.3)
-        axes[0].set_ylabel("Roll Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[0].set_title("Roll Error")
-
-        # Pitch error
-        axes[1].plot(
-            time,
-            error_pitch,
-            color=PlotStyle.COLOR_ERROR,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Pitch Error",
-        )
-        axes[1].axhline(y=0, color="black", linestyle="-", linewidth=0.5, alpha=0.3)
-        axes[1].set_ylabel("Pitch Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[1].set_title("Pitch Error")
-
-        # Yaw error
-        axes[2].plot(
-            time,
-            error_yaw,
-            color=PlotStyle.COLOR_ERROR,
-            linewidth=PlotStyle.LINEWIDTH,
-            label="Yaw Error",
-        )
-        axes[2].axhline(y=0, color="black", linestyle="-", linewidth=0.5, alpha=0.3)
-        axes[2].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[2].set_ylabel("Yaw Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-        axes[2].grid(True, alpha=PlotStyle.GRID_ALPHA)
-        axes[2].legend(fontsize=PlotStyle.LEGEND_SIZE)
-        axes[2].set_title("Yaw Error")
+        comp_labels = ("w", "x", "y", "z")
+        for i, comp in enumerate(comp_labels):
+            axes[i].plot(
+                time[:min_len],
+                q_err[:, i],
+                color=PlotStyle.COLOR_ERROR,
+                linewidth=PlotStyle.LINEWIDTH,
+                label=f"q{comp} Error",
+            )
+            axes[i].axhline(y=0, color="black", linestyle="-", linewidth=0.5, alpha=0.3)
+            axes[i].set_ylabel(f"q{comp} err", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+            axes[i].grid(True, alpha=PlotStyle.GRID_ALPHA)
+            axes[i].legend(fontsize=PlotStyle.LEGEND_SIZE)
+            axes[i].set_title(f"q{comp} Error")
+        axes[3].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
 
         PlotStyle.save_figure(fig, plot_dir / "attitude_error.png")
+
+    def generate_quaternion_attitude_error_plot(self, plot_dir: Path) -> None:
+        """Generate quaternion-geodesic attitude error (rotation-invariant)."""
+        fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+        fig.suptitle(f"Quaternion Attitude Error - {self.system_title}")
+
+        time = np.arange(self._get_len()) * float(self.dt)
+        q_curr = self._get_quaternion_series("Current")
+        q_ref = self._get_quaternion_series("Reference")
+        min_len = min(len(time), len(q_curr), len(q_ref))
+        if min_len == 0:
+            for ax in axes:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Quaternion attitude data\nnot available",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=PlotStyle.ANNOTATION_SIZE,
+                )
+            PlotStyle.save_figure(fig, plot_dir / "attitude_error_quaternion.png")
+            return
+
+        q_err_deg = np.degrees(
+            np.array(
+                [
+                    quat_angle_error(q_ref[i], q_curr[i])
+                    for i in range(min_len)
+                ],
+                dtype=float,
+            )
+        )
+        q_err_deg = np.nan_to_num(q_err_deg, nan=0.0, posinf=0.0, neginf=0.0)
+        q_err_rate = np.gradient(q_err_deg, max(float(self.dt), 1e-9))
+
+        axes[0].plot(
+            time[:min_len],
+            q_err_deg,
+            color=PlotStyle.COLOR_ERROR,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="SO(3) Angle Error",
+        )
+        axes[0].set_ylabel("Error (deg)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[0].legend(fontsize=PlotStyle.LEGEND_SIZE)
+        axes[0].set_title("Quaternion Geodesic Error")
+
+        axes[1].plot(
+            time[:min_len],
+            q_err_rate,
+            color=PlotStyle.COLOR_SECONDARY,
+            linewidth=PlotStyle.LINEWIDTH,
+            label="d(Error)/dt",
+        )
+        axes[1].set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].set_ylabel("deg/s", fontsize=PlotStyle.AXIS_LABEL_SIZE)
+        axes[1].grid(True, alpha=PlotStyle.GRID_ALPHA)
+        axes[1].legend(fontsize=PlotStyle.LEGEND_SIZE)
+
+        PlotStyle.save_figure(fig, plot_dir / "attitude_error_quaternion.png")
 
     def generate_error_norms_plot(self, plot_dir: Path) -> None:
         """Generate error norm summary plot."""
@@ -448,7 +519,22 @@ class PlotGenerator:
 
         pos_err_norm = np.sqrt(err_x**2 + err_y**2 + err_z**2)
         vel_err_norm = np.sqrt(err_vx**2 + err_vy**2 + err_vz**2)
-        ang_err_norm = np.degrees(np.sqrt(err_roll**2 + err_pitch**2 + err_yaw**2))
+        q_cur = self._get_quaternion_series("Current")
+        q_ref = self._get_quaternion_series("Reference")
+        q_len = min(len(time), len(q_cur), len(q_ref))
+        if q_len > 0:
+            ang_err_norm = np.degrees(
+                np.array(
+                    [quat_angle_error(q_ref[i], q_cur[i]) for i in range(q_len)],
+                    dtype=float,
+                )
+            )
+            if q_len < len(time):
+                # Pad tail for mixed/legacy data lengths.
+                pad = np.full(len(time) - q_len, ang_err_norm[-1], dtype=float)
+                ang_err_norm = np.concatenate([ang_err_norm, pad])
+        else:
+            ang_err_norm = np.degrees(np.sqrt(err_roll**2 + err_pitch**2 + err_yaw**2))
         angvel_err_norm = np.degrees(np.sqrt(err_wx**2 + err_wy**2 + err_wz**2))
 
         axes[0, 0].plot(
@@ -571,9 +657,13 @@ class PlotGenerator:
         """Generate constraint violation plot."""
         generate_constraint_violations_plot(self, plot_dir)
 
+    def generate_translation_attitude_coupling_plot(self, plot_dir: Path) -> None:
+        """Generate frame-agnostic translation-attitude coupling plot."""
+        generate_translation_attitude_coupling_plot(self, plot_dir)
+
     def generate_z_tilt_coupling_plot(self, plot_dir: Path) -> None:
-        """Generate Z-tilt coupling plot."""
-        generate_z_tilt_coupling_plot(self, plot_dir)
+        """Backward-compatible wrapper for legacy callsites."""
+        generate_translation_attitude_coupling_plot(self, plot_dir)
 
     def generate_thruster_impulse_proxy_plot(self, plot_dir: Path) -> None:
         """Generate thruster impulse proxy plot."""

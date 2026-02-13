@@ -17,6 +17,7 @@ import logging
 from typing import Any
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from satellite_control.config.constants import Constants
 from satellite_control.config.models import AppConfig
@@ -201,6 +202,45 @@ class SimulationInitializer:
                 getattr(mission_state, "scan_attitude_direction", "CW"),
             )
 
+        # Align initial attitude so body +X starts along the first path segment.
+        if getattr(mission_state, "path_waypoints", None):
+            aligned_start_angle = self._align_start_angle_to_path(
+                start_angle=start_angle,
+                path_waypoints=list(mission_state.path_waypoints),
+                start_pos=np.array(start_pos, dtype=float),
+                frame_origin=np.array(
+                    getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0)),
+                    dtype=float,
+                ),
+                scan_center=np.array(
+                    getattr(mission_state, "scan_attitude_center", np.zeros(3)),
+                    dtype=float,
+                )
+                if getattr(mission_state, "scan_attitude_center", None) is not None
+                else None,
+                scan_axis=np.array(
+                    getattr(mission_state, "scan_attitude_axis", np.zeros(3)),
+                    dtype=float,
+                )
+                if getattr(mission_state, "scan_attitude_axis", None) is not None
+                else None,
+                scan_direction=str(
+                    getattr(mission_state, "scan_attitude_direction", "CW")
+                ),
+            )
+            if aligned_start_angle != start_angle:
+                logger.info(
+                    "Aligning initial attitude to path frame: "
+                    "body +X -> path, body +Z -> scan axis (when configured)."
+                )
+                start_angle = aligned_start_angle
+                self.simulation.satellite.angle = start_angle
+                self.simulation.initial_start_angle = start_angle
+                reference_angle = start_angle
+                self.simulation.reference_state[3:7] = euler_xyz_to_quat_wxyz(
+                    reference_angle
+                )
+
         # Initialize state validator
         self._initialize_state_validator()
 
@@ -244,6 +284,174 @@ class SimulationInitializer:
         for i, tid in enumerate(sorted(thruster_positions.keys())):
             color_idx = i % len(colors)
             self.simulation.satellite.thruster_colors[tid] = colors[color_idx]
+
+    def _align_start_angle_to_path(
+        self,
+        start_angle: tuple[float, float, float],
+        path_waypoints: list[tuple[float, float, float]],
+        start_pos: np.ndarray,
+        frame_origin: np.ndarray,
+        scan_center: np.ndarray | None = None,
+        scan_axis: np.ndarray | None = None,
+        scan_direction: str = "CW",
+    ) -> tuple[float, float, float]:
+        """
+        Build initial Euler orientation so:
+        - body +X follows path travel direction
+        - in scan mode: body +Z aligns to scan axis and +Y faces scan center
+        - otherwise: body +Z follows orbital/world up as much as possible
+        """
+        if len(path_waypoints) < 2:
+            return start_angle
+
+        p0 = np.array(path_waypoints[0], dtype=float).reshape(-1)
+        if p0.size < 3:
+            return start_angle
+        p0 = p0[:3]
+
+        direction: np.ndarray | None = None
+        for point in path_waypoints[1:]:
+            p1 = np.array(point, dtype=float).reshape(-1)
+            if p1.size < 3:
+                continue
+            d = p1[:3] - p0
+            if float(np.linalg.norm(d)) > 1e-9:
+                direction = d
+                break
+
+        if direction is None:
+            return start_angle
+
+        x_axis = np.array(direction, dtype=float)
+        x_norm = float(np.linalg.norm(x_axis))
+        if x_norm <= 1e-9:
+            return start_angle
+        x_axis = x_axis / x_norm
+
+        z_axis: np.ndarray
+        y_axis: np.ndarray
+
+        scan_axis_vec = None
+        if scan_axis is not None:
+            axis_arr = np.array(scan_axis, dtype=float).reshape(-1)
+            if axis_arr.size >= 3:
+                axis3 = axis_arr[:3]
+                axis_norm = float(np.linalg.norm(axis3))
+                if axis_norm > 1e-9:
+                    scan_axis_vec = axis3 / axis_norm
+
+        if scan_axis_vec is not None:
+            # Match scan-attitude convention at t=0:
+            # +X along path, +Y object-facing, +Z along scan axis.
+            z_line = scan_axis_vec
+            if scan_center is not None:
+                center_arr = np.array(scan_center, dtype=float).reshape(-1)
+                center = (
+                    center_arr[:3]
+                    if center_arr.size >= 3
+                    else np.zeros(3, dtype=float)
+                )
+            else:
+                center = np.zeros(3, dtype=float)
+            pos0 = start_pos[:3] if start_pos.size >= 3 else np.zeros(3, dtype=float)
+            radial_in = center - pos0
+            radial_in = radial_in - float(np.dot(radial_in, z_line)) * z_line
+            radial_norm = float(np.linalg.norm(radial_in))
+            if radial_norm > 1e-9:
+                radial_dir = radial_in / radial_norm
+            else:
+                ref = (
+                    np.array([0.0, 0.0, 1.0], dtype=float)
+                    if abs(float(z_line[2])) < 0.9
+                    else np.array([1.0, 0.0, 0.0], dtype=float)
+                )
+                radial_dir = np.cross(z_line, ref)
+                r_norm = float(np.linalg.norm(radial_dir))
+                if r_norm <= 1e-9:
+                    radial_dir = np.array([0.0, 1.0, 0.0], dtype=float)
+                else:
+                    radial_dir = radial_dir / r_norm
+
+            t_plane = x_axis - float(np.dot(x_axis, z_line)) * z_line
+            t_plane_norm = float(np.linalg.norm(t_plane))
+            if t_plane_norm > 1e-9:
+                x_axis = t_plane / t_plane_norm
+            else:
+                scan_direction_cw = str(scan_direction).strip().upper() != "CCW"
+                x_axis = (
+                    np.cross(z_line, radial_dir)
+                    if scan_direction_cw
+                    else np.cross(radial_dir, z_line)
+                )
+                x_norm = float(np.linalg.norm(x_axis))
+                if x_norm <= 1e-9:
+                    return start_angle
+                x_axis = x_axis / x_norm
+
+            y_plus = np.cross(z_line, x_axis)
+            y_plus_norm = float(np.linalg.norm(y_plus))
+            if y_plus_norm > 1e-9:
+                y_plus = y_plus / y_plus_norm
+                z_axis = z_line if float(np.dot(y_plus, radial_dir)) >= 0.0 else -z_line
+            else:
+                z_axis = z_line
+
+            y_axis = np.cross(z_axis, x_axis)
+            y_norm = float(np.linalg.norm(y_axis))
+            if y_norm <= 1e-9:
+                return start_angle
+            y_axis = y_axis / y_norm
+            if float(np.dot(y_axis, radial_dir)) < 0.0:
+                y_axis = -y_axis
+                z_axis = -z_axis
+            x_axis = np.cross(y_axis, z_axis)
+            x_norm = float(np.linalg.norm(x_axis))
+            if x_norm <= 1e-9:
+                return start_angle
+            x_axis = x_axis / x_norm
+            # Keep +X forward along initial path travel direction.
+            if float(np.dot(x_axis, direction)) < 0.0:
+                x_axis = -x_axis
+                y_axis = -y_axis
+        else:
+            # Choose "up" from orbital radial direction when available.
+            # world_pos ~= frame_origin + local_start_pos in mixed-frame runs.
+            world_pos = np.zeros(3, dtype=float)
+            if start_pos.size >= 3:
+                world_pos += start_pos[:3]
+            if frame_origin.size >= 3:
+                world_pos += frame_origin[:3]
+            world_pos_norm = float(np.linalg.norm(world_pos))
+            if world_pos_norm > 1e-6:
+                world_up = world_pos / world_pos_norm
+            else:
+                world_up = np.array([0.0, 0.0, 1.0], dtype=float)
+            z_axis = world_up - float(np.dot(world_up, x_axis)) * x_axis
+            z_norm = float(np.linalg.norm(z_axis))
+            if z_norm <= 1e-9:
+                # If moving almost perfectly vertical, choose a deterministic fallback
+                # and still keep a right-handed frame.
+                fallback_up = np.array([0.0, 1.0, 0.0], dtype=float)
+                z_axis = fallback_up - float(np.dot(fallback_up, x_axis)) * x_axis
+                z_norm = float(np.linalg.norm(z_axis))
+                if z_norm <= 1e-9:
+                    return start_angle
+            z_axis = z_axis / z_norm
+
+            # Right-handed body frame: x × y = z  => y = z × x
+            y_axis = np.cross(z_axis, x_axis)
+            y_norm = float(np.linalg.norm(y_axis))
+            if y_norm <= 1e-9:
+                return start_angle
+            y_axis = y_axis / y_norm
+
+        # Re-orthonormalize z from x,y to reduce drift.
+        z_axis = np.cross(x_axis, y_axis)
+        z_axis = z_axis / max(float(np.linalg.norm(z_axis)), 1e-12)
+
+        rot = np.column_stack((x_axis, y_axis, z_axis))
+        euler_xyz = Rotation.from_matrix(rot).as_euler("xyz", degrees=False)
+        return (float(euler_xyz[0]), float(euler_xyz[1]), float(euler_xyz[2]))
 
     def _initialize_satellite_physics(
         self,

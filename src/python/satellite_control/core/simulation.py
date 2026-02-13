@@ -557,6 +557,10 @@ class SatelliteMPCLinearizedSimulation:
         self.last_solve_time = 0.0
         self.last_pos_error = 0.0
         self.last_ang_error = 0.0
+        if hasattr(self, "_ref_prev_y_axis"):
+            delattr(self, "_ref_prev_y_axis")
+        if hasattr(self, "_ref_prev_z_axis"):
+            delattr(self, "_ref_prev_z_axis")
 
         # 5. Visualizer Reset
         self.visualizer.sync_from_controller()
