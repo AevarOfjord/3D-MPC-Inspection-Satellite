@@ -370,10 +370,18 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
             )
             dirs = Rotation.from_quat(q_xyzw).apply(np.array([1.0, 0.0, 0.0]))
         else:
-            roll = plot_gen._col("Current_Roll")
-            pitch = plot_gen._col("Current_Pitch")
-            yaw = plot_gen._col("Current_Yaw")
-            eulers = np.vstack([roll[idxs], pitch[idxs], yaw[idxs]]).T
+            e_cur = (
+                plot_gen._get_euler_series_unwrapped("Current")
+                if hasattr(plot_gen, "_get_euler_series_unwrapped")
+                else np.zeros((0, 3), dtype=float)
+            )
+            if len(e_cur) >= n:
+                eulers = e_cur[idxs]
+            else:
+                roll = plot_gen._col("Current_Roll")
+                pitch = plot_gen._col("Current_Pitch")
+                yaw = plot_gen._col("Current_Yaw")
+                eulers = np.vstack([roll[idxs], pitch[idxs], yaw[idxs]]).T
             dirs = Rotation.from_euler("xyz", eulers, degrees=False).apply(
                 np.array([1.0, 0.0, 0.0])
             )

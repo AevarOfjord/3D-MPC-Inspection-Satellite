@@ -205,6 +205,8 @@ async def get_simulation_telemetry(
             min_ref_step = 0.02
             last_curr_yaw_deg: float | None = None
             curr_yaw_unwrapped_deg: float | None = None
+            last_curr_euler_deg: np.ndarray | None = None
+            curr_euler_unwrapped_deg: np.ndarray | None = None
 
             for idx, row in enumerate(reader):
                 ref_x = to_float(row.get("Reference_X"))
@@ -227,6 +229,20 @@ async def get_simulation_telemetry(
                     # Keep yaw unwrapping continuous even when downsampling output rows.
                     quat_skip = parse_quat_wxyz(row, "Current")
                     curr_euler_skip = quat_wxyz_to_euler_xyz(quat_skip)
+                    curr_euler_deg_skip = np.degrees(
+                        np.array(curr_euler_skip, dtype=float)
+                    )
+                    if last_curr_euler_deg is None:
+                        curr_euler_unwrapped_deg = curr_euler_deg_skip.copy()
+                    else:
+                        delta_euler = curr_euler_deg_skip - last_curr_euler_deg
+                        delta_euler = ((delta_euler + 180.0) % 360.0) - 180.0
+                        curr_euler_unwrapped_deg = (
+                            curr_euler_unwrapped_deg + delta_euler
+                            if curr_euler_unwrapped_deg is not None
+                            else curr_euler_deg_skip.copy()
+                        )
+                    last_curr_euler_deg = curr_euler_deg_skip.copy()
                     curr_yaw_deg_skip = float(np.degrees(curr_euler_skip[2]))
                     if last_curr_yaw_deg is None:
                         curr_yaw_unwrapped_deg = curr_yaw_deg_skip
@@ -239,6 +255,18 @@ async def get_simulation_telemetry(
 
                 quat = parse_quat_wxyz(row, "Current")
                 curr_euler = quat_wxyz_to_euler_xyz(quat)
+                curr_euler_deg = np.degrees(np.array(curr_euler, dtype=float))
+                if last_curr_euler_deg is None:
+                    curr_euler_unwrapped_deg = curr_euler_deg.copy()
+                else:
+                    delta_euler = curr_euler_deg - last_curr_euler_deg
+                    delta_euler = ((delta_euler + 180.0) % 360.0) - 180.0
+                    curr_euler_unwrapped_deg = (
+                        curr_euler_unwrapped_deg + delta_euler
+                        if curr_euler_unwrapped_deg is not None
+                        else curr_euler_deg.copy()
+                    )
+                last_curr_euler_deg = curr_euler_deg.copy()
                 curr_pitch_deg = float(np.degrees(curr_euler[1]))
                 curr_yaw_deg = float(np.degrees(curr_euler[2]))
                 if last_curr_yaw_deg is None:
@@ -308,6 +336,17 @@ async def get_simulation_telemetry(
                         "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
                         "ang_error": float(quat_angle_error(reference_quat, quat)),
                         "yaw_unwrapped_deg": float(curr_yaw_unwrapped_deg or 0.0),
+                        "orientation_unwrapped_deg": [
+                            float(curr_euler_unwrapped_deg[0])
+                            if curr_euler_unwrapped_deg is not None
+                            else float(curr_euler_deg[0]),
+                            float(curr_euler_unwrapped_deg[1])
+                            if curr_euler_unwrapped_deg is not None
+                            else float(curr_euler_deg[1]),
+                            float(curr_euler_unwrapped_deg[2])
+                            if curr_euler_unwrapped_deg is not None
+                            else float(curr_euler_deg[2]),
+                        ],
                         "euler_unreliable": bool(abs(curr_pitch_deg) > 85.0),
                         "frame": current_frame,
                         "frame_origin": current_origin,

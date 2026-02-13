@@ -142,6 +142,31 @@ class PlotGenerator:
                 q[i] = -q[i]
         return q
 
+    def _get_euler_series_unwrapped(self, prefix: str) -> np.ndarray:
+        """
+        Get continuous Euler xyz series [N,3] in radians for display plots.
+
+        Uses quaternion columns when available, then unwraps each component to avoid
+        artificial +/-180 or 360 display discontinuities.
+        """
+        n = self._get_len()
+        if n <= 0:
+            return np.zeros((0, 3), dtype=float)
+
+        q = self._get_quaternion_series(prefix)
+        if len(q) == n:
+            q_xyzw = np.column_stack((q[:, 1], q[:, 2], q[:, 3], q[:, 0]))
+            e = Rotation.from_quat(q_xyzw).as_euler("xyz", degrees=False)
+        else:
+            r = self._col(f"{prefix}_Roll")
+            p = self._col(f"{prefix}_Pitch")
+            y = self._col(f"{prefix}_Yaw")
+            if len(r) != n or len(p) != n or len(y) != n:
+                return np.zeros((0, 3), dtype=float)
+            e = np.column_stack((r, p, y)).astype(float, copy=False)
+
+        return np.unwrap(e, axis=0)
+
     def generate_all_plots(self, plot_dir: Path) -> None:
         """
         Generate all performance analysis plots.

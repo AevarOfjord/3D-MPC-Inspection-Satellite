@@ -48,6 +48,7 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("verbose_mpc", &MPCParams::verbose_mpc)
         .def_readwrite("Q_angvel", &MPCParams::Q_angvel)
         .def_readwrite("Q_attitude", &MPCParams::Q_attitude)
+        .def_readwrite("Q_axis_align", &MPCParams::Q_axis_align)
         .def_readwrite("R_thrust", &MPCParams::R_thrust)
         .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
         .def_readwrite("thrust_l1_weight", &MPCParams::thrust_l1_weight)

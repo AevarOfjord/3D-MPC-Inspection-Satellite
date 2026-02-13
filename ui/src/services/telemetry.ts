@@ -6,6 +6,7 @@ export interface TelemetryData {
   quaternion: [number, number, number, number];
   velocity: [number, number, number];
   angular_velocity: [number, number, number];
+  orientation_unwrapped_deg?: [number, number, number];
   reference_position: [number, number, number];
   reference_orientation: [number, number, number];
   reference_quaternion?: [number, number, number, number];

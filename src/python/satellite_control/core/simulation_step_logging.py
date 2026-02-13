@@ -35,6 +35,17 @@ def _fmt_angles_deg(state: np.ndarray) -> str:
     return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
 
 
+def _unwrap_euler_deg(
+    curr_deg: np.ndarray, prev_unwrapped_deg: np.ndarray | None
+) -> np.ndarray:
+    """Unwrap Euler degrees to a continuous display series."""
+    if prev_unwrapped_deg is None:
+        return curr_deg.copy()
+    delta = curr_deg - prev_unwrapped_deg
+    delta = (delta + 180.0) % 360.0 - 180.0
+    return prev_unwrapped_deg + delta
+
+
 def log_simulation_step(
     sim: Any,
     logger_obj: logging.Logger,
@@ -189,15 +200,27 @@ def log_simulation_step(
     curr_r, curr_p, curr_y = quat_wxyz_to_euler_xyz(q_curr)
     ref_r, ref_p, ref_y = quat_wxyz_to_euler_xyz(q_ref)
 
-    # Difference in degrees
-    diff_r = np.degrees(curr_r - ref_r)
-    diff_p = np.degrees(curr_p - ref_p)
-    diff_y = np.degrees(curr_y - ref_y)
+    curr_euler_deg = np.degrees(np.array([curr_r, curr_p, curr_y], dtype=float))
+    ref_euler_deg = np.degrees(np.array([ref_r, ref_p, ref_y], dtype=float))
 
-    # Wrap to [-180, 180]
-    diff_r = (diff_r + 180) % 360 - 180
-    diff_p = (diff_p + 180) % 360 - 180
-    diff_y = (diff_y + 180) % 360 - 180
+    if not hasattr(sim, "_terminal_curr_euler_unwrapped_deg"):
+        sim._terminal_curr_euler_unwrapped_deg = None
+    if not hasattr(sim, "_terminal_ref_euler_unwrapped_deg"):
+        sim._terminal_ref_euler_unwrapped_deg = None
+
+    curr_unwrapped_deg = _unwrap_euler_deg(
+        curr_euler_deg, sim._terminal_curr_euler_unwrapped_deg
+    )
+    ref_unwrapped_deg = _unwrap_euler_deg(
+        ref_euler_deg, sim._terminal_ref_euler_unwrapped_deg
+    )
+    sim._terminal_curr_euler_unwrapped_deg = curr_unwrapped_deg.copy()
+    sim._terminal_ref_euler_unwrapped_deg = ref_unwrapped_deg.copy()
+
+    # Continuous display deltas (current - reference), no artificial wrapping.
+    diff_r = curr_unwrapped_deg[0] - ref_unwrapped_deg[0]
+    diff_p = curr_unwrapped_deg[1] - ref_unwrapped_deg[1]
+    diff_y = curr_unwrapped_deg[2] - ref_unwrapped_deg[2]
 
     ang_err_str = f"[Yaw:{diff_y:.1f}, Roll:{diff_r:.1f}, Pitch:{diff_p:.1f}]°"
 
@@ -234,7 +257,11 @@ def log_simulation_step(
         f"{BLUE}Pos:{RESET} {_fmt_position_mm(current_state)}".ljust(45)
         + f"{BLUE}(Ref:{RESET} {_fmt_position_mm(safe_reference)})"
     )
-    row_state_ang = f"{BLUE}Ang:{RESET} {_fmt_angles_deg(current_state)}"
+    row_state_ang = (
+        f"{BLUE}Ang:{RESET} "
+        f"[Yaw:{curr_unwrapped_deg[2]:.1f}, Roll:{curr_unwrapped_deg[0]:.1f}, "
+        f"Pitch:{curr_unwrapped_deg[1]:.1f}]°"
+    )
 
     # Actuators
     row_thrusters = f"{YELLOW}Thrusters {active_thruster_ids}:{RESET} {thr_out}"

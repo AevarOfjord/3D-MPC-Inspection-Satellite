@@ -273,6 +273,9 @@ class MissionReportGenerator:
         f.write(f"  Progress Weight (Q):     {self.app_config.mpc.Q_progress:.1f}\n")
         f.write(f"  Smooth Weight (Q):       {self.app_config.mpc.Q_smooth:.1f}\n")
         f.write(
+            f"  Axis Align Weight (Q):   {self.app_config.mpc.Q_axis_align:.1f}\n"
+        )
+        f.write(
             f"  Angular Vel Weight (Q):  {self.app_config.mpc.q_angular_velocity:.1f}\n"
         )
         f.write(f"  Thrust Penalty (R):      {self.app_config.mpc.r_thrust:.3f}\n")
@@ -349,6 +352,9 @@ class MissionReportGenerator:
         )
         f.write(
             f"  Q_ATTITUDE:                    {self.app_config.mpc.Q_attitude:.1f}\n"
+        )
+        f.write(
+            f"  Q_AXIS_ALIGN:                  {self.app_config.mpc.Q_axis_align:.1f}\n"
         )
         f.write(
             f"  Q_TERMINAL_POS:                {self.app_config.mpc.Q_terminal_pos:.1f}\n"

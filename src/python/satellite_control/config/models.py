@@ -323,6 +323,12 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Attitude tracking weight (align body x-axis with path tangent)",
     )
+    Q_axis_align: float = Field(
+        constants.Constants.Q_AXIS_ALIGN,
+        ge=0.0,
+        le=1e6,
+        description="Extra axis-alignment weight (adds to Q_attitude)",
+    )
     Q_terminal_pos: float = Field(
         0.0,
         ge=0.0,
@@ -477,6 +483,7 @@ class MPCParams(BaseModel):
         "Q_contour",
         "Q_progress",
         "Q_attitude",
+        "Q_axis_align",
         "Q_smooth",
         "q_angular_velocity",
         "r_thrust",
@@ -564,6 +571,7 @@ class MPCParams(BaseModel):
             + max(self.Q_s_anchor, 0.0)
             + self.Q_smooth
             + self.Q_attitude
+            + self.Q_axis_align
             + self.Q_terminal_pos
             + self.Q_terminal_s
             + self.q_angular_velocity

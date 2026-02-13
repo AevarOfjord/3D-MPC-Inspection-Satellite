@@ -115,6 +115,16 @@ frontend:
 
 sim:
 	@$(MAKE) venv
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
+		echo "pip missing in $(VENV_DIR), bootstrapping with ensurepip..."; \
+		$(VENV_PY) -m ensurepip --upgrade || true; \
+	fi
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
+		echo "Error: pip is not available in $(VENV_DIR)."; \
+		echo "Your Python 3.11 may be missing ensurepip support."; \
+		echo "Try reinstalling Python 3.11, then run: make clean && make install"; \
+		exit 1; \
+	fi
 	@if ! $(VENV_PY) -c "import numpy, scipy, pydantic, typer" >/dev/null 2>&1; then \
 		echo "Python runtime dependencies are missing in $(VENV_DIR)."; \
 		echo "Running 'make install' to repair the environment..."; \
@@ -124,6 +134,11 @@ sim:
 			echo "Check network access and pip output above."; \
 			exit 1; \
 		fi; \
+	fi
+	@if [ ! -x "$(CMAKE_MAKE_PROGRAM)" ]; then \
+		echo "Build tool missing: $(CMAKE_MAKE_PROGRAM)"; \
+		echo "Installing C++ build dependencies into $(VENV_DIR)..."; \
+		$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10" || exit $$?; \
 	fi
 	@printf "Run tests before simulation? [y/N] "; \
 	read ans; \
@@ -150,14 +165,19 @@ venv: check-python
 		echo "Virtual environment already exists, skipping creation."; \
 	else \
 		echo "Creating virtual environment..."; \
-		$(SYSTEM_PYTHON) -m venv $(VENV_DIR); \
+		$(SYSTEM_PYTHON) -m venv --upgrade-deps $(VENV_DIR); \
 		echo "Virtual environment created at $(VENV_DIR)"; \
 	fi
-	@if ! $(VENV_PY) -c "import pip" >/dev/null 2>&1; then \
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
 		echo "pip missing in venv, repairing with ensurepip..."; \
 		$(VENV_PY) -m ensurepip --upgrade; \
-		$(VENV_PY) -m pip install --upgrade pip setuptools; \
 	fi
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
+		echo "Error: Failed to provision pip in $(VENV_DIR)."; \
+		echo "Please reinstall Python 3.11 with ensurepip support."; \
+		exit 1; \
+	fi
+	@$(VENV_PY) -m pip install --upgrade pip setuptools >/dev/null
 
 install: venv check-cmake
 	@echo ""

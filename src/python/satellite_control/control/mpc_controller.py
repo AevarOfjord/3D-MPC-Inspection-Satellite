@@ -138,6 +138,8 @@ class MPCController(Controller):
         mpc_params.Q_angvel = self.Q_angvel
         if hasattr(mpc_params, "Q_attitude"):
             mpc_params.Q_attitude = self.Q_attitude
+        if hasattr(mpc_params, "Q_axis_align"):
+            mpc_params.Q_axis_align = float(self.Q_axis_align)
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
         if hasattr(mpc_params, "thrust_l1_weight"):
@@ -621,6 +623,7 @@ class MPCController(Controller):
 
         self.Q_angvel = mpc.q_angular_velocity
         self.Q_attitude = getattr(mpc, "Q_attitude", 0.0)
+        self.Q_axis_align = getattr(mpc, "Q_axis_align", 0.0)
         self.R_thrust = mpc.r_thrust
         self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
         self.thrust_l1_weight = getattr(mpc, "thrust_l1_weight", 0.0)

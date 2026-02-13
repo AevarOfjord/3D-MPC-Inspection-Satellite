@@ -13,6 +13,14 @@ export function Overlay() {
     const unsubscribe = telemetry.subscribe(d => {
        setData(d);
        if (d) {
+          if (d.orientation_unwrapped_deg && d.orientation_unwrapped_deg.length === 3) {
+            setAttitude([
+              d.orientation_unwrapped_deg[0],
+              d.orientation_unwrapped_deg[1],
+              d.orientation_unwrapped_deg[2],
+            ]);
+            return;
+          }
           const q = new Quaternion(d.quaternion[1], d.quaternion[2], d.quaternion[3], d.quaternion[0]);
           const e = new Euler().setFromQuaternion(q, 'ZYX');
           const yawDeg = Number.isFinite(d.yaw_unwrapped_deg ?? NaN)
