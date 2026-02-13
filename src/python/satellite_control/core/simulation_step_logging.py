@@ -109,13 +109,13 @@ def log_simulation_step(
     )
 
     # Print status with timing information.
-    pos_error = _norm3(current_state[:3] - sim.reference_state[:3])
-    ang_error = quat_angle_error(sim.reference_state[3:7], current_state[3:7])
+    pos_error_scalar = _norm3(current_state[:3] - sim.reference_state[:3])
+    ang_error_scalar = quat_angle_error(sim.reference_state[3:7], current_state[3:7])
 
     # Expose metrics for external telemetry.
     sim.last_solve_time = solve_time
-    sim.last_pos_error = pos_error
-    sim.last_ang_error = ang_error
+    sim.last_pos_error = pos_error_scalar
+    sim.last_ang_error = ang_error_scalar
 
     # Determine status message (path-only).
     stabilization_time = None
@@ -153,7 +153,7 @@ def log_simulation_step(
         safe_reference = safe_reference.copy()
         safe_reference[3] = 1.0
 
-    ang_err_deg = np.degrees(ang_error)
+    ang_err_deg_scalar = np.degrees(ang_error_scalar)
     vel_error = 0.0
     ang_vel_error = 0.0
     if current_state.shape[0] >= 13 and safe_reference.shape[0] >= 13:
@@ -169,12 +169,46 @@ def log_simulation_step(
     if rw_torque is not None:
         rw_vals = np.array(rw_torque, dtype=float)
         rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
-    rw_out = [round(float(val), 2) for val in rw_norm]
+    rw_out_str = f"[{rw_norm[0]:.2f}, {rw_norm[1]:.2f}, {rw_norm[2]:.2f}]"
+
+    # Calculate detailed error vectors
+    # Position Error Vector (Current - Reference)
+    pos_err_vec = (current_state[:3] - safe_reference[:3]) * 1000.0  # mm
+    pos_err_str = (
+        f"[x:{pos_err_vec[0]:.0f}, y:{pos_err_vec[1]:.0f}, z:{pos_err_vec[2]:.0f}]mm"
+    )
+
+    # Angle Error Vector (Current - Reference), wrapped to [-180, 180]
+    # We need to get Euler angles for both and subtract
+    q_curr = np.array(current_state[3:7], dtype=float)
+    if np.dot(q_curr, q_curr) == 0:
+        q_curr = np.array([1.0, 0.0, 0.0, 0.0])
+
+    q_ref = np.array(safe_reference[3:7], dtype=float)
+    if np.dot(q_ref, q_ref) == 0:
+        q_ref = np.array([1.0, 0.0, 0.0, 0.0])
+
+    curr_r, curr_p, curr_y = quat_wxyz_to_euler_xyz(q_curr)
+    ref_r, ref_p, ref_y = quat_wxyz_to_euler_xyz(q_ref)
+
+    # Difference in degrees
+    diff_r = np.degrees(curr_r - ref_r)
+    diff_p = np.degrees(curr_p - ref_p)
+    diff_y = np.degrees(curr_y - ref_y)
+
+    # Wrap to [-180, 180]
+    diff_r = (diff_r + 180) % 360 - 180
+    diff_p = (diff_p + 180) % 360 - 180
+    diff_y = (diff_y + 180) % 360 - 180
+
+    ang_err_str = f"[Yaw:{diff_y:.1f}, Roll:{diff_r:.1f}, Pitch:{diff_p:.1f}]°"
 
     if do_log:
         logger_obj.info(
             f"t = {sim.simulation_time:.1f}s: {status_msg}\n"
-            f"Pos Err = {pos_error:.3f}m, Ang Err = {ang_err_deg:.1f}°\n"
+            f"Pos Err = {pos_error_scalar:.3f}m, Ang Err = {ang_err_deg_scalar:.1f}°\n"
+            f"Pos Err = {pos_err_str}\n"
+            f"Ang Err = {ang_err_str}\n"
             f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
             f"Position = {_fmt_position_mm(current_state)}\n"
             f"Angle = {_fmt_angles_deg(current_state)}\n"
@@ -184,7 +218,7 @@ def log_simulation_step(
             f"Thrusters = {active_thruster_ids}\n"
             f"Thruster Output = {thr_out}\n"
             f"Reaction Wheel = [X, Y, Z]\n"
-            f"RW Output = {rw_out}\n"
+            f"RW Output = {rw_out_str}\n"
         )
 
     if do_log:
@@ -235,8 +269,8 @@ def log_simulation_step(
             "Stabilization_Time": (
                 stabilization_time if stabilization_time is not None else ""
             ),
-            "Position_Error_m": pos_error,
-            "Angle_Error_deg": np.degrees(ang_error),
+            "Position_Error_m": pos_error_scalar,
+            "Angle_Error_deg": ang_err_deg_scalar,
             "Active_Thrusters": str(active_thruster_ids),
             "Solve_Time_s": mpc_computation_time,
             "Next_Update_s": sim.next_control_simulation_time,

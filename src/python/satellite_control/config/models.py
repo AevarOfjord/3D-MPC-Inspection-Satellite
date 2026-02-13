@@ -6,7 +6,7 @@ and descriptive error messages.
 """
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -450,6 +450,57 @@ class MPCParams(BaseModel):
             "Auto-derive velocity state bounds when explicit limits are unset"
         ),
     )
+
+    BASIC_FIELDS: ClassVar[tuple[str, ...]] = (
+        "prediction_horizon",
+        "control_horizon",
+        "dt",
+        "solver_time_limit",
+        "Q_contour",
+        "Q_progress",
+        "Q_attitude",
+        "Q_smooth",
+        "q_angular_velocity",
+        "r_thrust",
+        "r_rw_torque",
+        "path_speed",
+    )
+    ADVANCED_FIELDS: ClassVar[tuple[str, ...]] = (
+        "Q_lag",
+        "path_speed_min",
+        "path_speed_max",
+        "progress_taper_distance",
+        "progress_slowdown_distance",
+        "Q_terminal_pos",
+        "Q_terminal_s",
+        "progress_reward",
+        "max_linear_velocity",
+        "max_angular_velocity",
+        "obstacle_margin",
+        "enable_auto_state_bounds",
+        "enable_collision_avoidance",
+        "thruster_type",
+        "solver_type",
+        "enable_delta_u_coupling",
+        "enable_gyro_jacobian",
+        "verbose_mpc",
+    )
+    EXPERT_FIELDS: ClassVar[tuple[str, ...]] = (
+        "thrust_l1_weight",
+        "thrust_pair_weight",
+        "coast_pos_tolerance",
+        "coast_vel_tolerance",
+        "coast_min_speed",
+    )
+
+    @classmethod
+    def parameter_groups(cls) -> dict[str, list[str]]:
+        """Return MPC parameter grouping for UI/basic-vs-advanced surfaces."""
+        return {
+            "basic": list(cls.BASIC_FIELDS),
+            "advanced": list(cls.ADVANCED_FIELDS),
+            "expert": list(cls.EXPERT_FIELDS),
+        }
 
     @field_validator("thruster_type")
     @classmethod

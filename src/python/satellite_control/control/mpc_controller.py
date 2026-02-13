@@ -417,20 +417,26 @@ class MPCController(Controller):
             }
 
         if position is None:
-            if self._last_path_projection:
-                s_val = float(self._last_path_projection.get("s", self.s))
-                path_error = float(self._last_path_projection.get("path_error", 0.0))
-                endpoint_error = float(
-                    self._last_path_projection.get("endpoint_error", 0.0)
-                )
+            if hasattr(self._cpp_controller, "current_path_s"):
+                try:
+                    s_val = float(self._cpp_controller.current_path_s)
+                except Exception:
+                    s_val = float(self.s)
             else:
                 s_val = float(self.s)
+            if self._last_path_projection:
+                path_error = float(
+                    self._last_path_projection.get("path_error", float("inf"))
+                )
+                endpoint_error = float(
+                    self._last_path_projection.get("endpoint_error", float("inf"))
+                )
+            else:
                 path_error = float("inf")
                 endpoint_error = float("inf")
         else:
             pos_arr = np.array(position, dtype=float).reshape(-1)
             pos = pos_arr[:3] if pos_arr.size >= 3 else pos_arr
-
             if hasattr(self, "_cpp_controller") and hasattr(
                 self._cpp_controller, "project_onto_path"
             ):
@@ -454,42 +460,6 @@ class MPCController(Controller):
                 endpoint = np.array(self._path_data[-1][1:4], dtype=float)
                 endpoint_error = float(np.linalg.norm(pos - endpoint))
 
-            # Prevent global projection from jumping backwards on looping paths.
-            try:
-                backtrack_tol = max(0.1, 0.5 * float(self.path_speed) * float(self.dt))
-                if self._path_length > 0.0:
-                    backtrack_tol = min(backtrack_tol, float(self._path_length))
-                if s_val < float(self.s) - backtrack_tol:
-                    s_val = float(self.s)
-            except Exception:
-                logger.debug("Backtrack tolerance calculation failed", exc_info=True)
-
-            # Prevent global projection from jumping forward significantly (ambiguity resolution)
-            # This fixes premature completion on closed-loop paths (Start == End)
-            try:
-                forward_tol = max(
-                    5.0, 0.5 * float(self.path_speed) * float(self.dt) * self.N * 2.0
-                )
-                if self._path_length > 0.0:
-                    # If projection jumps > 50% of path, assume ambiguity if distances are similar
-                    # For M01, path is long, so 5m forward_tol is safe.
-                    if s_val > float(self.s) + forward_tol:
-                        # Calculate distances to sanity check
-                        # If dist(s_val) is similar to dist(self.s), prefer self.s
-                        # Note: self.s might not be perfectly on path, but we assume continuity.
-
-                        # Simple heuristic: If we are near start (s < 10m) and jump is large, reject it.
-                        if (
-                            float(self.s) < forward_tol
-                            and s_val > self._path_length * 0.9
-                        ):
-                            logger.debug(
-                                f"Rejecting ambiguous forward jump in path projection: {self.s:.2f} -> {s_val:.2f}"
-                            )
-                            s_val = float(self.s)
-            except Exception:
-                logger.debug("Forward jump tolerance calculation failed", exc_info=True)
-
         path_len = float(self._path_length) if self._path_length > 0 else 0.0
         progress = float(s_val / path_len) if path_len > 1e-9 else 0.0
         remaining = float(path_len - s_val) if path_len > 0 else 0.0
@@ -511,12 +481,47 @@ class MPCController(Controller):
         Returns:
             Tuple of (position, unit_tangent). Falls back to zeros if path not set.
         """
+        q_guess = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        pos_ref, tan_ref, _ = self.get_path_reference_state(s_query=s_query, q_current=q_guess)
+        return pos_ref, tan_ref
+
+    def get_path_reference_state(
+        self,
+        s_query: float | None = None,
+        q_current: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Get path reference position/tangent/quaternion for a given arc-length.
+
+        Uses C++ reference-frame generation when available so viewer/ghost and MPC
+        cost share the same attitude logic.
+        """
         if not self._path_data or len(self._path_data) < 2:
-            return np.zeros(3, dtype=float), np.zeros(3, dtype=float)
+            return (
+                np.zeros(3, dtype=float),
+                np.zeros(3, dtype=float),
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+            )
 
         s_val = float(self.s if s_query is None else s_query)
         if hasattr(self, "_path_length"):
             s_val = max(0.0, min(s_val, float(self._path_length)))
+
+        q_curr = (
+            np.array(q_current, dtype=float)
+            if q_current is not None
+            else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        )
+        if hasattr(self._cpp_controller, "get_reference_at_s"):
+            try:
+                pos, tangent, q_ref = self._cpp_controller.get_reference_at_s(s_val, q_curr)
+                return (
+                    np.array(pos, dtype=float),
+                    np.array(tangent, dtype=float),
+                    np.array(q_ref, dtype=float),
+                )
+            except Exception:
+                logger.debug("C++ get_reference_at_s failed, using Python fallback", exc_info=True)
 
         # Find the segment that contains s_val
         idx = 0
@@ -530,7 +535,7 @@ class MPCController(Controller):
         if seg_len <= 1e-9:
             pos = np.array([x0, y0, z0], dtype=float)
             tangent = np.array([0.0, 0.0, 0.0], dtype=float)
-            return pos, tangent
+            return pos, tangent, q_curr
 
         alpha = (s_val - s0) / seg_len
         pos = np.array(
@@ -544,7 +549,7 @@ class MPCController(Controller):
         else:
             tangent[:] = 0.0
 
-        return pos, tangent
+        return pos, tangent, q_curr
 
     def _extract_params_from_app_config(self, cfg: AppConfig) -> None:
         """Extract parameters from AppConfig."""
@@ -739,96 +744,14 @@ class MPCController(Controller):
         previous_thrusters: np.ndarray | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Compute optimal control action via C++ backend."""
-        # Handle Path Following State Augmentation
-        # Append current path parameter s to state
-        # Ensure x_current is basic 16-dim state before appending
+        # C++ owns path-progress continuity and projection filtering.
         s_for_state = float(self.s)
-        path_error = None
-        endpoint_error = None
-        s_proj = None
-        if self._path_set and len(x_current) >= 3:
-            if hasattr(self, "_cpp_controller") and hasattr(
-                self._cpp_controller, "project_onto_path"
-            ):
-                try:
-                    s_proj, closest_point, proj_err, endpoint_error = (
-                        self._cpp_controller.project_onto_path(x_current[:3])
-                    )
-                    s_proj = float(s_proj)
-                    closest_point = np.array(closest_point, dtype=float)
-                    path_error = float(proj_err)
-                    endpoint_error = float(endpoint_error)
-                except Exception:
-                    logger.debug(
-                        "C++ project_onto_path failed in get_control_action, using Python fallback",
-                        exc_info=True,
-                    )
-                    s_proj, closest_point, proj_err = self._project_onto_path(
-                        x_current[:3]
-                    )
-                    path_error = float(proj_err)
-                    endpoint = np.array(self._path_data[-1][1:4], dtype=float)
-                    endpoint_error = float(np.linalg.norm(x_current[:3] - endpoint))
-            else:
-                s_proj, closest_point, proj_err = self._project_onto_path(x_current[:3])
-                path_error = float(proj_err)
-                endpoint = np.array(self._path_data[-1][1:4], dtype=float)
-                endpoint_error = float(np.linalg.norm(x_current[:3] - endpoint))
-
-            # Keep s monotonic but bound lead to avoid drift. Ignore large backward jumps
-            # from global projection (e.g., looping paths near the start/end).
-            lead_max = 0.5 * float(self.path_speed) * float(self.dt) * float(self.N)
-            lead_max = float(max(0.2, min(1.0, lead_max)))
-            if self._path_length > 0.0:
-                lead_max = min(lead_max, float(self._path_length))
-
-            backtrack_tol = max(0.1, 0.5 * float(self.path_speed) * float(self.dt))
-            if self._path_length > 0.0:
-                backtrack_tol = min(backtrack_tol, float(self._path_length))
-
-            s_proj_filtered = float(s_proj)
-            if s_proj_filtered < float(self.s) - backtrack_tol:
-                s_proj_filtered = float(self.s)
-
-            # If projection is at the very end but endpoint distance is still large,
-            # force a small rollback window so MPCC can reacquire before terminal mode.
-            terminal_reacquire_active = False
-            terminal_capture_tol = 1.0  # [m] require true proximity before locking at s ~= L
-            if self._path_length > 0.0 and endpoint_error is not None:
-                L = float(self._path_length)
-                near_end_margin = max(0.1, 2.0 * float(self.path_speed) * float(self.dt))
-                if (
-                    s_proj_filtered >= (L - near_end_margin)
-                    and float(endpoint_error) > terminal_capture_tol
-                ):
-                    rollback_dist = max(
-                        1.0, 0.5 * float(self.path_speed) * float(self.dt) * float(self.N)
-                    )
-                    s_reacquire = max(0.0, L - rollback_dist)
-                    s_proj_filtered = min(s_proj_filtered, s_reacquire)
-                    # Explicitly allow rollback in this recovery mode.
-                    self.s = float(s_proj_filtered)
-                    terminal_reacquire_active = True
-
-            if not terminal_reacquire_active:
-                if self.s < s_proj_filtered:
-                    self.s = float(s_proj_filtered)
-                if self.s > s_proj_filtered + lead_max:
-                    self.s = float(s_proj_filtered) + lead_max
-
-            s_for_state = float(self.s)
-
-            self._last_path_projection = {
-                "s": s_for_state,
-                "s_proj": float(s_proj_filtered),
-                "s_proj_raw": float(s_proj),
-                "closest_point": closest_point,
-                "path_error": path_error,
-                "endpoint_error": endpoint_error,
-                "lead_max": lead_max,
-                "backtrack_tol": backtrack_tol,
-                "terminal_reacquire_active": terminal_reacquire_active,
-            }
+        if self._path_set and hasattr(self._cpp_controller, "current_path_s"):
+            try:
+                s_for_state = float(self._cpp_controller.current_path_s)
+                self.s = s_for_state
+            except Exception:
+                logger.debug("Failed to read C++ current_path_s", exc_info=True)
 
         if len(x_current) == 16:
             x_input = np.append(x_current, s_for_state)
@@ -867,22 +790,36 @@ class MPCController(Controller):
         u_out = np.array(result.u)
 
         # Extract virtual control v_s (last element)
-        v_s = u_out[-1]
+        v_s = float(u_out[-1]) if u_out.size > 0 else 0.0
 
-        # Update internal path state s only if solved successfully
-        if result.status == 1:
-            s_pred = s_for_state + v_s * self.dt
-            if self._path_set and hasattr(self, "_path_length"):
-                s_pred = max(0.0, min(float(s_pred), float(self._path_length)))
-            self._last_path_projection["s_pred"] = float(s_pred)
-            self.s = float(s_pred)
+        path_s = float(getattr(result, "path_s", s_for_state))
+        path_s_proj = getattr(result, "path_s_proj", None)
+        path_error = getattr(result, "path_error", None)
+        endpoint_error = getattr(result, "path_endpoint_error", None)
+        path_s_pred_raw = getattr(result, "path_s_pred", None)
+        if path_s_pred_raw is None:
+            path_s_pred = path_s + v_s * self.dt
+            if self._path_set and self._path_length > 0.0:
+                path_s_pred = max(0.0, min(float(path_s_pred), float(self._path_length)))
+        else:
+            path_s_pred = float(path_s_pred_raw)
+        self.s = path_s_pred
+        self._last_path_projection = {
+            "s": path_s,
+            "s_proj": float(path_s_proj) if path_s_proj is not None else None,
+            "path_error": float(path_error) if path_error is not None else None,
+            "endpoint_error": (
+                float(endpoint_error) if endpoint_error is not None else None
+            ),
+            "s_pred": path_s_pred,
+        }
 
         # Strip virtual control from output so simulation gets only physical actuators
-        u_phys = u_out[:-1]
+        u_phys = u_out[:-1] if u_out.size > 0 else u_out
 
         path_len = float(self._path_length) if self._path_length > 0 else 0.0
-        progress = float(s_for_state / path_len) if path_len > 1e-9 else 0.0
-        remaining = float(path_len - s_for_state) if path_len > 0 else 0.0
+        progress = float(path_s / path_len) if path_len > 1e-9 else 0.0
+        remaining = float(path_len - path_s) if path_len > 0 else 0.0
 
         extras = {
             "status": result.status,
@@ -898,13 +835,15 @@ class MPCController(Controller):
             "solver_fallback": bool(int(getattr(result, "status", -1)) != 1),
             "time_limit_exceeded": bool(getattr(result, "timeout", False))
             or (float(result.solve_time) > float(self.solver_time_limit)),
-            "path_s": float(s_for_state),
-            "path_s_proj": float(s_proj) if s_proj is not None else None,
+            "path_s": path_s,
+            "path_s_proj": float(path_s_proj) if path_s_proj is not None else None,
             "path_v_s": v_s,
             "path_progress": progress,
             "path_remaining": remaining,
-            "path_error": path_error,
-            "path_endpoint_error": endpoint_error,
-            "path_s_pred": self._last_path_projection.get("s_pred"),
+            "path_error": float(path_error) if path_error is not None else None,
+            "path_endpoint_error": (
+                float(endpoint_error) if endpoint_error is not None else None
+            ),
+            "path_s_pred": path_s_pred,
         }
         return u_phys, extras

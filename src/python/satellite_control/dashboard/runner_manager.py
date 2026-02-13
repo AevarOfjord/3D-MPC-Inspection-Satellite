@@ -228,6 +228,7 @@ class RunnerManager:
     def get_config(self) -> dict:
         """Get the current configuration (default + overrides)."""
         from satellite_control.config.simulation_config import SimulationConfig
+        from satellite_control.config.models import MPCParams
         
         # Start with default
         config = SimulationConfig.create_default()
@@ -254,6 +255,7 @@ class RunnerManager:
             "active_preset_name": self._active_preset_name,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
+        ui_config["mpc_parameter_groups"] = MPCParams.parameter_groups()
         return ui_config
 
     def update_config(self, overrides: dict, active_preset_name: str | None = None):

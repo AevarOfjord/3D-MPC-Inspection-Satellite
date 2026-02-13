@@ -195,12 +195,6 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         description: 'Penalty on rotational rate in the cost function.',
         impact: 'Higher values damp angular motion and reduce spin.',
       },
-      {
-        key: 'mpc.Q_lag',
-        label: 'Lag Error (Q_lag)',
-        description: 'Penalty on along-track lag relative to the path parameterization.',
-        impact: 'Higher values reduce behind-path drift.',
-      },
     ],
   },
   {
@@ -227,43 +221,14 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
     ],
   },
   {
-    title: 'Basic - Constraints and Safety',
-    items: [
-      {
-        key: 'mpc.max_linear_velocity',
-        label: 'Max Linear Velocity (m/s)',
-        description: 'State bound for translational speed. 0 means automatic bound behavior.',
-        impact: 'Lower bounds reduce aggressive motion and increase safety margin.',
-      },
-      {
-        key: 'mpc.max_angular_velocity',
-        label: 'Max Angular Velocity (rad/s)',
-        description: 'State bound for rotational speed. 0 means automatic bound behavior.',
-        impact: 'Lower bounds reduce spin and improve stability.',
-      },
-      {
-        key: 'mpc.obstacle_margin',
-        label: 'Obstacle Margin (m)',
-        description: 'Extra safety clearance around modeled obstacles.',
-        impact: 'Higher margin is safer but may make pathing more conservative.',
-      },
-      {
-        key: 'mpc.enable_auto_state_bounds',
-        label: 'Enable Auto State Bounds',
-        description: 'Automatically derives velocity bounds when explicit bounds are unset.',
-        impact: 'Improves robustness when limits are left at defaults.',
-      },
-      {
-        key: 'mpc.enable_collision_avoidance',
-        label: 'Enable Collision Avoidance',
-        description: 'Enables online obstacle constraints in MPC.',
-        impact: 'Improves safety around obstacles but can increase solver complexity.',
-      },
-    ],
-  },
-  {
     title: 'Advanced Settings',
     items: [
+      {
+        key: 'mpc.Q_lag',
+        label: 'Lag Error (Q_lag)',
+        description: 'Penalty on along-track lag relative to the path parameterization.',
+        impact: 'Higher values reduce behind-path drift.',
+      },
       {
         key: 'mpc.path_speed_min',
         label: 'Path Speed Min (m/s)',
@@ -305,6 +270,36 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         label: 'Progress Reward',
         description: 'Linear reward term for moving forward along the path.',
         impact: 'Higher values bias toward faster forward motion.',
+      },
+      {
+        key: 'mpc.max_linear_velocity',
+        label: 'Max Linear Velocity (m/s)',
+        description: 'State bound for translational speed. 0 means automatic bound behavior.',
+        impact: 'Lower bounds reduce aggressive motion and increase safety margin.',
+      },
+      {
+        key: 'mpc.max_angular_velocity',
+        label: 'Max Angular Velocity (rad/s)',
+        description: 'State bound for rotational speed. 0 means automatic bound behavior.',
+        impact: 'Lower bounds reduce spin and improve stability.',
+      },
+      {
+        key: 'mpc.obstacle_margin',
+        label: 'Obstacle Margin (m)',
+        description: 'Extra safety clearance around modeled obstacles.',
+        impact: 'Higher margin is safer but may make pathing more conservative.',
+      },
+      {
+        key: 'mpc.enable_auto_state_bounds',
+        label: 'Enable Auto State Bounds',
+        description: 'Automatically derives velocity bounds when explicit bounds are unset.',
+        impact: 'Improves robustness when limits are left at defaults.',
+      },
+      {
+        key: 'mpc.enable_collision_avoidance',
+        label: 'Enable Collision Avoidance',
+        description: 'Enables online obstacle constraints in MPC.',
+        impact: 'Improves safety around obstacles but can increase solver complexity.',
       },
       {
         key: 'mpc.thruster_type',
@@ -997,12 +992,6 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       onChange={(v) => updateConfig('mpc.q_angular_velocity', v)}
                       isNumber
                     />
-                    <ConfigField
-                      label="Lag Error (Q_lag)"
-                      value={config?.mpc.Q_lag}
-                      onChange={(v) => updateConfig('mpc.Q_lag', v)}
-                      isNumber
-                    />
                   </div>
                 </section>
 
@@ -1033,44 +1022,6 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   </div>
                 </section>
 
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                    Basic - Constraints and Safety
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <ConfigField
-                      label="Max Linear Velocity (m/s)"
-                      value={config?.mpc.max_linear_velocity}
-                      onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
-                      isNumber
-                      desc="0 = auto bound"
-                    />
-                    <ConfigField
-                      label="Max Angular Velocity (rad/s)"
-                      value={config?.mpc.max_angular_velocity}
-                      onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
-                      isNumber
-                      desc="0 = auto bound"
-                    />
-                    <ConfigField
-                      label="Obstacle Margin (m)"
-                      value={config?.mpc.obstacle_margin}
-                      onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
-                      isNumber
-                      step={0.01}
-                    />
-                    <ToggleField
-                      label="Enable Auto State Bounds"
-                      checked={Boolean(config?.mpc.enable_auto_state_bounds)}
-                      onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
-                    />
-                    <ToggleField
-                      label="Enable Collision Avoidance"
-                      checked={Boolean(config?.mpc.enable_collision_avoidance)}
-                      onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
-                    />
-                  </div>
-                </section>
               </div>
             )}
           </section>
@@ -1088,6 +1039,12 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
 
             {showAdvanced && (
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ConfigField
+                  label="Lag Error (Q_lag)"
+                  value={config?.mpc.Q_lag}
+                  onChange={(v) => updateConfig('mpc.Q_lag', v)}
+                  isNumber
+                />
                 <ConfigField
                   label="Path Speed Min (m/s)"
                   value={config?.mpc.path_speed_min}
@@ -1137,6 +1094,37 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   value={config?.mpc.progress_reward}
                   onChange={(v) => updateConfig('mpc.progress_reward', v)}
                   isNumber
+                />
+                <ConfigField
+                  label="Max Linear Velocity (m/s)"
+                  value={config?.mpc.max_linear_velocity}
+                  onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
+                  isNumber
+                  desc="0 = auto bound"
+                />
+                <ConfigField
+                  label="Max Angular Velocity (rad/s)"
+                  value={config?.mpc.max_angular_velocity}
+                  onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
+                  isNumber
+                  desc="0 = auto bound"
+                />
+                <ConfigField
+                  label="Obstacle Margin (m)"
+                  value={config?.mpc.obstacle_margin}
+                  onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
+                  isNumber
+                  step={0.01}
+                />
+                <ToggleField
+                  label="Enable Auto State Bounds"
+                  checked={Boolean(config?.mpc.enable_auto_state_bounds)}
+                  onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
+                />
+                <ToggleField
+                  label="Enable Collision Avoidance"
+                  checked={Boolean(config?.mpc.enable_collision_avoidance)}
+                  onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
                 />
                 <SelectField
                   label="Thruster Type"
