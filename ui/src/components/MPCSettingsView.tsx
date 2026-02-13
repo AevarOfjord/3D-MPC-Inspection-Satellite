@@ -25,6 +25,7 @@ interface MpcSettings {
   Q_s_anchor: number;
   Q_smooth: number;
   Q_attitude: number;
+  Q_axis_align: number;
   Q_terminal_pos: number;
   Q_terminal_s: number;
   q_angular_velocity: number;
@@ -87,36 +88,37 @@ interface SettingReferenceSection {
 
 const DEFAULT_MPC_SETTINGS: MpcSettings = {
   prediction_horizon: 50,
-  control_horizon: 50,
+  control_horizon: 40,
   dt: 0.05,
-  solver_time_limit: 0.04,
+  solver_time_limit: 0.025,
   solver_type: 'OSQP',
   Q_contour: 100000.0,
-  Q_progress: 100.0,
+  Q_progress: 80.0,
   progress_reward: 0.0,
   Q_lag: 0.0,
-  Q_lag_default: -1.0,
-  Q_velocity_align: 0.0,
-  Q_s_anchor: -1.0,
-  Q_smooth: 10.0,
+  Q_lag_default: 4000.0,
+  Q_velocity_align: 120.0,
+  Q_s_anchor: 500.0,
+  Q_smooth: 15.0,
   Q_attitude: 5000.0,
+  Q_axis_align: 2500.0,
   Q_terminal_pos: 0.0,
   Q_terminal_s: 0.0,
-  q_angular_velocity: 1000.0,
-  r_thrust: 0.1,
-  r_rw_torque: 0.01,
-  thrust_l1_weight: 0.1,
-  thrust_pair_weight: 2.0,
-  coast_pos_tolerance: 0.1,
-  coast_vel_tolerance: 0.02,
-  coast_min_speed: 0.02,
+  q_angular_velocity: 1200.0,
+  r_thrust: 0.02,
+  r_rw_torque: 0.003,
+  thrust_l1_weight: 0.0,
+  thrust_pair_weight: 0.5,
+  coast_pos_tolerance: 0.0,
+  coast_vel_tolerance: 0.0,
+  coast_min_speed: 0.0,
   thruster_type: 'CON',
   verbose_mpc: false,
   obstacle_margin: 0.1,
   enable_collision_avoidance: false,
-  path_speed: 0.1,
-  path_speed_min: 0.01,
-  path_speed_max: 0.1,
+  path_speed: 0.08,
+  path_speed_min: 0.0,
+  path_speed_max: 0.08,
   progress_taper_distance: 0.0,
   progress_slowdown_distance: 0.0,
   max_linear_velocity: 0.0,
@@ -252,6 +254,12 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         label: 'S Anchor (Q_s_anchor)',
         description: 'Weight anchoring path parameter state to the linearization reference. -1 keeps auto behavior.',
         impact: 'Lets you tune path-parameter anchoring strength explicitly.',
+      },
+      {
+        key: 'mpc.Q_axis_align',
+        label: 'Axis Align (Q_axis_align)',
+        description: 'Extra alignment weight added on top of Q_attitude.',
+        impact: 'Increase to bias stronger body-axis alignment without changing other attitude tuning.',
       },
       {
         key: 'mpc.path_speed_min',
@@ -444,6 +452,7 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
     if (typeof legacyWeights.Q_progress === 'number') normalizedMpc.Q_progress = legacyWeights.Q_progress;
     if (typeof legacyWeights.Q_smooth === 'number') normalizedMpc.Q_smooth = legacyWeights.Q_smooth;
     if (typeof legacyWeights.Q_attitude === 'number') normalizedMpc.Q_attitude = legacyWeights.Q_attitude;
+    if (typeof legacyWeights.Q_axis_align === 'number') normalizedMpc.Q_axis_align = legacyWeights.Q_axis_align;
     if (typeof legacyWeights.angular_velocity === 'number') normalizedMpc.q_angular_velocity = legacyWeights.angular_velocity;
     if (typeof legacyWeights.thrust === 'number') normalizedMpc.r_thrust = legacyWeights.thrust;
     if (typeof legacyWeights.rw_torque === 'number') normalizedMpc.r_rw_torque = legacyWeights.rw_torque;
@@ -554,6 +563,7 @@ function validateConfig(config: SettingsConfig): string[] {
     ['Q_velocity_align', mpc.Q_velocity_align],
     ['Q_smooth', mpc.Q_smooth],
     ['Q_attitude', mpc.Q_attitude],
+    ['Q_axis_align', mpc.Q_axis_align],
     ['Q_terminal_pos', mpc.Q_terminal_pos],
     ['Q_terminal_s', mpc.Q_terminal_s],
     ['q_angular_velocity', mpc.q_angular_velocity],
@@ -1092,6 +1102,13 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   onChange={(v) => updateConfig('mpc.Q_s_anchor', v)}
                   isNumber
                   desc="-1 = auto fallback"
+                />
+                <ConfigField
+                  label="Axis Align (Q_axis_align)"
+                  value={config?.mpc.Q_axis_align}
+                  onChange={(v) => updateConfig('mpc.Q_axis_align', v)}
+                  isNumber
+                  desc="extra attitude alignment weight"
                 />
                 <ConfigField
                   label="Path Speed Min (m/s)"

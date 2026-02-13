@@ -34,11 +34,12 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     );
 
     // Precompute weight vectors
+    const double Q_att_total = mpc_params_.Q_attitude + mpc_params_.Q_axis_align;
     Q_diag_.resize(nx_);
     // Path-following: contouring handles position, velocity alignment handled in update_path_cost.
     // Disable quaternion tracking to avoid penalizing unit quaternion magnitude.
     Q_diag_ << VectorXd::Constant(3, 2.0 * mpc_params_.Q_contour),
-               VectorXd::Constant(4, 2.0 * mpc_params_.Q_attitude),
+               VectorXd::Constant(4, 2.0 * Q_att_total),
                VectorXd::Constant(3, 0.0),
                VectorXd::Constant(3, mpc_params_.Q_angvel),
                VectorXd::Constant(3, 0.0), // Wheel speeds
@@ -1300,7 +1301,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     if (Q_s_anchor < 0.0) {
         Q_s_anchor = std::max(Q_p, 0.5 * Q_c);
     }
-    double Q_att = mpc_params_.Q_attitude; // Attitude tracking weight
+    double Q_att = mpc_params_.Q_attitude + mpc_params_.Q_axis_align; // Attitude + explicit axis-alignment
     // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
     double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
     if (mpc_params_.path_speed_max > 0.0) {

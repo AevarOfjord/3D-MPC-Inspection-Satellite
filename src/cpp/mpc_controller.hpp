@@ -42,6 +42,7 @@ struct MPCParams {
     double Q_smooth = 10.0;             ///< Weight for control increment smoothness (Δu)
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
     double Q_attitude = 0.0;            ///< Attitude tracking weight (align body x-axis to path tangent)
+    double Q_axis_align = 0.0;          ///< Extra axis-alignment weight (adds to Q_attitude)
 
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight

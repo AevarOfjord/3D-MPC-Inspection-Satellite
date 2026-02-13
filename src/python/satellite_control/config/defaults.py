@@ -82,6 +82,7 @@ def create_default_app_config() -> AppConfig:
         Q_s_anchor=constants.Constants.Q_S_ANCHOR,
         Q_smooth=constants.Constants.Q_SMOOTH,
         Q_attitude=constants.Constants.Q_ATTITUDE,
+        Q_axis_align=constants.Constants.Q_AXIS_ALIGN,
         Q_terminal_pos=0.0,
         Q_terminal_s=0.0,
         q_angular_velocity=constants.Constants.Q_ANGULAR_VELOCITY,

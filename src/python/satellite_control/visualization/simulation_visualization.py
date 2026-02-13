@@ -962,6 +962,7 @@ class SimulationVisualizationManager:
         import matplotlib.pyplot as plt
         import pandas as pd
         from matplotlib.animation import FuncAnimation
+        from scipy.spatial.transform import Rotation
 
         csv_path = output_dir / "control_data.csv"
         if not csv_path.exists():
@@ -998,10 +999,34 @@ class SimulationVisualizationManager:
         vy = get_col("Current_VY")
         vz = get_col("Current_VZ")
 
-        # Euler angles (assuming Radians in CSV based on inspection)
-        roll = get_col("Current_Roll")
-        pitch = get_col("Current_Pitch")
-        yaw = get_col("Current_Yaw")
+        # Continuous Euler display angles derived from quaternion when available.
+        has_quat_cols = all(
+            c in df.columns for c in ("Current_QW", "Current_QX", "Current_QY", "Current_QZ")
+        )
+        if has_quat_cols:
+            q_wxyz = np.column_stack(
+                [
+                    get_col("Current_QW", 1.0),
+                    get_col("Current_QX", 0.0),
+                    get_col("Current_QY", 0.0),
+                    get_col("Current_QZ", 0.0),
+                ]
+            ).astype(float)
+            q_norm = np.linalg.norm(q_wxyz, axis=1, keepdims=True)
+            q_norm[q_norm <= 1e-12] = 1.0
+            q_wxyz = q_wxyz / q_norm
+            q_xyzw = np.column_stack(
+                [q_wxyz[:, 1], q_wxyz[:, 2], q_wxyz[:, 3], q_wxyz[:, 0]]
+            )
+            euler_xyz = Rotation.from_quat(q_xyzw).as_euler("xyz", degrees=False)
+            euler_xyz = np.unwrap(euler_xyz, axis=0)
+            roll = euler_xyz[:, 0]
+            pitch = euler_xyz[:, 1]
+            yaw = euler_xyz[:, 2]
+        else:
+            roll = np.unwrap(get_col("Current_Roll"))
+            pitch = np.unwrap(get_col("Current_Pitch"))
+            yaw = np.unwrap(get_col("Current_Yaw"))
 
         wx = get_col("Current_WX")
         wy = get_col("Current_WY")
