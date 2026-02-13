@@ -13,6 +13,7 @@ This module handles:
 """
 
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -162,7 +163,9 @@ class SimulationLoop:
                         self.simulation.visualizer.sync_from_controller()
                         self.simulation.save_mission_summary()
                 except Exception as save_exc:
-                    logger.warning("Failed to save partial data after failure: %s", save_exc)
+                    logger.warning(
+                        "Failed to save partial data after failure: %s", save_exc
+                    )
                 try:
                     self.simulation.finalize_run_artifacts(
                         run_status="failed",
@@ -198,16 +201,21 @@ class SimulationLoop:
 
         # After animation is complete, save files
         if self.simulation.data_save_path is not None:
-            logger.info("Saving simulation data...")
-            self.simulation.save_csv_data()
-            self.simulation.visualizer.sync_from_controller()
-            self.simulation.save_mission_summary()
-            self.simulation.save_animation_mp4(fig, ani)
+            logger.info("Simulation finished. Data saving in progress...")
+            self.simulation.save_simulation_data()  # Consolidated save call
+
+            # Use the new prompt for MP4 only
+            if self._prompt_for_mp4():
+                self.simulation.save_animation_mp4(fig, ani)
+            else:
+                logger.info("Skipping MP4 animation generation.")
+
+            # Always generate static visualizations
+            logger.info("Auto-generating visualizations...")
+            self.simulation.auto_generate_visualizations(generate_animation=False)
+            logger.info("All visualizations complete!")
             logger.info("Data saved to: %s", self.simulation.data_save_path)
 
-            logger.info("Auto-generating performance plots...")
-            self.simulation.auto_generate_visualizations()
-            logger.info("All visualizations complete!")
             self.simulation.finalize_run_artifacts(
                 run_status="completed",
                 status_detail="Simulation completed in animation mode",
@@ -279,16 +287,25 @@ class SimulationLoop:
                 break
 
         if self.simulation.data_save_path is not None:
-            logger.info("Saving simulation data...")
-            self.simulation.save_csv_data()
-            self.simulation.visualizer.sync_from_controller()
-            self.simulation.save_mission_summary()
-            logger.info("CSV data saved to: %s", self.simulation.data_save_path)
+            logger.info("Simulation finished. Data saving in progress...")
+            self.simulation.save_simulation_data()  # Consolidated save call
 
-            # Auto-generate all visualizations
+            # Always generate visualizations in batch mode contexts.
+            # We prompt for MP4 animation because it is slow to render.
             logger.info("Auto-generating visualizations...")
-            self.simulation.auto_generate_visualizations()
+
+            generate_mp4 = self._prompt_for_mp4()
+            if not generate_mp4:
+                logger.info(
+                    "Skipping MP4 animation generation (user request or default)."
+                )
+
+            self.simulation.auto_generate_visualizations(
+                generate_animation=generate_mp4
+            )
             logger.info("All visualizations complete!")
+            logger.info("Data saved to: %s", self.simulation.data_save_path)
+
             self.simulation.finalize_run_artifacts(
                 run_status="completed",
                 status_detail="Simulation completed in batch mode",
@@ -297,6 +314,26 @@ class SimulationLoop:
         self._enforce_timing_contract_if_needed()
 
         return self.simulation.data_save_path
+
+    def _prompt_for_mp4(self) -> bool:
+        """
+        Prompt the user whether to generate an MP4 video file.
+
+        Returns:
+            True if user inputs 'y' or 'yes' (case insensitive), False otherwise.
+            Default is False (on simple Enter).
+        """
+        # Ensure input is visible and cursor is at the end
+        if not sys.stdin.isatty():
+            # Non-interactive mode (e.g. CI/CD), default to False
+            return False
+
+        try:
+            print("\nGenerate MP4 animation? [y/N]: ", end="", flush=True)
+            choice = sys.stdin.readline().strip().lower()
+            return choice in ("y", "yes")
+        except (KeyboardInterrupt, EOFError):
+            return False
 
     def _enforce_timing_contract_if_needed(self) -> None:
         """Raise if strict timing contract enforcement is enabled and violated."""
@@ -325,11 +362,11 @@ class SimulationLoop:
         if not self.simulation.is_running:
             return []
 
-        # Update reference state from path (path-only mode)
+        # Compute control first, then refresh reference so it reflects
+        # what the controller expects at this moment.
+        self.simulation.update_mpc_control()
         current_state = self.simulation.get_current_state()
         self.simulation.update_path_reference_state(current_state)
-
-        self.simulation.update_mpc_control()
 
         # Process command queue to apply delayed commands (sets
         # active_thrusters)

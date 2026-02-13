@@ -1624,10 +1624,12 @@ class SimulationVisualizationManager:
         # Reset trajectory
         self.satellite.trajectory = [self.satellite.position.copy()]
 
-    def auto_generate_visualizations(self):
+    def auto_generate_visualizations(self, generate_animation: bool = False):
         """
-        Automatically generate all visualizations after simulation completion.
-        This replaces the need for a separate visualization script.
+        Automatically generate performance plots (always) and animation (optional).
+
+        Args:
+            generate_animation: Whether to generate the MP4 animation (default: False).
         """
         if UnifiedVisualizationGenerator is None:
             print(
@@ -1640,7 +1642,9 @@ class SimulationVisualizationManager:
             return
 
         try:
-            print("\n Animation, Plots and Summary will now be generated!")
+            print("\n Plots and Summary will now be generated!")
+            if generate_animation:
+                print(" Animation will also be generated.")
 
             # Check for MissionState.
             mission_state = getattr(self.controller, "mission_state", None)
@@ -1678,7 +1682,7 @@ class SimulationVisualizationManager:
             finally:
                 sys.stdout = old_stdout
 
-            # Generate performance plots
+            # Generate performance plots (ALWAYS)
             try:
                 print("\nCreating Plots...")
                 plots_path = self.data_save_path / "Plots"
@@ -1695,28 +1699,31 @@ class SimulationVisualizationManager:
             except Exception as plots_err:
                 print(f"  Performance plots generation failed: {plots_err}")
 
-            # Generate matplotlib-based animation with X-Y and X-Z panels
-            try:
-                print("\nCreating animation...")
-                animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
-                print(f"Saving animation to: {animation_path}")
+            # Generate matplotlib-based animation with X-Y and X-Z panels (OPTIONAL)
+            if generate_animation:
+                try:
+                    print("\nCreating animation...")
+                    animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
+                    print(f"Saving animation to: {animation_path}")
 
-                # Use new dual-panel trajectory animation
-                self.save_trajectory_animation(self.data_save_path)
+                    # Use new dual-panel trajectory animation
+                    self.save_trajectory_animation(self.data_save_path)
 
-                if animation_path.exists():
-                    print(" Animation saved successfully!")
-                    print(f" File location: {animation_path}")
-                else:
-                    # Check for GIF fallback
-                    gif_path = self.data_save_path / "Simulation_3D_Render.gif"
-                    if gif_path.exists():
-                        print(" Animation saved successfully (GIF format)!")
-                        print(f" File location: {gif_path}")
+                    if animation_path.exists():
+                        print(" Animation saved successfully!")
+                        print(f" File location: {animation_path}")
                     else:
-                        print(" Animation generation failed.")
-            except Exception as anim_err:
-                print(f"  Animation generation failed: {anim_err}")
+                        # Check for GIF fallback
+                        gif_path = self.data_save_path / "Simulation_3D_Render.gif"
+                        if gif_path.exists():
+                            print(" Animation saved successfully (GIF format)!")
+                            print(f" File location: {gif_path}")
+                        else:
+                            print(" Animation generation failed.")
+                except Exception as anim_err:
+                    print(f"  Animation generation failed: {anim_err}")
+            else:
+                print("\nAnimation skipped (use Visualize.py or enable animation).")
 
         except Exception as e:
             print(f" Error during auto-visualization: {e}")

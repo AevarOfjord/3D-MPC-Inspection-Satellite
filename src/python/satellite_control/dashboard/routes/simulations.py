@@ -116,16 +116,21 @@ async def get_simulation_telemetry(
     metadata_path = run_dir / "mission_metadata.json"
     scan_object = None
     planned_path = None
-    frame = "ECI"
-    frame_origin = None
+    # Playback should be interpreted as LVLH by default.
+    frame = "LVLH"
+    frame_origin = [0.0, 0.0, 0.0]
     if metadata_path.exists():
         try:
             metadata = json.loads(metadata_path.read_text())
             scan_object = metadata.get("scan_object")
             planned_path = metadata.get("planned_path")
-            if scan_object and scan_object.get("position") is not None:
-                frame = "LVLH"
-                frame_origin = scan_object.get("position")
+            meta_origin = metadata.get("frame_origin")
+            if isinstance(meta_origin, list) and len(meta_origin) >= 3:
+                frame_origin = [float(meta_origin[0]), float(meta_origin[1]), float(meta_origin[2])]
+            elif scan_object and scan_object.get("position") is not None:
+                pos = scan_object.get("position")
+                if isinstance(pos, list) and len(pos) >= 3:
+                    frame_origin = [float(pos[0]), float(pos[1]), float(pos[2])]
         except Exception as exc:
             logger.warning(f"Failed to read mission metadata for {run_id}: {exc}")
 
@@ -241,6 +246,8 @@ async def get_simulation_telemetry(
                     # even if the origin is [0,0,0] (which would just be ECI centered)
                     current_origin = [ox, oy, oz]
                     current_frame = "LVLH"
+                elif current_origin is None:
+                    current_origin = [0.0, 0.0, 0.0]
 
                 telemetry.append(
                     {

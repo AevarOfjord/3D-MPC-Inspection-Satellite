@@ -369,6 +369,11 @@ class SatelliteMPCLinearizedSimulation:
         """Save all logged data to CSV file (delegated to SimulationIO)."""
         self._io.save_csv_data()
 
+    def save_simulation_data(self) -> None:
+        """Save all simulation data (CSV, summary, etc.)."""
+        self.save_csv_data()
+        self.save_mission_summary()
+
     def save_mission_summary(self) -> None:
         """Generate and save mission summary report (delegated to SimulationIO)."""
         self._io.save_mission_summary()
@@ -570,10 +575,12 @@ class SatelliteMPCLinearizedSimulation:
         """Legacy alias for reset()."""
         self.reset()
 
-    def auto_generate_visualizations(self) -> None:
+    def auto_generate_visualizations(self, generate_animation: bool = False) -> None:
         """Generate all visualizations after simulation completion."""
         self.visualizer.sync_from_controller()
-        self.visualizer.auto_generate_visualizations()
+        self.visualizer.auto_generate_visualizations(
+            generate_animation=generate_animation
+        )
 
     def run_simulation(self, show_animation: bool = True) -> None:
         """

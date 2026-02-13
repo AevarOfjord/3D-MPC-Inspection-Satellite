@@ -118,7 +118,6 @@ def log_simulation_step(
     sim.last_ang_error = ang_error_scalar
 
     # Determine status message (path-only).
-    stabilization_time = None
     mission_phase = "PATH_FOLLOWING"
     status_msg = f"Following Path (t={sim.simulation_time:.1f}s)"
 
@@ -161,7 +160,6 @@ def log_simulation_step(
         ang_vel_error = _norm3(current_state[10:13] - safe_reference[10:13])
     ang_vel_err_deg = np.degrees(ang_vel_error)
     solve_ms = mpc_info.get("solve_time", 0) * 1000 if mpc_info else 0.0
-    next_upd = sim.next_control_simulation_time
 
     # Show duty cycle for each active thruster (matching active_thruster_ids).
     thr_out = [round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids]
@@ -203,22 +201,62 @@ def log_simulation_step(
 
     ang_err_str = f"[Yaw:{diff_y:.1f}, Roll:{diff_r:.1f}, Pitch:{diff_p:.1f}]°"
 
+    # ANSI Color Codes
+    BLUE = "\033[94m"
+    YELLOW = "\033[93m"
+    RESET = "\033[0m"
+    CYAN = "\033[96m"
+
+    BOLD = "\033[1m"
+
+    # Time and Status Header
+    header_line = f"{status_msg} | Solve: {solve_ms:.1f}ms"
+
+    # Error Metrics formatted with colors
+    # We can use simple thresholding for colors, or just keep labels colored for readability.
+    # Let's stick to colored labels for now to ensure readability without confusing thresholds.
+
+    row_pos = (
+        f"{CYAN}POS ERR:{RESET} {pos_error_scalar:.3f}m".ljust(25)
+        + f"{CYAN}| Vec:{RESET} {pos_err_str}"
+    )
+    row_ang = (
+        f"{CYAN}ANG ERR:{RESET} {ang_err_deg_scalar:.1f}°".ljust(25)
+        + f"{CYAN}| Vec:{RESET} {ang_err_str}"
+    )
+    row_vel = (
+        f"{CYAN}VEL ERR:{RESET} {vel_error:.3f}m/s".ljust(25)
+        + f"{CYAN}| Ang Vel Err:{RESET} {ang_vel_err_deg:.1f}°/s"
+    )
+
+    # State Data
+    row_state_pos = (
+        f"{BLUE}Pos:{RESET} {_fmt_position_mm(current_state)}".ljust(45)
+        + f"{BLUE}(Ref:{RESET} {_fmt_position_mm(safe_reference)})"
+    )
+    row_state_ang = f"{BLUE}Ang:{RESET} {_fmt_angles_deg(current_state)}"
+
+    # Actuators
+    row_thrusters = f"{YELLOW}Thrusters {active_thruster_ids}:{RESET} {thr_out}"
+    row_rw = f"{YELLOW}RW Torque [X,Y,Z]:{RESET}   {rw_out_str}"
+
+    sep = "-" * 80
+    block_sep = "=" * 80
+
     if do_log:
         logger_obj.info(
-            f"t = {sim.simulation_time:.1f}s: {status_msg}\n"
-            f"Pos Err = {pos_error_scalar:.3f}m, Ang Err = {ang_err_deg_scalar:.1f}°\n"
-            f"Pos Err = {pos_err_str}\n"
-            f"Ang Err = {ang_err_str}\n"
-            f"Vel Err = {vel_error:.3f}m/s, Vel Ang Err = {ang_vel_err_deg:.1f}°/s\n"
-            f"Position = {_fmt_position_mm(current_state)}\n"
-            f"Angle = {_fmt_angles_deg(current_state)}\n"
-            f"Reference Pos = {_fmt_position_mm(safe_reference)}\n"
-            f"Reference Ang = {_fmt_angles_deg(safe_reference)}\n"
-            f"Solve = {solve_ms:.1f}ms, Next = {next_upd:.3f}s\n"
-            f"Thrusters = {active_thruster_ids}\n"
-            f"Thruster Output = {thr_out}\n"
-            f"Reaction Wheel = [X, Y, Z]\n"
-            f"RW Output = {rw_out_str}\n"
+            f"\n{BOLD}{block_sep}{RESET}\n"
+            f"{header_line}\n"
+            f"{sep}\n"
+            f"{row_pos}\n"
+            f"{row_ang}\n"
+            f"{row_vel}\n"
+            f"{sep}\n"
+            f"{row_state_pos}\n"
+            f"{row_state_ang}\n"
+            f"{sep}\n"
+            f"{row_thrusters}\n"
+            f"{row_rw}\n\n\n"
         )
 
     if do_log:
@@ -263,6 +301,10 @@ def log_simulation_step(
         )
 
         # Log terminal message to CSV.
+        # Restoring variables needed for CSV logging
+        stabilization_time = None
+        next_upd = sim.next_control_simulation_time
+
         terminal_entry = {
             "Time": sim.simulation_time,
             "Status": status_msg,
@@ -273,7 +315,7 @@ def log_simulation_step(
             "Angle_Error_deg": ang_err_deg_scalar,
             "Active_Thrusters": str(active_thruster_ids),
             "Solve_Time_s": mpc_computation_time,
-            "Next_Update_s": sim.next_control_simulation_time,
+            "Next_Update_s": next_upd,
         }
         sim.data_logger.log_terminal_message(terminal_entry)
 
