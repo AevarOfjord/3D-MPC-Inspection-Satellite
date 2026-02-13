@@ -5,7 +5,9 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.spatial.transform import Rotation
 
+from satellite_control.utils.orientation_utils import quat_angle_error
 from satellite_control.visualization.plot_data_utils import (
     get_control_time_axis,
     resolve_data_frame_and_columns,
@@ -645,12 +647,76 @@ def generate_error_vs_solve_time_scatter_plot(plot_gen: Any, plot_dir: Path) -> 
     ex = col_or_zeros("Error_X")
     ey = col_or_zeros("Error_Y")
     ez = col_or_zeros("Error_Z")
-    er = col_or_zeros("Error_Roll")
-    ep = col_or_zeros("Error_Pitch")
-    eyaw = col_or_zeros("Error_Yaw")
 
     pos_err = np.sqrt(ex**2 + ey**2 + ez**2)
-    ang_err_deg = np.degrees(np.sqrt(er**2 + ep**2 + eyaw**2))
+    has_q_cols = all(
+        name in cols
+        for name in (
+            "Current_QW",
+            "Current_QX",
+            "Current_QY",
+            "Current_QZ",
+            "Reference_QW",
+            "Reference_QX",
+            "Reference_QY",
+            "Reference_QZ",
+        )
+    )
+    if has_q_cols:
+        cq = np.column_stack(
+            [
+                col_or_zeros("Current_QW"),
+                col_or_zeros("Current_QX"),
+                col_or_zeros("Current_QY"),
+                col_or_zeros("Current_QZ"),
+            ]
+        )
+        rq = np.column_stack(
+            [
+                col_or_zeros("Reference_QW"),
+                col_or_zeros("Reference_QX"),
+                col_or_zeros("Reference_QY"),
+                col_or_zeros("Reference_QZ"),
+            ]
+        )
+        c_norm = np.linalg.norm(cq, axis=1, keepdims=True)
+        r_norm = np.linalg.norm(rq, axis=1, keepdims=True)
+        c_norm[c_norm <= 1e-12] = 1.0
+        r_norm[r_norm <= 1e-12] = 1.0
+        cq = cq / c_norm
+        rq = rq / r_norm
+        ang_err_deg = np.degrees(
+            np.array([quat_angle_error(rq[i], cq[i]) for i in range(len(solve_ms))])
+        )
+    elif all(name in cols for name in ("Current_Roll", "Current_Pitch", "Current_Yaw")) and all(
+        name in cols for name in ("Reference_Roll", "Reference_Pitch", "Reference_Yaw")
+    ):
+        c_euler = np.column_stack(
+            [
+                col_or_zeros("Current_Roll"),
+                col_or_zeros("Current_Pitch"),
+                col_or_zeros("Current_Yaw"),
+            ]
+        )
+        r_euler = np.column_stack(
+            [
+                col_or_zeros("Reference_Roll"),
+                col_or_zeros("Reference_Pitch"),
+                col_or_zeros("Reference_Yaw"),
+            ]
+        )
+        cq_xyzw = Rotation.from_euler("xyz", c_euler, degrees=False).as_quat()
+        rq_xyzw = Rotation.from_euler("xyz", r_euler, degrees=False).as_quat()
+        cq = np.column_stack((cq_xyzw[:, 3], cq_xyzw[:, 0], cq_xyzw[:, 1], cq_xyzw[:, 2]))
+        rq = np.column_stack((rq_xyzw[:, 3], rq_xyzw[:, 0], rq_xyzw[:, 1], rq_xyzw[:, 2]))
+        ang_err_deg = np.degrees(
+            np.array([quat_angle_error(rq[i], cq[i]) for i in range(len(solve_ms))])
+        )
+    else:
+        er = col_or_zeros("Error_Roll")
+        ep = col_or_zeros("Error_Pitch")
+        eyaw = col_or_zeros("Error_Yaw")
+        ang_err_deg = np.degrees(np.sqrt(er**2 + ep**2 + eyaw**2))
 
     valid = np.isfinite(solve_ms)
     if np.any(valid):

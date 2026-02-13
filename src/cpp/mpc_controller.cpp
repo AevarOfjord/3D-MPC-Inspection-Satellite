@@ -3,6 +3,7 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -894,6 +895,7 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
     int init_start = n_dyn_;
     l_.segment(init_start, nx_) = x_current;
     u_.segment(init_start, nx_) = x_current;
+    int state_idx_start = n_dyn_ + n_init_;
 
     // Dynamically relax progress lower bound near the path endpoint so MPC can stop.
     if (ctrl_row_start_ > 0 && nu_ > 0) {
@@ -906,6 +908,37 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
             int row = ctrl_row_start_ + k * nu_ + (nu_ - 1);
             l_(row) = v_s_min_dynamic;
             u_(row) = control_upper_(nu_ - 1);
+        }
+    }
+
+    // Optional hard scan-attitude constraint (disabled by default):
+    // when enabled, keep predicted quaternion near scan/path reference.
+    {
+        constexpr double kInf = 1e20;
+        constexpr double kQuatTol = 1e-5;
+        const bool enforce_scan_quat =
+            scan_attitude_enabled_ &&
+            scan_attitude_hard_constraint_ &&
+            scan_q_ref_valid_ &&
+            (scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1));
+
+        for (int k = 0; k <= N_; ++k) {
+            int q_row = state_idx_start + k * nx_ + 3;
+            if (q_row < 0 || q_row + 3 >= l_.size() || q_row + 3 >= u_.size()) {
+                continue;
+            }
+
+            // Do not constrain k=0: it is fixed by the measured current state.
+            if (enforce_scan_quat && k > 0) {
+                const Eigen::Vector4d& q_ref = scan_q_ref_traj_[static_cast<size_t>(k)];
+                for (int i = 0; i < 4; ++i) {
+                    l_(q_row + i) = q_ref(i) - kQuatTol;
+                    u_(q_row + i) = q_ref(i) + kQuatTol;
+                }
+            } else {
+                l_.segment(q_row, 4).setConstant(-kInf);
+                u_.segment(q_row, 4).setConstant(kInf);
+            }
         }
     }
 
@@ -1103,7 +1136,6 @@ void MPCControllerCpp::set_scan_attitude_context(
     const Eigen::Vector3d& axis,
     const std::string& direction
 ) {
-    (void)direction;
     scan_center_ = center;
     double axis_norm = axis.norm();
     if (axis_norm > 1e-9) {
@@ -1111,13 +1143,26 @@ void MPCControllerCpp::set_scan_attitude_context(
     } else {
         scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     }
+    std::string dir = direction;
+    std::transform(
+        dir.begin(),
+        dir.end(),
+        dir.begin(),
+        [](unsigned char c) { return static_cast<char>(std::toupper(c)); }
+    );
+    scan_direction_cw_ = (dir != "CCW");
     scan_attitude_enabled_ = true;
+    scan_q_ref_valid_ = false;
+    scan_q_ref_traj_.clear();
 }
 
 void MPCControllerCpp::clear_scan_attitude_context() {
     scan_attitude_enabled_ = false;
     scan_center_ = Eigen::Vector3d::Zero();
     scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+    scan_direction_cw_ = true;
+    scan_q_ref_valid_ = false;
+    scan_q_ref_traj_.clear();
 }
 
 double MPCControllerCpp::compute_dynamic_vs_min(double s_curr) const {
@@ -1268,6 +1313,14 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             s_guess_[k] = std::min(s_curr + k * v_ref_base * dt_, path_total_length_);
         }
     }
+    if (scan_attitude_enabled_) {
+        scan_q_ref_traj_.assign(static_cast<size_t>(N_ + 1), Eigen::Vector4d::Zero());
+    } else {
+        scan_q_ref_traj_.clear();
+    }
+    scan_q_ref_valid_ = false;
+    Eigen::Vector4d q_prev_ref = Eigen::Vector4d::Zero();
+    bool has_q_prev_ref = false;
 
     for (int k = 0; k <= N_; ++k) {
         double s_bar = s_guess_[k];
@@ -1368,8 +1421,9 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
         // 2c. Attitude tracking:
         // Default mode: +X follows path tangent.
-        // Scan mode: enforce body +Z alignment with the mission scan axis.
-        if (Q_att > 0.0) {
+        // Scan mode: keep +X forward, +Y object-facing, and +Z aligned to scan axis.
+        bool build_attitude_ref = (Q_att > 0.0) || scan_attitude_enabled_;
+        if (build_attitude_ref) {
             Eigen::Vector3d x_axis = t_ref;
             double x_norm = x_axis.norm();
             if (x_norm > 1e-9) {
@@ -1381,76 +1435,100 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             Eigen::Vector3d z_axis(0.0, 0.0, 1.0);
 
             if (scan_attitude_enabled_) {
-                // 1) Lock body +Z to mission scan axis.
-                z_axis = scan_axis_;
-                double z_norm = z_axis.norm();
-                if (z_norm > 1e-9) {
-                    z_axis /= z_norm;
+                // 1) Use the scan axis line as +Z/-Z reference.
+                Eigen::Vector3d z_line = scan_axis_;
+                double z_line_norm = z_line.norm();
+                if (z_line_norm > 1e-9) {
+                    z_line /= z_line_norm;
                 } else {
-                    z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+                    z_line = Eigen::Vector3d::UnitZ();
                 }
 
-                // 2) Build +Y to face the object center in the scan plane.
+                // 2) Build object-facing radial direction in the scan plane (+Y target).
                 Eigen::Vector3d radial_in = scan_center_ - p_ref;
-                radial_in -= radial_in.dot(z_axis) * z_axis;
+                radial_in -= radial_in.dot(z_line) * z_line;
                 double radial_norm = radial_in.norm();
+                Eigen::Vector3d radial_dir = Eigen::Vector3d::UnitY();
+                bool has_radial = false;
                 if (radial_norm > 1e-9) {
-                    y_axis = radial_in / radial_norm;
+                    radial_dir = radial_in / radial_norm;
+                    has_radial = true;
                 } else if (q_curr.norm() > 1e-9) {
                     Eigen::Quaterniond q_curr_eig(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
                     q_curr_eig.normalize();
                     Eigen::Vector3d curr_y = q_curr_eig * Eigen::Vector3d::UnitY();
-                    curr_y -= curr_y.dot(z_axis) * z_axis;
+                    curr_y -= curr_y.dot(z_line) * z_line;
                     double curr_y_norm = curr_y.norm();
                     if (curr_y_norm > 1e-9) {
-                        y_axis = curr_y / curr_y_norm;
+                        radial_dir = curr_y / curr_y_norm;
+                        has_radial = true;
                     }
                 }
+                if (!has_radial) {
+                    // Deterministic fallback orthogonal to scan axis.
+                    Eigen::Vector3d ref =
+                        (std::abs(z_line.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
+                                                     : Eigen::Vector3d::UnitX();
+                    radial_dir = z_line.cross(ref);
+                    double fallback_norm = radial_dir.norm();
+                    if (fallback_norm > 1e-9) {
+                        radial_dir /= fallback_norm;
+                    } else {
+                        radial_dir = Eigen::Vector3d::UnitY();
+                    }
+                    has_radial = true;
+                }
+
+                // 3) Keep +X aligned with path travel in the scan plane.
+                Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_line) * z_line;
+                double t_plane_norm = t_plane.norm();
+                if (t_plane_norm > 1e-9) {
+                    x_axis = t_plane / t_plane_norm;
+                    // Choose +Z or -Z (same axis line) so +Y points toward the object.
+                    Eigen::Vector3d y_plus = z_line.cross(x_axis);
+                    double y_plus_norm = y_plus.norm();
+                    if (y_plus_norm > 1e-9) {
+                        y_plus /= y_plus_norm;
+                        bool use_positive_z = (y_plus.dot(radial_dir) >= 0.0);
+                        z_axis = use_positive_z ? z_line : -z_line;
+                    } else {
+                        z_axis = z_line;
+                    }
+                    y_axis = z_axis.cross(x_axis);
+                } else {
+                    // Degenerate tangent (parallel to scan axis): keep +Y object-facing and
+                    // choose +X from direction preference.
+                    z_axis = z_line;
+                    y_axis = radial_dir;
+                    x_axis = scan_direction_cw_ ? z_axis.cross(y_axis)
+                                                : y_axis.cross(z_axis);
+                }
+
+                // Re-orthonormalize and keep +Y object-facing without sacrificing +X.
+                x_axis -= x_axis.dot(z_axis) * z_axis;
+                x_norm = x_axis.norm();
+                if (x_norm > 1e-9) {
+                    x_axis /= x_norm;
+                } else {
+                    x_axis = scan_direction_cw_ ? z_axis.cross(radial_dir)
+                                                : radial_dir.cross(z_axis);
+                    x_norm = x_axis.norm();
+                    if (x_norm > 1e-9) {
+                        x_axis /= x_norm;
+                    } else {
+                        x_axis = Eigen::Vector3d::UnitX();
+                    }
+                }
+                y_axis = z_axis.cross(x_axis);
                 double y_norm = y_axis.norm();
                 if (y_norm > 1e-9) {
                     y_axis /= y_norm;
                 } else {
-                    // Deterministic fallback orthogonal to +Z.
-                    Eigen::Vector3d ref =
-                        (std::abs(z_axis.z()) < 0.9) ? Eigen::Vector3d::UnitZ()
-                                                     : Eigen::Vector3d::UnitX();
-                    y_axis = z_axis.cross(ref);
-                    y_norm = y_axis.norm();
-                    if (y_norm > 1e-9) {
-                        y_axis /= y_norm;
-                    } else {
-                        y_axis = Eigen::Vector3d::UnitY();
-                    }
+                    y_axis = radial_dir;
                 }
-
-                // 3) Compute +X from (+Y,+Z), then orient +X to match travel direction.
-                x_axis = y_axis.cross(z_axis);
-                x_norm = x_axis.norm();
-                if (x_norm > 1e-9) {
-                    x_axis /= x_norm;
-                } else {
-                    x_axis = Eigen::Vector3d::UnitX();
-                }
-
-                Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_axis) * z_axis;
-                double t_plane_norm = t_plane.norm();
-                if (t_plane_norm > 1e-9) {
-                    t_plane /= t_plane_norm;
-                    // Flip both X and Y so +X stays forward; this still satisfies
-                    // "either +Y or -Y faces the object".
-                    if (x_axis.dot(t_plane) < 0.0) {
-                        x_axis = -x_axis;
-                        y_axis = -y_axis;
-                    }
-                }
-
-                // Re-orthonormalize to control numerical drift.
-                y_axis = z_axis.cross(x_axis);
-                y_norm = y_axis.norm();
-                if (y_norm > 1e-9) {
-                    y_axis /= y_norm;
-                } else {
-                    y_axis = Eigen::Vector3d::UnitY();
+                if (has_radial && y_axis.dot(radial_dir) < 0.0) {
+                    y_axis = -y_axis;
+                    z_axis = -z_axis;
                 }
                 x_axis = y_axis.cross(z_axis);
                 x_norm = x_axis.norm();
@@ -1458,6 +1536,12 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                     x_axis /= x_norm;
                 } else {
                     x_axis = Eigen::Vector3d::UnitX();
+                }
+
+                // Keep +X forward along path travel (use forward branch).
+                if (x_axis.dot(t_ref) < 0.0) {
+                    x_axis = -x_axis;
+                    y_axis = -y_axis;
                 }
             } else {
                 Eigen::Vector3d up(0.0, 0.0, 1.0);
@@ -1487,12 +1571,24 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             Eigen::Quaterniond q_ref_eig(R);
             Eigen::Vector4d q_ref(q_ref_eig.w(), q_ref_eig.x(), q_ref_eig.y(), q_ref_eig.z());
 
-            if (q_curr.dot(q_ref) < 0.0) {
+            if (has_q_prev_ref && q_prev_ref.dot(q_ref) < 0.0) {
+                q_ref = -q_ref;
+            } else if (!has_q_prev_ref && q_curr.dot(q_ref) < 0.0) {
                 q_ref = -q_ref;
             }
+            q_prev_ref = q_ref;
+            has_q_prev_ref = true;
 
-            for (int i = 0; i < 4; ++i) {
-                q_(x_idx + 3 + i) = -2.0 * Q_att * q_ref(i);
+            if (scan_attitude_enabled_ &&
+                scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1)) {
+                scan_q_ref_traj_[static_cast<size_t>(k)] = q_ref;
+                scan_q_ref_valid_ = true;
+            }
+
+            if (Q_att > 0.0) {
+                for (int i = 0; i < 4; ++i) {
+                    q_(x_idx + 3 + i) = -2.0 * Q_att * q_ref(i);
+                }
             }
         }
 
@@ -1556,7 +1652,14 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             }
         }
 
-    }// Push updates to OSQP
+    }
+    if (scan_attitude_enabled_) {
+        scan_q_ref_valid_ =
+            (scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1));
+    } else {
+        scan_q_ref_valid_ = false;
+    }
+    // Push updates to OSQP
     if (!path_P_update_indices_.empty()) {
         for (size_t i = 0; i < path_P_update_indices_.size(); ++i) {
             path_P_update_values_[i] = P_data_[path_P_update_indices_[i]];

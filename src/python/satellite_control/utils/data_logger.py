@@ -231,6 +231,10 @@ class DataLogger:
             "Current_X",
             "Current_Y",
             "Current_Z",
+            "Current_QW",
+            "Current_QX",
+            "Current_QY",
+            "Current_QZ",
             "Current_Roll",
             "Current_Pitch",
             "Current_Yaw",
@@ -243,6 +247,10 @@ class DataLogger:
             "Reference_X",
             "Reference_Y",
             "Reference_Z",
+            "Reference_QW",
+            "Reference_QX",
+            "Reference_QY",
+            "Reference_QZ",
             "Reference_Roll",
             "Reference_Pitch",
             "Reference_Yaw",
@@ -467,6 +475,19 @@ class DataLogger:
             "Error_Yaw",
         ]:
             dispatch[h] = ".5f"
+
+        # Quaternion values — 6 decimals
+        for h in [
+            "Current_QW",
+            "Current_QX",
+            "Current_QY",
+            "Current_QZ",
+            "Reference_QW",
+            "Reference_QX",
+            "Reference_QY",
+            "Reference_QZ",
+        ]:
+            dispatch[h] = ".6f"
 
         # Velocity values — 5 decimals
         for h in [

@@ -307,6 +307,10 @@ private:
     bool scan_attitude_enabled_ = false;      // If true, keep object-facing side stable
     Eigen::Vector3d scan_center_ = Eigen::Vector3d::Zero();
     Eigen::Vector3d scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
+    bool scan_direction_cw_ = true;
+    bool scan_attitude_hard_constraint_ = false; // Soft-only by default (use Q_attitude cost)
+    std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
+    bool scan_q_ref_valid_ = false;
 
     // Helper methods for path interpolation
     Eigen::Vector3d get_path_point(double s) const;

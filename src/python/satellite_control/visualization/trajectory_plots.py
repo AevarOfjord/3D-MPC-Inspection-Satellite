@@ -287,9 +287,7 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
     fig.write_html(output_path, include_plotlyjs="cdn")
     print(f"Interactive 3D plot saved to: {output_path}")
 
-    dashboard_dir = plot_dir.parent / "dashboard"
-    dashboard_dir.mkdir(parents=True, exist_ok=True)
-    dashboard_path = dashboard_dir / "mission_dashboard.html"
+    dashboard_path = plot_dir.parent.parent / "interactive_3d_plot.html"
     fig.write_html(dashboard_path, include_plotlyjs="cdn")
     print(f"Interactive mission dashboard saved to: {dashboard_path}")
 
@@ -333,10 +331,6 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
         marker="*",
     )
 
-    roll = plot_gen._col("Current_Roll")
-    pitch = plot_gen._col("Current_Pitch")
-    yaw = plot_gen._col("Current_Yaw")
-
     n = len(x_pos)
     step = max(n // 50, 1)
     idxs = np.arange(0, n, step)
@@ -360,10 +354,29 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
     try:
         from scipy.spatial.transform import Rotation
 
-        eulers = np.vstack([roll[idxs], pitch[idxs], yaw[idxs]]).T
-        dirs = Rotation.from_euler("xyz", eulers, degrees=False).apply(
-            np.array([1.0, 0.0, 0.0])
+        q_cur = (
+            plot_gen._get_quaternion_series("Current")
+            if hasattr(plot_gen, "_get_quaternion_series")
+            else np.zeros((0, 4), dtype=float)
         )
+        if len(q_cur) >= n:
+            q_xyzw = np.column_stack(
+                (
+                    q_cur[idxs, 1],
+                    q_cur[idxs, 2],
+                    q_cur[idxs, 3],
+                    q_cur[idxs, 0],
+                )
+            )
+            dirs = Rotation.from_quat(q_xyzw).apply(np.array([1.0, 0.0, 0.0]))
+        else:
+            roll = plot_gen._col("Current_Roll")
+            pitch = plot_gen._col("Current_Pitch")
+            yaw = plot_gen._col("Current_Yaw")
+            eulers = np.vstack([roll[idxs], pitch[idxs], yaw[idxs]]).T
+            dirs = Rotation.from_euler("xyz", eulers, degrees=False).apply(
+                np.array([1.0, 0.0, 0.0])
+            )
         ax.quiver(
             x_pos[idxs],
             y_pos[idxs],
