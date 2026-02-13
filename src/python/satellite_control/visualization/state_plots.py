@@ -181,13 +181,11 @@ def generate_translation_attitude_coupling_plot(plot_gen: Any, plot_dir: Path) -
             )
         )
     else:
-        # Legacy fallback.
-        er = plot_gen._col("Error_Roll")
-        ep = plot_gen._col("Error_Pitch")
-        ey = plot_gen._col("Error_Yaw")
-        att_err_norm_deg = np.degrees(
-            np.sqrt(er[:min_len] ** 2 + ep[:min_len] ** 2 + ey[:min_len] ** 2)
-        )
+        err_angle_rad = plot_gen._col("Error_Angle_Rad")
+        if len(err_angle_rad) >= min_len:
+            att_err_norm_deg = np.degrees(err_angle_rad[:min_len])
+        else:
+            att_err_norm_deg = np.zeros(min_len, dtype=float)
     ang_rate_norm_degps = np.degrees(
         np.sqrt(wx[:min_len] ** 2 + wy[:min_len] ** 2 + wz[:min_len] ** 2)
     )

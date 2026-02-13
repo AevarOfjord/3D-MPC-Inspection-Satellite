@@ -18,6 +18,8 @@ export interface SimulationTelemetryResponse {
   run_id: string;
   telemetry: TelemetryData[];
   planned_path?: [number, number, number][];
+  planned_path_frame?: 'ECI' | 'LVLH';
+  frame_origin?: [number, number, number];
 }
 
 export const simulationsApi = {

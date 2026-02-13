@@ -1284,12 +1284,22 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     double Q_c = mpc_params_.Q_contour;   // Contouring weight
     double Q_p = mpc_params_.Q_progress;  // Progress weight (quadratic)
     double progress_reward = mpc_params_.progress_reward; // Linear reward for v_s
-    double Q_v = mpc_params_.Q_progress;  // Velocity alignment weight (reuse progress)
+    double Q_v = mpc_params_.Q_velocity_align;  // Velocity alignment weight
+    if (Q_v <= 0.0) {
+        Q_v = mpc_params_.Q_progress;
+    }
     double Q_l = mpc_params_.Q_lag;       // Lag weight (along tangent)
     if (Q_l <= 0.0) {
-        Q_l = Q_c;
+        if (mpc_params_.Q_lag_default >= 0.0) {
+            Q_l = mpc_params_.Q_lag_default;
+        } else {
+            Q_l = Q_c;
+        }
     }
-    double Q_s_anchor = std::max(Q_p, 0.5 * Q_c);  // Anchor s to progress reference
+    double Q_s_anchor = mpc_params_.Q_s_anchor;  // Anchor s to progress reference
+    if (Q_s_anchor < 0.0) {
+        Q_s_anchor = std::max(Q_p, 0.5 * Q_c);
+    }
     double Q_att = mpc_params_.Q_attitude; // Attitude tracking weight
     // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
     double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
@@ -1697,6 +1707,7 @@ void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& p
     s_guess_.clear();
     s_runtime_ = 0.0;
     s_runtime_initialized_ = false;
+    ref_frame_initialized_ = false;
 
     // Update s bounds with actual path length (if solver initialized)
     if (work_ != nullptr) {
@@ -1898,24 +1909,61 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
             y_axis = -y_axis;
         }
     } else {
-        Eigen::Vector3d up(0.0, 0.0, 1.0);
-        if (std::abs(x_axis.dot(up)) > 0.95) {
-            up = Eigen::Vector3d(0.0, 1.0, 0.0);
-        }
-        z_axis = up - up.dot(x_axis) * x_axis;
+        auto choose_seed_axis = [&x_axis]() -> Eigen::Vector3d {
+            std::array<Eigen::Vector3d, 3> candidates = {
+                Eigen::Vector3d::UnitX(),
+                Eigen::Vector3d::UnitY(),
+                Eigen::Vector3d::UnitZ(),
+            };
+            Eigen::Vector3d best = candidates[0];
+            double best_abs_dot = std::abs(x_axis.dot(best));
+            for (size_t i = 1; i < candidates.size(); ++i) {
+                double cand_dot = std::abs(x_axis.dot(candidates[i]));
+                if (cand_dot < best_abs_dot) {
+                    best = candidates[i];
+                    best_abs_dot = cand_dot;
+                }
+            }
+            return best;
+        };
+
+        Eigen::Vector3d z_seed = ref_frame_initialized_ ? ref_prev_z_axis_ : choose_seed_axis();
+        z_axis = z_seed - z_seed.dot(x_axis) * x_axis;
         double z_norm = z_axis.norm();
+        if (z_norm <= 1e-9) {
+            z_seed = choose_seed_axis();
+            z_axis = z_seed - z_seed.dot(x_axis) * x_axis;
+            z_norm = z_axis.norm();
+        }
         if (z_norm > 1e-9) {
             z_axis /= z_norm;
         } else {
-            z_axis = Eigen::Vector3d(0.0, 0.0, 1.0);
+            z_axis = Eigen::Vector3d::UnitZ();
         }
+
         y_axis = z_axis.cross(x_axis);
         double y_norm = y_axis.norm();
         if (y_norm > 1e-9) {
             y_axis /= y_norm;
         } else {
-            y_axis = Eigen::Vector3d(0.0, 1.0, 0.0);
+            y_axis = Eigen::Vector3d::UnitY();
         }
+
+        z_axis = x_axis.cross(y_axis);
+        z_norm = z_axis.norm();
+        if (z_norm > 1e-9) {
+            z_axis /= z_norm;
+        } else {
+            z_axis = Eigen::Vector3d::UnitZ();
+        }
+
+        if (ref_frame_initialized_ && ref_prev_y_axis_.dot(y_axis) < 0.0) {
+            y_axis = -y_axis;
+            z_axis = -z_axis;
+        }
+        ref_prev_y_axis_ = y_axis;
+        ref_prev_z_axis_ = z_axis;
+        ref_frame_initialized_ = true;
     }
 
     Eigen::Matrix3d R;

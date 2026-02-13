@@ -1016,9 +1016,7 @@ class SimulationVisualizationManager:
         rw_z = get_col("RW_Torque_Z")
 
         # Angular Errors for display
-        err_roll = get_col("Error_Roll")
-        err_pitch = get_col("Error_Pitch")
-        err_yaw = get_col("Error_Yaw")
+        err_angle_rad = get_col("Error_Angle_Rad")
 
         # Time
         if "Control_Time" in df.columns:
@@ -1392,9 +1390,7 @@ class SimulationVisualizationManager:
             y_cur -= 0.04
 
             # ANG ERR
-            ang_err_rad = np.sqrt(
-                err_roll[i] ** 2 + err_pitch[i] ** 2 + err_yaw[i] ** 2
-            )
+            ang_err_rad = float(err_angle_rad[i]) if i < len(err_angle_rad) else 0.0
             ang_err_deg = np.degrees(ang_err_rad)
 
             ax_info.text(0.06, y_cur, "ANG ERR", color=C_LBL, fontsize=7)

@@ -124,6 +124,12 @@ class MPCController(Controller):
             mpc_params.progress_reward = float(self.progress_reward)
         if hasattr(mpc_params, "Q_lag"):
             mpc_params.Q_lag = self.Q_lag
+        if hasattr(mpc_params, "Q_lag_default"):
+            mpc_params.Q_lag_default = float(self.Q_lag_default)
+        if hasattr(mpc_params, "Q_velocity_align"):
+            mpc_params.Q_velocity_align = float(self.Q_velocity_align)
+        if hasattr(mpc_params, "Q_s_anchor"):
+            mpc_params.Q_s_anchor = float(self.Q_s_anchor)
         mpc_params.Q_smooth = self.Q_smooth
         if hasattr(mpc_params, "Q_terminal_pos"):
             mpc_params.Q_terminal_pos = self.Q_terminal_pos
@@ -642,6 +648,9 @@ class MPCController(Controller):
         self.progress_reward = getattr(mpc, "progress_reward", 0.0)
         self.Q_smooth = mpc.Q_smooth
         self.Q_lag = getattr(mpc, "Q_lag", 0.0)
+        self.Q_lag_default = getattr(mpc, "Q_lag_default", -1.0)
+        self.Q_velocity_align = getattr(mpc, "Q_velocity_align", 0.0)
+        self.Q_s_anchor = getattr(mpc, "Q_s_anchor", -1.0)
         self.Q_terminal_pos = getattr(mpc, "Q_terminal_pos", 0.0)
         self.Q_terminal_s = getattr(mpc, "Q_terminal_s", 0.0)
         self.path_speed = mpc.path_speed

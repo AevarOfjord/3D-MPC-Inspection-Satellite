@@ -9,7 +9,6 @@ Encapsulates the high-level control loop logic:
 
 import logging
 import time
-from collections import deque
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
@@ -36,7 +35,6 @@ class MPCRunner:
         mpc_controller: MPCController,
         config: Optional["AppConfig"] = None,
         state_validator=None,
-        max_command_history: int = 0,
     ):
         """
         Initialize runner with configuration.
@@ -49,7 +47,6 @@ class MPCRunner:
         self.mpc: MPCController = mpc_controller
         self.config = config  # Stored for potential future use
         self.state_validator = state_validator
-        self.max_command_history = max(0, int(max_command_history or 0))
 
         # Internal state management
         default_thruster_count = THRUSTER_COUNT
@@ -62,14 +59,6 @@ class MPCRunner:
         self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
-        self.command_history: deque = deque(
-            maxlen=self.max_command_history if self.max_command_history else None
-        )
-        self.call_count = 0
-
-    def _append_command_history(self, entry: np.ndarray) -> None:
-        """Append to command history deque (O(1) bounded via maxlen)."""
-        self.command_history.append(entry)
 
     def compute_control_action(
         self,
@@ -156,8 +145,6 @@ class MPCRunner:
         # Update internal state (share one copy for both)
         thruster_copy = thruster_action.copy()
         self.previous_thrusters = thruster_copy
-        self._append_command_history(thruster_copy)
-        self.call_count += 1
 
         return (
             thruster_action,
@@ -170,8 +157,6 @@ class MPCRunner:
     def reset(self) -> None:
         """Reset runner state for a new simulation run."""
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
-        self.command_history.clear()
-        self.call_count = 0
 
     def get_previous_thrusters(self) -> np.ndarray:
         """Get last commanded thruster pattern for MPC warm-start."""

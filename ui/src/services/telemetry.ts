@@ -28,6 +28,8 @@ export interface TelemetryData {
   solve_time?: number;
   pos_error?: number; // meters
   ang_error?: number; // radians
+  yaw_unwrapped_deg?: number;
+  euler_unreliable?: boolean;
   planned_path?: [number, number, number][];
   paused?: boolean;
   sim_speed?: number;

@@ -15,10 +15,13 @@ export function Overlay() {
        if (d) {
           const q = new Quaternion(d.quaternion[1], d.quaternion[2], d.quaternion[3], d.quaternion[0]);
           const e = new Euler().setFromQuaternion(q, 'ZYX');
+          const yawDeg = Number.isFinite(d.yaw_unwrapped_deg ?? NaN)
+            ? (d.yaw_unwrapped_deg as number)
+            : e.z * (180 / Math.PI);
           setAttitude([
              e.x * (180/Math.PI),
              e.y * (180/Math.PI),
-             e.z * (180/Math.PI)
+             yawDeg
           ]);
        }
     });
@@ -68,6 +71,11 @@ export function Overlay() {
                  <DataRow label="VEL" values={velocity} unit="m/s" />
                  <DataRow label="ERR" values={delta} unit="m" colorClass="text-orange-200" />
                  <DataRow label="ROT" values={attitude} unit="deg" colorClass="text-yellow-200" />
+                 {data.euler_unreliable && (
+                   <div className="text-[10px] text-amber-300 px-1">
+                     Euler roll/yaw near singularity (|pitch| &gt; 85deg); yaw shown unwrapped.
+                   </div>
+                 )}
                  <DataRow label="SPIN" values={[angular_velocity[0] * 180 / Math.PI, angular_velocity[1] * 180 / Math.PI, angular_velocity[2] * 180 / Math.PI]} unit="°/s" colorClass="text-cyan-200" />
 
                  <div className="mt-3 pt-2 border-t border-slate-700/50 flex justify-between px-1">

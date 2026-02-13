@@ -36,6 +36,9 @@ struct MPCParams {
     double Q_progress = 100.0;          ///< Weight for speed tracking (move forward)
     double progress_reward = 0.0;       ///< Reward for forward progress (auto speed)
     double Q_lag = 0.0;                 ///< Weight for lag error (along tangent, 0 = auto)
+    double Q_lag_default = -1.0;        ///< Default lag weight if Q_lag <= 0 (negative = auto use Q_contour)
+    double Q_velocity_align = 0.0;      ///< Velocity-alignment weight (0 = reuse Q_progress)
+    double Q_s_anchor = -1.0;           ///< Progress-state anchor weight (negative = auto)
     double Q_smooth = 10.0;             ///< Weight for control increment smoothness (Δu)
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
     double Q_attitude = 0.0;            ///< Attitude tracking weight (align body x-axis to path tangent)
@@ -324,6 +327,9 @@ private:
     bool scan_attitude_hard_constraint_ = false; // Soft-only by default (use Q_attitude cost)
     std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
     bool scan_q_ref_valid_ = false;
+    mutable bool ref_frame_initialized_ = false;
+    mutable Eigen::Vector3d ref_prev_y_axis_ = Eigen::Vector3d::Zero();
+    mutable Eigen::Vector3d ref_prev_z_axis_ = Eigen::Vector3d::Zero();
     double s_runtime_ = 0.0;
     bool s_runtime_initialized_ = false;
 

@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from satellite_control.utils.data_logger import DataLogger
+from satellite_control.utils.orientation_utils import quat_angle_error
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class SimulationLogger:
         error_roll = wrap_angle(ref_roll - curr_roll)
         error_pitch = wrap_angle(ref_pitch - curr_pitch)
         error_yaw = wrap_angle(ref_yaw - curr_yaw)
+        error_angle_rad = float(quat_angle_error(q_ref, q))
 
         # Command strings
         command_vector_binary = (thruster_action > 0.5).astype(int)
@@ -223,6 +225,7 @@ class SimulationLogger:
             "Error_Yaw": error_yaw,
             "Error_Roll": error_roll,
             "Error_Pitch": error_pitch,
+            "Error_Angle_Rad": error_angle_rad,
             "Error_VX": error_vx,
             "Error_VY": error_vy,
             "Error_VZ": error_vz,
@@ -313,9 +316,10 @@ class SimulationLogger:
         ref_roll, ref_pitch, ref_yaw = ref_euler
 
         # Calculate errors
-        error_x = ref_x - curr_x
-        error_y = ref_y - curr_y
-        error_z = ref_z - curr_z
+        # Keep sign convention consistent with control log: current - reference.
+        error_x = curr_x - ref_x
+        error_y = curr_y - ref_y
+        error_z = curr_z - ref_z
 
         def wrap_angle(angle: float) -> float:
             if normalize_angle_func:
@@ -325,6 +329,7 @@ class SimulationLogger:
         error_roll = wrap_angle(ref_roll - curr_roll)
         error_pitch = wrap_angle(ref_pitch - curr_pitch)
         error_yaw = wrap_angle(ref_yaw - curr_yaw)
+        error_angle_rad = float(quat_angle_error(q_ref, q))
 
         # Format Command Vector string
         cmd_vec_str = (
@@ -373,6 +378,7 @@ class SimulationLogger:
             "Error_Roll": f"{error_roll:.5f}",
             "Error_Pitch": f"{error_pitch:.5f}",
             "Error_Yaw": f"{error_yaw:.5f}",
+            "Error_Angle_Rad": f"{error_angle_rad:.6f}",
             "Frame_Origin_X": f"{origin_x:.5f}",
             "Frame_Origin_Y": f"{origin_y:.5f}",
             "Frame_Origin_Z": f"{origin_z:.5f}",

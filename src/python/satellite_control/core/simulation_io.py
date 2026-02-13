@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from scipy.spatial.transform import Rotation
+from satellite_control.utils.orientation_utils import quat_angle_error
 
 if TYPE_CHECKING:
     from satellite_control.core.simulation import (
@@ -468,11 +468,42 @@ class SimulationIO:
                     self._to_float(row.get("Error_Y")),
                     self._to_float(row.get("Error_Z")),
                 )
-                ang_error_rad = self._vector_norm3(
-                    self._to_float(row.get("Error_Roll")),
-                    self._to_float(row.get("Error_Pitch")),
-                    self._to_float(row.get("Error_Yaw")),
-                )
+                if row.get("Error_Angle_Rad") not in (None, ""):
+                    ang_error_rad = self._to_float(row.get("Error_Angle_Rad"))
+                elif all(
+                    row.get(col) not in (None, "")
+                    for col in (
+                        "Current_QW",
+                        "Current_QX",
+                        "Current_QY",
+                        "Current_QZ",
+                        "Reference_QW",
+                        "Reference_QX",
+                        "Reference_QY",
+                        "Reference_QZ",
+                    )
+                ):
+                    q_cur = np.array(
+                        [
+                            self._to_float(row.get("Current_QW"), 1.0),
+                            self._to_float(row.get("Current_QX"), 0.0),
+                            self._to_float(row.get("Current_QY"), 0.0),
+                            self._to_float(row.get("Current_QZ"), 0.0),
+                        ],
+                        dtype=float,
+                    )
+                    q_ref = np.array(
+                        [
+                            self._to_float(row.get("Reference_QW"), 1.0),
+                            self._to_float(row.get("Reference_QX"), 0.0),
+                            self._to_float(row.get("Reference_QY"), 0.0),
+                            self._to_float(row.get("Reference_QZ"), 0.0),
+                        ],
+                        dtype=float,
+                    )
+                    ang_error_rad = float(quat_angle_error(q_ref, q_cur))
+                else:
+                    ang_error_rad = 0.0
                 ang_error_deg = math.degrees(ang_error_rad)
                 speed_mps = self._vector_norm3(
                     self._to_float(row.get("Current_VX")),
@@ -1436,23 +1467,27 @@ class SimulationIO:
                     vel = df[["Current_VX", "Current_VY", "Current_VZ"]].values
                     ang_vel = df[["Current_WX", "Current_WY", "Current_WZ"]].values
 
-                    # Euler to Quat
-                    # Yaw, Roll, Pitch might be logged.
-                    # simulation_logger logs: Current_Roll, Current_Pitch, Current_Yaw
-                    r = df["Current_Roll"].values
-                    p = df["Current_Pitch"].values
-                    y = df["Current_Yaw"].values
-
-                    # Stack and convert
-                    euler = np.column_stack([r, p, y])
-                    quat = Rotation.from_euler("xyz", euler, degrees=False).as_quat()
-                    # Scipy output is xyzw, we want wxyz for internal state usually?
-                    # simulation.py usually expects [w, x, y, z] or [q0, q1, q2, q3]
-                    # Let's check logic: mpc_controller says [qw, qx, qy, qz]
-                    # Scipy is [x, y, z, w]
-                    quat_wxyz = np.column_stack(
-                        [quat[:, 3], quat[:, 0], quat[:, 1], quat[:, 2]]
+                    has_quat_cols = all(
+                        col in df.columns
+                        for col in (
+                            "Current_QW",
+                            "Current_QX",
+                            "Current_QY",
+                            "Current_QZ",
+                        )
                     )
+                    if not has_quat_cols:
+                        logger.debug(
+                            "control_data.csv missing quaternion columns; "
+                            "skipping CSV history reload."
+                        )
+                        return None
+                    quat_wxyz = df[
+                        ["Current_QW", "Current_QX", "Current_QY", "Current_QZ"]
+                    ].values.astype(float)
+                    q_norm = np.linalg.norm(quat_wxyz, axis=1, keepdims=True)
+                    q_norm[q_norm <= 1e-12] = 1.0
+                    quat_wxyz = quat_wxyz / q_norm
 
                     # Construct 13-element state: [pos(3), quat(4), vel(3), ang_vel(3)]
                     # Shape (N, 13)

@@ -197,6 +197,9 @@ class _MPCDefaults:
     Q_CONTOUR: float = 100000.0
     Q_PROGRESS: float = 100.0
     PROGRESS_REWARD: float = 0.0
+    Q_LAG_DEFAULT: float = -1.0
+    Q_VELOCITY_ALIGN: float = 0.0
+    Q_S_ANCHOR: float = -1.0
     PATH_SPEED_MIN: float = 0.01
     PATH_SPEED_MAX: float = 0.1
     Q_SMOOTH: float = 10.0
@@ -318,6 +321,9 @@ class Constants:
     Q_CONTOUR = MPCDefaults.Q_CONTOUR
     Q_PROGRESS = MPCDefaults.Q_PROGRESS
     PROGRESS_REWARD = MPCDefaults.PROGRESS_REWARD
+    Q_LAG_DEFAULT = MPCDefaults.Q_LAG_DEFAULT
+    Q_VELOCITY_ALIGN = MPCDefaults.Q_VELOCITY_ALIGN
+    Q_S_ANCHOR = MPCDefaults.Q_S_ANCHOR
     PATH_SPEED_MIN = MPCDefaults.PATH_SPEED_MIN
     PATH_SPEED_MAX = MPCDefaults.PATH_SPEED_MAX
     Q_SMOOTH = MPCDefaults.Q_SMOOTH
