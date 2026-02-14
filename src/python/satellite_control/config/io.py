@@ -30,7 +30,7 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
-from .mission_state import MissionState
+from .mission_state import DEFAULT_PATH_HOLD_END_S, MissionState
 from .models import AppConfig
 from .simulation_config import SimulationConfig
 
@@ -315,10 +315,12 @@ class ConfigIO:
                         "path_hold_end",
                         trajectory_dict.get(
                             "hold_end",
-                            mission_state_dict.get("trajectory_hold_end", 0.0),
+                            mission_state_dict.get(
+                                "trajectory_hold_end", DEFAULT_PATH_HOLD_END_S
+                            ),
                         ),
                     )
-                    or 0.0
+                    or DEFAULT_PATH_HOLD_END_S
                 ),
             )
             return _apply_path_tracking_fields(ms)
@@ -342,9 +344,9 @@ class ConfigIO:
         ms.path_hold_end = float(
             mission_state_dict.get(
                 "path_hold_end",
-                mission_state_dict.get("trajectory_hold_end", 0.0),
+                mission_state_dict.get("trajectory_hold_end", DEFAULT_PATH_HOLD_END_S),
             )
-            or 0.0
+            or DEFAULT_PATH_HOLD_END_S
         )
 
         return _apply_path_tracking_fields(ms)

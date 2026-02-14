@@ -204,14 +204,7 @@ def _compute_scan_path_frame(
     t_plane_norm = _norm3(t_plane)
     if t_plane_norm > 1e-9:
         x_axis = t_plane / t_plane_norm
-        y_plus = np.cross(z_line, x_axis)
-        y_plus_norm = _norm3(y_plus)
-        if y_plus_norm > 1e-9:
-            y_plus = y_plus / y_plus_norm
-            use_positive_z = float(np.dot(y_plus, radial_dir)) >= 0.0
-            z_axis = z_line if use_positive_z else -z_line
-        else:
-            z_axis = z_line.copy()
+        z_axis = z_line.copy()
         y_axis = np.cross(z_axis, x_axis)
     else:
         z_axis = z_line.copy()
@@ -240,10 +233,6 @@ def _compute_scan_path_frame(
         y_axis = y_axis / y_norm
     else:
         y_axis = radial_dir.copy()
-
-    if has_radial and float(np.dot(y_axis, radial_dir)) < 0.0:
-        y_axis = -y_axis
-        z_axis = -z_axis
 
     x_axis = np.cross(y_axis, z_axis)
     x_axis = _normalize_or_default(x_axis, np.array([1.0, 0.0, 0.0], dtype=float))
@@ -413,9 +402,5 @@ def update_path_reference_state(
         v_ref = 0.0
 
     reference_state[7:10] = tangent * v_ref
-
-    # At the end of the path, don't enforce a specific attitude; use current.
-    if at_path_end:
-        reference_state[3:7] = current_state[3:7]
 
     sim.reference_state = reference_state.copy()

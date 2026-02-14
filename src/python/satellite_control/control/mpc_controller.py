@@ -192,6 +192,7 @@ class MPCController(Controller):
         self._path_set = False
         self._path_length = 0.0
         self._last_path_projection: dict[str, Any] = {}
+        self._scan_attitude_enabled = False
 
         # Dimensions (Fixed for MPCC)
         self.nx = 17
@@ -346,12 +347,14 @@ class MPCController(Controller):
         if center is None or axis is None:
             if hasattr(self._cpp_controller, "clear_scan_attitude_context"):
                 self._cpp_controller.clear_scan_attitude_context()
+            self._scan_attitude_enabled = False
             return
 
         if hasattr(self._cpp_controller, "set_scan_attitude_context"):
             c = np.array(center, dtype=float)
             a = np.array(axis, dtype=float)
             self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
+        self._scan_attitude_enabled = True
 
     def _project_onto_path(
         self, position: np.ndarray
@@ -530,6 +533,24 @@ class MPCController(Controller):
                 )
             except Exception:
                 logger.debug("C++ get_reference_at_s failed, using Python fallback", exc_info=True)
+
+        # At exact path end, use the final non-degenerate segment direction
+        # (second-last waypoint heading) because no forward segment exists.
+        if (
+            self._scan_attitude_enabled
+            and self._path_length > 0.0
+            and s_val >= (self._path_length - 1e-9)
+        ):
+            for i in range(len(self._path_data) - 1, 0, -1):
+                x_prev, y_prev, z_prev = self._path_data[i - 1][1:4]
+                x_cur, y_cur, z_cur = self._path_data[i][1:4]
+                last_tangent = np.array(
+                    [x_cur - x_prev, y_cur - y_prev, z_cur - z_prev], dtype=float
+                )
+                last_norm = np.linalg.norm(last_tangent)
+                if last_norm > 1e-9:
+                    p_end = np.array(self._path_data[-1][1:4], dtype=float)
+                    return p_end, (last_tangent / last_norm), q_curr
 
         # Find the segment that contains s_val
         idx = 0

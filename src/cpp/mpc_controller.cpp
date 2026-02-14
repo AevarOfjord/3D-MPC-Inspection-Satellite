@@ -1763,6 +1763,18 @@ Eigen::Vector3d MPCControllerCpp::get_path_tangent(double s) const {
     // Clamp s to valid range
     double s_clamped = std::max(path_s_.front(), std::min(s, path_s_.back()));
 
+    // At terminal s, prefer the final non-degenerate segment direction
+    // (second-last waypoint heading) because no forward segment exists.
+    if (s_clamped >= (path_s_.back() - 1e-9)) {
+        for (size_t i = path_points_.size(); i-- > 1;) {
+            Eigen::Vector3d last_diff = path_points_[i] - path_points_[i - 1];
+            double last_len = last_diff.norm();
+            if (last_len > 1e-12) {
+                return last_diff / last_len;
+            }
+        }
+    }
+
     // Binary search for segment
     auto it = std::lower_bound(path_s_.begin(), path_s_.end(), s_clamped);
     int idx = std::distance(path_s_.begin(), it);
@@ -1846,20 +1858,12 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
         }
 
         // 3) Keep +X aligned with path travel in the scan plane.
+        // Keep +Z fixed to the configured scan-axis direction (no sign flips).
         Eigen::Vector3d t_plane = t_ref - t_ref.dot(z_line) * z_line;
         double t_plane_norm = t_plane.norm();
         if (t_plane_norm > 1e-9) {
             x_axis = t_plane / t_plane_norm;
-            // Choose +Z or -Z (same axis line) so +Y points toward the object.
-            Eigen::Vector3d y_plus = z_line.cross(x_axis);
-            double y_plus_norm = y_plus.norm();
-            if (y_plus_norm > 1e-9) {
-                y_plus /= y_plus_norm;
-                bool use_positive_z = (y_plus.dot(radial_dir) >= 0.0);
-                z_axis = use_positive_z ? z_line : -z_line;
-            } else {
-                z_axis = z_line;
-            }
+            z_axis = z_line;
             y_axis = z_axis.cross(x_axis);
         } else {
             // Degenerate tangent (parallel to scan axis): keep +Y object-facing and
@@ -1891,10 +1895,6 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
             y_axis /= y_norm;
         } else {
             y_axis = radial_dir;
-        }
-        if (has_radial && y_axis.dot(radial_dir) < 0.0) {
-            y_axis = -y_axis;
-            z_axis = -z_axis;
         }
         x_axis = y_axis.cross(z_axis);
         x_norm = x_axis.norm();
@@ -1988,6 +1988,9 @@ std::tuple<Eigen::Vector3d, Eigen::Vector3d, Eigen::Vector4d> MPCControllerCpp::
     Eigen::Vector3d p_ref = get_path_point(s_ref);
     Eigen::Vector3d t_ref = get_path_tangent(s_ref);
     Eigen::Vector4d q_ref = build_reference_quaternion(p_ref, t_ref, q_current);
+    if (q_current.norm() > 1e-9 && q_current.dot(q_ref) < 0.0) {
+        q_ref = -q_ref;
+    }
     return {p_ref, t_ref, q_ref};
 }
 

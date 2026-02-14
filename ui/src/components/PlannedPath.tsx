@@ -4,6 +4,7 @@ import { Vector3, CatmullRomCurve3 } from 'three';
 import { Line } from '@react-three/drei';
 import { telemetry } from '../services/telemetry';
 import { ReferenceMarker } from './Earth';
+import { useTelemetryStore } from '../store/telemetryStore';
 
 interface PlannedPathProps {
   origin?: [number, number, number];
@@ -13,6 +14,7 @@ const MIN_DISTANCE = 1e-4; // Slightly larger epsilon for spline stability
 
 export function PlannedPath({ origin = [0, 0, 0] }: PlannedPathProps) {
   const [path, setPath] = useState<Vector3[]>([]);
+  const playbackFinalState = useTelemetryStore((s) => s.playbackFinalState);
   const originVec = useMemo(() => new Vector3(...origin), [origin[0], origin[1], origin[2]]);
 
   // Store path in World Coordinates (ECI)
@@ -55,6 +57,10 @@ export function PlannedPath({ origin = [0, 0, 0] }: PlannedPathProps) {
   if (displayPath.length < 2) return null;
 
   const lastPoint = displayPath[displayPath.length - 1];
+  const markerPosition: [number, number, number] =
+    playbackFinalState?.reference_position ?? [lastPoint.x, lastPoint.y, lastPoint.z];
+  const markerQuaternion = playbackFinalState?.reference_quaternion;
+  const markerOrientation = playbackFinalState?.reference_orientation;
 
   return (
     <>
@@ -67,7 +73,9 @@ export function PlannedPath({ origin = [0, 0, 0] }: PlannedPathProps) {
             dashed={false}
         />
         <ReferenceMarker 
-            position={[lastPoint.x, lastPoint.y, lastPoint.z]} 
+            position={markerPosition}
+            quaternion={markerQuaternion}
+            orientation={markerOrientation}
             color="#4ade80" 
         />
     </>

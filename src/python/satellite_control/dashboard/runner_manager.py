@@ -15,6 +15,7 @@ from typing import Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("dashboard.runner")
+_ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 # Constants
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -446,6 +447,8 @@ class RunnerManager:
             src_python = str(PROJECT_ROOT / "src" / "python")
             if src_python not in python_path:
                 env["PYTHONPATH"] = f"{src_python}:{python_path}" if python_path else src_python
+            # Ensure terminal-color escape codes are disabled in streamed runner logs.
+            env["NO_COLOR"] = "1"
             config_meta = self.get_config().get("config_meta", {})
             env["SATCTRL_RUNNER_CONFIG_HASH"] = str(config_meta.get("config_hash", ""))
             env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(config_meta.get("config_version", ""))
@@ -529,10 +532,11 @@ class RunnerManager:
             line = await stream.readline()
             if line:
                 decoded = line.decode('utf-8', errors='replace')
-                self._maybe_capture_run_dir(decoded)
+                clean = _ANSI_ESCAPE_RE.sub("", decoded)
+                self._maybe_capture_run_dir(clean)
                 # We broadcast the raw line including newline chars usually, 
                 # but let's ensure it handles buffering correctly on frontend.
-                await self._broadcast(decoded)
+                await self._broadcast(clean)
             else:
                 break
 
