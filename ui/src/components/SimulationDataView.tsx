@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, FileText, Film, Image as ImageIcon, FileCode, ChevronRight, ChevronDown, Download } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Folder, FileText, Film, Image as ImageIcon, FileCode, ChevronLeft, Download } from 'lucide-react';
 import { API_BASE_URL } from '../config/endpoints';
 import { runEvents } from '../services/runEvents';
 import type { SimulationRun } from '../api/simulations';
@@ -20,6 +20,7 @@ export const SimulationDataView: React.FC = () => {
   const [lastRunsRefreshAt, setLastRunsRefreshAt] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [files, setFiles] = useState<FileNode[]>([]);
+  const [currentDir, setCurrentDir] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,6 +76,7 @@ export const SimulationDataView: React.FC = () => {
   useEffect(() => {
     if (!selectedRunId) {
         setFiles([]);
+        setCurrentDir('');
         return;
     }
     
@@ -86,9 +88,23 @@ export const SimulationDataView: React.FC = () => {
           // The API returns a flat list of all files/dirs recursively.
           // Let's just display them as a list for now, maybe sort by path.
           setFiles(data.files || []);
+          setCurrentDir('');
       })
       .catch(err => console.error("Failed to fetch files:", err));
   }, [selectedRunId]);
+
+  const visibleEntries = useMemo(() => {
+    const parentOf = (p: string) => {
+      const idx = p.lastIndexOf('/');
+      return idx === -1 ? '' : p.slice(0, idx);
+    };
+    return files
+      .filter((f) => parentOf(f.path) === currentDir)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [files, currentDir]);
 
   // Fetch content when file is selected
   useEffect(() => {
@@ -147,7 +163,11 @@ export const SimulationDataView: React.FC = () => {
           {runs.map(run => (
             <div 
               key={run.id}
-              onClick={() => { setSelectedRunId(run.id); setSelectedFile(null); }}
+              onClick={() => {
+                setSelectedRunId(run.id);
+                setSelectedFile(null);
+                setCurrentDir('');
+              }}
               className={`p-3 cursor-pointer hover:bg-slate-800 border-b border-slate-800/50 ${selectedRunId === run.id ? 'bg-blue-900/30 text-blue-300' : 'text-slate-400'}`}
             >
               <div className="font-semibold">{run.id}</div>
@@ -165,13 +185,40 @@ export const SimulationDataView: React.FC = () => {
           <span>Files</span>
           {selectedRunId && <span className="text-xs opacity-50">{selectedRunId}</span>}
         </div>
+        {selectedRunId && (
+          <div className="px-3 py-2 border-b border-slate-800 text-xs text-slate-400 flex items-center gap-2">
+            {currentDir ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = currentDir.lastIndexOf('/');
+                  setCurrentDir(idx === -1 ? '' : currentDir.slice(0, idx));
+                  setSelectedFile(null);
+                }}
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1"
+              >
+                <ChevronLeft size={12} />
+                Up
+              </button>
+            ) : (
+              <span className="px-2 py-1 rounded bg-slate-800 text-slate-500">Root</span>
+            )}
+            <span className="truncate">/{currentDir}</span>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
-          {files.map((file) => (
+          {visibleEntries.map((file) => (
              <div
                 key={file.path}
-                onClick={() => setSelectedFile(file)}
+                onClick={() => {
+                  if (file.type === 'directory') {
+                    setCurrentDir(file.path);
+                    setSelectedFile(null);
+                    return;
+                  }
+                  setSelectedFile(file);
+                }}
                 className={`p-2 px-4 cursor-pointer hover:bg-slate-800 flex items-center gap-2 ${selectedFile?.path === file.path ? 'bg-blue-900/30 text-blue-300' : 'text-slate-400'}`}
-                style={{ paddingLeft: `${(file.path.split('/').length - 1) * 12 + 12}px` }}
              >
                 {file.type === 'directory' ? <Folder size={14} className="text-yellow-500" /> : 
                  file.name.endsWith('.json') ? <FileCode size={14} className="text-green-500" /> :
@@ -183,7 +230,7 @@ export const SimulationDataView: React.FC = () => {
                 <span className="truncate">{file.name}</span>
              </div>
           ))}
-          {files.length === 0 && selectedRunId && (
+          {visibleEntries.length === 0 && selectedRunId && (
               <div className="p-4 text-center opacity-50 italic">No files found</div>
           )}
            {!selectedRunId && (

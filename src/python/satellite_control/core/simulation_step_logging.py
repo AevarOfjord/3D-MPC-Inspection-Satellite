@@ -2,6 +2,8 @@
 
 import logging
 import math
+import os
+import sys
 from typing import Any
 
 import numpy as np
@@ -44,6 +46,11 @@ def _unwrap_euler_deg(
     delta = curr_deg - prev_unwrapped_deg
     delta = (delta + 180.0) % 360.0 - 180.0
     return prev_unwrapped_deg + delta
+
+
+def _wrap_delta_deg(delta_deg: np.ndarray) -> np.ndarray:
+    """Wrap degree deltas to [-180, 180] for readable terminal display."""
+    return (delta_deg + 180.0) % 360.0 - 180.0
 
 
 def log_simulation_step(
@@ -217,20 +224,23 @@ def log_simulation_step(
     sim._terminal_curr_euler_unwrapped_deg = curr_unwrapped_deg.copy()
     sim._terminal_ref_euler_unwrapped_deg = ref_unwrapped_deg.copy()
 
-    # Continuous display deltas (current - reference), no artificial wrapping.
-    diff_r = curr_unwrapped_deg[0] - ref_unwrapped_deg[0]
-    diff_p = curr_unwrapped_deg[1] - ref_unwrapped_deg[1]
-    diff_y = curr_unwrapped_deg[2] - ref_unwrapped_deg[2]
+    # Readable display deltas (current - reference), wrapped to principal range.
+    diff_deg = _wrap_delta_deg(curr_euler_deg - ref_euler_deg)
+    diff_r = float(diff_deg[0])
+    diff_p = float(diff_deg[1])
+    diff_y = float(diff_deg[2])
 
     ang_err_str = f"[Yaw:{diff_y:.1f}, Roll:{diff_r:.1f}, Pitch:{diff_p:.1f}]°"
 
-    # ANSI Color Codes
-    BLUE = "\033[94m"
-    YELLOW = "\033[93m"
-    RESET = "\033[0m"
-    CYAN = "\033[96m"
-
-    BOLD = "\033[1m"
+    # ANSI colors only when terminal supports them and NO_COLOR is not set.
+    use_color = bool(getattr(sys.stdout, "isatty", lambda: False)()) and not bool(
+        os.environ.get("NO_COLOR")
+    )
+    BLUE = "\033[94m" if use_color else ""
+    YELLOW = "\033[93m" if use_color else ""
+    RESET = "\033[0m" if use_color else ""
+    CYAN = "\033[96m" if use_color else ""
+    BOLD = "\033[1m" if use_color else ""
 
     # Time and Status Header
     header_line = f"{status_msg} | Solve: {solve_ms:.1f}ms"
@@ -259,8 +269,8 @@ def log_simulation_step(
     )
     row_state_ang = (
         f"{BLUE}Ang:{RESET} "
-        f"[Yaw:{curr_unwrapped_deg[2]:.1f}, Roll:{curr_unwrapped_deg[0]:.1f}, "
-        f"Pitch:{curr_unwrapped_deg[1]:.1f}]°"
+        f"[Yaw:{curr_euler_deg[2]:.1f}, Roll:{curr_euler_deg[0]:.1f}, "
+        f"Pitch:{curr_euler_deg[1]:.1f}]°"
     )
 
     # Actuators

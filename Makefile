@@ -33,6 +33,7 @@ else
   INSTALL_HINT := Download from https://python.org or: winget install Python.Python.3.11
 endif
 
+# Python venv location and CMake generator used for C++ extension builds.
 VENV_DIR ?= .venv311
 CMAKE_GENERATOR ?= Ninja
 
@@ -48,20 +49,36 @@ else
   CMAKE_MAKE_PROGRAM ?= $(VENV_BIN)/ninja
 endif
 
+# Dependency/build settings.
 REQS_FILE ?= requirements.txt
 SYSTEM_CMAKE := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g; s|$(CURDIR)/$(VENV_BIN)||g') command -v cmake 2>/dev/null || echo "")
+UI_DIR ?= ui
+UI_NODE_MODULES := $(UI_DIR)/node_modules
+UI_LOCKFILES := $(UI_DIR)/package-lock.json $(UI_DIR)/package.json
+# Stamp file used to avoid reinstalling Node dependencies on every `make run`.
+UI_DEPS_STAMP := $(UI_NODE_MODULES)/.deps-installed
+# Try to detect active scikit-build editable output directory.
+SKBUILD_MATCHED_EXT := $(firstword $(wildcard $(BUILD_GLOB)))
+SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir $(SKBUILD_MATCHED_EXT)))))
+# Skip scikit-build editable runtime rebuild checks by default for faster startup.
+SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
+SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
 
 # ============================================================================
 # Help
 # ============================================================================
 
+.PHONY: help run stop backend frontend sim install test lint clean rebuild \
+	check-python check-cmake venv build dashboard install-dev clean-build
+
+# Show available high-level commands.
 help:
 	@echo ""
 	@echo "Satellite Control System  ($(PLATFORM))"
 	@echo "========================================"
 	@echo ""
-	@echo "  make build        Build everything (venv + deps + C++ extensions)"
-	@echo "  make rebuild      Clean build artifacts, then build from scratch"
+	@echo "  make install      Setup/repair env and build C++ extensions"
+	@echo "  make rebuild      Clean + fresh install"
 	@echo "  make run          Start backend + frontend together (stops existing instances first)"
 	@echo "  make stop         Stop running backend and frontend processes"
 	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
@@ -74,6 +91,7 @@ help:
 # Python check
 # ============================================================================
 
+# Validate system Python exists and is exactly 3.11.x.
 check-python:
 	@if [ -z "$(SYSTEM_PYTHON)" ]; then \
 		echo "Error: Python 3.11 not found on system PATH"; \
@@ -83,6 +101,7 @@ check-python:
 	@$(SYSTEM_PYTHON) -c "import sys; v=sys.version_info[:2]; raise SystemExit(0 if v==(3,11) else f'Python 3.11.x required, got {sys.version.split()[0]}')"
 	@echo "Found system Python: $(SYSTEM_PYTHON)"
 
+# Validate system CMake is available for C++ extension compilation.
 check-cmake:
 	@if [ -z "$(SYSTEM_CMAKE)" ]; then \
 		echo "Error: CMake not found on system PATH"; \
@@ -96,23 +115,38 @@ check-cmake:
 # Run targets
 # ============================================================================
 
+# Start both backend and frontend after stopping old processes.
 run: stop
 	@$(MAKE) -j2 backend frontend
 
+# Stop any process bound to dashboard ports.
 stop:
 	@echo "Stopping any existing process on port 8000 (Backend)..."
 	@$(KILL_BACKEND)
 	@echo "Stopping any existing process on port 5173 (Frontend)..."
 	@$(KILL_FRONTEND)
 
-dashboard: run
-
+# Start API/dashboard backend; auto-repair env if core deps are missing.
 backend:
-	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -c "import fastapi, uvicorn, pydantic" >/dev/null 2>&1; then \
+		echo "Backend dependencies are missing in $(VENV_DIR)."; \
+		echo "Running 'make install' to repair the environment..."; \
+		$(MAKE) install || exit $$?; \
+	fi
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
 
-frontend:
-	cd ui && npm install && npm run dev
+# Install frontend dependencies only when lockfiles change.
+$(UI_DEPS_STAMP): $(UI_LOCKFILES)
+	cd $(UI_DIR) && npm install
+	@mkdir -p "$(UI_NODE_MODULES)"
+	@touch "$(UI_DEPS_STAMP)"
 
+# Start frontend dev server.
+frontend: $(UI_DEPS_STAMP)
+	cd $(UI_DIR) && npm run dev
+
+# Run CLI simulation, repairing Python/build prerequisites when needed.
 sim:
 	@$(MAKE) venv
 	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
@@ -146,27 +180,34 @@ sim:
 		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
 		*) echo "Skipping tests."; ;; \
 	esac
-	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_simulation.py
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_simulation.py
 
 # ============================================================================
 # Build targets
 # ============================================================================
 
-build: install
-	@echo ""
-	@echo "Build complete. Run a mission with: make sim"
-
-rebuild: clean-build install
+# Full reset + reinstall workflow.
+rebuild: clean install
 	@echo ""
 	@echo "Rebuild complete. Run a mission with: make sim"
 
+# Create/repair Python virtual environment and pip.
 venv: check-python
-	@if [ -f "$(VENV_PY)" ]; then \
+	@if [ -d "$(VENV_DIR)" ] && [ ! -x "$(VENV_PY)" ]; then \
+		echo "Detected broken virtual environment at $(VENV_DIR), recreating..."; \
+		rm -rf "$(VENV_DIR)"; \
+	fi
+	@if [ -x "$(VENV_PY)" ]; then \
 		echo "Virtual environment already exists, skipping creation."; \
 	else \
 		echo "Creating virtual environment..."; \
-		$(SYSTEM_PYTHON) -m venv --upgrade-deps $(VENV_DIR); \
+		$(SYSTEM_PYTHON) -m venv $(VENV_DIR); \
 		echo "Virtual environment created at $(VENV_DIR)"; \
+	fi
+	@if [ ! -x "$(VENV_PY)" ]; then \
+		echo "Error: Virtual environment python was not created at $(VENV_PY)."; \
+		echo "Run 'make clean' and retry. If this persists, reinstall Python 3.11."; \
+		exit 1; \
 	fi
 	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
 		echo "pip missing in venv, repairing with ensurepip..."; \
@@ -177,8 +218,10 @@ venv: check-python
 		echo "Please reinstall Python 3.11 with ensurepip support."; \
 		exit 1; \
 	fi
-	@$(VENV_PY) -m pip install --upgrade pip setuptools >/dev/null
+	@$(VENV_PY) -m pip install --upgrade pip setuptools >/dev/null 2>&1 || \
+		echo "Warning: pip/setuptools upgrade skipped (offline or cert issue)."
 
+# Install Python deps and (re)build C++ extensions in editable mode.
 install: venv check-cmake
 	@echo ""
 	@echo "=== Installing Python dependencies ==="
@@ -193,43 +236,33 @@ install: venv check-cmake
 		$(VENV_PY) -m pip install --no-build-isolation -e .
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
-install-dev: install
-	@echo ""
-	@echo "=== Installing C++ build dependencies ==="
-	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
-	@echo ""
-	@echo "=== Building C++ extensions ==="
-	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
-	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
-		$(VENV_PY) -m pip install --no-build-isolation -e .
-	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
-
 # ============================================================================
 # Quality targets
 # ============================================================================
 
+# Run test suite.
 test:
-	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
 
+# Run Python + frontend lint checks.
 lint:
-	PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
 	cd ui && npx eslint .
 
 # ============================================================================
 # Clean targets
 # ============================================================================
 
-clean-build:
-	@echo "Cleaning build artifacts..."
-	@rm -rf build/cp3*
-	@rm -f src/python/satellite_control/cpp/*$(EXT_SUFFIX)
-	@rm -rf $(VENV_DIR)
-	@rm -rf dist
-	@echo "Done."
-
+# Remove local build, venv, and cache artifacts.
 clean:
 	@rm -rf $(VENV_DIR) build dist src/lib
 	@rm -f src/python/satellite_control/cpp/*$(EXT_SUFFIX)
 	@rm -rf ui/node_modules/.vite
 	@rm -rf .pytest_cache .ruff_cache
 	@echo "Cleaned."
+
+# Removed targets: fail fast so stale scripts don't silently no-op.
+build dashboard install-dev clean-build:
+	@echo "Error: target '$@' was removed."
+	@echo "Use one of: install, rebuild, run, stop, sim, test, lint, clean."
+	@exit 2

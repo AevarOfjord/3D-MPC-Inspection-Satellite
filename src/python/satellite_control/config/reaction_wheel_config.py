@@ -13,7 +13,7 @@ import numpy as np
 # Primary design inputs (edit these three to retune wheel defaults globally)
 # ----------------------------------------------------------------------------
 
-WHEEL_MASS_KG: float = 1.0
+WHEEL_MASS_KG: float = 0.8
 WHEEL_RADIUS_M: float = 0.075
 WHEEL_THICKNESS_M: float = 0.01
 

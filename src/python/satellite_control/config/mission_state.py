@@ -23,6 +23,8 @@ from typing import Any
 
 from . import timing
 
+DEFAULT_PATH_HOLD_END_S = 50.0
+
 
 @dataclass
 class PathFollowingState:
@@ -53,7 +55,7 @@ class MissionState:
 
     path: PathFollowingState = field(default_factory=PathFollowingState)
     obstacle_state: ObstacleState = field(default_factory=ObstacleState)
-    path_hold_end: float = 0.0
+    path_hold_end: float = DEFAULT_PATH_HOLD_END_S
     # Path tracking runtime fields.
     path_tracking_center: tuple[float, float, float] | None = None
     path_tracking_base_shape: list[tuple[float, float, float]] = field(
@@ -138,7 +140,7 @@ class MissionState:
         """Reset all mission state to defaults."""
         self.path = PathFollowingState()
         self.obstacle_state = ObstacleState()
-        self.path_hold_end = 0.0
+        self.path_hold_end = DEFAULT_PATH_HOLD_END_S
         self.path_tracking_center = None
         self.path_tracking_base_shape = []
         self.path_tracking_phase = "POSITIONING"
