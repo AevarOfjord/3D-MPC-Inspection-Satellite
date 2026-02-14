@@ -9,6 +9,50 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# ----------------------------------------------------------------------------
+# Primary design inputs (edit these three to retune wheel defaults globally)
+# ----------------------------------------------------------------------------
+
+WHEEL_MASS_KG: float = 1.0
+WHEEL_RADIUS_M: float = 0.075
+WHEEL_THICKNESS_M: float = 0.01
+
+
+def _derive_wheel_defaults(
+    mass_kg: float, radius_m: float, thickness_m: float
+) -> tuple[float, float, float, float]:
+    """
+    Derive physical wheel defaults from mass/geometry.
+
+    Returns:
+        (inertia, max_torque, max_speed, density)
+
+    Assumptions:
+        - Wheel is modeled as a solid disk: I = 0.5 * m * r^2
+        - Keep historical max speed baseline (6000 RPM -> 628 rad/s)
+        - Keep historical angular acceleration baseline (~100 rad/s^2),
+          so max_torque scales with inertia.
+    """
+    mass = float(max(mass_kg, 1e-9))
+    radius = float(max(radius_m, 1e-9))
+    thickness = float(max(thickness_m, 1e-9))
+
+    volume = np.pi * radius * radius * thickness
+    density = mass / volume
+    inertia = 0.5 * mass * radius * radius
+    max_speed = 1000
+    max_torque = inertia * 100.0
+    return inertia, max_torque, max_speed, density
+
+
+_INERTIA_DEFAULT, _MAX_TORQUE_DEFAULT, _MAX_SPEED_DEFAULT, _WHEEL_DENSITY = (
+    _derive_wheel_defaults(
+        WHEEL_MASS_KG,
+        WHEEL_RADIUS_M,
+        WHEEL_THICKNESS_M,
+    )
+)
+
 
 @dataclass(frozen=True)
 class ReactionWheelParams:
@@ -23,9 +67,9 @@ class ReactionWheelParams:
         axis: Rotation axis in body frame (unit vector)
     """
 
-    inertia: float = 0.001  # kg·m² (typical cubesat RW: 0.0005-0.002)
-    max_torque: float = 0.1  # N·m (increased for faster attitude control)
-    max_speed: float = 628.0  # rad/s (~6000 RPM)
+    inertia: float = _INERTIA_DEFAULT  # kg·m², derived from mass/radius
+    max_torque: float = _MAX_TORQUE_DEFAULT  # N·m, derived from inertia
+    max_speed: float = _MAX_SPEED_DEFAULT  # rad/s (6000 RPM baseline)
     friction: float = 0.0001  # N·m·s/rad
     axis: tuple[float, float, float] = (1.0, 0.0, 0.0)
 
