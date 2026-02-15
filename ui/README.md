@@ -60,3 +60,11 @@ Startup behavior:
 npm run build
 npm run preview
 ```
+
+You can also serve `ui/dist` directly from the FastAPI backend:
+
+```
+make ui-build
+make run-app
+# then open http://localhost:8000
+```

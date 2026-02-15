@@ -55,6 +55,9 @@ SYSTEM_CMAKE := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g
 UI_DIR ?= ui
 UI_NODE_MODULES := $(UI_DIR)/node_modules
 UI_LOCKFILES := $(UI_DIR)/package-lock.json $(UI_DIR)/package.json
+RELEASE_DIR ?= release
+APP_BUNDLE_NAME ?= satellite-control-app
+APP_BUNDLE_DIR := $(RELEASE_DIR)/$(APP_BUNDLE_NAME)
 # Stamp file used to avoid reinstalling Node dependencies on every `make run`.
 UI_DEPS_STAMP := $(UI_NODE_MODULES)/.deps-installed
 # Try to detect active scikit-build editable output directory.
@@ -68,7 +71,8 @@ SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RU
 # Help
 # ============================================================================
 
-.PHONY: help run stop backend frontend sim install test lint clean rebuild \
+.PHONY: help run run-app stop backend backend-prod frontend ui-build package-app package-clean \
+	sim install test lint clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -79,8 +83,12 @@ help:
 	@echo ""
 	@echo "  make install      Setup/repair env and build C++ extensions"
 	@echo "  make rebuild      Clean + fresh install"
-	@echo "  make run          Start backend + frontend together (stops existing instances first)"
+	@echo "  make run          Start backend + frontend dev servers (stops existing instances first)"
+	@echo "  make run-app      Start backend only and serve prebuilt UI from ui/dist at :8000"
 	@echo "  make stop         Stop running backend and frontend processes"
+	@echo "  make ui-build     Build production UI bundle into ui/dist"
+	@echo "  make package-app  Create distributable prebuilt app bundle under ./release"
+	@echo "  make package-clean Remove generated app bundles in ./release"
 	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make lint         Lint Python + UI"
@@ -134,6 +142,21 @@ backend:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py --dev
+
+# Start backend in packaged-app mode (no Vite, serves ui/dist on :8000).
+backend-prod:
+	@$(MAKE) venv
+	@if [ ! -f "$(UI_DIR)/dist/index.html" ]; then \
+		echo "Error: prebuilt UI not found at $(UI_DIR)/dist/index.html"; \
+		echo "Run 'make ui-build' once (or ship ui/dist in your release package)."; \
+		exit 1; \
+	fi
+	@if ! $(VENV_PY) -c "import fastapi, uvicorn, pydantic" >/dev/null 2>&1; then \
+		echo "Backend dependencies are missing in $(VENV_DIR)."; \
+		echo "Running 'make install' to repair the environment..."; \
+		$(MAKE) install || exit $$?; \
+	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
 
 # Install frontend dependencies only when lockfiles change.
@@ -145,6 +168,66 @@ $(UI_DEPS_STAMP): $(UI_LOCKFILES)
 # Start frontend dev server.
 frontend: $(UI_DEPS_STAMP)
 	cd $(UI_DIR) && npm run dev
+
+# Build production UI assets consumed by backend-prod/run-app.
+ui-build: $(UI_DEPS_STAMP)
+	cd $(UI_DIR) && npm run build
+
+# One-command app startup using prebuilt UI bundle.
+run-app: stop backend-prod
+
+# Create a distributable app bundle with prebuilt UI and current runtime env.
+package-app: ui-build
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -c "import satellite_control, fastapi, uvicorn" >/dev/null 2>&1; then \
+		echo "Runtime deps missing in $(VENV_DIR); running 'make install' first..."; \
+		$(MAKE) install || exit $$?; \
+	fi
+	@mkdir -p "$(RELEASE_DIR)"
+	@rm -rf "$(APP_BUNDLE_DIR)"
+	@mkdir -p "$(APP_BUNDLE_DIR)"
+	@echo "Staging app bundle at $(APP_BUNDLE_DIR)"
+	@rsync -a \
+		--exclude '.git/' \
+		--exclude '.github/' \
+		--exclude '.pytest_cache/' \
+		--exclude '.ruff_cache/' \
+		--exclude '.hypothesis/' \
+		--exclude '.benchmarks/' \
+		--exclude '__pycache__/' \
+		--exclude '/build/' \
+		--exclude '/dist/' \
+		--exclude '/release/' \
+		--exclude 'ui/node_modules/' \
+		--exclude 'ui/npm_cache/' \
+		--exclude '/Data/Simulation/' \
+		./ "$(APP_BUNDLE_DIR)/"
+	@mkdir -p "$(APP_BUNDLE_DIR)/Data/Simulation"
+	@printf '%s\n' \
+		'#!/usr/bin/env bash' \
+		'set -euo pipefail' \
+		'ROOT_DIR="$$(cd "$$(dirname "$$0")" && pwd)"' \
+		'cd "$$ROOT_DIR"' \
+		'python3 scripts/start_app.py' > "$(APP_BUNDLE_DIR)/RUN_APP.sh"
+	@chmod +x "$(APP_BUNDLE_DIR)/RUN_APP.sh"
+	@printf '%s\n' \
+		'#!/usr/bin/env bash' \
+		'set -euo pipefail' \
+		'ROOT_DIR="$$(cd "$$(dirname "$$0")" && pwd)"' \
+		'cd "$$ROOT_DIR"' \
+		'if [ -x ".venv311/bin/python" ]; then' \
+		'  exec ".venv311/bin/python" "scripts/start_app.py"' \
+		'fi' \
+		'exec python3 "scripts/start_app.py"' > "$(APP_BUNDLE_DIR)/RUN_APP.command"
+	@chmod +x "$(APP_BUNDLE_DIR)/RUN_APP.command"
+	@ARCHIVE_PATH="$(RELEASE_DIR)/$(APP_BUNDLE_NAME)-$$(date +%Y%m%d_%H%M%S).tar.gz"; \
+	tar -czf "$$ARCHIVE_PATH" -C "$(RELEASE_DIR)" "$(APP_BUNDLE_NAME)"; \
+	echo "Created app archive: $$ARCHIVE_PATH"
+
+# Remove generated distributable bundles.
+package-clean:
+	@rm -rf "$(RELEASE_DIR)"
+	@echo "Removed $(RELEASE_DIR)"
 
 # Run CLI simulation, repairing Python/build prerequisites when needed.
 sim:

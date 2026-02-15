@@ -6,12 +6,12 @@ registers route modules, and wires up lifecycle hooks.
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from satellite_control.dashboard.routes import assets as asset_routes
 from satellite_control.dashboard.routes import missions as mission_routes
@@ -30,6 +30,24 @@ DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
 MODEL_ALLOWED_ROOTS = (
     (PROJECT_ROOT / "assets" / "model_files").resolve(),
     (PROJECT_ROOT / "ui" / "public" / "model_files").resolve(),
+)
+UI_DIST_DIR = (PROJECT_ROOT / "ui" / "dist").resolve()
+SPA_BLOCKED_PREFIXES = (
+    "api",
+    "runner",
+    "simulations",
+    "mission_v2",
+    "save_mission_v2",
+    "saved_missions_v2",
+    "path_assets",
+    "upload_object",
+    "preview_trajectory",
+    "control",
+    "speed",
+    "reset",
+    "docs",
+    "redoc",
+    "openapi.json",
 )
 
 # --- Global Singleton ---
@@ -79,3 +97,39 @@ app.include_router(sim_routes.router)
 app.include_router(mission_routes.router)
 app.include_router(asset_routes.router)
 app.include_router(runner_routes.router)
+
+
+def _is_path_within_ui_dist(path: Path) -> bool:
+    try:
+        path.relative_to(UI_DIST_DIR)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_spa_path_blocked(path: str) -> bool:
+    if not path:
+        return False
+    first = path.split("/", 1)[0]
+    return first in SPA_BLOCKED_PREFIXES
+
+
+if UI_DIST_DIR.exists():
+    logger.info("Serving prebuilt UI from %s", UI_DIST_DIR)
+
+    @app.get("/", include_in_schema=False)
+    async def serve_ui_index():
+        return FileResponse(UI_DIST_DIR / "index.html")
+
+    @app.get("/{ui_path:path}", include_in_schema=False)
+    async def serve_ui_or_asset(ui_path: str):
+        if _is_spa_path_blocked(ui_path):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        requested = (UI_DIST_DIR / ui_path).resolve()
+        if _is_path_within_ui_dist(requested) and requested.is_file():
+            return FileResponse(requested)
+
+        return FileResponse(UI_DIST_DIR / "index.html")
+else:
+    logger.info("No prebuilt UI found at %s; use Vite dev server on :5173.", UI_DIST_DIR)

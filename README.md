@@ -42,23 +42,25 @@
 └── Data/                       # Simulation outputs
 ```
 
-## ⚡ Quick Start
+## ⚡ Quick Start (Developer)
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-# Optional: dev tools + linters
-pip install -r requirements.txt
-cd ui && npm install && cd ..
+# 1) Install/build once
+make install
+make ui-build
 
-# 2. Start the Backend Simulation Server (Term 1)
-python scripts/run_dashboard.py
-# Server binds to localhost (127.0.0.1:8000)
-
-# 3. Start the Mission Control UI (Term 2)
-cd ui && npm run dev
-# Open http://localhost:5173
+# 2) Run packaged web app (single server, no Vite)
+make run-app
+# Open http://localhost:8000
+#
+# Dev mode (hot reload): make run
 ```
+
+## 📘 Usage Guide
+
+Detailed run/use instructions are in:
+
+- `docs/HOW_TO_USE.md`
 
 ## 🧭 Local-Only Usage Model
 

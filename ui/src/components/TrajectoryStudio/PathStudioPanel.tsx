@@ -16,7 +16,6 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
     actions.refreshModelList().catch(() => null);
     actions.refreshPathAssets().catch(() => null);
     // Run once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
