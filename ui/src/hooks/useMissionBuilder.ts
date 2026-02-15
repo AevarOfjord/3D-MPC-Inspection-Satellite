@@ -210,7 +210,6 @@ export function useMissionBuilder() {
     handlePreview().catch((err) => {
       console.warn('Auto preview failed', err);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.scan_axis]);
 
   // --- Actions ---

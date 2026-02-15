@@ -989,9 +989,35 @@ def build_mesh_spiral_trajectory(
     points_per_turn = max(int(points_per_circle), 12)
     total_points = max(3, turns * points_per_turn)
 
+    # Base ellipse from oriented half-extents + requested standoff.
     radius_x = float(rx + standoff)
     radius_y = float(ry + standoff)
     center_xy = np.array(center[:2], dtype=float)
+
+    # Safety inflation:
+    # Ensure every vertex (expanded radially by standoff) lies inside the scan ellipse.
+    # Without this, diagonally protruding geometry can pierce the spiral envelope.
+    centered_xy = vertices_perm[:, :2] - center_xy
+    projected_xy = np.dot(centered_xy, eigenvectors)
+    max_val = 0.0
+    for px, py in projected_xy:
+        r = float(np.hypot(px, py))
+        if r > 1e-9:
+            scale = (r + float(standoff)) / r
+            ps_x = float(px) * scale
+            ps_y = float(py) * scale
+        else:
+            ps_x = float(standoff)
+            ps_y = 0.0
+
+        val = (ps_x / max(radius_x, 1e-9)) ** 2 + (ps_y / max(radius_y, 1e-9)) ** 2
+        if val > max_val:
+            max_val = val
+
+    if max_val > 1.0:
+        sf = float(np.sqrt(max_val))
+        radius_x *= sf
+        radius_y *= sf
 
     spiral_points = []
     for i in range(total_points + 1):

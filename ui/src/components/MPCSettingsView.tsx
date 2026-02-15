@@ -70,6 +70,54 @@ interface PresetPayload {
   updated_at?: string;
 }
 
+interface RunnerSystemStatus {
+  ready_for_runner: boolean;
+  runner_active: boolean;
+  checks: Record<string, boolean>;
+  dependencies: Record<string, boolean>;
+  missing_checks: string[];
+  missing_dependencies: string[];
+  python?: {
+    executable?: string;
+    version?: string;
+    pid?: number;
+  };
+}
+
+interface PackageJobStatus {
+  status: 'idle' | 'running' | 'completed' | 'failed' | string;
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  return_code?: number | null;
+  archive_path?: string | null;
+  error?: string | null;
+  log_lines?: string[];
+}
+
+interface WorkspaceInspection {
+  schema_version: string;
+  bundle: {
+    missions: string[];
+    presets: string[];
+    simulation_runs: string[];
+    has_runner_overrides: boolean;
+  };
+  conflicts: {
+    missions: string[];
+    presets: string[];
+    simulation_runs: string[];
+  };
+  counts: {
+    missions_total: number;
+    presets_total: number;
+    simulation_runs_total: number;
+    mission_conflicts: number;
+    preset_conflicts: number;
+    simulation_run_conflicts: number;
+  };
+}
+
 interface MPCSettingsViewProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -596,6 +644,27 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showExpert, setShowExpert] = useState(false);
   const [showReference, setShowReference] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<RunnerSystemStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [quickMissionName, setQuickMissionName] = useState('');
+  const [packageStatus, setPackageStatus] = useState<PackageJobStatus | null>(null);
+  const [packageLoading, setPackageLoading] = useState(false);
+  const [packageStarting, setPackageStarting] = useState(false);
+  const [workspaceImportFile, setWorkspaceImportFile] = useState<File | null>(null);
+  const [workspaceImporting, setWorkspaceImporting] = useState(false);
+  const [workspaceInspecting, setWorkspaceInspecting] = useState(false);
+  const [workspaceInspection, setWorkspaceInspection] = useState<WorkspaceInspection | null>(null);
+  const [replaceExistingMissions, setReplaceExistingMissions] = useState(true);
+  const [replaceExistingPresets, setReplaceExistingPresets] = useState(false);
+  const [replaceExistingSimulationRuns, setReplaceExistingSimulationRuns] = useState(false);
+  const [applyRunnerConfigOnImport, setApplyRunnerConfigOnImport] = useState(true);
+  const [includeSimulationDataExport, setIncludeSimulationDataExport] = useState(false);
+  const [missionConflictFilter, setMissionConflictFilter] = useState('');
+  const [presetConflictFilter, setPresetConflictFilter] = useState('');
+  const [simulationRunConflictFilter, setSimulationRunConflictFilter] = useState('');
+  const [overwriteMissionNames, setOverwriteMissionNames] = useState<string[]>([]);
+  const [overwritePresetNames, setOverwritePresetNames] = useState<string[]>([]);
+  const [overwriteSimulationRunNames, setOverwriteSimulationRunNames] = useState<string[]>([]);
   const validationErrors = useMemo(() => (config ? validateConfig(config) : []), [config]);
   const isDirty = useMemo(
     () => (config ? stableSerializeConfig(config) !== savedSnapshot : false),
@@ -605,6 +674,8 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   useEffect(() => {
     void fetchConfig();
     void fetchPresets();
+    void fetchSystemStatus();
+    void fetchPackageStatus();
   }, []);
 
   useEffect(() => {
@@ -620,6 +691,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [isDirty]);
+
+  useEffect(() => {
+    if (!packageStatus?.running) return;
+    const timer = window.setInterval(() => {
+      void fetchPackageStatus();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [packageStatus?.running]);
 
   const fetchConfig = async () => {
     setIsLoading(true);
@@ -658,6 +737,210 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       setError(`Failed to load presets: ${String(err)}`);
     }
   };
+
+  const fetchSystemStatus = async () => {
+    setStatusLoading(true);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/system_status`);
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch system status'));
+      const data = (await res.json()) as RunnerSystemStatus;
+      setSystemStatus(data);
+    } catch (err) {
+      setError(`Failed to load system status: ${String(err)}`);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const fetchPackageStatus = async () => {
+    setPackageLoading(true);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/package_app/status`);
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch package status'));
+      const data = (await res.json()) as PackageJobStatus;
+      setPackageStatus(data);
+    } catch (err) {
+      setError(`Failed to load package status: ${String(err)}`);
+    } finally {
+      setPackageLoading(false);
+    }
+  };
+
+  const handleQuickRunnerStart = async () => {
+    setError(null);
+    try {
+      const payload = quickMissionName.trim()
+        ? { mission_name: quickMissionName.trim() }
+        : {};
+      const res = await fetch(`${RUNNER_API_URL}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to start runner'));
+      setSuccessMsg('Runner start command sent.');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      await fetchSystemStatus();
+    } catch (err) {
+      setError(`Failed to start runner: ${String(err)}`);
+    }
+  };
+
+  const handleQuickRunnerStop = async () => {
+    setError(null);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/stop`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to stop runner'));
+      setSuccessMsg('Runner stop command sent.');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      await fetchSystemStatus();
+    } catch (err) {
+      setError(`Failed to stop runner: ${String(err)}`);
+    }
+  };
+
+  const handleStartPackaging = async () => {
+    setPackageStarting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/package_app/start`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to start packaging job'));
+      setSuccessMsg('Packaging started.');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      await fetchPackageStatus();
+    } catch (err) {
+      setError(`Failed to start packaging: ${String(err)}`);
+    } finally {
+      setPackageStarting(false);
+    }
+  };
+
+  const handleImportWorkspace = async () => {
+    if (!workspaceImportFile) {
+      setError('Select a workspace .zip file to import.');
+      return;
+    }
+
+    setWorkspaceImporting(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', workspaceImportFile);
+      formData.append('replace_existing_missions', String(replaceExistingMissions));
+      formData.append('replace_existing_presets', String(replaceExistingPresets));
+      formData.append('replace_existing_simulation_runs', String(replaceExistingSimulationRuns));
+      formData.append('apply_runner_config', String(applyRunnerConfigOnImport));
+      formData.append('overwrite_missions_json', JSON.stringify(overwriteMissionNames));
+      formData.append('overwrite_presets_json', JSON.stringify(overwritePresetNames));
+      formData.append('overwrite_simulation_runs_json', JSON.stringify(overwriteSimulationRunNames));
+
+      const res = await fetch(`${RUNNER_API_URL}/workspace/import`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to import workspace'));
+
+      const data = await res.json() as {
+        missions_imported?: number;
+        missions_skipped?: number;
+        presets_imported?: number;
+        presets_skipped?: number;
+        simulation_runs_imported?: number;
+        simulation_runs_skipped?: number;
+        config_imported?: boolean;
+      };
+
+      setSuccessMsg(
+        `Workspace imported: missions=${data.missions_imported ?? 0} (skipped ${data.missions_skipped ?? 0}), presets=${data.presets_imported ?? 0} (skipped ${data.presets_skipped ?? 0}), runs=${data.simulation_runs_imported ?? 0} (skipped ${data.simulation_runs_skipped ?? 0}), config=${data.config_imported ? 'yes' : 'no'}.`
+      );
+      setTimeout(() => setSuccessMsg(null), 4000);
+      setWorkspaceImportFile(null);
+      setWorkspaceInspection(null);
+      setMissionConflictFilter('');
+      setPresetConflictFilter('');
+      setSimulationRunConflictFilter('');
+      setOverwriteMissionNames([]);
+      setOverwritePresetNames([]);
+      setOverwriteSimulationRunNames([]);
+      await Promise.all([
+        fetchConfig(),
+        fetchPresets(),
+        fetchSystemStatus(),
+        fetchPackageStatus(),
+      ]);
+    } catch (err) {
+      setError(`Failed to import workspace: ${String(err)}`);
+    } finally {
+      setWorkspaceImporting(false);
+    }
+  };
+
+  const handleInspectWorkspace = async () => {
+    if (!workspaceImportFile) {
+      setError('Select a workspace .zip file first.');
+      return;
+    }
+    setWorkspaceInspecting(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', workspaceImportFile);
+      const res = await fetch(`${RUNNER_API_URL}/workspace/inspect`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to inspect workspace'));
+      const data = (await res.json()) as WorkspaceInspection;
+      setWorkspaceInspection(data);
+      setOverwriteMissionNames([]);
+      setOverwritePresetNames([]);
+      setOverwriteSimulationRunNames([]);
+      setSuccessMsg('Workspace inspection complete.');
+      setTimeout(() => setSuccessMsg(null), 2000);
+    } catch (err) {
+      setError(`Failed to inspect workspace: ${String(err)}`);
+    } finally {
+      setWorkspaceInspecting(false);
+    }
+  };
+
+  const toggleNameSelection = (
+    name: string,
+    selected: string[],
+    setSelected: (value: string[]) => void
+  ) => {
+    if (selected.includes(name)) {
+      setSelected(selected.filter((item) => item !== name));
+    } else {
+      setSelected([...selected, name]);
+    }
+  };
+
+  const filteredMissionConflicts = workspaceInspection
+    ? (missionConflictFilter.trim()
+      ? workspaceInspection.conflicts.missions.filter((name) =>
+          name.toLowerCase().includes(missionConflictFilter.trim().toLowerCase())
+        )
+      : workspaceInspection.conflicts.missions)
+    : [];
+  const filteredPresetConflicts = workspaceInspection
+    ? (presetConflictFilter.trim()
+      ? workspaceInspection.conflicts.presets.filter((name) =>
+          name.toLowerCase().includes(presetConflictFilter.trim().toLowerCase())
+        )
+      : workspaceInspection.conflicts.presets)
+    : [];
+  const filteredSimulationRunConflicts = workspaceInspection
+    ? (simulationRunConflictFilter.trim()
+      ? workspaceInspection.conflicts.simulation_runs.filter((name) =>
+          name.toLowerCase().includes(simulationRunConflictFilter.trim().toLowerCase())
+        )
+      : workspaceInspection.conflicts.simulation_runs)
+    : [];
 
   const handleReset = async () => {
     setIsLoading(true);
@@ -936,6 +1219,414 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
               </ul>
             </div>
           )}
+
+          <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm uppercase tracking-wider text-cyan-400 font-bold">
+                  System Readiness
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Verifies this machine can run from web interface without rebuild.
+                </p>
+              </div>
+              <button
+                onClick={() => void fetchSystemStatus()}
+                className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200"
+                aria-label="Refresh system status"
+                disabled={statusLoading}
+              >
+                {statusLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {systemStatus ? (
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  {systemStatus.ready_for_runner ? (
+                    <Check size={14} className="text-emerald-400" />
+                  ) : (
+                    <AlertCircle size={14} className="text-amber-400" />
+                  )}
+                  <span className={systemStatus.ready_for_runner ? 'text-emerald-300' : 'text-amber-300'}>
+                    {systemStatus.ready_for_runner ? 'Runner ready' : 'Runner not ready'}
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span className={systemStatus.runner_active ? 'text-indigo-300' : 'text-slate-400'}>
+                    {systemStatus.runner_active ? 'Runner active' : 'Runner idle'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <p className="text-slate-400 mb-2 uppercase tracking-wide">Path Checks</p>
+                    {Object.entries(systemStatus.checks).map(([name, ok]) => (
+                      <div key={name} className="flex items-center justify-between py-0.5">
+                        <span className="text-slate-300 font-mono">{name}</span>
+                        <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
+                          {ok ? 'ok' : 'missing'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <p className="text-slate-400 mb-2 uppercase tracking-wide">Dependencies</p>
+                    {Object.entries(systemStatus.dependencies).map(([name, ok]) => (
+                      <div key={name} className="flex items-center justify-between py-0.5">
+                        <span className="text-slate-300 font-mono">{name}</span>
+                        <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
+                          {ok ? 'ok' : 'missing'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {(systemStatus.missing_checks.length > 0 || systemStatus.missing_dependencies.length > 0) && (
+                  <div className="rounded border border-amber-800/60 bg-amber-900/20 p-3 text-xs">
+                    {systemStatus.missing_checks.length > 0 && (
+                      <p className="text-amber-200">
+                        Missing checks: <span className="font-mono">{systemStatus.missing_checks.join(', ')}</span>
+                      </p>
+                    )}
+                    {systemStatus.missing_dependencies.length > 0 && (
+                      <p className="text-amber-200 mt-1">
+                        Missing dependencies:{' '}
+                        <span className="font-mono">{systemStatus.missing_dependencies.join(', ')}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {systemStatus.python && (
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    python={systemStatus.python.version ?? 'n/a'} pid={String(systemStatus.python.pid ?? 'n/a')}
+                  </p>
+                )}
+
+                <div className="pt-2 border-t border-slate-800">
+                  <p className="text-xs uppercase tracking-wide text-slate-400 mb-2">Runner Controls</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={quickMissionName}
+                      onChange={(e) => setQuickMissionName(e.target.value)}
+                      placeholder="Mission name (optional)"
+                      aria-label="Mission name for quick start"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-48 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => void handleQuickRunnerStart()}
+                      className="px-2.5 py-1.5 rounded bg-indigo-700 hover:bg-indigo-600 text-xs text-white"
+                    >
+                      Start Runner
+                    </button>
+                    <button
+                      onClick={() => void handleQuickRunnerStop()}
+                      className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white"
+                    >
+                      Stop Runner
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-slate-500">No status loaded yet.</div>
+            )}
+          </section>
+
+          <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm uppercase tracking-wider text-emerald-400 font-bold">
+                  Build & Package
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Runs <span className="font-mono">make package-app</span> from the backend.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void fetchPackageStatus()}
+                  className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200"
+                  disabled={packageLoading}
+                >
+                  {packageLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+                <button
+                  onClick={() => void handleStartPackaging()}
+                  className="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-xs text-white disabled:opacity-50"
+                  disabled={packageStarting || Boolean(packageStatus?.running)}
+                >
+                  {packageStarting ? 'Starting...' : 'Start Packaging'}
+                </button>
+                <a
+                  href={`${RUNNER_API_URL}/package_app/download_latest`}
+                  className="px-2.5 py-1.5 rounded bg-cyan-700 hover:bg-cyan-600 text-xs text-white"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Download Latest Archive
+                </a>
+                <button
+                  onClick={() => {
+                    const url = `${RUNNER_API_URL}/workspace/export?include_simulation_data=${includeSimulationDataExport ? 'true' : 'false'}`;
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="px-2.5 py-1.5 rounded bg-blue-700 hover:bg-blue-600 text-xs text-white"
+                >
+                  Export Workspace
+                </button>
+              </div>
+            </div>
+
+            {packageStatus ? (
+              <div className="mt-3 space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Status:</span>
+                  <span
+                    className={
+                      packageStatus.status === 'completed'
+                        ? 'text-emerald-300'
+                        : packageStatus.status === 'failed'
+                          ? 'text-red-300'
+                          : packageStatus.status === 'running'
+                            ? 'text-cyan-300'
+                            : 'text-slate-300'
+                    }
+                  >
+                    {packageStatus.status}
+                  </span>
+                  {typeof packageStatus.return_code === 'number' && (
+                    <span className="text-slate-500 font-mono">rc={packageStatus.return_code}</span>
+                  )}
+                </div>
+                {packageStatus.archive_path && (
+                  <p className="text-slate-300">
+                    Archive: <span className="font-mono text-emerald-300">{packageStatus.archive_path}</span>
+                  </p>
+                )}
+                {packageStatus.error && (
+                  <p className="text-red-300">Error: {packageStatus.error}</p>
+                )}
+                <div className="rounded border border-slate-800 bg-slate-950/70 p-2 max-h-40 overflow-y-auto font-mono text-[11px] text-slate-300 whitespace-pre-wrap">
+                  {(packageStatus.log_lines && packageStatus.log_lines.length > 0)
+                    ? packageStatus.log_lines.slice(-40).join('\n')
+                    : 'No packaging logs yet.'}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800">
+                  <label className="flex items-center gap-2 text-[11px] text-slate-300 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={includeSimulationDataExport}
+                      onChange={(e) => setIncludeSimulationDataExport(e.target.checked)}
+                    />
+                    Include simulation run data in export (can be large)
+                  </label>
+                  <p className="text-slate-400 uppercase tracking-wide mb-2">Import Workspace</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      onChange={(e) => {
+                        setWorkspaceImportFile(e.target.files?.[0] ?? null);
+                        setWorkspaceInspection(null);
+                        setMissionConflictFilter('');
+                        setPresetConflictFilter('');
+                        setSimulationRunConflictFilter('');
+                        setOverwriteMissionNames([]);
+                        setOverwritePresetNames([]);
+                        setOverwriteSimulationRunNames([]);
+                      }}
+                      className="text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-white hover:file:bg-slate-600"
+                    />
+                    <button
+                      onClick={() => void handleInspectWorkspace()}
+                      className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white disabled:opacity-50"
+                      disabled={workspaceInspecting || !workspaceImportFile}
+                    >
+                      {workspaceInspecting ? 'Inspecting...' : 'Inspect Workspace'}
+                    </button>
+                    <button
+                      onClick={() => void handleImportWorkspace()}
+                      className="px-2.5 py-1.5 rounded bg-violet-700 hover:bg-violet-600 text-xs text-white disabled:opacity-50"
+                      disabled={workspaceImporting || !workspaceImportFile}
+                    >
+                      {workspaceImporting ? 'Importing...' : 'Import Workspace'}
+                    </button>
+                  </div>
+                  {workspaceImportFile && (
+                    <p className="text-[11px] text-slate-500 mt-1">Selected: {workspaceImportFile.name}</p>
+                  )}
+                  <div className="w-full grid grid-cols-1 md:grid-cols-4 gap-2 mt-2">
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={replaceExistingMissions}
+                        onChange={(e) => setReplaceExistingMissions(e.target.checked)}
+                      />
+                      Replace existing missions
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={replaceExistingPresets}
+                        onChange={(e) => setReplaceExistingPresets(e.target.checked)}
+                      />
+                      Replace existing presets
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={replaceExistingSimulationRuns}
+                        onChange={(e) => setReplaceExistingSimulationRuns(e.target.checked)}
+                      />
+                      Replace existing simulation runs
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={applyRunnerConfigOnImport}
+                        onChange={(e) => setApplyRunnerConfigOnImport(e.target.checked)}
+                      />
+                      Apply runner config overrides
+                    </label>
+                  </div>
+                  {workspaceInspection && (
+                    <div className="w-full rounded border border-slate-800 bg-slate-950/70 p-2 mt-2 text-[11px]">
+                      <p className="text-slate-300">
+                        Bundle: missions={workspaceInspection.counts.missions_total}, presets={workspaceInspection.counts.presets_total}, runs={workspaceInspection.counts.simulation_runs_total}, config={workspaceInspection.bundle.has_runner_overrides ? 'yes' : 'no'}
+                      </p>
+                      <p className="text-amber-300 mt-1">
+                        Conflicts: missions={workspaceInspection.counts.mission_conflicts}, presets={workspaceInspection.counts.preset_conflicts}, runs={workspaceInspection.counts.simulation_run_conflicts}
+                      </p>
+                      {workspaceInspection.conflicts.missions.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-slate-400">
+                            Mission conflicts ({workspaceInspection.conflicts.missions.length})
+                          </p>
+                          <input
+                            type="text"
+                            value={missionConflictFilter}
+                            onChange={(e) => setMissionConflictFilter(e.target.value)}
+                            placeholder="Filter mission conflicts..."
+                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
+                          />
+                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                            {filteredMissionConflicts.length > 0 ? (
+                              filteredMissionConflicts.map((name) => (
+                                <label key={name} className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={overwriteMissionNames.includes(name)}
+                                    onChange={() =>
+                                      toggleNameSelection(
+                                        name,
+                                        overwriteMissionNames,
+                                        setOverwriteMissionNames
+                                      )
+                                    }
+                                  />
+                                  <span>{name}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <span>No matches for current filter.</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Selected mission overwrites: {overwriteMissionNames.length}
+                          </p>
+                        </div>
+                      )}
+                      {workspaceInspection.conflicts.presets.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-slate-400">
+                            Preset conflicts ({workspaceInspection.conflicts.presets.length})
+                          </p>
+                          <input
+                            type="text"
+                            value={presetConflictFilter}
+                            onChange={(e) => setPresetConflictFilter(e.target.value)}
+                            placeholder="Filter preset conflicts..."
+                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
+                          />
+                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                            {filteredPresetConflicts.length > 0 ? (
+                              filteredPresetConflicts.map((name) => (
+                                <label key={name} className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={overwritePresetNames.includes(name)}
+                                    onChange={() =>
+                                      toggleNameSelection(
+                                        name,
+                                        overwritePresetNames,
+                                        setOverwritePresetNames
+                                      )
+                                    }
+                                  />
+                                  <span>{name}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <span>No matches for current filter.</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Selected preset overwrites: {overwritePresetNames.length}
+                          </p>
+                        </div>
+                      )}
+                      {workspaceInspection.conflicts.simulation_runs.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-slate-400">
+                            Simulation run conflicts ({workspaceInspection.conflicts.simulation_runs.length})
+                          </p>
+                          <input
+                            type="text"
+                            value={simulationRunConflictFilter}
+                            onChange={(e) => setSimulationRunConflictFilter(e.target.value)}
+                            placeholder="Filter simulation run conflicts..."
+                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
+                          />
+                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                            {filteredSimulationRunConflicts.length > 0 ? (
+                              filteredSimulationRunConflicts.map((name) => (
+                                <label key={name} className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={overwriteSimulationRunNames.includes(name)}
+                                    onChange={() =>
+                                      toggleNameSelection(
+                                        name,
+                                        overwriteSimulationRunNames,
+                                        setOverwriteSimulationRunNames
+                                      )
+                                    }
+                                  />
+                                  <span>{name}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <span>No matches for current filter.</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Selected simulation run overwrites: {overwriteSimulationRunNames.length}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-slate-500">No package status loaded yet.</div>
+            )}
+          </section>
 
           <section>
             <button
