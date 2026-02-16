@@ -337,7 +337,6 @@ function App() {
               <ScanModeView viewMode={viewMode} builder={builder} />
             </Suspense>
         )}
-
         {appMode === 'runner' && (
             <div className="flex-1 relative bg-slate-900">
                 <Suspense fallback={<ModeLoading label="Loading Runner..." />}>

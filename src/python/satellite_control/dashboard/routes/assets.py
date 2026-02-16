@@ -4,17 +4,26 @@ import logging
 import math
 from pathlib import Path
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException
 from fastapi.responses import FileResponse
 
 from satellite_control.dashboard.models import (
+    CompileScanProjectRequestModel,
     MeshScanConfigModel,
     PathAssetSaveRequest,
+    ScanProjectModel,
 )
 from satellite_control.mission.path_assets import (
     list_path_assets,
     load_path_asset,
     save_path_asset,
+)
+from satellite_control.mission.scan_projects import (
+    compile_scan_project,
+    list_scan_projects,
+    load_scan_project,
+    save_scan_project,
 )
 
 logger = logging.getLogger("dashboard")
@@ -47,6 +56,13 @@ def _resolve_allowed_model_path(path_value: str) -> Path:
         status_code=400,
         detail="Model path must be inside model_files or ui/public/model_files",
     )
+
+
+def _normalize_model_path_for_storage(path_value: Path) -> str:
+    try:
+        return str(path_value.relative_to(_project_root))
+    except ValueError:
+        return str(path_value)
 
 
 # --- Model file routes ---
@@ -153,74 +169,266 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
 async def preview_trajectory(config: MeshScanConfigModel):
     """Generate a preview of the mesh scan trajectory without running simulation."""
     from satellite_control.mission.mesh_scan import (
+        apply_mesh_section_filter,
         build_mesh_scan_trajectory,
         build_mesh_spiral_trajectory,
         compute_mesh_bounds,
         load_obj_vertices,
     )
 
-    try:
-        levels = config.levels
-        if config.level_spacing and config.level_spacing > 0:
-            try:
-                vertices = load_obj_vertices(config.obj_path)
-                _, max_bounds, _, _ = compute_mesh_bounds(vertices)
-                min_bounds = vertices.min(axis=0)
-                axis_idx = 2
-                if config.scan_axis == "X":
-                    axis_idx = 0
-                elif config.scan_axis == "Y":
-                    axis_idx = 1
+    def resolve_section_filter(
+        pass_cfg: dict,
+    ) -> tuple[
+        list[float] | None,
+        list[float] | None,
+        list[float] | None,
+        float | None,
+        float | None,
+    ]:
+        section_mode = str(pass_cfg.get("section_mode", "none")).lower()
+        region_center = None
+        region_size = None
+        plane_normal = None
+        plane_offset_min = None
+        plane_offset_max = None
 
-                object_height = max_bounds[axis_idx] - min_bounds[axis_idx]
-                levels = max(
-                    1,
-                    int(math.ceil(object_height / max(config.level_spacing, 1e-6))),
-                )
-            except Exception:
-                levels = 8
+        # Backward-compatible AABB support (legacy region flags)
+        use_region = bool(pass_cfg.get("region_enabled")) or section_mode == "aabb"
+        if use_region:
+            center = pass_cfg.get("region_center")
+            size = pass_cfg.get("region_size")
+            if (
+                isinstance(center, list)
+                and isinstance(size, list)
+                and len(center) == 3
+                and len(size) == 3
+            ):
+                region_center = center
+                region_size = size
 
+        if section_mode == "plane_slab":
+            pn = pass_cfg.get("plane_normal")
+            d0 = pass_cfg.get("plane_offset_min")
+            d1 = pass_cfg.get("plane_offset_max")
+            if (
+                isinstance(pn, list)
+                and len(pn) == 3
+                and d0 is not None
+                and d1 is not None
+            ):
+                plane_normal = pn
+                plane_offset_min = float(d0)
+                plane_offset_max = float(d1)
+
+        return (
+            region_center,
+            region_size,
+            plane_normal,
+            plane_offset_min,
+            plane_offset_max,
+        )
+
+    def compute_levels_for(
+        axis_token: str,
+        level_spacing: float | None,
+        fallback: int,
+        pass_cfg: dict,
+    ) -> int:
+        levels = int(max(1, fallback))
+        if not level_spacing or level_spacing <= 0:
+            return levels
+        try:
+            vertices = load_obj_vertices(config.obj_path)
+            (
+                region_center,
+                region_size,
+                plane_normal,
+                plane_offset_min,
+                plane_offset_max,
+            ) = resolve_section_filter(pass_cfg)
+            vertices, _ = apply_mesh_section_filter(
+                vertices,
+                np.empty((0, 3), dtype=int),
+                region_center=region_center,
+                region_size=region_size,
+                plane_normal=plane_normal,
+                plane_offset_min=plane_offset_min,
+                plane_offset_max=plane_offset_max,
+            )
+            _, max_bounds, _, _ = compute_mesh_bounds(vertices)
+            min_bounds = vertices.min(axis=0)
+            axis_idx = 2
+            axis_u = str(axis_token).upper().strip()
+            if axis_u == "X":
+                axis_idx = 0
+            elif axis_u == "Y":
+                axis_idx = 1
+            object_height = max_bounds[axis_idx] - min_bounds[axis_idx]
+            return max(1, int(math.ceil(object_height / max(level_spacing, 1e-6))))
+        except Exception:
+            return levels
+
+    def build_one_pass(pass_cfg: dict) -> tuple[list[tuple[float, float, float]], float, int]:
+        levels = compute_levels_for(
+            pass_cfg["scan_axis"],
+            pass_cfg.get("level_spacing"),
+            int(pass_cfg["levels"]),
+            pass_cfg,
+        )
+        axis = str(pass_cfg["scan_axis"]).upper().strip()
+        (
+            region_center,
+            region_size,
+            plane_normal,
+            plane_offset_min,
+            plane_offset_max,
+        ) = resolve_section_filter(pass_cfg)
         dt = 0.1
-        axis = str(config.scan_axis).upper().strip()
-        if str(config.pattern).lower() == "spiral":
+        if str(pass_cfg["pattern"]).lower() == "spiral":
             path, _, path_length = build_mesh_spiral_trajectory(
                 obj_path=config.obj_path,
-                standoff=config.standoff,
+                standoff=float(pass_cfg["standoff"]),
                 levels=levels,
-                points_per_circle=config.points_per_circle,
-                v_max=config.speed_max,
-                v_min=config.speed_min,
-                lateral_accel=config.lateral_accel,
+                points_per_circle=int(pass_cfg["points_per_circle"]),
+                v_max=float(pass_cfg["speed_max"]),
+                v_min=float(pass_cfg["speed_min"]),
+                lateral_accel=float(pass_cfg["lateral_accel"]),
                 dt=dt,
-                z_margin=config.z_margin,
+                z_margin=float(pass_cfg["z_margin"]),
                 scan_axis=axis,
+                region_center=region_center,
+                region_size=region_size,
+                plane_normal=plane_normal,
+                plane_offset_min=plane_offset_min,
+                plane_offset_max=plane_offset_max,
                 build_trajectory=False,
             )
         else:
             path, _, path_length = build_mesh_scan_trajectory(
                 obj_path=config.obj_path,
-                standoff=config.standoff,
+                standoff=float(pass_cfg["standoff"]),
                 levels=levels,
-                points_per_circle=config.points_per_circle,
-                v_max=config.speed_max,
-                v_min=config.speed_min,
-                lateral_accel=config.lateral_accel,
+                points_per_circle=int(pass_cfg["points_per_circle"]),
+                v_max=float(pass_cfg["speed_max"]),
+                v_min=float(pass_cfg["speed_min"]),
+                lateral_accel=float(pass_cfg["lateral_accel"]),
                 dt=dt,
-                z_margin=config.z_margin,
+                z_margin=float(pass_cfg["z_margin"]),
                 scan_axis=axis,
+                region_center=region_center,
+                region_size=region_size,
+                plane_normal=plane_normal,
+                plane_offset_min=plane_offset_min,
+                plane_offset_max=plane_offset_max,
                 build_trajectory=False,
             )
+        return path, float(path_length), levels
 
-        speed = max(float(config.speed_max), 1e-3)
-        duration = float(path_length) / speed
+    def connect_transition(
+        start_pt: tuple[float, float, float],
+        end_pt: tuple[float, float, float],
+        max_step: float = 1.0,
+    ) -> list[tuple[float, float, float]]:
+        a = np.array(start_pt, dtype=float)
+        b = np.array(end_pt, dtype=float)
+        dist = float(np.linalg.norm(b - a))
+        if dist <= 1e-6:
+            return []
+        steps = max(2, int(math.ceil(dist / max(max_step, 1e-3))))
+        out: list[tuple[float, float, float]] = []
+        for i in range(1, steps):
+            t = i / float(steps)
+            p = a + t * (b - a)
+            out.append((float(p[0]), float(p[1]), float(p[2])))
+        return out
 
+    try:
+        pass_summaries: list[dict] = []
+        path: list[tuple[float, float, float]] = []
+        total_length = 0.0
+        total_duration = 0.0
+
+        passes = []
+        if config.passes:
+            for p in config.passes:
+                payload = p.model_dump()
+                if payload.get("enabled", True):
+                    passes.append(payload)
+
+        if not passes:
+            passes = [
+                {
+                    "label": "Pass 1",
+                    "standoff": config.standoff,
+                    "levels": config.levels,
+                    "level_spacing": config.level_spacing,
+                    "points_per_circle": config.points_per_circle,
+                    "speed_max": config.speed_max,
+                    "speed_min": config.speed_min,
+                    "lateral_accel": config.lateral_accel,
+                    "z_margin": config.z_margin,
+                    "scan_axis": config.scan_axis,
+                    "pattern": config.pattern,
+                    "region_enabled": False,
+                    "region_center": None,
+                    "region_size": None,
+                    "section_mode": "none",
+                    "plane_normal": None,
+                    "plane_offset_min": None,
+                    "plane_offset_max": None,
+                }
+            ]
+
+        for idx, pass_cfg in enumerate(passes):
+            pass_path, pass_len, pass_levels = build_one_pass(pass_cfg)
+            if not pass_path:
+                continue
+            if path:
+                transition = connect_transition(path[-1], pass_path[0], max_step=1.0)
+                if transition:
+                    trans_len = float(
+                        np.sum(
+                            np.linalg.norm(
+                                np.diff(np.array([path[-1], *transition, pass_path[0]], dtype=float), axis=0),
+                                axis=1,
+                            )
+                        )
+                    )
+                    total_length += trans_len
+                    transition_speed = max(
+                        float(pass_cfg.get("speed_max", config.speed_max)),
+                        1e-3,
+                    )
+                    total_duration += trans_len / transition_speed
+                    path.extend(transition)
+            path.extend(pass_path)
+            total_length += pass_len
+            speed = max(float(pass_cfg.get("speed_max", config.speed_max)), 1e-3)
+            total_duration += pass_len / speed
+            pass_summaries.append(
+                {
+                    "index": idx,
+                    "label": pass_cfg.get("label") or f"Pass {idx + 1}",
+                    "scan_axis": pass_cfg.get("scan_axis"),
+                    "pattern": pass_cfg.get("pattern"),
+                    "computed_levels": pass_levels,
+                    "points": len(pass_path),
+                    "path_length": pass_len,
+                }
+            )
+
+        if not path:
+            raise ValueError("No path generated from provided pass configuration.")
+
+        computed_levels = pass_summaries[0]["computed_levels"] if pass_summaries else config.levels
         return {
             "status": "success",
             "path": path,
             "points": len(path),
-            "estimated_duration": duration,
-            "path_length": path_length,
-            "computed_levels": levels,
+            "estimated_duration": total_duration,
+            "path_length": total_length,
+            "computed_levels": computed_levels,
+            "pass_summaries": pass_summaries,
         }
     except Exception as e:
         logger.error(f"Preview generation failed: {e}")
@@ -228,6 +436,68 @@ async def preview_trajectory(config: MeshScanConfigModel):
 
 
 # --- Path assets ---
+
+
+@router.get("/scan_projects")
+async def get_scan_projects():
+    """List saved scan projects."""
+    try:
+        projects = list_scan_projects()
+        return {"projects": projects}
+    except Exception as e:
+        logger.error(f"Failed to list scan projects: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scan_projects/{project_id}")
+async def get_scan_project(project_id: str):
+    """Load a specific scan project by id."""
+    try:
+        return load_scan_project(project_id)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, detail=f"Scan project not found: {project_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to load scan project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scan_projects")
+async def create_scan_project(request: ScanProjectModel):
+    """Save an editable scan project."""
+    try:
+        payload = request.model_dump()
+        resolved_obj = _resolve_allowed_model_path(str(payload.get("obj_path") or ""))
+        payload["obj_path"] = _normalize_model_path_for_storage(resolved_obj)
+        return save_scan_project(payload)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save scan project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scan_projects/compile")
+async def compile_scan_project_preview(request: CompileScanProjectRequestModel):
+    """Compile a scan project into final scan/connector path output."""
+    try:
+        payload = request.project.model_dump()
+        resolved_obj = _resolve_allowed_model_path(payload["obj_path"])
+        payload["obj_path"] = str(resolved_obj)
+        return compile_scan_project(
+            payload,
+            quality=request.quality,
+            include_collision=request.include_collision,
+            collision_threshold_m=request.collision_threshold_m,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to compile scan project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/path_assets")

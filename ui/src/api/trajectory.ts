@@ -12,6 +12,29 @@ export interface MeshScanConfig {
   z_margin: number;
   scan_axis: 'X' | 'Y' | 'Z';
   pattern?: 'spiral' | 'rings';
+  passes?: MeshScanPass[];
+}
+
+export interface MeshScanPass {
+  label?: string;
+  enabled?: boolean;
+  standoff: number;
+  levels: number;
+  level_spacing?: number;
+  points_per_circle: number;
+  speed_max: number;
+  speed_min: number;
+  lateral_accel: number;
+  z_margin: number;
+  scan_axis: 'X' | 'Y' | 'Z';
+  pattern: 'spiral' | 'rings';
+  region_enabled?: boolean;
+  region_center?: [number, number, number];
+  region_size?: [number, number, number];
+  section_mode?: 'none' | 'aabb' | 'plane_slab';
+  plane_normal?: [number, number, number];
+  plane_offset_min?: number;
+  plane_offset_max?: number;
 }
 
 export interface PreviewResponse {
@@ -20,6 +43,15 @@ export interface PreviewResponse {
   points: number;
   estimated_duration: number;
   path_length: number;
+  pass_summaries?: Array<{
+    index: number;
+    label: string;
+    scan_axis: string;
+    pattern: string;
+    computed_levels: number;
+    points: number;
+    path_length: number;
+  }>;
 }
 
 export interface UploadResponse {

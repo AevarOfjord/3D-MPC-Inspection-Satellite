@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
-import { trajectoryApi, type MeshScanConfig, type ModelInfo } from '../api/trajectory';
+import {
+  trajectoryApi,
+  type MeshScanConfig,
+  type ModelInfo,
+} from '../api/trajectory';
+import { scanProjectsApi } from '../api/scanProjects';
 import { unifiedMissionApi } from '../api/unifiedMissionApi';
 import { pathAssetsApi, type PathAssetSummary } from '../api/pathAssets';
 import type {
@@ -12,8 +17,23 @@ import type {
   SplineControl,
   UnifiedMission,
 } from '../api/unifiedMission';
+import type {
+  BodyAxis,
+  EndpointKind,
+  ScanCompileResponse,
+  ScanConnector,
+  ScanDefinition,
+  ScanProject,
+  ScanProjectSummary,
+} from '../types/scanProject';
 import { useHistory } from './useHistory';
 import { resamplePath, downsamplePath } from '../utils/pathResample';
+import {
+  createDefaultScan,
+  createDefaultScanProject,
+  makeId,
+  validateScanProject,
+} from '../utils/scanProjectValidation';
 import { telemetry } from '../services/telemetry';
 import { orbitSnapshot } from '../data/orbitSnapshot';
 import { API_BASE_URL } from '../config/endpoints';
@@ -88,6 +108,55 @@ const resolveOrbitTargetPose = (targetId: string) => {
   return { frame: 'ECI' as const, position, orientation };
 };
 
+type SelectedProjectPlaneHandle = { scanId: string; handle: 'a' | 'b' } | null;
+type SelectedConnectorControl =
+  | { connectorId: string; control: 'control1' | 'control2' }
+  | null;
+type ConnectEndpoint = { scanId: string; endpoint: EndpointKind } | null;
+type SelectedKeyLevelHandle =
+  | {
+      scanId: string;
+      keyLevelId: string;
+      handle: 'center' | 'rx_pos' | 'rx_neg' | 'ry_pos' | 'ry_neg';
+    }
+  | null;
+
+const buildAutoConnectorControls = (
+  start: [number, number, number],
+  end: [number, number, number]
+): { control1: [number, number, number]; control2: [number, number, number] } => {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const dz = end[2] - start[2];
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist < 1e-6) {
+    return {
+      control1: [...start],
+      control2: [...end],
+    };
+  }
+  const dir: [number, number, number] = [dx / dist, dy / dist, dz / dist];
+  const up: [number, number, number] = Math.abs(dir[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+  const cx = dir[1] * up[2] - dir[2] * up[1];
+  const cy = dir[2] * up[0] - dir[0] * up[2];
+  const cz = dir[0] * up[1] - dir[1] * up[0];
+  const clen = Math.hypot(cx, cy, cz);
+  const side: [number, number, number] = clen > 1e-6 ? [cx / clen, cy / clen, cz / clen] : [0, 0, 0];
+  const bulge = Math.min(Math.max(dist * 0.25, 0.15), 2.0);
+  return {
+    control1: [
+      start[0] + dx * 0.33 + side[0] * bulge,
+      start[1] + dy * 0.33 + side[1] * bulge,
+      start[2] + dz * 0.33 + side[2] * bulge,
+    ],
+    control2: [
+      start[0] + dx * 0.66 + side[0] * bulge,
+      start[1] + dy * 0.66 + side[1] * bulge,
+      start[2] + dz * 0.66 + side[2] * bulge,
+    ],
+  };
+};
+
 export function useMissionBuilder() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [modelPath, setModelPath] = useState<string>('');
@@ -130,8 +199,32 @@ export function useMissionBuilder() {
   const [levelSpacing, setLevelSpacing] = useState<number>(0.1);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [pathAssets, setPathAssets] = useState<PathAssetSummary[]>([]);
+  const [scanProjects, setScanProjects] = useState<ScanProjectSummary[]>([]);
   const [editPointLimit, setEditPointLimit] = useState<number>(500);
   const [savePointMultiplier, setSavePointMultiplier] = useState<number>(10);
+  const [scanPlaneEnabled, setScanPlaneEnabled] = useState<boolean>(false);
+  const [scanPlaneA, setScanPlaneA] = useState<[number, number, number]>([0, 0, -0.5]);
+  const [scanPlaneB, setScanPlaneB] = useState<[number, number, number]>([0, 0, 0.5]);
+  const [selectedScanPlaneHandle, setSelectedScanPlaneHandle] = useState<'a' | 'b' | null>(null);
+  const [scanPlaneAxis, setScanPlaneAxis] = useState<'X' | 'Y' | 'Z'>('Z');
+  const [scanProject, setScanProject] = useState<ScanProject>(() =>
+    createDefaultScanProject('')
+  );
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [selectedKeyLevelId, setSelectedKeyLevelId] = useState<string | null>(null);
+  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
+  const [selectedProjectScanPlaneHandle, setSelectedProjectScanPlaneHandle] =
+    useState<SelectedProjectPlaneHandle>(null);
+  const [selectedKeyLevelHandle, setSelectedKeyLevelHandle] =
+    useState<SelectedKeyLevelHandle>(null);
+  const [selectedConnectorControl, setSelectedConnectorControl] =
+    useState<SelectedConnectorControl>(null);
+  const [connectMode, setConnectMode] = useState<boolean>(false);
+  const [connectSourceEndpoint, setConnectSourceEndpoint] = useState<ConnectEndpoint>(null);
+  const [compilePreviewState, setCompilePreviewState] =
+    useState<ScanCompileResponse | null>(null);
+  const [compilePending, setCompilePending] = useState<boolean>(false);
+  const compileDebounceRef = useRef<number | null>(null);
 
   // Unified Mission (V2)
   const [epoch, setEpoch] = useState<string>(new Date().toISOString());
@@ -168,6 +261,55 @@ export function useMissionBuilder() {
     pathAssetsApi.list().then(setPathAssets).catch((err) => {
       console.warn('Failed to load path assets', err);
     });
+    scanProjectsApi.listScanProjects().then(setScanProjects).catch((err) => {
+      console.warn('Failed to load scan projects', err);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (scanProject.scans.length === 0) {
+      const fallback = createDefaultScan(1, 'Z');
+      setScanProject((prev) => ({ ...prev, scans: [fallback] }));
+      setSelectedScanId(fallback.id);
+      return;
+    }
+    if (!selectedScanId || !scanProject.scans.some((scan) => scan.id === selectedScanId)) {
+      setSelectedScanId(scanProject.scans[0].id);
+    }
+  }, [scanProject.scans, selectedScanId]);
+
+  useEffect(() => {
+    if (!config.obj_path) return;
+    setScanProject((prev) =>
+      prev.obj_path
+        ? prev
+        : {
+            ...prev,
+            obj_path: config.obj_path,
+          }
+    );
+  }, [config.obj_path]);
+
+  useEffect(() => {
+    if (!selectedKeyLevelHandle) return;
+    const scan = scanProject.scans.find((item) => item.id === selectedKeyLevelHandle.scanId);
+    if (!scan) {
+      setSelectedKeyLevelHandle(null);
+      return;
+    }
+    const exists = scan.key_levels.some((item) => item.id === selectedKeyLevelHandle.keyLevelId);
+    if (!exists) {
+      setSelectedKeyLevelHandle(null);
+    }
+  }, [scanProject.scans, selectedKeyLevelHandle]);
+
+  useEffect(() => {
+    return () => {
+      if (compileDebounceRef.current !== null) {
+        window.clearTimeout(compileDebounceRef.current);
+        compileDebounceRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -222,6 +364,7 @@ export function useMissionBuilder() {
           const res = await trajectoryApi.uploadObject(file);
           setModelPath(res.path);
           setConfig(prev => ({ ...prev, obj_path: res.path }));
+          setScanProject((prev) => ({ ...prev, obj_path: res.path }));
           trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
       } catch (err) {
           console.error(err);
@@ -231,16 +374,18 @@ export function useMissionBuilder() {
       }
   };
 
-  const handlePreview = async () => {
+  const handlePreview = async (overrideConfig?: Partial<MeshScanConfig>) => {
       if (!config.obj_path) {
           alert("Please upload a model first");
           return;
       }
       setLoading(true);
       try {
-          const previewConfig: MeshScanConfig = { ...config };
+          const previewConfig: MeshScanConfig = { ...config, ...(overrideConfig ?? {}) };
           if (levelSpacing > 0) {
-              previewConfig.level_spacing = levelSpacing;
+              if (!previewConfig.passes || previewConfig.passes.length === 0) {
+                previewConfig.level_spacing = levelSpacing;
+              }
           }
           const res = await trajectoryApi.previewTrajectory(previewConfig);
           
@@ -262,10 +407,24 @@ export function useMissionBuilder() {
       }
   };
 
+  const setManualPath = (path: [number, number, number][]) => {
+      const editablePath = downsamplePath(path, editPointLimit);
+      pathHistory.set(editablePath);
+      setIsManualMode(true);
+      const length = computePathLength(editablePath);
+      const speed = config.speed_max > 0 ? config.speed_max : 0.1;
+      setStats({
+        duration: speed > 0 ? length / speed : 0,
+        length,
+        points: editablePath.length,
+      });
+  };
+
   const selectModelPath = (path: string) => {
       if (!path) return;
       setModelPath(path);
       setConfig(prev => ({ ...prev, obj_path: path }));
+      setScanProject((prev) => ({ ...prev, obj_path: path }));
       setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
       trajectoryApi.getModelBounds(path).then((bounds) => {
           const extent = Math.max(bounds.extents[0], bounds.extents[1], bounds.extents[2]);
@@ -289,6 +448,529 @@ export function useMissionBuilder() {
       const assets = await pathAssetsApi.list();
       setPathAssets(assets);
       return assets;
+  };
+
+  const refreshScanProjects = async () => {
+      const projects = await scanProjectsApi.listScanProjects();
+      setScanProjects(projects);
+      return projects;
+  };
+
+  const createDefaultScanProjectState = (objPath?: string) => {
+      const created = createDefaultScanProject(objPath ?? scanProject.obj_path ?? config.obj_path ?? '');
+      setScanProject(created);
+      setSelectedScanId(created.scans[0]?.id ?? null);
+      setSelectedKeyLevelId(created.scans[0]?.key_levels?.[0]?.id ?? null);
+      setSelectedConnectorId(null);
+      setSelectedProjectScanPlaneHandle(null);
+      setSelectedKeyLevelHandle(null);
+      setSelectedConnectorControl(null);
+      setConnectSourceEndpoint(null);
+      setConnectMode(false);
+      setCompilePreviewState(null);
+      return created;
+  };
+
+  const updateScanProject = (updater: (prev: ScanProject) => ScanProject) => {
+      setScanProject((prev) => {
+          const next = updater(prev);
+          return {
+              ...next,
+              obj_path: next.obj_path || config.obj_path,
+          };
+      });
+  };
+
+  const addScan = () => {
+      updateScanProject((prev) => {
+          const nextScan = createDefaultScan(prev.scans.length + 1, 'Z');
+          const next = { ...prev, scans: [...prev.scans, nextScan] };
+          setSelectedScanId(nextScan.id);
+          setSelectedKeyLevelId(nextScan.key_levels[0]?.id ?? null);
+          return next;
+      });
+  };
+
+  const removeScan = (scanId: string) => {
+      updateScanProject((prev) => {
+          if (prev.scans.length <= 1) return prev;
+          const nextScans = prev.scans.filter((scan) => scan.id !== scanId);
+          const nextConnectors = prev.connectors.filter(
+              (conn) => conn.from_scan_id !== scanId && conn.to_scan_id !== scanId
+          );
+          const next: ScanProject = {
+              ...prev,
+              scans: nextScans,
+              connectors: nextConnectors,
+          };
+          if (selectedScanId === scanId) {
+              setSelectedScanId(nextScans[0]?.id ?? null);
+              setSelectedKeyLevelId(nextScans[0]?.key_levels?.[0]?.id ?? null);
+          }
+          if (selectedConnectorId && !nextConnectors.some((c) => c.id === selectedConnectorId)) {
+              setSelectedConnectorId(null);
+          }
+          if (
+              selectedKeyLevelHandle &&
+              (selectedKeyLevelHandle.scanId === scanId ||
+                  !nextScans.some((scan) => scan.id === selectedKeyLevelHandle.scanId))
+          ) {
+              setSelectedKeyLevelHandle(null);
+          }
+          return next;
+      });
+  };
+
+  const updateScan = (scanId: string, patch: Partial<ScanDefinition>) => {
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((scan) =>
+              scan.id === scanId ? { ...scan, ...patch } : scan
+          ),
+      }));
+  };
+
+  const addKeyLevel = (scanId: string, t?: number) => {
+      updateScanProject((prev) => {
+          const nextScans = prev.scans.map((scan) => {
+              if (scan.id !== scanId) return scan;
+              const sorted = [...scan.key_levels].sort((a, b) => a.t - b.t);
+              let insertT = Number.isFinite(t) ? Number(t) : 0.5;
+              if (!Number.isFinite(insertT)) insertT = 0.5;
+              insertT = Math.max(0, Math.min(1, insertT));
+              if (sorted.length >= 2 && t === undefined) {
+                  let bestGap = -1;
+                  let bestT = 0.5;
+                  for (let i = 1; i < sorted.length; i++) {
+                      const gap = sorted[i].t - sorted[i - 1].t;
+                      if (gap > bestGap) {
+                          bestGap = gap;
+                          bestT = (sorted[i].t + sorted[i - 1].t) * 0.5;
+                      }
+                  }
+                  insertT = bestT;
+              }
+              const level = {
+                  id: makeId('kl'),
+                  t: insertT,
+                  center_offset: [0, 0] as [number, number],
+                  radius_x: 1,
+                  radius_y: 1,
+                  rotation_deg: 0,
+              };
+              setSelectedKeyLevelId(level.id);
+              return {
+                  ...scan,
+                  key_levels: [...scan.key_levels, level].sort((a, b) => a.t - b.t),
+              };
+          });
+          return { ...prev, scans: nextScans };
+      });
+  };
+
+  const updateKeyLevel = (
+      scanId: string,
+      keyLevelId: string,
+      patch: Partial<ScanDefinition['key_levels'][number]>
+  ) => {
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((scan) => {
+              if (scan.id !== scanId) return scan;
+              const nextLevels = scan.key_levels
+                  .map((level) =>
+                      level.id === keyLevelId
+                          ? {
+                                ...level,
+                                ...patch,
+                                t: Math.max(0, Math.min(1, Number(patch.t ?? level.t))),
+                            }
+                          : level
+                  )
+                  .sort((a, b) => a.t - b.t);
+              return { ...scan, key_levels: nextLevels };
+          }),
+      }));
+  };
+
+  const removeKeyLevel = (scanId: string, keyLevelId: string) => {
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((scan) => {
+              if (scan.id !== scanId) return scan;
+              if (scan.key_levels.length <= 2) return scan;
+              const nextLevels = scan.key_levels.filter((level) => level.id !== keyLevelId);
+              if (selectedKeyLevelId === keyLevelId) {
+                  setSelectedKeyLevelId(nextLevels[0]?.id ?? null);
+              }
+              return { ...scan, key_levels: nextLevels };
+          }),
+      }));
+  };
+
+  const resolveBodyAxisVector = (axis: BodyAxis): [number, number, number] => {
+      const basis: [number, number, number] =
+          axis === 'X' ? [1, 0, 0] : axis === 'Y' ? [0, 1, 0] : [0, 0, 1];
+      const e = new THREE.Euler(
+          (referenceAngle[0] * Math.PI) / 180,
+          (referenceAngle[1] * Math.PI) / 180,
+          (referenceAngle[2] * Math.PI) / 180
+      );
+      const v = new THREE.Vector3(basis[0], basis[1], basis[2]).applyEuler(e).normalize();
+      return [v.x, v.y, v.z];
+  };
+
+  const resolveScanFrameAxes = (
+      axis: BodyAxis
+  ): {
+      normal: [number, number, number];
+      uAxis: [number, number, number];
+      vAxis: [number, number, number];
+  } => {
+      const basisNormal: [number, number, number] =
+          axis === 'X' ? [1, 0, 0] : axis === 'Y' ? [0, 1, 0] : [0, 0, 1];
+      const basisU: [number, number, number] =
+          axis === 'X' ? [0, 1, 0] : axis === 'Y' ? [1, 0, 0] : [1, 0, 0];
+      const basisV: [number, number, number] =
+          axis === 'X' ? [0, 0, 1] : axis === 'Y' ? [0, 0, 1] : [0, 1, 0];
+
+      const e = new THREE.Euler(
+          (referenceAngle[0] * Math.PI) / 180,
+          (referenceAngle[1] * Math.PI) / 180,
+          (referenceAngle[2] * Math.PI) / 180
+      );
+      const normal = new THREE.Vector3(...basisNormal).applyEuler(e).normalize();
+      const u = new THREE.Vector3(...basisU).applyEuler(e).normalize();
+      const v = new THREE.Vector3(...basisV).applyEuler(e).normalize();
+      return {
+          normal: [normal.x, normal.y, normal.z],
+          uAxis: [u.x, u.y, u.z],
+          vAxis: [v.x, v.y, v.z],
+      };
+  };
+
+  const projectPointToBodyAxis = (
+      point: [number, number, number],
+      axis: [number, number, number]
+  ): [number, number, number] => {
+      const rel: [number, number, number] = [
+          point[0] - referencePosition[0],
+          point[1] - referencePosition[1],
+          point[2] - referencePosition[2],
+      ];
+      const t = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
+      return [
+          referencePosition[0] + axis[0] * t,
+          referencePosition[1] + axis[1] * t,
+          referencePosition[2] + axis[2] * t,
+      ];
+  };
+
+  const setScanAxisAligned = (scanId: string, axis: BodyAxis) => {
+      const axisVec = resolveBodyAxisVector(axis);
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((scan) =>
+              scan.id === scanId
+                  ? {
+                        ...scan,
+                        axis,
+                        plane_a: projectPointToBodyAxis(scan.plane_a, axisVec),
+                        plane_b: projectPointToBodyAxis(scan.plane_b, axisVec),
+                    }
+                  : scan
+          ),
+      }));
+  };
+
+  const moveProjectScanPlaneHandle = (
+      scanId: string,
+      handle: 'a' | 'b',
+      position: [number, number, number]
+  ) => {
+      const scan = scanProject.scans.find((item) => item.id === scanId);
+      if (!scan) return;
+      const axisVec = resolveBodyAxisVector(scan.axis);
+      const constrained = projectPointToBodyAxis(position, axisVec);
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((item) => {
+              if (item.id !== scanId) return item;
+              if (handle === 'a') return { ...item, plane_a: constrained };
+              return { ...item, plane_b: constrained };
+          }),
+      }));
+  };
+
+  const updateKeyLevelHandlePosition = (
+      scanId: string,
+      keyLevelId: string,
+      handle: 'center' | 'rx_pos' | 'rx_neg' | 'ry_pos' | 'ry_neg',
+      position: [number, number, number]
+  ) => {
+      const scan = scanProject.scans.find((item) => item.id === scanId);
+      if (!scan) return;
+      const keyLevel = scan.key_levels.find((item) => item.id === keyLevelId);
+      if (!keyLevel) return;
+
+      const { normal, uAxis, vAxis } = resolveScanFrameAxes(scan.axis);
+      const normalVec = new THREE.Vector3(...normal);
+      const aProjected = projectPointToBodyAxis(scan.plane_a, normal);
+      const bProjected = projectPointToBodyAxis(scan.plane_b, normal);
+      const t = Math.max(0, Math.min(1, keyLevel.t));
+      const baseCenter: [number, number, number] = [
+          aProjected[0] + (bProjected[0] - aProjected[0]) * t,
+          aProjected[1] + (bProjected[1] - aProjected[1]) * t,
+          aProjected[2] + (bProjected[2] - aProjected[2]) * t,
+      ];
+      const uVec = new THREE.Vector3(...uAxis);
+      const vVec = new THREE.Vector3(...vAxis);
+      const center = new THREE.Vector3(
+          baseCenter[0] + uAxis[0] * keyLevel.center_offset[0] + vAxis[0] * keyLevel.center_offset[1],
+          baseCenter[1] + uAxis[1] * keyLevel.center_offset[0] + vAxis[1] * keyLevel.center_offset[1],
+          baseCenter[2] + uAxis[2] * keyLevel.center_offset[0] + vAxis[2] * keyLevel.center_offset[1]
+      );
+      const pos = new THREE.Vector3(position[0], position[1], position[2]);
+      const relToBase = pos.clone().sub(new THREE.Vector3(...baseCenter));
+      const relToCenter = pos.clone().sub(center);
+
+      const rot = (keyLevel.rotation_deg * Math.PI) / 180;
+      const major = uVec.clone().multiplyScalar(Math.cos(rot)).add(vVec.clone().multiplyScalar(Math.sin(rot))).normalize();
+      const minor = uVec.clone().multiplyScalar(-Math.sin(rot)).add(vVec.clone().multiplyScalar(Math.cos(rot))).normalize();
+
+      if (handle === 'center') {
+          const projected = relToBase.sub(normalVec.clone().multiplyScalar(relToBase.dot(normalVec)));
+          const offX = projected.dot(uVec);
+          const offY = projected.dot(vVec);
+          updateKeyLevel(scanId, keyLevelId, {
+              center_offset: [offX, offY],
+          });
+          return;
+      }
+
+      if (handle === 'rx_pos' || handle === 'rx_neg') {
+          const projected = relToCenter.sub(normalVec.clone().multiplyScalar(relToCenter.dot(normalVec)));
+          const radius = Math.max(0.01, Math.abs(projected.dot(major)));
+          updateKeyLevel(scanId, keyLevelId, { radius_x: radius });
+          return;
+      }
+
+      const projected = relToCenter.sub(normalVec.clone().multiplyScalar(relToCenter.dot(normalVec)));
+      const radius = Math.max(0.01, Math.abs(projected.dot(minor)));
+      updateKeyLevel(scanId, keyLevelId, { radius_y: radius });
+  };
+
+  const updateConnector = (connectorId: string, patch: Partial<ScanConnector>) => {
+      updateScanProject((prev) => ({
+          ...prev,
+          connectors: prev.connectors.map((conn) =>
+              conn.id === connectorId ? { ...conn, ...patch } : conn
+          ),
+      }));
+  };
+
+  const removeConnector = (connectorId: string) => {
+      updateScanProject((prev) => ({
+          ...prev,
+          connectors: prev.connectors.filter((conn) => conn.id !== connectorId),
+      }));
+      if (selectedConnectorId === connectorId) {
+          setSelectedConnectorId(null);
+      }
+      if (selectedConnectorControl?.connectorId === connectorId) {
+          setSelectedConnectorControl(null);
+      }
+  };
+
+  const createConnector = (
+      source: { scanId: string; endpoint: EndpointKind },
+      target: { scanId: string; endpoint: EndpointKind }
+  ) => {
+      if (source.scanId === target.scanId) {
+          alert('Select endpoints from two different scans.');
+          return;
+      }
+
+      let control1: [number, number, number] | undefined;
+      let control2: [number, number, number] | undefined;
+      const sourceEndpoint = compilePreviewState?.endpoints?.[source.scanId]?.[source.endpoint];
+      const targetEndpoint = compilePreviewState?.endpoints?.[target.scanId]?.[target.endpoint];
+      if (sourceEndpoint && targetEndpoint) {
+          const controls = buildAutoConnectorControls(sourceEndpoint, targetEndpoint);
+          control1 = controls.control1;
+          control2 = controls.control2;
+      }
+
+      const connector: ScanConnector = {
+          id: makeId('conn'),
+          from_scan_id: source.scanId,
+          to_scan_id: target.scanId,
+          from_endpoint: source.endpoint,
+          to_endpoint: target.endpoint,
+          control1: control1 ?? null,
+          control2: control2 ?? null,
+          samples: 24,
+      };
+      updateScanProject((prev) => ({
+          ...prev,
+          connectors: [...prev.connectors, connector],
+      }));
+      setSelectedConnectorId(connector.id);
+  };
+
+  const startConnectMode = () => {
+      setConnectMode(true);
+      setConnectSourceEndpoint(null);
+  };
+
+  const cancelConnectMode = () => {
+      setConnectMode(false);
+      setConnectSourceEndpoint(null);
+  };
+
+  const selectEndpointForConnect = (scanId: string, endpoint: EndpointKind) => {
+      if (!connectMode) return;
+      if (!connectSourceEndpoint) {
+          setConnectSourceEndpoint({ scanId, endpoint });
+          return;
+      }
+      if (connectSourceEndpoint.scanId === scanId) {
+          setConnectSourceEndpoint({ scanId, endpoint });
+          return;
+      }
+      createConnector(connectSourceEndpoint, { scanId, endpoint });
+      setConnectSourceEndpoint(null);
+      setConnectMode(false);
+  };
+
+  const updateConnectorControl = (
+      connectorId: string,
+      control: 'control1' | 'control2',
+      position: [number, number, number]
+  ) => {
+      updateConnector(connectorId, { [control]: position } as Partial<ScanConnector>);
+  };
+
+  const compileScanProjectNow = async (
+      quality: 'preview' | 'final' = 'preview',
+      includeCollision = true
+  ) => {
+      const validationError = validateScanProject(scanProject);
+      if (validationError) {
+          alert(validationError);
+          return null;
+      }
+      setLoading(true);
+      try {
+          const response = await scanProjectsApi.compileScanProject({
+              project: scanProject,
+              quality,
+              include_collision: includeCollision,
+              collision_threshold_m: 0.05,
+          });
+          setCompilePreviewState(response);
+          const hasDisconnectedMultiScanPreview =
+              quality === 'preview' &&
+              scanProject.scans.length > 1 &&
+              scanProject.connectors.length === 0;
+          if (hasDisconnectedMultiScanPreview) {
+              // Avoid drawing misleading straight links between unconnected scans.
+              setManualPath([]);
+          } else {
+              const compiled = response.combined_path.map(
+                  (p) => [p[0], p[1], p[2]] as [number, number, number]
+              );
+              setManualPath(compiled);
+          }
+          setStats({
+              duration: response.estimated_duration,
+              length: response.path_length,
+              points: response.points,
+          });
+          return response;
+      } catch (err: any) {
+          console.error(err);
+          alert(`Scan compile failed: ${err.message || err}`);
+          return null;
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const compileScanProjectDebounced = (
+      quality: 'preview' | 'final' = 'preview',
+      includeCollision = true,
+      delayMs = 250
+  ) => {
+      if (compileDebounceRef.current !== null) {
+          window.clearTimeout(compileDebounceRef.current);
+      }
+      setCompilePending(true);
+      compileDebounceRef.current = window.setTimeout(() => {
+          compileScanProjectNow(quality, includeCollision).finally(() => {
+              setCompilePending(false);
+          });
+      }, delayMs);
+  };
+
+  const saveScanProject = async (name?: string) => {
+      const projectName = (name ?? scanProject.name).trim();
+      if (!projectName) {
+          alert('Enter a project name.');
+          return null;
+      }
+      const validationError = validateScanProject(scanProject);
+      if (validationError) {
+          alert(validationError);
+          return null;
+      }
+      const payload: ScanProject = {
+          ...scanProject,
+          name: projectName,
+          obj_path: scanProject.obj_path || config.obj_path,
+      };
+      const saved = await scanProjectsApi.saveScanProject(payload);
+      setScanProject(saved);
+      await refreshScanProjects();
+      return saved;
+  };
+
+  const loadScanProjectById = async (projectId: string) => {
+      const loaded = await scanProjectsApi.loadScanProject(projectId);
+      setScanProject(loaded);
+      setSelectedScanId(loaded.scans[0]?.id ?? null);
+      setSelectedKeyLevelId(loaded.scans[0]?.key_levels?.[0]?.id ?? null);
+      setSelectedConnectorId(null);
+      setSelectedConnectorControl(null);
+      setConnectMode(false);
+      setConnectSourceEndpoint(null);
+      if (loaded.obj_path) {
+          selectModelPath(loaded.obj_path);
+      }
+      return loaded;
+  };
+
+  const saveBakedPathFromCompiled = async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+          alert('Please enter a baked path name');
+          return null;
+      }
+      let compiled = compilePreviewState;
+      if (!compiled || !compiled.combined_path?.length) {
+          compiled = await compileScanProjectNow('final', true);
+          if (!compiled) return null;
+      }
+      const payload = {
+          name: trimmed,
+          obj_path: scanProject.obj_path || config.obj_path,
+          path: compiled.combined_path,
+          open: true,
+          relative_to_obj: true,
+      };
+      const saved = await pathAssetsApi.save(payload);
+      await refreshPathAssets();
+      return saved;
   };
 
   const savePathAsset = async (name: string) => {
@@ -912,6 +1594,86 @@ export function useMissionBuilder() {
     return null;
   };
 
+  const resolveScanPlaneNormal = (axis: 'X' | 'Y' | 'Z' = scanPlaneAxis): [number, number, number] => {
+    const basis: [number, number, number] =
+      axis === 'X' ? [1, 0, 0] : axis === 'Y' ? [0, 1, 0] : [0, 0, 1];
+    const e = new THREE.Euler(
+      (referenceAngle[0] * Math.PI) / 180,
+      (referenceAngle[1] * Math.PI) / 180,
+      (referenceAngle[2] * Math.PI) / 180
+    );
+    const v = new THREE.Vector3(basis[0], basis[1], basis[2]).applyEuler(e).normalize();
+    return [v.x, v.y, v.z];
+  };
+
+  const projectPointToAxis = (
+    point: [number, number, number],
+    axis: [number, number, number]
+  ): [number, number, number] => {
+    const rel = [
+      point[0] - referencePosition[0],
+      point[1] - referencePosition[1],
+      point[2] - referencePosition[2],
+    ] as [number, number, number];
+    const t = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
+    return [
+      referencePosition[0] + axis[0] * t,
+      referencePosition[1] + axis[1] * t,
+      referencePosition[2] + axis[2] * t,
+    ];
+  };
+
+  const moveScanPlaneHandle = (handle: 'a' | 'b', position: [number, number, number]) => {
+    const normal = resolveScanPlaneNormal();
+    const constrained = projectPointToAxis(position, normal);
+    if (handle === 'a') setScanPlaneA(constrained);
+    else setScanPlaneB(constrained);
+  };
+
+  const setScanPlaneAxisAligned = (axis: 'X' | 'Y' | 'Z') => {
+    const normal = resolveScanPlaneNormal(axis);
+    setScanPlaneAxis(axis);
+    setScanPlaneA((prev) => projectPointToAxis(prev, normal));
+    setScanPlaneB((prev) => projectPointToAxis(prev, normal));
+  };
+
+  useEffect(() => {
+    // Keep planes aligned to the active body axis as body attitude changes.
+    const normal = resolveScanPlaneNormal();
+    setScanPlaneA((prev) => projectPointToAxis(prev, normal));
+    setScanPlaneB((prev) => projectPointToAxis(prev, normal));
+  }, [
+    referenceAngle[0],
+    referenceAngle[1],
+    referenceAngle[2],
+    referencePosition[0],
+    referencePosition[1],
+    referencePosition[2],
+    scanPlaneAxis,
+  ]);
+
+  useEffect(() => {
+    // Keep per-scan project planes constrained to their selected body axis.
+    setScanProject((prev) => ({
+      ...prev,
+      scans: prev.scans.map((scan) => {
+        const axisVec = resolveBodyAxisVector(scan.axis);
+        return {
+          ...scan,
+          plane_a: projectPointToBodyAxis(scan.plane_a, axisVec),
+          plane_b: projectPointToBodyAxis(scan.plane_b, axisVec),
+        };
+      }),
+    }));
+  }, [
+    referenceAngle[0],
+    referenceAngle[1],
+    referenceAngle[2],
+    referencePosition[0],
+    referencePosition[1],
+    referencePosition[2],
+  ]);
+
   useEffect(() => {
     if (previewPath.length === 0) return;
     const nextPath = downsamplePath(previewPath, editPointLimit);
@@ -970,8 +1732,25 @@ export function useMissionBuilder() {
         levelSpacing,
         availableModels,
         pathAssets,
+        scanProjects,
         editPointLimit,
         savePointMultiplier,
+        scanPlaneEnabled,
+        scanPlaneA,
+        scanPlaneB,
+        scanPlaneAxis,
+        selectedScanPlaneHandle,
+        scanProject,
+        selectedScanId,
+        selectedKeyLevelId,
+        selectedConnectorId,
+        selectedProjectScanPlaneHandle,
+        selectedKeyLevelHandle,
+        selectedConnectorControl,
+        connectMode,
+        connectSourceEndpoint,
+        compilePreviewState,
+        compilePending,
         epoch,
         segments,
         selectedSegmentIndex,
@@ -995,6 +1774,21 @@ export function useMissionBuilder() {
         setLevelSpacing,
         setEditPointLimit,
         setSavePointMultiplier,
+        setScanPlaneEnabled,
+        setScanPlaneA,
+        setScanPlaneB,
+        setScanPlaneAxis,
+        setSelectedScanPlaneHandle,
+        setScanProject,
+        setSelectedScanId,
+        setSelectedKeyLevelId,
+        setSelectedConnectorId,
+        setSelectedProjectScanPlaneHandle,
+        setSelectedKeyLevelHandle,
+        setSelectedConnectorControl,
+        setConnectMode,
+        setConnectSourceEndpoint,
+        setCompilePreviewState,
         setEpoch,
         setSelectedSegmentIndex,
         setSegments
@@ -1002,19 +1796,50 @@ export function useMissionBuilder() {
     actions: {
         handleFileUpload,
         handlePreview,
+        setManualPath,
         handleRun,
         handleSaveUnifiedMission,
         selectModelPath,
         refreshModelList,
         refreshPathAssets,
+        refreshScanProjects,
         savePathAsset,
         loadPathAsset,
+        createDefaultScanProjectState,
+        updateScanProject,
+        addScan,
+        removeScan,
+        updateScan,
+        addKeyLevel,
+        updateKeyLevel,
+        removeKeyLevel,
+        setScanAxisAligned,
+        moveProjectScanPlaneHandle,
+        updateKeyLevelHandlePosition,
+        setSelectedProjectScanPlaneHandle,
+        setSelectedKeyLevelHandle,
+        updateConnector,
+        removeConnector,
+        startConnectMode,
+        cancelConnectMode,
+        selectEndpointForConnect,
+        updateConnectorControl,
+        setSelectedConnectorControl,
+        compileScanProjectNow,
+        compileScanProjectDebounced,
+        saveScanProject,
+        loadScanProjectById,
+        saveBakedPathFromCompiled,
+        setSelectedScanId,
+        setSelectedKeyLevelId,
+        setSelectedConnectorId,
         addObstacle,
         removeObstacle,
         updateObstacle,
         handleObjectTransform,
         setSelectedObjectId,
         setTransformMode,
+        setSelectedScanPlaneHandle,
         addTransferSegment,
         addScanSegment,
         addHoldSegment,
@@ -1040,6 +1865,8 @@ export function useMissionBuilder() {
         addWaypoint,
         removeWaypoint,
         removeWaypointAtIndex,
+        moveScanPlaneHandle,
+        setScanPlaneAxisAligned,
         selectSegment: setSelectedSegmentIndex
     }
   };

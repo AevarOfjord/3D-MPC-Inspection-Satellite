@@ -90,6 +90,129 @@ def load_obj_vertices(obj_path: str) -> np.ndarray:
     return v
 
 
+def filter_vertices_faces_by_aabb(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    center: Iterable[float] | None,
+    size: Iterable[float] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Keep only mesh content inside an axis-aligned bounding box.
+
+    The box is defined in model/world coordinates by `center` and full `size`.
+    Faces are retained only when all three vertices are inside the box.
+    """
+    if center is None or size is None:
+        return vertices, faces
+
+    c = np.asarray(center, dtype=float).reshape(-1)
+    s = np.asarray(size, dtype=float).reshape(-1)
+    if c.size != 3 or s.size != 3:
+        return vertices, faces
+
+    half = np.maximum(s * 0.5, 1e-6)
+    lo = c - half
+    hi = c + half
+    mask = np.all((vertices >= lo) & (vertices <= hi), axis=1)
+    idx = np.flatnonzero(mask)
+    if idx.size < 3:
+        return vertices, faces
+
+    sel_vertices = vertices[idx]
+    if faces.size == 0:
+        return sel_vertices, faces
+
+    inside = np.zeros(vertices.shape[0], dtype=bool)
+    inside[idx] = True
+    keep_faces = (
+        inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
+    )
+    sel_faces_old = faces[keep_faces]
+    if sel_faces_old.size == 0:
+        return sel_vertices, np.empty((0, 3), dtype=int)
+
+    remap = np.full(vertices.shape[0], -1, dtype=int)
+    remap[idx] = np.arange(idx.size, dtype=int)
+    sel_faces = remap[sel_faces_old]
+    return sel_vertices, sel_faces
+
+
+def filter_vertices_faces_by_parallel_planes(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    normal: Iterable[float] | None,
+    offset_min: float | None,
+    offset_max: float | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Keep only mesh content inside a slab defined by two parallel planes.
+
+    Plane form: dot(n, x) = d, where `n` is normalized.
+    Vertices are kept when d_min <= dot(n, v) <= d_max.
+    Faces are retained only when all three vertices are inside the slab.
+    """
+    if normal is None or offset_min is None or offset_max is None:
+        return vertices, faces
+
+    n = np.asarray(normal, dtype=float).reshape(-1)
+    if n.size != 3:
+        return vertices, faces
+    n_norm = float(np.linalg.norm(n))
+    if n_norm < 1e-9:
+        return vertices, faces
+    n = n / n_norm
+
+    d0 = float(min(offset_min, offset_max))
+    d1 = float(max(offset_min, offset_max))
+    proj = np.dot(vertices, n)
+    mask = (proj >= d0 - 1e-6) & (proj <= d1 + 1e-6)
+    idx = np.flatnonzero(mask)
+    if idx.size < 3:
+        return vertices, faces
+
+    sel_vertices = vertices[idx]
+    if faces.size == 0:
+        return sel_vertices, faces
+
+    inside = np.zeros(vertices.shape[0], dtype=bool)
+    inside[idx] = True
+    keep_faces = (
+        inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
+    )
+    sel_faces_old = faces[keep_faces]
+    if sel_faces_old.size == 0:
+        return sel_vertices, np.empty((0, 3), dtype=int)
+
+    remap = np.full(vertices.shape[0], -1, dtype=int)
+    remap[idx] = np.arange(idx.size, dtype=int)
+    sel_faces = remap[sel_faces_old]
+    return sel_vertices, sel_faces
+
+
+def apply_mesh_section_filter(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    region_center: Iterable[float] | None = None,
+    region_size: Iterable[float] | None = None,
+    plane_normal: Iterable[float] | None = None,
+    plane_offset_min: float | None = None,
+    plane_offset_max: float | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply AABB and/or parallel-plane slab filtering to mesh data."""
+    v, f = filter_vertices_faces_by_aabb(
+        vertices, faces, center=region_center, size=region_size
+    )
+    v, f = filter_vertices_faces_by_parallel_planes(
+        v,
+        f,
+        normal=plane_normal,
+        offset_min=plane_offset_min,
+        offset_max=plane_offset_max,
+    )
+    return v, f
+
+
 def slice_mesh_at_z(
     vertices: np.ndarray, faces: np.ndarray, z_level: float
 ) -> np.ndarray:
@@ -641,10 +764,24 @@ def build_mesh_scan_trajectory(
     dt: float,
     z_margin: float = 0.0,
     scan_axis: str = "Z",
+    region_center: Iterable[float] | None = None,
+    region_size: Iterable[float] | None = None,
+    plane_normal: Iterable[float] | None = None,
+    plane_offset_min: float | None = None,
+    plane_offset_max: float | None = None,
     build_trajectory: bool = True,
 ) -> tuple[list[tuple[float, float, float]], np.ndarray, float]:
     """Generate adaptive scan path using mesh slicing."""
     vertices, faces = load_obj_data(obj_path)
+    vertices, faces = apply_mesh_section_filter(
+        vertices,
+        faces,
+        region_center=region_center,
+        region_size=region_size,
+        plane_normal=plane_normal,
+        plane_offset_min=plane_offset_min,
+        plane_offset_max=plane_offset_max,
+    )
 
     # 1. Axis Permutation (Map Scan Axis to Z)
     axis = scan_axis.upper().strip()
@@ -959,10 +1096,24 @@ def build_mesh_spiral_trajectory(
     dt: float,
     z_margin: float = 0.0,
     scan_axis: str = "Z",
+    region_center: Iterable[float] | None = None,
+    region_size: Iterable[float] | None = None,
+    plane_normal: Iterable[float] | None = None,
+    plane_offset_min: float | None = None,
+    plane_offset_max: float | None = None,
     build_trajectory: bool = True,
 ) -> tuple[list[tuple[float, float, float]], np.ndarray, float]:
     """Generate a spiral (helical) scan path around a mesh."""
     vertices, _ = load_obj_data(obj_path)
+    vertices, _ = apply_mesh_section_filter(
+        vertices,
+        np.empty((0, 3), dtype=int),
+        region_center=region_center,
+        region_size=region_size,
+        plane_normal=plane_normal,
+        plane_offset_min=plane_offset_min,
+        plane_offset_max=plane_offset_max,
+    )
 
     axis = scan_axis.upper().strip()
     if axis == "X":
