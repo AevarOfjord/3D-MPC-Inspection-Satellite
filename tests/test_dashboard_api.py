@@ -176,3 +176,8 @@ class TestDashboardAPI:
             payload = json.loads(ws.receive_text())
             assert payload.get("type") == "runs_snapshot"
             assert isinstance(payload.get("runs"), list)
+
+    def test_scan_projects_validation_endpoint(self, client):
+        """Scan project endpoint should enforce schema validation."""
+        response = client.post("/scan_projects", json={"name": "bad"})
+        assert response.status_code == 422

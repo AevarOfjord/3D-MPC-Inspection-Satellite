@@ -1,6 +1,6 @@
 import { lazy, useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { TrackballControls, Stars, GizmoHelper, GizmoViewport, Line, Text } from '@react-three/drei';
+import { TrackballControls, Stars, GizmoHelper, GizmoViewport, Line, Text, TransformControls } from '@react-three/drei';
 import type { TrackballControls as TrackballControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 
@@ -413,12 +413,18 @@ interface UnifiedViewportProps {
     builderActions?: ReturnType<typeof useMissionBuilder>['actions'];
 }
 
-export function UnifiedViewport({ mode, viewMode, builderState, builderActions }: UnifiedViewportProps) {
+export function UnifiedViewport({
+  mode,
+  viewMode,
+  builderState,
+  builderActions,
+}: UnifiedViewportProps) {
   const controlsRef = useRef<TrackballControlsImpl | null>(null);
   const setControls = useCameraStore(s => s.setControls);
   const requestFocus = useCameraStore(s => s.requestFocus);
   const latestTelemetry = useTelemetryStore(s => s.latest);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
+  const [hoveredPlannerPointId, setHoveredPlannerPointId] = useState<string | null>(null);
   const isPlanning = mode !== 'viewer';
   const showOrbitLayer = mode === 'mission';
   const [viewerOrigin, setViewerOrigin] = useState<[number, number, number]>([0, 0, 0]);
@@ -628,6 +634,587 @@ export function UnifiedViewport({ mode, viewMode, builderState, builderActions }
                             <meshStandardMaterial color="#ef4444" transparent opacity={0.4} wireframe />
                         </mesh>
                     ))}
+
+                    {/* Scan Project Authoring Overlays */}
+                    {mode === 'scan' && builderState.scanProject?.scans?.length > 0 && (
+                      <>
+                        {builderState.scanProject.scans.map((scan: any, scanIdx: number) => {
+                          const a = scan.plane_a as [number, number, number];
+                          const b = scan.plane_b as [number, number, number];
+                          const d = new THREE.Vector3(
+                            b[0] - a[0],
+                            b[1] - a[1],
+                            b[2] - a[2]
+                          );
+                          const len = d.length();
+                          const basis =
+                            scan.axis === 'X'
+                              ? new THREE.Vector3(1, 0, 0)
+                              : scan.axis === 'Y'
+                                ? new THREE.Vector3(0, 1, 0)
+                                : new THREE.Vector3(0, 0, 1);
+                          const bodyEuler = new THREE.Euler(
+                            (builderState.referenceAngle[0] * Math.PI) / 180,
+                            (builderState.referenceAngle[1] * Math.PI) / 180,
+                            (builderState.referenceAngle[2] * Math.PI) / 180
+                          );
+                          const normal = basis.clone().applyEuler(bodyEuler).normalize();
+                          const basisU =
+                            scan.axis === 'X'
+                              ? new THREE.Vector3(0, 1, 0)
+                              : scan.axis === 'Y'
+                                ? new THREE.Vector3(1, 0, 0)
+                                : new THREE.Vector3(1, 0, 0);
+                          const basisV =
+                            scan.axis === 'X'
+                              ? new THREE.Vector3(0, 0, 1)
+                              : scan.axis === 'Y'
+                                ? new THREE.Vector3(0, 0, 1)
+                                : new THREE.Vector3(0, 1, 0);
+                          const uAxis = basisU.clone().applyEuler(bodyEuler).normalize();
+                          const vAxis = basisV.clone().applyEuler(bodyEuler).normalize();
+                          const q = new THREE.Quaternion().setFromUnitVectors(
+                            new THREE.Vector3(0, 0, 1),
+                            normal
+                          );
+                          const qa: [number, number, number, number] = [q.x, q.y, q.z, q.w];
+                          const planeSizeMeters = Math.max(1.5, len * 2.0 + 1.0);
+                          const planeSizeScene = planeSizeMeters * ORBIT_SCALE;
+                          const accentA = ['#f59e0b', '#a3e635', '#38bdf8', '#fb7185'][
+                            scanIdx % 4
+                          ];
+                          const accentB = ['#22d3ee', '#86efac', '#fbbf24', '#f472b6'][
+                            scanIdx % 4
+                          ];
+                          const isPlaneASelected =
+                            builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                            builderState.selectedProjectScanPlaneHandle?.handle === 'a';
+                          const isPlaneBSelected =
+                            builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                            builderState.selectedProjectScanPlaneHandle?.handle === 'b';
+                          return (
+                            <group key={`scan-project-${scan.id}`}>
+                              <Line
+                                points={[scaleToScene(a), scaleToScene(b)]}
+                                color="#67e8f9"
+                                lineWidth={1.2}
+                                transparent
+                                opacity={0.55}
+                              />
+
+                              <mesh
+                                position={scaleToScene(a)}
+                                quaternion={qa}
+                                renderOrder={3}
+                                onPointerOver={(e) => {
+                                  e.stopPropagation();
+                                  setHoveredPlannerPointId(`plane-surface:${scan.id}:a`);
+                                }}
+                                onPointerOut={(e) => {
+                                  e.stopPropagation();
+                                  setHoveredPlannerPointId((prev) =>
+                                    prev === `plane-surface:${scan.id}:a` ? null : prev
+                                  );
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  builderActions.setSelectedScanId(scan.id);
+                                  const alreadySelected =
+                                    builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                                    builderState.selectedProjectScanPlaneHandle?.handle === 'a';
+                                  builderActions.setSelectedProjectScanPlaneHandle(
+                                    alreadySelected ? null : { scanId: scan.id, handle: 'a' }
+                                  );
+                                }}
+                              >
+                                <planeGeometry args={[planeSizeScene, planeSizeScene]} />
+                                <meshBasicMaterial
+                                  color={accentA}
+                                  transparent
+                                  opacity={
+                                    builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                                    builderState.selectedProjectScanPlaneHandle?.handle === 'a'
+                                      ? 0.18
+                                      : hoveredPlannerPointId === `plane-surface:${scan.id}:a`
+                                        ? 0.15
+                                        : 0.09
+                                  }
+                                  side={THREE.DoubleSide}
+                                  depthWrite={false}
+                                />
+                              </mesh>
+                              <mesh
+                                position={scaleToScene(b)}
+                                quaternion={qa}
+                                renderOrder={3}
+                                onPointerOver={(e) => {
+                                  e.stopPropagation();
+                                  setHoveredPlannerPointId(`plane-surface:${scan.id}:b`);
+                                }}
+                                onPointerOut={(e) => {
+                                  e.stopPropagation();
+                                  setHoveredPlannerPointId((prev) =>
+                                    prev === `plane-surface:${scan.id}:b` ? null : prev
+                                  );
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  builderActions.setSelectedScanId(scan.id);
+                                  const alreadySelected =
+                                    builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                                    builderState.selectedProjectScanPlaneHandle?.handle === 'b';
+                                  builderActions.setSelectedProjectScanPlaneHandle(
+                                    alreadySelected ? null : { scanId: scan.id, handle: 'b' }
+                                  );
+                                }}
+                              >
+                                <planeGeometry args={[planeSizeScene, planeSizeScene]} />
+                                <meshBasicMaterial
+                                  color={accentB}
+                                  transparent
+                                  opacity={
+                                    builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
+                                    builderState.selectedProjectScanPlaneHandle?.handle === 'b'
+                                      ? 0.18
+                                      : hoveredPlannerPointId === `plane-surface:${scan.id}:b`
+                                        ? 0.15
+                                        : 0.09
+                                  }
+                                  side={THREE.DoubleSide}
+                                  depthWrite={false}
+                                />
+                              </mesh>
+
+                              {([
+                                { id: 'a' as const, pos: a, color: accentA, selected: isPlaneASelected },
+                                { id: 'b' as const, pos: b, color: accentB, selected: isPlaneBSelected },
+                              ]).map((h) => {
+                                const scenePos = scaleToScene(h.pos);
+                                const hoverId = `plane:${scan.id}:${h.id}`;
+                                const hovered = hoveredPlannerPointId === hoverId;
+                                return (
+                                  <group key={`scan-plane-${scan.id}-${h.id}`}>
+                                    <mesh
+                                      position={scenePos}
+                                      onPointerOver={(e) => {
+                                        e.stopPropagation();
+                                        setHoveredPlannerPointId(hoverId);
+                                      }}
+                                      onPointerOut={(e) => {
+                                        e.stopPropagation();
+                                        setHoveredPlannerPointId((prev) =>
+                                          prev === hoverId ? null : prev
+                                        );
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builderActions.setSelectedScanId(scan.id);
+                                        const alreadySelected =
+                                          builderState.selectedProjectScanPlaneHandle?.scanId ===
+                                            scan.id &&
+                                          builderState.selectedProjectScanPlaneHandle?.handle === h.id;
+                                        builderActions.setSelectedProjectScanPlaneHandle(
+                                          alreadySelected
+                                            ? null
+                                            : {
+                                                scanId: scan.id,
+                                                handle: h.id,
+                                              }
+                                        );
+                                      }}
+                                    >
+                                      <sphereGeometry
+                                        args={[
+                                          Math.max(0.06 * ORBIT_SCALE, 0.000005) *
+                                            (hovered ? 1.25 : 1.0),
+                                          12,
+                                          12,
+                                        ]}
+                                      />
+                                      <meshBasicMaterial
+                                        color={h.selected ? '#fde047' : hovered ? '#ffffff' : h.color}
+                                        transparent
+                                        opacity={hovered || h.selected ? 1.0 : 0.95}
+                                      />
+                                    </mesh>
+                                    {h.selected && (
+                                      <TransformControls
+                                        mode="translate"
+                                        position={scenePos}
+                                        showX
+                                        showY
+                                        showZ
+                                        onObjectChange={(e: any) => {
+                                          const obj = e?.target?.object as THREE.Object3D;
+                                          if (!obj) return;
+                                          const next: [number, number, number] = [
+                                            obj.position.x / ORBIT_SCALE + sceneOrigin[0],
+                                            obj.position.y / ORBIT_SCALE + sceneOrigin[1],
+                                            obj.position.z / ORBIT_SCALE + sceneOrigin[2],
+                                          ];
+                                          builderActions.moveProjectScanPlaneHandle(scan.id, h.id, next);
+                                        }}
+                                      />
+                                    )}
+                                  </group>
+                                );
+                              })}
+
+                              <Text
+                                position={scaleToScene(a)}
+                                fontSize={Math.max(0.06 * ORBIT_SCALE, 0.000007)}
+                                color={accentA}
+                                anchorX="center"
+                                anchorY="middle"
+                              >
+                                {scan.name} A
+                              </Text>
+                              <Text
+                                position={scaleToScene(b)}
+                                fontSize={Math.max(0.06 * ORBIT_SCALE, 0.000007)}
+                                color={accentB}
+                                anchorX="center"
+                                anchorY="middle"
+                              >
+                                {scan.name} B
+                              </Text>
+
+                              {builderState.selectedScanId === scan.id &&
+                                (() => {
+                                  const keyLevels = (scan.key_levels ?? []) as any[];
+                                  if (keyLevels.length === 0) return null;
+                                  const keyLevel =
+                                    keyLevels.find((item) => item.id === builderState.selectedKeyLevelId) ??
+                                    keyLevels[0];
+                                  if (!keyLevel) return null;
+                                  const t = Math.max(0, Math.min(1, Number(keyLevel.t ?? 0)));
+                                  const centerBase = new THREE.Vector3(
+                                    a[0] + (b[0] - a[0]) * t,
+                                    a[1] + (b[1] - a[1]) * t,
+                                    a[2] + (b[2] - a[2]) * t
+                                  );
+                                  const off = keyLevel.center_offset ?? [0, 0];
+                                  const center = centerBase
+                                    .clone()
+                                    .add(uAxis.clone().multiplyScalar(Number(off[0] ?? 0)))
+                                    .add(vAxis.clone().multiplyScalar(Number(off[1] ?? 0)));
+                                  const rot = ((Number(keyLevel.rotation_deg) || 0) * Math.PI) / 180;
+                                  const major = uAxis
+                                    .clone()
+                                    .multiplyScalar(Math.cos(rot))
+                                    .add(vAxis.clone().multiplyScalar(Math.sin(rot)))
+                                    .normalize();
+                                  const minor = uAxis
+                                    .clone()
+                                    .multiplyScalar(-Math.sin(rot))
+                                    .add(vAxis.clone().multiplyScalar(Math.cos(rot)))
+                                    .normalize();
+                                  const rx = Math.max(0.01, Number(keyLevel.radius_x) || 1);
+                                  const ry = Math.max(0.01, Number(keyLevel.radius_y) || 1);
+                                  const handleRadius = Math.max(0.05 * ORBIT_SCALE, 0.000005);
+                                  const handles = [
+                                    { id: 'center' as const, pos: center, color: '#facc15' },
+                                    {
+                                      id: 'rx_pos' as const,
+                                      pos: center.clone().add(major.clone().multiplyScalar(rx)),
+                                      color: '#34d399',
+                                    },
+                                    {
+                                      id: 'rx_neg' as const,
+                                      pos: center.clone().add(major.clone().multiplyScalar(-rx)),
+                                      color: '#34d399',
+                                    },
+                                    {
+                                      id: 'ry_pos' as const,
+                                      pos: center.clone().add(minor.clone().multiplyScalar(ry)),
+                                      color: '#60a5fa',
+                                    },
+                                    {
+                                      id: 'ry_neg' as const,
+                                      pos: center.clone().add(minor.clone().multiplyScalar(-ry)),
+                                      color: '#60a5fa',
+                                    },
+                                  ];
+                                  return handles.map((h) => {
+                                    const meterPos: [number, number, number] = [
+                                      h.pos.x,
+                                      h.pos.y,
+                                      h.pos.z,
+                                    ];
+                                    const scenePos = scaleToScene(meterPos);
+                                    const hoverId = `key:${scan.id}:${keyLevel.id}:${h.id}`;
+                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const selected =
+                                      builderState.selectedKeyLevelHandle?.scanId === scan.id &&
+                                      builderState.selectedKeyLevelHandle?.keyLevelId === keyLevel.id &&
+                                      builderState.selectedKeyLevelHandle?.handle === h.id;
+                                    return (
+                                      <group key={`key-level-handle-${scan.id}-${keyLevel.id}-${h.id}`}>
+                                        <mesh
+                                          position={scenePos}
+                                          onPointerOver={(e) => {
+                                            e.stopPropagation();
+                                            setHoveredPlannerPointId(hoverId);
+                                          }}
+                                          onPointerOut={(e) => {
+                                            e.stopPropagation();
+                                            setHoveredPlannerPointId((prev) =>
+                                              prev === hoverId ? null : prev
+                                            );
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            builderActions.setSelectedScanId(scan.id);
+                                            builderActions.setSelectedKeyLevelId(keyLevel.id);
+                                            builderActions.setSelectedKeyLevelHandle({
+                                              scanId: scan.id,
+                                              keyLevelId: keyLevel.id,
+                                              handle: h.id,
+                                            });
+                                          }}
+                                        >
+                                          <sphereGeometry
+                                            args={[handleRadius * (hovered ? 1.25 : 1.0), 12, 12]}
+                                          />
+                                          <meshBasicMaterial
+                                            color={selected ? '#fde047' : hovered ? '#ffffff' : h.color}
+                                            transparent
+                                            opacity={hovered || selected ? 1.0 : 0.95}
+                                          />
+                                        </mesh>
+                                        {selected && (
+                                          <TransformControls
+                                            mode="translate"
+                                            position={scenePos}
+                                            showX
+                                            showY
+                                            showZ
+                                            onObjectChange={(e: any) => {
+                                              const obj = e?.target?.object as THREE.Object3D;
+                                              if (!obj) return;
+                                              const next: [number, number, number] = [
+                                                obj.position.x / ORBIT_SCALE + sceneOrigin[0],
+                                                obj.position.y / ORBIT_SCALE + sceneOrigin[1],
+                                                obj.position.z / ORBIT_SCALE + sceneOrigin[2],
+                                              ];
+                                              builderActions.updateKeyLevelHandlePosition(
+                                                scan.id,
+                                                keyLevel.id,
+                                                h.id,
+                                                next
+                                              );
+                                            }}
+                                          />
+                                        )}
+                                      </group>
+                                    );
+                                  });
+                                })()}
+                            </group>
+                          );
+                        })}
+
+                        {builderState.compilePreviewState?.endpoints &&
+                          Object.entries(builderState.compilePreviewState.endpoints).flatMap(
+                            ([scanId, ep]: any) =>
+                              ([
+                                { key: 'start', color: '#4ade80', label: 'S', pos: ep.start as [number, number, number] },
+                                { key: 'end', color: '#38bdf8', label: 'E', pos: ep.end as [number, number, number] },
+                              ] as const).map((item) => (
+                                <group key={`endpoint-${scanId}-${item.key}`}>
+                                  {(() => {
+                                    const hoverId = `endpoint:${scanId}:${item.key}`;
+                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const isConnectSource =
+                                      builderState.connectSourceEndpoint?.scanId === scanId &&
+                                      builderState.connectSourceEndpoint?.endpoint === item.key;
+                                    const radius = Math.max(0.065 * ORBIT_SCALE, 0.000006);
+                                    const pointColor = isConnectSource
+                                      ? '#fde047'
+                                      : hovered
+                                        ? '#ffffff'
+                                        : item.color;
+                                    return (
+                                  <mesh
+                                    position={scaleToScene(item.pos)}
+                                    onPointerOver={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId(hoverId);
+                                    }}
+                                    onPointerOut={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId((prev) =>
+                                        prev === hoverId ? null : prev
+                                      );
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      builderActions.setSelectedScanId(scanId);
+                                      if (builderState.connectMode) {
+                                        builderActions.selectEndpointForConnect(scanId, item.key);
+                                      }
+                                    }}
+                                  >
+                                    <sphereGeometry
+                                      args={[radius * (hovered || isConnectSource ? 1.25 : 1.0), 12, 12]}
+                                    />
+                                    <meshBasicMaterial
+                                      color={pointColor}
+                                      transparent
+                                      opacity={hovered || isConnectSource ? 1.0 : 0.9}
+                                    />
+                                  </mesh>
+                                    );
+                                  })()}
+                                  <Text
+                                    position={scaleToScene(item.pos)}
+                                    fontSize={Math.max(0.05 * ORBIT_SCALE, 0.000006)}
+                                    color={
+                                      builderState.connectSourceEndpoint?.scanId === scanId &&
+                                      builderState.connectSourceEndpoint?.endpoint === item.key
+                                        ? '#fde047'
+                                        : item.color
+                                    }
+                                    anchorX="center"
+                                    anchorY="middle"
+                                  >
+                                    {item.label}
+                                  </Text>
+                                </group>
+                              ))
+                          )}
+
+                        {builderState.scanProject.connectors.map((connector: any) => (
+                          <group key={`connector-controls-${connector.id}`}>
+                            {(['control1', 'control2'] as const).map((controlName) => {
+                              const pos = connector[controlName] as [number, number, number] | null | undefined;
+                              if (!pos) return null;
+                              const hoverId = `connector:${connector.id}:${controlName}`;
+                              const hovered = hoveredPlannerPointId === hoverId;
+                              const selected =
+                                builderState.selectedConnectorControl?.connectorId === connector.id &&
+                                builderState.selectedConnectorControl?.control === controlName;
+                              const scenePos = scaleToScene(pos);
+                              return (
+                                <group key={`connector-${connector.id}-${controlName}`}>
+                                  <mesh
+                                    position={scenePos}
+                                    onPointerOver={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId(hoverId);
+                                    }}
+                                    onPointerOut={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId((prev) =>
+                                        prev === hoverId ? null : prev
+                                      );
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      builderActions.setSelectedConnectorControl({
+                                        connectorId: connector.id,
+                                        control: controlName,
+                                      });
+                                    }}
+                                  >
+                                    <sphereGeometry
+                                      args={[
+                                        Math.max(0.05 * ORBIT_SCALE, 0.000004) *
+                                          (hovered ? 1.25 : 1.0),
+                                        12,
+                                        12,
+                                      ]}
+                                    />
+                                    <meshBasicMaterial
+                                      color={selected ? '#fde047' : hovered ? '#ffffff' : '#f97316'}
+                                      transparent
+                                      opacity={hovered || selected ? 1.0 : 0.95}
+                                    />
+                                  </mesh>
+                                  {selected && (
+                                    <TransformControls
+                                      mode="translate"
+                                      position={scenePos}
+                                      showX
+                                      showY
+                                      showZ
+                                      onObjectChange={(e: any) => {
+                                        const obj = e?.target?.object as THREE.Object3D;
+                                        if (!obj) return;
+                                        const next: [number, number, number] = [
+                                          obj.position.x / ORBIT_SCALE + sceneOrigin[0],
+                                          obj.position.y / ORBIT_SCALE + sceneOrigin[1],
+                                          obj.position.z / ORBIT_SCALE + sceneOrigin[2],
+                                        ];
+                                        builderActions.updateConnectorControl(
+                                          connector.id,
+                                          controlName,
+                                          next
+                                        );
+                                      }}
+                                    />
+                                  )}
+                                </group>
+                              );
+                            })}
+                          </group>
+                        ))}
+
+                        {builderState.compilePreviewState?.scan_paths?.map((segment: any) => {
+                          const pts = (segment.path ?? []) as [number, number, number][];
+                          if (!pts || pts.length < 2) return null;
+                          const minClear = segment.min_clearance_m as number | null | undefined;
+                          const threshold =
+                            builderState.compilePreviewState?.diagnostics?.clearance_threshold_m ?? 0.05;
+                          const color =
+                            minClear != null && minClear < threshold ? '#ef4444' : '#22d3ee';
+                          const clearances = (segment.clearance_per_point ?? []) as number[];
+                          return (
+                            <group key={`compiled-segment-${segment.id}`}>
+                              <Line
+                                points={pts.map(scaleToScene)}
+                                color={color}
+                                lineWidth={1.6}
+                                transparent
+                                opacity={0.85}
+                                depthTest={false}
+                              />
+                              {clearances.length === pts.length &&
+                                pts.map((p, idx) => {
+                                  if (clearances[idx] >= threshold) return null;
+                                  return (
+                                    <mesh key={`risk-${segment.id}-${idx}`} position={scaleToScene(p)}>
+                                      <sphereGeometry args={[Math.max(0.022 * ORBIT_SCALE, 0.000003), 8, 8]} />
+                                      <meshBasicMaterial color="#ef4444" transparent opacity={0.95} />
+                                    </mesh>
+                                  );
+                                })}
+                            </group>
+                          );
+                        })}
+
+                        {builderState.compilePreviewState?.connector_paths?.map((segment: any) => {
+                          const pts = (segment.path ?? []) as [number, number, number][];
+                          if (!pts || pts.length < 2) return null;
+                          const minClear = segment.min_clearance_m as number | null | undefined;
+                          const threshold =
+                            builderState.compilePreviewState?.diagnostics?.clearance_threshold_m ?? 0.05;
+                          const color =
+                            minClear != null && minClear < threshold ? '#ef4444' : '#f59e0b';
+                          return (
+                            <Line
+                              key={`compiled-connector-${segment.id}`}
+                              points={pts.map(scaleToScene)}
+                              color={color}
+                              lineWidth={2.0}
+                              transparent
+                              opacity={0.9}
+                              depthTest={false}
+                            />
+                          );
+                        })}
+                      </>
+                    )}
 
                     {/* Advanced Path Builder */}
                     <EditableTrajectory

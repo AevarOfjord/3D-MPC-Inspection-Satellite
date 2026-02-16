@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { RefreshCcw, Save, Link2 } from 'lucide-react';
-import { HudPanel, HudSection, HudInput, HudButton } from '../HudComponents';
+import { useEffect, useMemo, useState } from 'react';
+import { Link2, RefreshCcw, Save } from 'lucide-react';
+import { HudButton, HudInput, HudPanel, HudSection } from '../HudComponents';
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 
 interface PathStudioPanelProps {
@@ -9,14 +9,48 @@ interface PathStudioPanelProps {
 
 export function PathStudioPanel({ builder }: PathStudioPanelProps) {
   const { state, setters, actions } = builder;
-  const [assetName, setAssetName] = useState('');
+
   const [selectedAssetId, setSelectedAssetId] = useState('');
+  const [bakedPathName, setBakedPathName] = useState('');
+  const [scanProjectId, setScanProjectId] = useState('');
+
+  const selectedScan = useMemo(
+    () =>
+      state.scanProject.scans.find((scan) => scan.id === state.selectedScanId) ??
+      state.scanProject.scans[0],
+    [state.scanProject.scans, state.selectedScanId]
+  );
+
+  const selectedKeyLevel = useMemo(
+    () =>
+      selectedScan?.key_levels.find((level) => level.id === state.selectedKeyLevelId) ??
+      selectedScan?.key_levels[0],
+    [selectedScan, state.selectedKeyLevelId]
+  );
 
   useEffect(() => {
     actions.refreshModelList().catch(() => null);
     actions.refreshPathAssets().catch(() => null);
-    // Run once on mount.
+    actions.refreshScanProjects().catch(() => null);
+    // Run once.
   }, []);
+
+  useEffect(() => {
+    if (!selectedScan) return;
+    if (!state.selectedScanId || state.selectedScanId !== selectedScan.id) {
+      setters.setSelectedScanId(selectedScan.id);
+    }
+  }, [selectedScan?.id]);
+
+  useEffect(() => {
+    if (!selectedScan) return;
+    if (
+      !state.selectedKeyLevelId ||
+      !selectedScan.key_levels.some((level) => level.id === state.selectedKeyLevelId)
+    ) {
+      setters.setSelectedKeyLevelId(selectedScan.key_levels[0]?.id ?? null);
+    }
+  }, [selectedScan?.id, selectedScan?.key_levels.length, state.selectedKeyLevelId]);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -24,15 +58,8 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
     await actions.handleFileUpload(file);
   };
 
-  const handleSave = async () => {
-    const saved = await actions.savePathAsset(assetName);
-    if (saved) {
-      setAssetName('');
-    }
-  };
-
   return (
-    <HudPanel className="w-80 max-h-[calc(100vh-220px)] overflow-y-auto custom-scrollbar" title="Path Studio">
+    <HudPanel className="w-96 max-h-[calc(100vh-220px)] overflow-y-auto custom-scrollbar" title="Path Studio">
       <div className="space-y-3">
         <HudSection title="Model" defaultOpen>
           <div className="space-y-2">
@@ -48,6 +75,7 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                 </option>
               ))}
             </select>
+
             <div className="flex items-center gap-2">
               <label className="flex-1 text-[10px] uppercase text-slate-500">Upload OBJ</label>
               <input
@@ -57,169 +85,554 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                 className="text-xs text-slate-400"
               />
             </div>
+
             {state.config.obj_path && (
-              <div className="text-[10px] text-slate-500 font-mono break-all">
-                {state.config.obj_path}
+              <div className="text-[10px] text-slate-500 font-mono break-all">{state.config.obj_path}</div>
+            )}
+          </div>
+        </HudSection>
+
+        <HudSection title="Scans" defaultOpen>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <HudButton
+                variant="secondary"
+                size="sm"
+                className="w-full"
+                onClick={() => actions.addScan()}
+              >
+                Add Scan
+              </HudButton>
+              <HudButton
+                variant="danger"
+                size="sm"
+                className="w-full"
+                onClick={() => selectedScan && actions.removeScan(selectedScan.id)}
+                disabled={!selectedScan || state.scanProject.scans.length <= 1}
+              >
+                Remove Scan
+              </HudButton>
+            </div>
+
+            <select
+              value={state.selectedScanId ?? ''}
+              onChange={(e) => setters.setSelectedScanId(e.target.value || null)}
+              className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
+            >
+              {state.scanProject.scans.map((scan) => (
+                <option key={scan.id} value={scan.id}>
+                  {scan.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedScan && (
+              <div className="rounded border border-slate-700/70 bg-slate-900/50 p-2 space-y-2">
+                <HudInput
+                  label="Scan Name"
+                  value={selectedScan.name}
+                  onChange={(val) => actions.updateScan(selectedScan.id, { name: String(val) })}
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                      Axis
+                    </label>
+                    <select
+                      value={selectedScan.axis}
+                      onChange={(e) => actions.setScanAxisAligned(selectedScan.id, e.target.value as 'X' | 'Y' | 'Z')}
+                      className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
+                    >
+                      <option value="X">Body X</option>
+                      <option value="Y">Body Y</option>
+                      <option value="Z">Body Z</option>
+                    </select>
+                  </div>
+
+                  <HudInput
+                    label="Level Spacing (m)"
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={selectedScan.level_spacing_m ?? 0.1}
+                    onChange={(val) =>
+                      actions.updateScan(selectedScan.id, {
+                        level_spacing_m: Math.max(0.01, Number(val)),
+                      })
+                    }
+                  />
+
+                  <HudInput
+                    label="Densify"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={selectedScan.densify_multiplier}
+                    onChange={(val) => actions.updateScan(selectedScan.id, { densify_multiplier: Number(val) })}
+                  />
+
+                  <HudInput
+                    label="Speed Max"
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={selectedScan.speed_max}
+                    onChange={(val) => actions.updateScan(selectedScan.id, { speed_max: Number(val) })}
+                  />
+                </div>
+
+                <div className="rounded border border-slate-700/60 p-2 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Planes</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <HudButton
+                      variant={
+                        state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                        state.selectedProjectScanPlaneHandle?.handle === 'a'
+                          ? 'primary'
+                          : 'secondary'
+                      }
+                      size="sm"
+                      className="w-full"
+                      onClick={() =>
+                        setters.setSelectedProjectScanPlaneHandle(
+                          state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                            state.selectedProjectScanPlaneHandle?.handle === 'a'
+                            ? null
+                            : { scanId: selectedScan.id, handle: 'a' }
+                        )
+                      }
+                    >
+                      Move Plane A
+                    </HudButton>
+                    <HudButton
+                      variant={
+                        state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                        state.selectedProjectScanPlaneHandle?.handle === 'b'
+                          ? 'primary'
+                          : 'secondary'
+                      }
+                      size="sm"
+                      className="w-full"
+                      onClick={() =>
+                        setters.setSelectedProjectScanPlaneHandle(
+                          state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                            state.selectedProjectScanPlaneHandle?.handle === 'b'
+                            ? null
+                            : { scanId: selectedScan.id, handle: 'b' }
+                        )
+                      }
+                    >
+                      Move Plane B
+                    </HudButton>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <HudInput
+                      label="A X"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_a[0]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_a: [Number(val), selectedScan.plane_a[1], selectedScan.plane_a[2]],
+                        })
+                      }
+                    />
+                    <HudInput
+                      label="A Y"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_a[1]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_a: [selectedScan.plane_a[0], Number(val), selectedScan.plane_a[2]],
+                        })
+                      }
+                    />
+                    <HudInput
+                      label="A Z"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_a[2]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_a: [selectedScan.plane_a[0], selectedScan.plane_a[1], Number(val)],
+                        })
+                      }
+                    />
+                    <div />
+                    <HudInput
+                      label="B X"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_b[0]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_b: [Number(val), selectedScan.plane_b[1], selectedScan.plane_b[2]],
+                        })
+                      }
+                    />
+                    <HudInput
+                      label="B Y"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_b[1]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_b: [selectedScan.plane_b[0], Number(val), selectedScan.plane_b[2]],
+                        })
+                      }
+                    />
+                    <HudInput
+                      label="B Z"
+                      type="number"
+                      step={0.1}
+                      value={selectedScan.plane_b[2]}
+                      onChange={(val) =>
+                        actions.updateScan(selectedScan.id, {
+                          plane_b: [selectedScan.plane_b[0], selectedScan.plane_b[1], Number(val)],
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded border border-slate-700/60 p-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Key Levels</div>
+                    <div className="flex gap-2">
+                      <HudButton
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => actions.addKeyLevel(selectedScan.id)}
+                      >
+                        Add
+                      </HudButton>
+                      <HudButton
+                        variant="danger"
+                        size="sm"
+                        onClick={() =>
+                          selectedKeyLevel && actions.removeKeyLevel(selectedScan.id, selectedKeyLevel.id)
+                        }
+                        disabled={!selectedKeyLevel || selectedScan.key_levels.length <= 2}
+                      >
+                        Remove
+                      </HudButton>
+                    </div>
+                  </div>
+
+                  <select
+                    value={selectedKeyLevel?.id ?? ''}
+                    onChange={(e) => setters.setSelectedKeyLevelId(e.target.value || null)}
+                    className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
+                  >
+                    {selectedScan.key_levels
+                      .slice()
+                      .sort((a, b) => a.t - b.t)
+                      .map((level, idx) => (
+                        <option key={level.id} value={level.id}>
+                          Level {idx + 1} (t={level.t.toFixed(2)})
+                        </option>
+                      ))}
+                  </select>
+
+                  {selectedKeyLevel && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <HudInput
+                        label="t"
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={selectedKeyLevel.t}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, { t: Number(val) })
+                        }
+                      />
+                      <HudInput
+                        label="Rotation"
+                        type="number"
+                        step={1}
+                        value={selectedKeyLevel.rotation_deg}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
+                            rotation_deg: Number(val),
+                          })
+                        }
+                      />
+                      <HudInput
+                        label="Radius X"
+                        type="number"
+                        min={0.01}
+                        step={0.05}
+                        value={selectedKeyLevel.radius_x}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
+                            radius_x: Number(val),
+                          })
+                        }
+                      />
+                      <HudInput
+                        label="Radius Y"
+                        type="number"
+                        min={0.01}
+                        step={0.05}
+                        value={selectedKeyLevel.radius_y}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
+                            radius_y: Number(val),
+                          })
+                        }
+                      />
+                      <HudInput
+                        label="Offset X"
+                        type="number"
+                        step={0.05}
+                        value={selectedKeyLevel.center_offset[0]}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
+                            center_offset: [Number(val), selectedKeyLevel.center_offset[1]],
+                          })
+                        }
+                      />
+                      <HudInput
+                        label="Offset Y"
+                        type="number"
+                        step={0.05}
+                        value={selectedKeyLevel.center_offset[1]}
+                        onChange={(val) =>
+                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
+                            center_offset: [selectedKeyLevel.center_offset[0], Number(val)],
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <HudButton
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={() => actions.compileScanProjectDebounced('preview', true, 100)}
+              disabled={state.loading || state.compilePending || !state.config.obj_path}
+            >
+              <RefreshCcw size={12} className={state.loading ? 'animate-spin' : ''} /> Preview Project
+            </HudButton>
+          </div>
+        </HudSection>
+
+        <HudSection title="Connect Scans" defaultOpen={false}>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <HudButton
+                variant={state.connectMode ? 'primary' : 'secondary'}
+                size="sm"
+                className="w-full"
+                onClick={() => (state.connectMode ? actions.cancelConnectMode() : actions.startConnectMode())}
+              >
+                {state.connectMode ? 'Cancel Connect' : 'Connect By Click'}
+              </HudButton>
+              <HudButton
+                variant="secondary"
+                size="sm"
+                className="w-full"
+                onClick={() => actions.compileScanProjectDebounced('preview', true, 100)}
+                disabled={!state.scanProject.scans.length}
+              >
+                Refresh Endpoints
+              </HudButton>
+            </div>
+
+            {state.connectMode && (
+              <div className="text-[10px] text-cyan-300">
+                Click a scan endpoint marker (S/E) in viewport, then click endpoint on another scan.
+              </div>
+            )}
+
+            {state.connectSourceEndpoint && (
+              <div className="text-[10px] text-slate-400">
+                Source: <span className="text-slate-200">{state.connectSourceEndpoint.scanId}</span> /{' '}
+                <span className="text-slate-200">{state.connectSourceEndpoint.endpoint.toUpperCase()}</span>
+              </div>
+            )}
+
+            {state.scanProject.connectors.length === 0 ? (
+              <div className="text-[10px] text-slate-500">No connectors yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {state.scanProject.connectors.map((connector) => (
+                  <div
+                    key={connector.id}
+                    className="rounded border border-slate-700/70 bg-slate-900/50 p-2 space-y-2"
+                  >
+                    <div className="text-[10px] font-mono text-slate-300">
+                      {connector.from_scan_id}:{connector.from_endpoint} {'->'} {connector.to_scan_id}:{connector.to_endpoint}
+                    </div>
+                    <div className="flex gap-2">
+                      <HudButton
+                        variant={
+                          state.selectedConnectorControl?.connectorId === connector.id &&
+                          state.selectedConnectorControl?.control === 'control1'
+                            ? 'primary'
+                            : 'secondary'
+                        }
+                        size="sm"
+                        className="flex-1"
+                        onClick={() =>
+                          setters.setSelectedConnectorControl({
+                            connectorId: connector.id,
+                            control: 'control1',
+                          })
+                        }
+                      >
+                        Control 1
+                      </HudButton>
+                      <HudButton
+                        variant={
+                          state.selectedConnectorControl?.connectorId === connector.id &&
+                          state.selectedConnectorControl?.control === 'control2'
+                            ? 'primary'
+                            : 'secondary'
+                        }
+                        size="sm"
+                        className="flex-1"
+                        onClick={() =>
+                          setters.setSelectedConnectorControl({
+                            connectorId: connector.id,
+                            control: 'control2',
+                          })
+                        }
+                      >
+                        Control 2
+                      </HudButton>
+                      <HudButton
+                        variant="danger"
+                        size="sm"
+                        onClick={() => actions.removeConnector(connector.id)}
+                      >
+                        Del
+                      </HudButton>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </HudSection>
 
-        <HudSection title="Scan Params" defaultOpen>
-          <div className="mb-2">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Pattern
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setters.setConfig((prev) => ({ ...prev, pattern: 'spiral' }))}
-                className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                  (state.config.pattern ?? 'spiral') === 'spiral'
-                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-100'
-                    : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Spiral
-              </button>
-              <button
-                onClick={() => setters.setConfig((prev) => ({ ...prev, pattern: 'rings' }))}
-                className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                  state.config.pattern === 'rings'
-                    ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
-                    : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                Circle
-              </button>
+        <HudSection title="Diagnostics" defaultOpen={false}>
+          {state.compilePreviewState ? (
+            <div className="space-y-2 text-[10px] font-mono text-slate-300">
+              <div>Path: {state.compilePreviewState.points} pts</div>
+              <div>Length: {state.compilePreviewState.path_length.toFixed(2)} m</div>
+              <div>Est. Time: {state.compilePreviewState.estimated_duration.toFixed(1)} s</div>
+              <div>
+                Min Clearance:{' '}
+                {state.compilePreviewState.diagnostics.min_clearance_m != null
+                  ? `${state.compilePreviewState.diagnostics.min_clearance_m.toFixed(3)} m`
+                  : 'n/a'}
+              </div>
+              <div>
+                Collision Points: {state.compilePreviewState.diagnostics.collision_points_count}
+              </div>
+              {state.compilePreviewState.diagnostics.warnings.length > 0 && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-amber-200">
+                  {state.compilePreviewState.diagnostics.warnings.join(' | ')}
+                </div>
+              )}
+              <div className="text-slate-500">Per scan and connector clearance overlays are shown in viewport.</div>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <HudInput
-              label="Standoff (m)"
-              value={state.config.standoff}
-              type="number"
-              step={0.1}
-              onChange={(val) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  standoff: Number.isFinite(val) ? val : prev.standoff,
-                }))
-              }
-            />
-            <HudInput
-              label="Level Spacing (m)"
-              value={state.levelSpacing}
-              type="number"
-              step={0.1}
-              onChange={(val) => setters.setLevelSpacing(Number.isFinite(val) ? val : state.levelSpacing)}
-            />
-          </div>
-          <div className="mt-2">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Scan Axis
-            </label>
-            <select
-              value={state.config.scan_axis}
-              onChange={(e) =>
-                setters.setConfig((prev) => ({
-                  ...prev,
-                  scan_axis: e.target.value as 'X' | 'Y' | 'Z',
-                }))
-              }
-              className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
-            >
-              <option value="X">X</option>
-              <option value="Y">Y</option>
-              <option value="Z">Z</option>
-            </select>
-          </div>
+          ) : (
+            <div className="text-[10px] text-slate-500">No compile diagnostics yet.</div>
+          )}
         </HudSection>
 
-        <div className="flex gap-2">
-          <HudButton
-            variant="secondary"
-            size="sm"
-            className="flex-1"
-            onClick={() => actions.handlePreview()}
-            disabled={state.loading || !state.config.obj_path}
-          >
-            <RefreshCcw size={12} className={state.loading ? 'animate-spin' : ''} />
-            Preview
-          </HudButton>
-        </div>
-
-        {state.stats && (
-          <div className="text-[10px] text-slate-400 font-mono">
-            <div>Points: {state.stats.points}</div>
-            <div>Length: {state.stats.length.toFixed(2)} m</div>
-            <div>Est. Duration: {state.stats.duration.toFixed(1)} s</div>
-          </div>
-        )}
-
-        <HudSection title="Edit Path" defaultOpen={false}>
-          <div className="flex gap-2">
-            <HudButton
-              variant="secondary"
-              size="sm"
-              className="flex-1"
-              onClick={() => actions.addWaypoint()}
-            >
-              Add Waypoint
-            </HudButton>
-            <HudButton
-              variant="danger"
-              size="sm"
-              className="flex-1"
-              onClick={() => actions.removeWaypoint()}
-              disabled={state.previewPath.length <= 2}
-            >
-              Remove Waypoint
-            </HudButton>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <HudInput
-              label="Edit Points"
-              type="number"
-              min={10}
-              step={10}
-              value={state.editPointLimit}
-              onChange={(val) => setters.setEditPointLimit(Number(val))}
-            />
-            <HudInput
-              label="Save Multiplier"
-              type="number"
-              min={1}
-              step={1}
-              value={state.savePointMultiplier}
-              onChange={(val) => setters.setSavePointMultiplier(Number(val))}
-            />
-          </div>
-          <div className="text-[10px] text-slate-500 mt-2">
-            Select a waypoint in the viewport to insert/remove near it.
-            Shift/Alt-click a waypoint to delete. Delete key removes selected.
-          </div>
-        </HudSection>
-
-        <HudSection title="Save Path" defaultOpen={false}>
+        <HudSection title="Save" defaultOpen={false}>
           <div className="space-y-2">
             <HudInput
-              label="Path Name"
-              value={assetName}
-              onChange={(val) => setAssetName(String(val))}
+              label="Project Name"
+              value={state.scanProject.name}
+              onChange={(val) =>
+                actions.updateScanProject((prev) => ({
+                  ...prev,
+                  name: String(val),
+                }))
+              }
             />
+
             <HudButton
               variant="primary"
               size="sm"
               className="w-full"
-              onClick={handleSave}
-              disabled={!assetName.trim() || state.previewPath.length === 0}
+              onClick={() => void actions.saveScanProject(state.scanProject.name)}
+              disabled={!state.scanProject.name.trim() || !state.scanProject.obj_path}
             >
-              <Save size={12} /> Save Path Asset
+              <Save size={12} /> Save Project
+            </HudButton>
+
+            <HudInput
+              label="Baked Path Name"
+              value={bakedPathName}
+              onChange={(val) => setBakedPathName(String(val))}
+            />
+
+            <HudButton
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={async () => {
+                const saved = await actions.saveBakedPathFromCompiled(bakedPathName);
+                if (saved) setBakedPathName('');
+              }}
+              disabled={!bakedPathName.trim()}
+              icon={Link2}
+            >
+              Save Baked Path Asset
             </HudButton>
           </div>
         </HudSection>
 
-        <HudSection title="Library" defaultOpen={false}>
+        <HudSection title="Project Library" defaultOpen={false}>
+          <div className="space-y-2">
+            <select
+              value={scanProjectId}
+              onChange={(e) => setScanProjectId(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded-sm px-2 py-1.5"
+            >
+              <option value="">Select project…</option>
+              {state.scanProjects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <HudButton
+                variant="secondary"
+                size="sm"
+                className="flex-1"
+                onClick={() => scanProjectId && actions.loadScanProjectById(scanProjectId)}
+                disabled={!scanProjectId}
+              >
+                Load Project
+              </HudButton>
+              <HudButton
+                variant="secondary"
+                size="sm"
+                className="flex-1"
+                onClick={() => actions.createDefaultScanProjectState(state.config.obj_path)}
+              >
+                New Project
+              </HudButton>
+            </div>
+          </div>
+        </HudSection>
+
+        <HudSection title="Path Asset Library" defaultOpen={false}>
           <div className="space-y-2">
             <select
               value={selectedAssetId}
@@ -241,7 +654,7 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                 onClick={() => selectedAssetId && actions.loadPathAsset(selectedAssetId)}
                 disabled={!selectedAssetId}
               >
-                Load
+                Load Path
               </HudButton>
               <HudButton
                 variant="primary"
@@ -249,16 +662,10 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                 className="flex-1"
                 onClick={() => selectedAssetId && actions.applyPathAssetToSegment(selectedAssetId)}
                 disabled={!selectedAssetId}
-                icon={Link2}
               >
                 Use on Scan
               </HudButton>
             </div>
-            {selectedAssetId && (
-              <div className="text-[10px] text-slate-500">
-                Use the selected scan segment in the Generator Stack to attach this path.
-              </div>
-            )}
           </div>
         </HudSection>
       </div>

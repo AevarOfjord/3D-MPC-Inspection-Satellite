@@ -40,6 +40,7 @@ SPA_BLOCKED_PREFIXES = (
     "save_mission_v2",
     "saved_missions_v2",
     "path_assets",
+    "scan_projects",
     "upload_object",
     "preview_trajectory",
     "control",

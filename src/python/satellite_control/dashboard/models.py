@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ObstacleModel(BaseModel):
@@ -22,6 +22,58 @@ class MeshScanConfigModel(BaseModel):
     z_margin: float = 0.0
     scan_axis: str = "Z"  # "X", "Y", or "Z"
     pattern: str = "rings"  # "rings" or "spiral"
+    passes: list["MeshScanPassModel"] | None = None
+
+
+class MeshScanPassModel(BaseModel):
+    label: str | None = None
+    enabled: bool = True
+    standoff: float = 0.5
+    levels: int = 8
+    level_spacing: float | None = None
+    points_per_circle: int = 72
+    speed_max: float = 0.2
+    speed_min: float = 0.05
+    lateral_accel: float = 0.05
+    z_margin: float = 0.0
+    scan_axis: str = "Z"  # "X", "Y", or "Z"
+    pattern: str = "rings"  # "rings" or "spiral"
+    region_enabled: bool = False
+    region_center: list[float] | None = None
+    region_size: list[float] | None = None
+    section_mode: Literal["none", "aabb", "plane_slab"] = "none"
+    plane_normal: list[float] | None = None
+    plane_offset_min: float | None = None
+    plane_offset_max: float | None = None
+
+    @field_validator("region_center")
+    @classmethod
+    def validate_region_center(
+        cls, value: list[float] | None
+    ) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 3:
+            raise ValueError("region_center must have length 3")
+        return value
+
+    @field_validator("region_size")
+    @classmethod
+    def validate_region_size(cls, value: list[float] | None) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 3:
+            raise ValueError("region_size must have length 3")
+        return value
+
+    @field_validator("plane_normal")
+    @classmethod
+    def validate_plane_normal(cls, value: list[float] | None) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 3:
+            raise ValueError("plane_normal must have length 3")
+        return value
 
 
 class PathAssetSaveRequest(BaseModel):
@@ -31,6 +83,208 @@ class PathAssetSaveRequest(BaseModel):
     open: bool = True
     relative_to_obj: bool = True
     notes: str | None = None
+
+
+class ScanKeyLevelModel(BaseModel):
+    id: str
+    t: float
+    center_offset: list[float] = Field(default_factory=lambda: [0.0, 0.0])
+    radius_x: float = 1.0
+    radius_y: float = 1.0
+    rotation_deg: float = 0.0
+
+    @field_validator("t")
+    @classmethod
+    def validate_t(cls, value: float) -> float:
+        if value < 0.0 or value > 1.0:
+            raise ValueError("key level t must be in [0, 1]")
+        return value
+
+    @field_validator("center_offset")
+    @classmethod
+    def validate_center_offset(cls, value: list[float]) -> list[float]:
+        if len(value) != 2:
+            raise ValueError("center_offset must have length 2")
+        return value
+
+
+class ScanDefinitionModel(BaseModel):
+    id: str
+    name: str
+    axis: Literal["X", "Y", "Z"] = "Z"
+    plane_a: list[float] = Field(default_factory=lambda: [0.0, 0.0, -0.5])
+    plane_b: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.5])
+    level_spacing_m: float = 0.1
+    turns: float | None = None
+    coarse_points_per_turn: int = 4
+    densify_multiplier: int = 8
+    speed_max: float = 0.2
+    key_levels: list[ScanKeyLevelModel] = Field(default_factory=list)
+
+    @field_validator("plane_a")
+    @classmethod
+    def validate_plane_a(cls, value: list[float]) -> list[float]:
+        if len(value) != 3:
+            raise ValueError("plane_a must have length 3")
+        return value
+
+    @field_validator("plane_b")
+    @classmethod
+    def validate_plane_b(cls, value: list[float]) -> list[float]:
+        if len(value) != 3:
+            raise ValueError("plane_b must have length 3")
+        return value
+
+    @field_validator("coarse_points_per_turn")
+    @classmethod
+    def validate_points_per_turn(cls, value: int) -> int:
+        if value < 4:
+            raise ValueError("coarse_points_per_turn must be at least 4")
+        return value
+
+    @field_validator("densify_multiplier")
+    @classmethod
+    def validate_densify(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("densify_multiplier must be at least 1")
+        return value
+
+    @field_validator("level_spacing_m")
+    @classmethod
+    def validate_level_spacing(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("level_spacing_m must be > 0")
+        return value
+
+    @field_validator("turns")
+    @classmethod
+    def validate_turns(cls, value: float | None) -> float | None:
+        if value is None:
+            return value
+        if value < 1:
+            raise ValueError("turns must be at least 1 when provided")
+        return value
+
+    @model_validator(mode="after")
+    def validate_key_levels(self) -> "ScanDefinitionModel":
+        if len(self.key_levels) < 2:
+            raise ValueError("scan must define at least 2 key levels")
+        return self
+
+
+class ScanConnectorModel(BaseModel):
+    id: str
+    from_scan_id: str
+    to_scan_id: str
+    from_endpoint: Literal["start", "end"] = "end"
+    to_endpoint: Literal["start", "end"] = "start"
+    control1: list[float] | None = None
+    control2: list[float] | None = None
+    samples: int = 24
+
+    @field_validator("control1")
+    @classmethod
+    def validate_control1(cls, value: list[float] | None) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 3:
+            raise ValueError("control1 must have length 3")
+        return value
+
+    @field_validator("control2")
+    @classmethod
+    def validate_control2(cls, value: list[float] | None) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 3:
+            raise ValueError("control2 must have length 3")
+        return value
+
+    @field_validator("samples")
+    @classmethod
+    def validate_samples(cls, value: int) -> int:
+        if value < 4:
+            raise ValueError("samples must be at least 4")
+        return value
+
+
+class ScanProjectModel(BaseModel):
+    schema_version: int = 1
+    id: str | None = None
+    name: str
+    obj_path: str
+    scans: list[ScanDefinitionModel] = Field(default_factory=list)
+    connectors: list[ScanConnectorModel] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+    @model_validator(mode="after")
+    def validate_references(self) -> "ScanProjectModel":
+        if not self.scans:
+            raise ValueError("scan project must include at least one scan")
+        scan_ids = {scan.id for scan in self.scans}
+        for connector in self.connectors:
+            if connector.from_scan_id not in scan_ids:
+                raise ValueError(
+                    f"connector {connector.id} references unknown from_scan_id"
+                )
+            if connector.to_scan_id not in scan_ids:
+                raise ValueError(
+                    f"connector {connector.id} references unknown to_scan_id"
+                )
+            if connector.from_scan_id == connector.to_scan_id:
+                raise ValueError(
+                    f"connector {connector.id} must connect two different scans"
+                )
+        return self
+
+
+class ScanProjectSummaryModel(BaseModel):
+    id: str
+    name: str
+    obj_path: str
+    scans: int
+    connectors: int
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ScanPathDiagnosticsModel(BaseModel):
+    id: str
+    kind: Literal["scan", "connector"]
+    points: int
+    path_length: float
+    path: list[list[float]] | None = None
+    min_clearance_m: float | None = None
+    collision_points_count: int = 0
+    clearance_per_point: list[float] | None = None
+
+
+class ScanCompileDiagnosticsModel(BaseModel):
+    min_clearance_m: float | None = None
+    collision_points_count: int = 0
+    clearance_threshold_m: float = 0.05
+    combined_clearance_per_point: list[float] | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ScanCompileResponseModel(BaseModel):
+    status: str
+    combined_path: list[list[float]]
+    path_length: float
+    estimated_duration: float
+    points: int
+    endpoints: dict[str, dict[str, list[float]]]
+    scan_paths: list[ScanPathDiagnosticsModel] = Field(default_factory=list)
+    connector_paths: list[ScanPathDiagnosticsModel] = Field(default_factory=list)
+    diagnostics: ScanCompileDiagnosticsModel
+
+
+class CompileScanProjectRequestModel(BaseModel):
+    project: ScanProjectModel
+    quality: Literal["preview", "final"] = "preview"
+    include_collision: bool = True
+    collision_threshold_m: float = 0.05
 
 
 class PoseModel(BaseModel):
