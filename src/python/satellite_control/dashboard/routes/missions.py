@@ -4,9 +4,20 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.dashboard.mission_v2_service import (
+    LEGACY_DEPRECATION_HEADERS,
+    ensure_v2_payload,
+    to_legacy_payload,
+)
+from satellite_control.dashboard.mission_v2_service import (
+    load_mission_v2 as load_mission_v2_payload,
+)
+from satellite_control.dashboard.mission_v2_service import (
+    save_mission_v2 as save_mission_v2_payload,
+)
 from satellite_control.dashboard.models import (
     PreviewUnifiedMissionResponse,
     RunMissionRequest,
@@ -16,7 +27,6 @@ from satellite_control.dashboard.models import (
 from satellite_control.mission.repository import (
     list_mission_names,
     load_mission_json,
-    save_mission_json,
 )
 from satellite_control.mission.repository import (
     resolve_mission_file as resolve_mission_file_repo,
@@ -59,8 +69,14 @@ def _parse_unified_mission(data: dict[str, Any]) -> MissionDefinition:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+def _apply_legacy_deprecation_headers(response: Response) -> None:
+    for key, value in LEGACY_DEPRECATION_HEADERS.items():
+        response.headers[key] = value
+
+
 @router.post("/mission_v2")
-async def update_mission_v2(config: UnifiedMissionModel):
+async def update_mission_v2(config: UnifiedMissionModel, response: Response):
+    _apply_legacy_deprecation_headers(response)
     mission_def = _parse_unified_mission(config.model_dump())
     await _get_sim_manager().update_unified_mission(mission_def)
     return {
@@ -70,7 +86,8 @@ async def update_mission_v2(config: UnifiedMissionModel):
 
 
 @router.post("/mission_v2/preview", response_model=PreviewUnifiedMissionResponse)
-async def preview_mission_v2(config: UnifiedMissionModel):
+async def preview_mission_v2(config: UnifiedMissionModel, response: Response):
+    _apply_legacy_deprecation_headers(response)
     mission_def = _parse_unified_mission(config.model_dump())
     mission_runtime = compile_unified_mission_runtime(
         mission_def,
@@ -85,7 +102,8 @@ async def preview_mission_v2(config: UnifiedMissionModel):
 
 
 @router.get("/mission_v2")
-async def get_current_mission_v2():
+async def get_current_mission_v2(response: Response):
+    _apply_legacy_deprecation_headers(response)
     mgr = _get_sim_manager()
     if not mgr.current_unified_mission:
         raise HTTPException(status_code=404, detail="No unified mission set")
@@ -93,17 +111,15 @@ async def get_current_mission_v2():
 
 
 @router.post("/save_mission_v2")
-async def save_mission_v2(request: SaveUnifiedMissionRequest):
+async def save_mission_v2(request: SaveUnifiedMissionRequest, response: Response):
     """Save a unified mission configuration to JSON."""
+    _apply_legacy_deprecation_headers(response)
     mission_def = _parse_unified_mission(request.config.model_dump())
 
     try:
-        mission_file = save_mission_json(
-            name=request.name,
-            payload=mission_def.to_dict(),
-            source="local",
-        )
-        return {"status": "success", "filename": mission_file.name}
+        migrated = ensure_v2_payload(mission_def.to_dict(), name_hint=request.name)
+        save_response = save_mission_v2_payload(request.name, migrated)
+        return {"status": "success", "filename": save_response.filename}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -112,14 +128,25 @@ async def save_mission_v2(request: SaveUnifiedMissionRequest):
 
 
 @router.get("/saved_missions_v2")
-async def list_saved_missions_v2():
+async def list_saved_missions_v2(response: Response):
     """List all saved unified mission JSON files."""
+    _apply_legacy_deprecation_headers(response)
     mission_names = list_mission_names(source_priority=("local",))
     return {"missions": mission_names}
 
 
 @router.get("/mission_v2/{mission_name}")
-async def load_mission_v2(mission_name: str):
+async def load_mission_v2(mission_name: str, response: Response):
+    _apply_legacy_deprecation_headers(response)
+    try:
+        mission_v2 = load_mission_v2_payload(mission_name)
+        mission_def = _parse_unified_mission(to_legacy_payload(mission_v2))
+        return mission_def.to_dict()
+    except HTTPException:
+        pass
+    except Exception as exc:
+        logger.warning("v2 mission lookup failed for %s: %s", mission_name, exc)
+
     try:
         data = load_mission_json(mission_name, source_priority=("local",))
     except FileNotFoundError:
@@ -134,8 +161,9 @@ async def load_mission_v2(mission_name: str):
 
 
 @router.post("/run_mission")
-async def run_mission(request: RunMissionRequest):
+async def run_mission(request: RunMissionRequest, response: Response):
     """Spawn a subprocess to run a saved mission via CLI."""
+    _apply_legacy_deprecation_headers(response)
     import subprocess
     import sys
 

@@ -20,7 +20,16 @@ export interface SplineControl {
   weight?: number;
 }
 
+export interface SegmentBase {
+  segment_id: string;
+  title?: string | null;
+  notes?: string | null;
+}
+
 export interface TransferSegment {
+  segment_id: string;
+  title?: string | null;
+  notes?: string | null;
   type: 'transfer';
   target_id?: string;
   end_pose: Pose;
@@ -43,6 +52,9 @@ export interface ScanConfig {
 }
 
 export interface ScanSegment {
+  segment_id: string;
+  title?: string | null;
+  notes?: string | null;
   type: 'scan';
   target_id: string;
   target_pose?: Pose;
@@ -52,6 +64,9 @@ export interface ScanSegment {
 }
 
 export interface HoldSegment {
+  segment_id: string;
+  title?: string | null;
+  notes?: string | null;
   type: 'hold';
   duration: number;
   constraints?: Constraints;
@@ -69,11 +84,22 @@ export interface MissionObstacle {
   radius: number;
 }
 
+export interface MissionMetadata {
+  version: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  tags?: string[];
+}
+
 export interface UnifiedMission {
+  schema_version: 2;
+  mission_id: string;
+  name: string;
   epoch: string;
   start_pose: Pose;
   start_target_id?: string;
   segments: MissionSegment[];
   obstacles?: MissionObstacle[];
   overrides?: MissionOverrides;
+  metadata: MissionMetadata;
 }

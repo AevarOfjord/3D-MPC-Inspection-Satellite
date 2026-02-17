@@ -4,6 +4,8 @@ import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import { ORBIT_SCALE, orbitSnapshot } from '../../data/orbitSnapshot';
 import { UnifiedViewport } from '../UnifiedViewport';
 import { OrbitTargetsPanel } from '../OrbitTargetsPanel';
+import { MissionAuthoringStepper } from '../TrajectoryStudio/MissionAuthoringStepper';
+import { MissionValidationPanel } from '../TrajectoryStudio/MissionValidationPanel';
 import { TrajectoryStudioLayout } from '../TrajectoryStudio/TrajectoryStudioLayout';
 
 interface MissionModeViewProps {
@@ -62,9 +64,14 @@ export function MissionModeView({ viewMode, builder }: MissionModeViewProps) {
               }}
             />
           </Suspense>
+          <div className="absolute top-4 left-4 z-30">
+            <MissionAuthoringStepper builder={builder} />
+          </div>
+          <div className="absolute top-4 left-[47rem] z-30">
+            <MissionValidationPanel builder={builder} />
+          </div>
         </div>
       }
     />
   );
 }
-
