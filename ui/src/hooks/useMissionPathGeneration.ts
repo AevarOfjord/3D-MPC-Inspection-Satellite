@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { trajectoryApi, type MeshScanConfig } from '../api/trajectory';
 import { downsamplePath } from '../utils/pathResample';
 import { computePathLength } from '../utils/pathMetrics';
+import { useToast } from '../feedback/feedbackContext';
 
 interface HistoryAdapter {
   set: (next: [number, number, number][]) => void;
@@ -29,9 +30,11 @@ export function useMissionPathGeneration({
   setLoading,
   setStats,
 }: UseMissionPathGenerationArgs) {
+  const { showToast } = useToast();
+
   const handlePreview = async (overrideConfig?: Partial<MeshScanConfig>) => {
     if (!config.obj_path) {
-      alert('Please upload a model first');
+      showToast({ tone: 'error', title: 'Missing Model', message: 'Please upload a model first.' });
       return;
     }
     setLoading(true);
@@ -51,7 +54,11 @@ export function useMissionPathGeneration({
       });
     } catch (err) {
       console.error(err);
-      alert('Preview generation failed');
+      showToast({
+        tone: 'error',
+        title: 'Preview Failed',
+        message: 'Preview generation failed.',
+      });
     } finally {
       setLoading(false);
     }

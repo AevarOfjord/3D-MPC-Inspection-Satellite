@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link2, RefreshCcw, Save } from 'lucide-react';
 import { HudButton, HudInput, HudPanel, HudSection } from '../HudComponents';
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
+import { mapIssuePathToPlannerStep } from '../../utils/plannerValidation';
 
 interface PathStudioPanelProps {
   builder: ReturnType<typeof useMissionBuilder>;
@@ -26,6 +27,13 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
       selectedScan?.key_levels.find((level) => level.id === state.selectedKeyLevelId) ??
       selectedScan?.key_levels[0],
     [selectedScan, state.selectedKeyLevelId]
+  );
+  const scanDefinitionIssues = useMemo(
+    () =>
+      (state.validationReport?.issues ?? []).filter(
+        (issue) => mapIssuePathToPlannerStep(issue.path) === 'scan_definition'
+      ),
+    [state.validationReport]
   );
 
   useEffect(() => {
@@ -61,6 +69,11 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
   return (
     <HudPanel className="w-96 max-h-[calc(100vh-220px)] overflow-y-auto custom-scrollbar" title="Path Studio">
       <div className="space-y-3">
+        {scanDefinitionIssues.length > 0 ? (
+          <div className="text-[10px] text-amber-200 bg-amber-950/50 border border-amber-700/60 rounded px-2 py-1.5">
+            {scanDefinitionIssues.length} scan-definition issue(s). Run Validate and click an issue to jump to the exact field.
+          </div>
+        ) : null}
         <HudSection title="Model" defaultOpen>
           <div className="space-y-2">
             <select

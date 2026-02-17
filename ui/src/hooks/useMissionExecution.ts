@@ -6,6 +6,7 @@ import type {
   ValidationReportV2,
 } from '../api/unifiedMissionApi';
 import type { MissionAuthoringStep } from './useMissionState';
+import { useDialog, useToast } from '../feedback/feedbackContext';
 
 type BuildMissionFn = (options?: { includeManualPath?: boolean }) => UnifiedMission;
 
@@ -46,20 +47,32 @@ export function useMissionExecution({
   setStats,
   editPointLimit,
 }: UseMissionExecutionArgs) {
+  const { showToast } = useToast();
+  const dialog = useDialog();
+
   const handleSaveUnifiedMission = async () => {
     const validationError = validateScanSegments();
     if (validationError) {
-      alert(validationError);
+      showToast({ tone: 'error', title: 'Validation', message: validationError });
       return;
     }
     const remoteValidation = await validateUnifiedMission();
     if (!remoteValidation.valid) {
-      alert('Mission has validation errors. Open the Validate step to resolve them.');
+      showToast({
+        tone: 'error',
+        title: 'Validation',
+        message: 'Mission has validation errors. Open the Validate step to resolve them.',
+      });
       setAuthoringStep('validate');
       return;
     }
 
-    const name = prompt('Enter mission name (e.g. Starlink_Scan_M01):');
+    const name = await dialog.prompt('Enter mission name (e.g. Starlink_Scan_M01):', {
+      title: 'Save Mission',
+      confirmLabel: 'Save',
+      placeholder: 'Starlink_Scan_M01',
+      requireNonEmpty: true,
+    });
     if (!name) return;
 
     try {
@@ -67,11 +80,15 @@ export function useMissionExecution({
       setMissionId(saved.mission_id);
       setMissionName(name);
       await refreshUnifiedMissions();
-      alert(`Mission saved: ${name}`);
+      showToast({ tone: 'success', title: 'Mission Saved', message: `Mission saved: ${name}` });
       setAuthoringStep('save_launch');
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to save mission: ${err.message || err}`);
+      showToast({
+        tone: 'error',
+        title: 'Save Failed',
+        message: `Failed to save mission: ${err.message || err}`,
+      });
     }
   };
 
@@ -80,13 +97,17 @@ export function useMissionExecution({
     try {
       const validationError = validateScanSegments();
       if (validationError) {
-        alert(validationError);
+        showToast({ tone: 'error', title: 'Validation', message: validationError });
         return;
       }
 
       const remoteValidation = await validateUnifiedMission();
       if (!remoteValidation.valid) {
-        alert('Mission has validation errors. Resolve them before preview.');
+        showToast({
+          tone: 'error',
+          title: 'Validation',
+          message: 'Mission has validation errors. Resolve them before preview.',
+        });
         setAuthoringStep('validate');
         return;
       }
@@ -109,7 +130,11 @@ export function useMissionExecution({
       return preview;
     } catch (err: any) {
       console.error('Preview Error:', err);
-      alert(`Preview Failed: ${err.message || err}`);
+      showToast({
+        tone: 'error',
+        title: 'Preview Failed',
+        message: `Preview Failed: ${err.message || err}`,
+      });
       throw err;
     } finally {
       setLoading(false);
@@ -121,17 +146,25 @@ export function useMissionExecution({
     try {
       const validationError = validateScanSegments();
       if (validationError) {
-        alert(validationError);
+        showToast({ tone: 'error', title: 'Validation', message: validationError });
         return;
       }
 
       await pushUnifiedMission();
       await controlSimulation('resume');
-      alert('Mission Launched! Switching to Live View.');
+      showToast({
+        tone: 'success',
+        title: 'Mission Launched',
+        message: 'Mission launched. Switching to live view.',
+      });
       if (onSuccess) onSuccess();
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to launch: ${err.message || err}`);
+      showToast({
+        tone: 'error',
+        title: 'Launch Failed',
+        message: `Failed to launch: ${err.message || err}`,
+      });
     } finally {
       setLoading(false);
     }

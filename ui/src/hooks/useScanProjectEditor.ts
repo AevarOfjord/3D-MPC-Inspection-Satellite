@@ -17,6 +17,7 @@ import {
   makeId,
   validateScanProject,
 } from '../utils/scanProjectValidation';
+import { useToast } from '../feedback/feedbackContext';
 
 export type SelectedProjectPlaneHandle = { scanId: string; handle: 'a' | 'b' } | null;
 export type SelectedScanCenterHandle = { scanId: string } | null;
@@ -143,6 +144,7 @@ export function useScanProjectEditor({
   refreshScanProjects,
   selectModelPath,
 }: UseScanProjectEditorArgs) {
+  const { showToast } = useToast();
   const compileDebounceRef = useRef<number | null>(null);
   const lastAutoPreviewSignatureRef = useRef<string | null>(null);
   const centerDragActiveRef = useRef<boolean>(false);
@@ -634,7 +636,11 @@ export function useScanProjectEditor({
     target: { scanId: string; endpoint: EndpointKind }
   ) => {
     if (source.scanId === target.scanId) {
-      alert('Select endpoints from two different scans.');
+      showToast({
+        tone: 'error',
+        title: 'Invalid Connector',
+        message: 'Select endpoints from two different scans.',
+      });
       return;
     }
 
@@ -711,7 +717,11 @@ export function useScanProjectEditor({
     const validationError = validateScanProject(scanProject);
     if (validationError) {
       if (!silent) {
-        alert(validationError);
+        showToast({
+          tone: 'error',
+          title: 'Scan Validation',
+          message: validationError,
+        });
       }
       return null;
     }
@@ -745,7 +755,11 @@ export function useScanProjectEditor({
     } catch (err: any) {
       console.error(err);
       if (!silent) {
-        alert(`Scan compile failed: ${err.message || err}`);
+        showToast({
+          tone: 'error',
+          title: 'Compile Failed',
+          message: `Scan compile failed: ${err.message || err}`,
+        });
       }
       return null;
     } finally {
@@ -779,12 +793,20 @@ export function useScanProjectEditor({
   const saveScanProject = async (name?: string) => {
     const projectName = (name ?? scanProject.name).trim();
     if (!projectName) {
-      alert('Enter a project name.');
+      showToast({
+        tone: 'error',
+        title: 'Missing Name',
+        message: 'Enter a project name.',
+      });
       return null;
     }
     const validationError = validateScanProject(scanProject);
     if (validationError) {
-      alert(validationError);
+      showToast({
+        tone: 'error',
+        title: 'Scan Validation',
+        message: validationError,
+      });
       return null;
     }
     const payload: ScanProject = {
@@ -829,7 +851,11 @@ export function useScanProjectEditor({
   const saveBakedPathFromCompiled = async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) {
-      alert('Please enter a baked path name');
+      showToast({
+        tone: 'error',
+        title: 'Missing Name',
+        message: 'Please enter a baked path name.',
+      });
       return null;
     }
     let compiled = compilePreviewState;

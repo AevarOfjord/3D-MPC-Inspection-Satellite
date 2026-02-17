@@ -444,7 +444,7 @@ export function useMissionBuilder() {
   const saveMissionDraft = () =>
     persistMissionDraft(buildUnifiedMission({ includeManualPath: true }));
 
-  useMissionDraftLifecycle({
+  const missionDraftLifecycle = useMissionDraftLifecycle({
     storageKey: DRAFT_ID_STORAGE_KEY,
     loadDraftById: unifiedMissionApi.loadDraft,
     onRestoreMission: applyLoadedMission,
@@ -462,6 +462,10 @@ export function useMissionBuilder() {
     previewPathPoints: previewPath.length,
     isManualMode,
   });
+  const {
+    state: { pendingDraftRestore },
+    actions: { restorePendingDraft, discardPendingDraft },
+  } = missionDraftLifecycle;
 
   const scanPlaneControls = useScanPlaneControls({
     referencePosition,
@@ -553,6 +557,7 @@ export function useMissionBuilder() {
       draftId,
       draftRevision,
       draftSavedAt,
+      pendingDraftRestore,
     },
     historyState: {
       canUndo: pathHistory.canUndo,
@@ -686,6 +691,8 @@ export function useMissionBuilder() {
       saveUnifiedMission,
       loadUnifiedMission,
       pushUnifiedMission,
+      restorePendingDraft,
+      discardPendingDraft,
     },
     executionActions: {
       handleRun,

@@ -7,13 +7,9 @@ import type {
   SplineControl,
   TransferSegment,
 } from '../api/unifiedMission';
+import type { PlannerStep } from '../utils/plannerValidation';
 
-export type MissionAuthoringStep =
-  | 'target'
-  | 'segments'
-  | 'constraints'
-  | 'validate'
-  | 'save_launch';
+export type MissionAuthoringStep = PlannerStep;
 
 interface UseMissionStateArgs {
   defaultMissionId: () => string;
@@ -247,7 +243,7 @@ export function useMissionState({
       }
       if (!seg.path_asset) {
         setSelectedSegmentIndex(idx);
-        return 'Scan segment requires a saved Path Asset. Create one in Scan Planner.';
+        return 'Scan segment requires a saved Path Asset. Create one in Planner Step 3: Scan Definition.';
       }
     }
     return null;

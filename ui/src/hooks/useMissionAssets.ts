@@ -7,6 +7,7 @@ import { useCameraStore } from '../store/cameraStore';
 import { ORBIT_SCALE } from '../data/orbitSnapshot';
 import { resamplePath, downsamplePath } from '../utils/pathResample';
 import type { Dispatch, SetStateAction } from 'react';
+import { useToast } from '../feedback/feedbackContext';
 
 interface HistoryAdapter {
   set: (next: [number, number, number][]) => void;
@@ -51,6 +52,8 @@ export function useMissionAssets({
   editPointLimit,
   savePointMultiplier,
 }: UseMissionAssetsArgs) {
+  const { showToast } = useToast();
+
   const refreshModelList = async () => {
     const models = await trajectoryApi.listModels();
     setAvailableModels(models);
@@ -106,7 +109,7 @@ export function useMissionAssets({
       trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
     } catch (err) {
       console.error(err);
-      alert('Upload failed');
+      showToast({ tone: 'error', title: 'Upload Failed', message: 'Upload failed.' });
     } finally {
       setLoading(false);
     }
@@ -115,15 +118,27 @@ export function useMissionAssets({
   const savePathAsset = async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) {
-      alert('Please enter a path asset name');
+      showToast({
+        tone: 'error',
+        title: 'Missing Name',
+        message: 'Please enter a path asset name.',
+      });
       return;
     }
     if (!config.obj_path) {
-      alert('Select an OBJ model first');
+      showToast({
+        tone: 'error',
+        title: 'Missing Model',
+        message: 'Select an OBJ model first.',
+      });
       return;
     }
     if (previewPath.length === 0) {
-      alert('Generate or load a path before saving');
+      showToast({
+        tone: 'error',
+        title: 'Missing Path',
+        message: 'Generate or load a path before saving.',
+      });
       return;
     }
     const densePath = resamplePath(previewPath, savePointMultiplier);

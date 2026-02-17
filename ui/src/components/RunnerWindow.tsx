@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal, Play, Square, Trash2, RefreshCw } from 'lucide-react';
 import { MISSIONS_API_URL, RUNNER_API_URL, RUNNER_WS_URL } from '../config/endpoints';
+import { useDialog } from '../feedback/feedbackContext';
 
 interface RunnerConfigMeta {
   config_hash: string;
@@ -34,6 +35,7 @@ async function parseApiError(res: Response, fallback: string): Promise<string> {
 }
 
 export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = false }) => {
+  const dialog = useDialog();
   const [logs, setLogs] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -165,7 +167,7 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
     }
 
     if (hasUnsavedSettings) {
-      const proceed = window.confirm(
+      const proceed = await dialog.confirm(
         'You have unsaved Settings changes. Run simulation with last saved settings?'
       );
       if (!proceed) return;

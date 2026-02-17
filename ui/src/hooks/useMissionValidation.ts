@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { unifiedMissionApi, type ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { UnifiedMission } from '../api/unifiedMission';
+import { mapIssuePathToPlannerStep } from '../utils/plannerValidation';
 
 import type { MissionAuthoringStep } from './useMissionState';
 
@@ -29,15 +30,16 @@ export function useMissionValidation({
       setValidationReport(report);
       if (!report.valid && report.issues.length > 0) {
         const firstIssue = report.issues[0];
+        const targetStep = mapIssuePathToPlannerStep(firstIssue.path);
         const segmentMatch = /segments\[(\d+)\]/.exec(firstIssue.path);
         if (segmentMatch) {
           const segIndex = Number.parseInt(segmentMatch[1], 10);
           if (!Number.isNaN(segIndex)) {
             onFocusSegment(segIndex);
-            setAuthoringStep('constraints');
+            setAuthoringStep(targetStep);
           }
         } else {
-          setAuthoringStep('target');
+          setAuthoringStep(targetStep);
         }
       }
       return report;
