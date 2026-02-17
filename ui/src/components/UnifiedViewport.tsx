@@ -692,6 +692,13 @@ export function UnifiedViewport({
                           const isPlaneBSelected =
                             builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
                             builderState.selectedProjectScanPlaneHandle?.handle === 'b';
+                          const scanCenterPos: [number, number, number] = [
+                            0.5 * (a[0] + b[0]),
+                            0.5 * (a[1] + b[1]),
+                            0.5 * (a[2] + b[2]),
+                          ];
+                          const isScanCenterSelected =
+                            builderState.selectedScanCenterHandle?.scanId === scan.id;
                           return (
                             <group key={`scan-project-${scan.id}`}>
                               <Line
@@ -718,13 +725,23 @@ export function UnifiedViewport({
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (
+                                    builderState.selectedScanCenterHandle?.scanId === scan.id ||
+                                    builderState.centerDragActive
+                                  ) {
+                                    return;
+                                  }
                                   builderActions.setSelectedScanId(scan.id);
                                   const alreadySelected =
                                     builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
                                     builderState.selectedProjectScanPlaneHandle?.handle === 'a';
-                                  builderActions.setSelectedProjectScanPlaneHandle(
-                                    alreadySelected ? null : { scanId: scan.id, handle: 'a' }
-                                  );
+                                  const next = alreadySelected ? null : { scanId: scan.id, handle: 'a' as const };
+                                  builderActions.setSelectedProjectScanPlaneHandle(next);
+                                  builderActions.setSelectedScanCenterHandle(null);
+                                  if (next) {
+                                    builderActions.setSelectedKeyLevelHandle(null);
+                                    builderActions.setSelectedConnectorControl(null);
+                                  }
                                 }}
                               >
                                 <planeGeometry args={[planeSizeScene, planeSizeScene]} />
@@ -759,13 +776,23 @@ export function UnifiedViewport({
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (
+                                    builderState.selectedScanCenterHandle?.scanId === scan.id ||
+                                    builderState.centerDragActive
+                                  ) {
+                                    return;
+                                  }
                                   builderActions.setSelectedScanId(scan.id);
                                   const alreadySelected =
                                     builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
                                     builderState.selectedProjectScanPlaneHandle?.handle === 'b';
-                                  builderActions.setSelectedProjectScanPlaneHandle(
-                                    alreadySelected ? null : { scanId: scan.id, handle: 'b' }
-                                  );
+                                  const next = alreadySelected ? null : { scanId: scan.id, handle: 'b' as const };
+                                  builderActions.setSelectedProjectScanPlaneHandle(next);
+                                  builderActions.setSelectedScanCenterHandle(null);
+                                  if (next) {
+                                    builderActions.setSelectedKeyLevelHandle(null);
+                                    builderActions.setSelectedConnectorControl(null);
+                                  }
                                 }}
                               >
                                 <planeGeometry args={[planeSizeScene, planeSizeScene]} />
@@ -808,19 +835,30 @@ export function UnifiedViewport({
                                       }}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (
+                                          builderState.selectedScanCenterHandle?.scanId === scan.id ||
+                                          builderState.centerDragActive
+                                        ) {
+                                          return;
+                                        }
                                         builderActions.setSelectedScanId(scan.id);
                                         const alreadySelected =
                                           builderState.selectedProjectScanPlaneHandle?.scanId ===
                                             scan.id &&
                                           builderState.selectedProjectScanPlaneHandle?.handle === h.id;
-                                        builderActions.setSelectedProjectScanPlaneHandle(
+                                        const next =
                                           alreadySelected
                                             ? null
-                                            : {
+                                            : ({
                                                 scanId: scan.id,
                                                 handle: h.id,
-                                              }
-                                        );
+                                              } as const);
+                                        builderActions.setSelectedProjectScanPlaneHandle(next);
+                                        builderActions.setSelectedScanCenterHandle(null);
+                                        if (next) {
+                                          builderActions.setSelectedKeyLevelHandle(null);
+                                          builderActions.setSelectedConnectorControl(null);
+                                        }
                                       }}
                                     >
                                       <sphereGeometry
@@ -879,6 +917,87 @@ export function UnifiedViewport({
                                 {scan.name} B
                               </Text>
 
+                              {builderState.selectedScanId === scan.id && (
+                                <group key={`scan-center-${scan.id}`}>
+                                  {(() => {
+                                    const hoverId = `scan-center:${scan.id}`;
+                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const scenePos = scaleToScene(scanCenterPos);
+                                    const markerRadius = Math.max(0.06 * ORBIT_SCALE, 0.000005);
+                                    return (
+                                      <>
+                                        <mesh
+                                          position={scenePos}
+                                          onPointerOver={(e) => {
+                                            e.stopPropagation();
+                                            setHoveredPlannerPointId(hoverId);
+                                          }}
+                                          onPointerOut={(e) => {
+                                            e.stopPropagation();
+                                            setHoveredPlannerPointId((prev) =>
+                                              prev === hoverId ? null : prev
+                                            );
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            builderActions.setSelectedScanId(scan.id);
+                                            const next = { scanId: scan.id } as const;
+                                            builderActions.setSelectedScanCenterHandle(next);
+                                            builderActions.setSelectedProjectScanPlaneHandle(null);
+                                            builderActions.setSelectedKeyLevelHandle(null);
+                                            builderActions.setSelectedConnectorControl(null);
+                                          }}
+                                        >
+                                          <sphereGeometry
+                                            args={[
+                                              markerRadius * (hovered || isScanCenterSelected ? 1.25 : 1.0),
+                                              12,
+                                              12,
+                                            ]}
+                                          />
+                                          <meshBasicMaterial
+                                            color={
+                                              isScanCenterSelected
+                                                ? '#fde047'
+                                                : hovered
+                                                  ? '#ffffff'
+                                                  : '#e879f9'
+                                            }
+                                            transparent
+                                            opacity={hovered || isScanCenterSelected ? 1.0 : 0.95}
+                                          />
+                                        </mesh>
+                                        {isScanCenterSelected && (
+                                          <TransformControls
+                                            mode="translate"
+                                            position={scenePos}
+                                            showX
+                                            showY
+                                            showZ
+                                            onMouseDown={() => {
+                                              builderActions.beginScanCenterDrag(scan.id);
+                                            }}
+                                            onObjectChange={(e: any) => {
+                                              const obj = e?.target?.object as THREE.Object3D;
+                                              if (!obj) return;
+                                              const next: [number, number, number] = [
+                                                obj.position.x / ORBIT_SCALE + sceneOrigin[0],
+                                                obj.position.y / ORBIT_SCALE + sceneOrigin[1],
+                                                obj.position.z / ORBIT_SCALE + sceneOrigin[2],
+                                              ];
+                                              builderActions.updateScanCenterDrag(scan.id, next);
+                                            }}
+                                            onMouseUp={() => {
+                                              builderActions.endScanCenterDrag();
+                                            }}
+                                          />
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </group>
+                              )}
+
                               {builderState.selectedScanId === scan.id &&
                                 (() => {
                                   const keyLevels = (scan.key_levels ?? []) as any[];
@@ -893,11 +1012,7 @@ export function UnifiedViewport({
                                     a[1] + (b[1] - a[1]) * t,
                                     a[2] + (b[2] - a[2]) * t
                                   );
-                                  const off = keyLevel.center_offset ?? [0, 0];
-                                  const center = centerBase
-                                    .clone()
-                                    .add(uAxis.clone().multiplyScalar(Number(off[0] ?? 0)))
-                                    .add(vAxis.clone().multiplyScalar(Number(off[1] ?? 0)));
+                                  const center = centerBase.clone();
                                   const rot = ((Number(keyLevel.rotation_deg) || 0) * Math.PI) / 180;
                                   const major = uAxis
                                     .clone()
@@ -913,7 +1028,6 @@ export function UnifiedViewport({
                                   const ry = Math.max(0.01, Number(keyLevel.radius_y) || 1);
                                   const handleRadius = Math.max(0.05 * ORBIT_SCALE, 0.000005);
                                   const handles = [
-                                    { id: 'center' as const, pos: center, color: '#facc15' },
                                     {
                                       id: 'rx_pos' as const,
                                       pos: center.clone().add(major.clone().multiplyScalar(rx)),
@@ -966,6 +1080,7 @@ export function UnifiedViewport({
                                             e.stopPropagation();
                                             builderActions.setSelectedScanId(scan.id);
                                             builderActions.setSelectedKeyLevelId(keyLevel.id);
+                                            builderActions.setSelectedScanCenterHandle(null);
                                             builderActions.setSelectedKeyLevelHandle({
                                               scanId: scan.id,
                                               keyLevelId: keyLevel.id,

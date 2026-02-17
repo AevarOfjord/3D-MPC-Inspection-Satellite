@@ -91,10 +91,10 @@ class TestStateInvariants:
     @settings(max_examples=20)
     def test_state_validator_completeness(self, x, y, z):
         """Validator should handle any finite float input without crashing."""
+        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.utils.simulation_state_validator import (
             create_state_validator_from_config,
         )
-        from satellite_control.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig.create_default()
         # Fix: pass app_config correctly

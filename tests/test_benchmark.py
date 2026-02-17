@@ -6,17 +6,14 @@ Consolidates `test_benchmark.py` and `benchmarks/test_physics_benchmarks.py`.
 """
 
 import time
+from importlib.util import find_spec
+
 import numpy as np
 import pytest
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.control.mpc_controller import MPCController
 
-try:
-    import pytest_benchmark
-
-    BENCHMARK_AVAILABLE = True
-except ImportError:
-    BENCHMARK_AVAILABLE = False
+BENCHMARK_AVAILABLE = find_spec("pytest_benchmark") is not None
 
 
 @pytest.mark.skipif(not BENCHMARK_AVAILABLE, reason="pytest-benchmark not installed")

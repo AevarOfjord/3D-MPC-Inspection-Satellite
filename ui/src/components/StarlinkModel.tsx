@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { ORBIT_SCALE } from '../data/orbitSnapshot';
+import { API_BASE_URL } from '../config/endpoints';
 
 interface StarlinkModelProps {
   position: [number, number, number];
@@ -18,7 +19,8 @@ export function StarlinkModel({
   realSpanMeters,
   pivot = 'center',
 }: StarlinkModelProps) {
-  const gltf = useGLTF('/model_files/Starlink/starlink.glb');
+  const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/Starlink/starlink.glb')}`;
+  const gltf = useGLTF(modelUrl);
 
   // Clone and apply fallback material if needed
   const clonedObj = useMemo(() => {

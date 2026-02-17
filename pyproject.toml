@@ -10,7 +10,20 @@ authors = [
 ]
 description = "Satellite MPC Control System"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11,<3.12"
+keywords = ["satellite", "mpc", "simulation", "fastapi", "threejs", "orbital-dynamics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     # Core numerical
     "numpy>=1.21.0",
@@ -47,25 +60,43 @@ dependencies = [
     "python-multipart>=0.0.6",
     "aiofiles>=23.0.0",
     "tqdm>=4.66.0",
-    "pytest-benchmark>=4.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
     "psutil>=5.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel"
+Repository = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel"
+Issues = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/issues"
+Documentation = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/tree/main/docs"
+Changelog = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/CHANGELOG.md"
+
+[project.scripts]
+satellite-control = "satellite_control.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "black>=23.0.0",
     "hypothesis>=6.0.0",
     "pre-commit>=3.0.0",
+    "pytest-benchmark>=4.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+docs = [
+    "myst-parser>=2.0.0",
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src/python"]
-
-# [project.optional-dependencies] removed as dev deps are now in main
 
 
 [tool.scikit-build]
 cmake.version = ">=3.20"
 cmake.build-type = "Release"
 cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
+wheel.packages = ["src/python/satellite_control"]
 # Setup for development install (editable)
 editable.rebuild = true
 build-dir = "build/{wheel_tag}"

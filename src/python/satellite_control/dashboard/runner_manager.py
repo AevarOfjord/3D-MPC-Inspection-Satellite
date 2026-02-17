@@ -8,11 +8,11 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 logger = logging.getLogger("dashboard.runner")
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
@@ -29,7 +29,7 @@ class RunnerManager:
     to connected WebSocket clients.
     """
     def __init__(self):
-        self.process: Optional[asyncio.subprocess.Process] = None
+        self.process: asyncio.subprocess.Process | None = None
         self.active_websockets: list[WebSocket] = []
         self._log_history: list[str] = []
         self.max_history_lines = 1000
@@ -236,8 +236,8 @@ class RunnerManager:
 
     def get_config(self) -> dict:
         """Get the current configuration (default + overrides)."""
-        from satellite_control.config.simulation_config import SimulationConfig
         from satellite_control.config.models import MPCParams
+        from satellite_control.config.simulation_config import SimulationConfig
         
         # Start with default
         config = SimulationConfig.create_default()
@@ -262,7 +262,7 @@ class RunnerManager:
             "config_version": "app_config_v1",
             "overrides_active": bool(self._custom_config),
             "active_preset_name": self._active_preset_name,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
         ui_config["mpc_parameter_groups"] = MPCParams.parameter_groups()
         return ui_config
@@ -324,7 +324,7 @@ class RunnerManager:
             raise ValueError(str(exc)) from exc
         item = {
             "config": normalized,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         self._presets[trimmed] = item
         self._persist_presets()
@@ -392,7 +392,7 @@ class RunnerManager:
         for conn in to_remove:
             self.disconnect(conn)
 
-    async def start_simulation(self, mission_name: Optional[str] = None):
+    async def start_simulation(self, mission_name: str | None = None):
         """Start the simulation process."""
         if self.process and self.process.returncode is None:
             await self._broadcast("\n>>> Simulator is already running.\n")
@@ -432,7 +432,7 @@ class RunnerManager:
                 
                 cmd_args.extend(["--config", config_path])
                 self._temp_config_path = config_path # Store to clean up later
-                await self._broadcast(f">>> Using custom configuration overrides\n")
+                await self._broadcast(">>> Using custom configuration overrides\n")
             except Exception as e:
                  logger.error(f"Failed to create config file: {e}")
                  await self._broadcast(f">>> Warning: Failed to apply custom config: {e}\n")
@@ -491,7 +491,7 @@ class RunnerManager:
             if self._temp_config_path and os.path.exists(self._temp_config_path):
                 try:
                     os.unlink(self._temp_config_path)
-                except:
+                except OSError:
                     pass
             self._temp_config_path = None
 
@@ -504,7 +504,7 @@ class RunnerManager:
                 # Wait briefly
                 try:
                     await asyncio.wait_for(self.process.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("Process did not terminate gracefully, killing it.")
                     self.process.kill()
                     await self.process.wait()
@@ -518,10 +518,10 @@ class RunnerManager:
             
         # Cleanup temp file if it exists
         if self._temp_config_path and os.path.exists(self._temp_config_path):
-             try:
-                 os.unlink(self._temp_config_path)
-             except:
-                 pass
+            try:
+                os.unlink(self._temp_config_path)
+            except OSError:
+                pass
         self._temp_config_path = None
 
     async def _monitor_stream(self, stream: asyncio.StreamReader, stream_name: str):
@@ -584,7 +584,7 @@ class RunnerManager:
             payload = {}
 
         status = str(payload.get("status", "running")).lower()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         updated = False
 
         if return_code != 0:
@@ -639,7 +639,7 @@ class RunnerManager:
                     break
             payload = {
                 "schema_version": "runs_index_v1",
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "latest_run_id": latest_run_id,
                 "run_count": len(runs),
                 "runs": runs,

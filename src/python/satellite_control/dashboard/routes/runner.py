@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +80,7 @@ class PresetApplyRequest(BaseModel):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _append_package_log(line: str) -> None:
@@ -710,7 +710,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await manager.stop_simulation()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as e:
+    except Exception:
         # manager.disconnect(websocket) # usually handled in disconnect or finally
         pass
     finally:

@@ -9,7 +9,8 @@ React + TypeScript + Vite frontend for the Mission Control interface.
 
 ## Configure API Endpoints (optional)
 
-The UI defaults to `http://localhost:8000` and `ws://localhost:8000/ws`.
+The UI defaults to API base `http://localhost:8000` and WS base `ws://localhost:8000`.
+Runner logs stream over `ws://localhost:8000/runner/ws` (derived from `VITE_WS_BASE`).
 Override with:
 
 ```

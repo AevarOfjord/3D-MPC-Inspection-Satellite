@@ -5,7 +5,7 @@ This guide explains how to configure and use logging in the Satellite Control Sy
 ## Quick Start
 
 ```python
-from src.satellite_control.utils.logging_config import get_logger
+from satellite_control.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 logger.info("System initialized")
@@ -26,7 +26,7 @@ The system uses standard Python logging levels:
 ### Standard Logging
 
 ```python
-from src.satellite_control.utils.logging_config import setup_logging
+from satellite_control.utils.logging_config import setup_logging
 
 logger = setup_logging(__name__)
 logger.info("Starting simulation")
@@ -57,7 +57,7 @@ Output (JSON):
 {
   "timestamp": "2026-01-07 10:30:45",
   "level": "INFO",
-  "logger": "src.satellite_control.control.mpc_controller",
+  "logger": "satellite_control.control.mpc_controller",
   "message": "MPC solve completed",
   "solve_time": 0.002,
   "status": "success",
@@ -71,12 +71,12 @@ Output (JSON):
 Configure different log levels for different modules:
 
 ```python
-from src.satellite_control.utils.logging_config import configure_module_log_levels
+from satellite_control.utils.logging_config import configure_module_log_levels
 import logging
 
 configure_module_log_levels({
-    "src.satellite_control.core.mpc_controller": logging.DEBUG,
-    "src.satellite_control.core.simulation": logging.INFO,
+    "satellite_control.core.mpc_controller": logging.DEBUG,
+    "satellite_control.core.simulation": logging.INFO,
 })
 ```
 
@@ -85,11 +85,11 @@ configure_module_log_levels({
 Use context manager for temporary debug logging:
 
 ```python
-from src.satellite_control.utils.logging_config import temporary_log_level
+from satellite_control.utils.logging_config import temporary_log_level
 import logging
 
 # Temporarily enable debug logging
-with temporary_log_level("src.satellite_control.control.mpc_controller", logging.DEBUG):
+with temporary_log_level("satellite_control.control.mpc_controller", logging.DEBUG):
     result = mpc_controller.solve(state, target)
     # Debug messages will be shown here
 # Original log level restored
@@ -184,7 +184,7 @@ logger.info("API authentication successful")
 The error handling system automatically logs errors:
 
 ```python
-from src.satellite_control.core.error_handling import with_error_context
+from satellite_control.core.error_handling import with_error_context
 
 @with_error_context("MPC solve")
 def solve_mpc(self, state, target):
@@ -239,7 +239,7 @@ configure_module_log_levels({
 ### Simulation Logging
 
 ```python
-from src.satellite_control.utils.logging_config import setup_logging
+from satellite_control.utils.logging_config import setup_logging
 
 logger = setup_logging(
     __name__,
@@ -256,11 +256,11 @@ logger.error("Simulation failed", exc_info=True)
 ### Debug Session
 
 ```python
-from src.satellite_control.utils.logging_config import temporary_log_level
+from satellite_control.utils.logging_config import temporary_log_level
 import logging
 
 # Enable debug for specific module
-with temporary_log_level("src.satellite_control.control.mpc_controller", logging.DEBUG):
+with temporary_log_level("satellite_control.control.mpc_controller", logging.DEBUG):
     # Debug messages will appear
     result = mpc_controller.solve(state, target)
 ```

@@ -36,22 +36,22 @@ Installation
 .. code-block:: bash
 
    # Clone repository
-   git clone https://github.com/AevarOfjord/SatelliteProject
-   cd SatelliteProject
+   git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel.git
+   cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 
    # Create virtual environment
    python3.11 -m venv .venv311
    source .venv311/bin/activate
 
-   # Install dependencies
-   pip install -e ".[dev]"
+   # Install dependencies + build C++ extension
+   make install
 
 Running a Simulation
 ^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   python run_simulation.py
+   .venv311/bin/python scripts/run_simulation.py run
 
 
 Key Components

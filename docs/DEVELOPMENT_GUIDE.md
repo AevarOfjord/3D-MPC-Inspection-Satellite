@@ -42,7 +42,7 @@ pip install -r requirements.txt
 
 ```bash
 # Run the simulation with default settings
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 
 # Run tests
 .venv311/bin/python -m pytest
@@ -126,7 +126,7 @@ ruff check src tests
 
   1. Standard library (`import os`, `import sys`)
     2. Third-party (`import numpy`, `import osqp`)
-    3. Local (`from src.satellite_control.config.simulation_config import SimulationConfig`)
+    3. Local (`from satellite_control.config.simulation_config import SimulationConfig`)
 
 - **Functions**: Keep < 50 lines when possible
 
@@ -171,7 +171,7 @@ For complete column definitions, see [VISUALIZATION.md](VISUALIZATION.md).
 The `DataLogger` class in `utils/data_logger.py` handles buffered CSV writing:
 
 ```python
-from src.satellite_control.utils.data_logger import DataLogger
+from satellite_control.utils.data_logger import DataLogger
 
 # Create logger
 logger = DataLogger(
@@ -232,7 +232,7 @@ To change the CSV format:
 .venv311/bin/python -m pytest -v
 
 # Run with coverage report
-.venv311/bin/python -m pytest --cov=src --cov-report=html
+.venv311/bin/python -m pytest --cov=src/python/satellite_control --cov-report=html
 # Open htmlcov/index.html to view coverage
 
 # Run E2E tests only
@@ -260,8 +260,8 @@ Create tests following existing patterns:
 # tests/test_myfeature.py
 import pytest
 import numpy as np
-from src.satellite_control.config.simulation_config import SimulationConfig
-from src.satellite_control.mymodule import my_function
+from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.mymodule import my_function
 
 
 class TestMyFeature:
@@ -301,7 +301,7 @@ ruff check src tests
 pytest
 
 # 4. Test in simulation
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 # Select mission and verify behavior
 ```
 
@@ -352,7 +352,7 @@ def configure_figure8_mission(
 Attach the generated path to the mission state so MPCC can follow it:
 
 ```python
-from src.satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.simulation_config import SimulationConfig
 
 simulation_config = SimulationConfig.create_default()
 mission_state = simulation_config.mission_state
@@ -367,10 +367,10 @@ mission_state.path_speed = speed
 Integrate the mission into the saved-mission flow used by terminal simulation:
 
 ```python
-from src.satellite_control.mission.repository import list_mission_entries
+from satellite_control.mission.repository import list_mission_entries
 
 entries = list_mission_entries(source_priority=("unified", "dev"))
-# Add your mission JSON and select it when running `python run_simulation.py run`
+# Add your mission JSON and select it when running `.venv311/bin/python scripts/run_simulation.py run`
 ```
 
 #### Step 4: Add Configuration
@@ -416,7 +416,7 @@ Update [README.md](../README.md) with new mission type description.
 .venv311/bin/python -m pytest
 
 # Test in simulation
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 # Select: Figure-8 Navigation
 # Verify trajectory follows expected path
 ```
@@ -449,7 +449,7 @@ config/
 
    ```python
    # Good
-    from src.satellite_control.config import SimulationConfig
+    from satellite_control.config import SimulationConfig
     config = SimulationConfig.create_default()
     mass = config.app_config.physics.total_mass
 
@@ -516,7 +516,7 @@ config/
 3. Access in your code:
 
    ```python
-    from src.satellite_control.config.simulation_config import SimulationConfig
+    from satellite_control.config.simulation_config import SimulationConfig
 
     config = SimulationConfig.create_default()
     damping = config.app_config.physics.damping_coefficient
@@ -528,7 +528,7 @@ config/
 Configuration is validated at simulation startup. Use a short run to sanity check:
 
 ```bash
-python run_simulation.py run --auto --no-anim --duration 2
+.venv311/bin/python scripts/run_simulation.py run --auto --no-anim --duration 2
 ```
 ```
 
@@ -542,7 +542,7 @@ The project uses Python's `logging` module configured in `utils/logging_config.p
 
 ```python
 import logging
-from src.satellite_control.utils.logging_config import setup_logging
+from satellite_control.utils.logging_config import setup_logging
 
 # Setup logging (done automatically at startup)
 setup_logging()
@@ -750,7 +750,7 @@ Example test structure:
 ```python
 # tests/test_new_feature.py
 import pytest
-from src.satellite_control.mymodule import MyClass
+from satellite_control.mymodule import MyClass
 
 
 class TestMyClass:
@@ -811,13 +811,13 @@ If you discover bugs in the original project:
 
 ```bash
 # Run with specific duration
-python run_simulation.py run --duration 60
+.venv311/bin/python scripts/run_simulation.py run --duration 60
 
 # Run in auto mode (skip menu)
-python run_simulation.py run --auto
+.venv311/bin/python scripts/run_simulation.py run --auto
 
 # Run without animation (faster)
-python run_simulation.py run --no-anim
+.venv311/bin/python scripts/run_simulation.py run --no-anim
 
 ```
 
@@ -826,7 +826,7 @@ python run_simulation.py run --no-anim
 If you have existing simulation data:
 
 ```python
-from src.satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
+from satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
 
 # Generate visualizations from existing data
 viz = UnifiedVisualizationGenerator(
@@ -839,14 +839,14 @@ viz = UnifiedVisualizationGenerator(
 
 ```bash
 # Run baseline
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 # Results saved to Data/Simulation/<timestamp-1>/
 
 # Modify parameters in config/
 # Edit src/python/satellite_control/config/models.py or constants in src/python/satellite_control/config/
 
 # Run with new parameters
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 # Results saved to Data/Simulation/<timestamp-2>/
 
 # Compare results by examining mission_summary.txt in each folder
@@ -859,11 +859,11 @@ python run_simulation.py run
 ### Import Errors
 
 ```python
-# Problem: "ModuleNotFoundError: No module named 'src.satellite_control'"
+# Problem: "ModuleNotFoundError: No module named 'satellite_control'"
 
 # Solution 1: Always run from project root
 cd /path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 
 # Solution 2: Install package in editable mode
 pip install -e .

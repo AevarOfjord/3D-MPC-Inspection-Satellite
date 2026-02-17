@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 Aevar Oefjoerd, University of Kentucky - Mechanical Engineering
+Copyright (c) 2026 Aevar Ofjord
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,30 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-THIRD-PARTY LICENSES
-
-This software uses the following third-party libraries, each with their own license:
-
-1. Gurobi Optimization
-   - License: Commercial (Free Academic License Available)
-   - URL: https://www.gurobi.com/academia/academic-program-and-licenses/
-   - Note: You must obtain your own Gurobi license to use this software
-
-2. NumPy, SciPy, Matplotlib
-   - License: BSD 3-Clause License
-   - URL: https://numpy.org/doc/stable/license.html
-
-3. PyQt5
-   - License: GPL v3 / Commercial License
-   - URL: https://www.riverbankcomputing.com/software/pyqt/license
-
-4. OpenCV
-   - License: Apache 2.0 License
-   - URL: https://opencv.org/license/
-
-5. Other Python packages
-   - See requirements.txt for full list
-   - Each package has its own license terms

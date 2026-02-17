@@ -13,7 +13,7 @@ pip install sphinx sphinx-rtd-theme myst-parser
 Or install from `pyproject.toml`:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,docs]"
 ```
 
 ## Building Documentation
@@ -91,7 +91,7 @@ Uses OSQP solver for real-time optimization.
 
 ## CI Integration
 
-Documentation is automatically built in CI (`.github/workflows/ci.yml`). The build is non-blocking but will warn if it fails.
+Documentation is automatically built in CI (`.github/workflows/ci.yml`) with warnings treated as errors.
 
 ## Troubleshooting
 
@@ -100,7 +100,7 @@ Documentation is automatically built in CI (`.github/workflows/ci.yml`). The bui
 If you see import errors when building:
 - Check that all dependencies are installed
 - Verify `sys.path` in `docs/conf.py` includes the source directory
-- Some external dependencies (osqp, gurobipy) are mocked - this is normal
+- Some external dependencies (for example `osqp`) are mocked - this is normal
 
 ### Missing Documentation
 

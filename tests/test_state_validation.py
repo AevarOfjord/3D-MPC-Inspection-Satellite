@@ -8,7 +8,6 @@ Trims down `test_simulation_state_validator.py`.
 import numpy as np
 import pytest
 from satellite_control.utils.simulation_state_validator import (
-    SimulationStateValidator,
     create_state_validator_from_config,
 )
 

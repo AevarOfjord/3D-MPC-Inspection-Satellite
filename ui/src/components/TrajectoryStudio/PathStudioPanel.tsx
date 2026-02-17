@@ -184,7 +184,7 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
 
                 <div className="rounded border border-slate-700/60 p-2 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Planes</div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <HudButton
                       variant={
                         state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
@@ -195,12 +195,19 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                       size="sm"
                       className="w-full"
                       onClick={() =>
-                        setters.setSelectedProjectScanPlaneHandle(
-                          state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                        (() => {
+                          const next =
+                            state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
                             state.selectedProjectScanPlaneHandle?.handle === 'a'
-                            ? null
-                            : { scanId: selectedScan.id, handle: 'a' }
-                        )
+                              ? null
+                              : ({ scanId: selectedScan.id, handle: 'a' } as const);
+                          setters.setSelectedProjectScanPlaneHandle(next);
+                          setters.setSelectedScanCenterHandle(null);
+                          if (next) {
+                            setters.setSelectedKeyLevelHandle(null);
+                            setters.setSelectedConnectorControl(null);
+                          }
+                        })()
                       }
                     >
                       Move Plane A
@@ -215,16 +222,51 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                       size="sm"
                       className="w-full"
                       onClick={() =>
-                        setters.setSelectedProjectScanPlaneHandle(
-                          state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
+                        (() => {
+                          const next =
+                            state.selectedProjectScanPlaneHandle?.scanId === selectedScan.id &&
                             state.selectedProjectScanPlaneHandle?.handle === 'b'
-                            ? null
-                            : { scanId: selectedScan.id, handle: 'b' }
-                        )
+                              ? null
+                              : ({ scanId: selectedScan.id, handle: 'b' } as const);
+                          setters.setSelectedProjectScanPlaneHandle(next);
+                          setters.setSelectedScanCenterHandle(null);
+                          if (next) {
+                            setters.setSelectedKeyLevelHandle(null);
+                            setters.setSelectedConnectorControl(null);
+                          }
+                        })()
                       }
                     >
                       Move Plane B
                     </HudButton>
+                    <HudButton
+                      variant={
+                        state.selectedScanCenterHandle?.scanId === selectedScan.id
+                          ? 'primary'
+                          : 'secondary'
+                      }
+                      size="sm"
+                      className="w-full"
+                      onClick={() =>
+                        (() => {
+                          const next =
+                            state.selectedScanCenterHandle?.scanId === selectedScan.id
+                              ? null
+                              : ({ scanId: selectedScan.id } as const);
+                          setters.setSelectedScanCenterHandle(next);
+                          setters.setSelectedProjectScanPlaneHandle(null);
+                          if (next) {
+                            setters.setSelectedKeyLevelHandle(null);
+                            setters.setSelectedConnectorControl(null);
+                          }
+                        })()
+                      }
+                    >
+                      Move Center
+                    </HudButton>
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Centerline is defined by Plane A/B. Use <span className="font-semibold text-slate-200">Move Center</span> to translate the whole scan.
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -385,28 +427,6 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                           })
                         }
                       />
-                      <HudInput
-                        label="Offset X"
-                        type="number"
-                        step={0.05}
-                        value={selectedKeyLevel.center_offset[0]}
-                        onChange={(val) =>
-                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
-                            center_offset: [Number(val), selectedKeyLevel.center_offset[1]],
-                          })
-                        }
-                      />
-                      <HudInput
-                        label="Offset Y"
-                        type="number"
-                        step={0.05}
-                        value={selectedKeyLevel.center_offset[1]}
-                        onChange={(val) =>
-                          actions.updateKeyLevel(selectedScan.id, selectedKeyLevel.id, {
-                            center_offset: [selectedKeyLevel.center_offset[0], Number(val)],
-                          })
-                        }
-                      />
                     </div>
                   )}
                 </div>
@@ -417,11 +437,14 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
               variant="secondary"
               size="sm"
               className="w-full"
-              onClick={() => actions.compileScanProjectDebounced('preview', true, 100)}
+              onClick={() => actions.previewScanProject(100)}
               disabled={state.loading || state.compilePending || !state.config.obj_path}
             >
               <RefreshCcw size={12} className={state.loading ? 'animate-spin' : ''} /> Preview Project
             </HudButton>
+            {state.scanProjectAutoPreviewEnabled && (
+              <div className="text-[10px] text-emerald-300">Live update is on while editing.</div>
+            )}
           </div>
         </HudSection>
 
@@ -440,7 +463,7 @@ export function PathStudioPanel({ builder }: PathStudioPanelProps) {
                 variant="secondary"
                 size="sm"
                 className="w-full"
-                onClick={() => actions.compileScanProjectDebounced('preview', true, 100)}
+                onClick={() => actions.previewScanProject(100)}
                 disabled={!state.scanProject.scans.length}
               >
                 Refresh Endpoints

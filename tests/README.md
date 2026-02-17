@@ -1,7 +1,7 @@
 # Tests
 
 Compact, high-value test suite for the Satellite control system.
-Reduced from 32 files to 12 focused files that test real behavior, not mocks.
+Focused on behavioral coverage (unit + integration + API + E2E smoke + benchmarks).
 
 ## Running Tests
 

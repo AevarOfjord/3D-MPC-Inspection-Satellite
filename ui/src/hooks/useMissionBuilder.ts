@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
   trajectoryApi,
@@ -109,6 +109,7 @@ const resolveOrbitTargetPose = (targetId: string) => {
 };
 
 type SelectedProjectPlaneHandle = { scanId: string; handle: 'a' | 'b' } | null;
+type SelectedScanCenterHandle = { scanId: string } | null;
 type SelectedConnectorControl =
   | { connectorId: string; control: 'control1' | 'control2' }
   | null;
@@ -215,6 +216,8 @@ export function useMissionBuilder() {
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
   const [selectedProjectScanPlaneHandle, setSelectedProjectScanPlaneHandle] =
     useState<SelectedProjectPlaneHandle>(null);
+  const [selectedScanCenterHandle, setSelectedScanCenterHandle] =
+    useState<SelectedScanCenterHandle>(null);
   const [selectedKeyLevelHandle, setSelectedKeyLevelHandle] =
     useState<SelectedKeyLevelHandle>(null);
   const [selectedConnectorControl, setSelectedConnectorControl] =
@@ -224,7 +227,15 @@ export function useMissionBuilder() {
   const [compilePreviewState, setCompilePreviewState] =
     useState<ScanCompileResponse | null>(null);
   const [compilePending, setCompilePending] = useState<boolean>(false);
+  const [scanProjectAutoPreviewEnabled, setScanProjectAutoPreviewEnabled] = useState<boolean>(false);
   const compileDebounceRef = useRef<number | null>(null);
+  const lastAutoPreviewSignatureRef = useRef<string | null>(null);
+  const centerDragActiveRef = useRef<boolean>(false);
+  const centerDragScanIdRef = useRef<string | null>(null);
+  const centerDragStartPlaneARef = useRef<[number, number, number] | null>(null);
+  const centerDragStartPlaneBRef = useRef<[number, number, number] | null>(null);
+  const centerDragStartMidpointRef = useRef<[number, number, number] | null>(null);
+  const [centerDragActive, setCenterDragActive] = useState<boolean>(false);
 
   // Unified Mission (V2)
   const [epoch, setEpoch] = useState<string>(new Date().toISOString());
@@ -304,11 +315,27 @@ export function useMissionBuilder() {
   }, [scanProject.scans, selectedKeyLevelHandle]);
 
   useEffect(() => {
+    if (!selectedScanCenterHandle) return;
+    const exists = scanProject.scans.some(
+      (item) => item.id === selectedScanCenterHandle.scanId
+    );
+    if (!exists) {
+      setSelectedScanCenterHandle(null);
+    }
+  }, [scanProject.scans, selectedScanCenterHandle]);
+
+  useEffect(() => {
     return () => {
       if (compileDebounceRef.current !== null) {
         window.clearTimeout(compileDebounceRef.current);
         compileDebounceRef.current = null;
       }
+      centerDragActiveRef.current = false;
+      centerDragScanIdRef.current = null;
+      centerDragStartPlaneARef.current = null;
+      centerDragStartPlaneBRef.current = null;
+      centerDragStartMidpointRef.current = null;
+      lastAutoPreviewSignatureRef.current = null;
     };
   }, []);
 
@@ -365,6 +392,8 @@ export function useMissionBuilder() {
           setModelPath(res.path);
           setConfig(prev => ({ ...prev, obj_path: res.path }));
           setScanProject((prev) => ({ ...prev, obj_path: res.path }));
+          setScanProjectAutoPreviewEnabled(false);
+          lastAutoPreviewSignatureRef.current = null;
           trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
       } catch (err) {
           console.error(err);
@@ -425,6 +454,8 @@ export function useMissionBuilder() {
       setModelPath(path);
       setConfig(prev => ({ ...prev, obj_path: path }));
       setScanProject((prev) => ({ ...prev, obj_path: path }));
+      setScanProjectAutoPreviewEnabled(false);
+      lastAutoPreviewSignatureRef.current = null;
       setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
       trajectoryApi.getModelBounds(path).then((bounds) => {
           const extent = Math.max(bounds.extents[0], bounds.extents[1], bounds.extents[2]);
@@ -459,10 +490,13 @@ export function useMissionBuilder() {
   const createDefaultScanProjectState = (objPath?: string) => {
       const created = createDefaultScanProject(objPath ?? scanProject.obj_path ?? config.obj_path ?? '');
       setScanProject(created);
+      setScanProjectAutoPreviewEnabled(false);
+      lastAutoPreviewSignatureRef.current = null;
       setSelectedScanId(created.scans[0]?.id ?? null);
       setSelectedKeyLevelId(created.scans[0]?.key_levels?.[0]?.id ?? null);
       setSelectedConnectorId(null);
       setSelectedProjectScanPlaneHandle(null);
+      setSelectedScanCenterHandle(null);
       setSelectedKeyLevelHandle(null);
       setSelectedConnectorControl(null);
       setConnectSourceEndpoint(null);
@@ -476,10 +510,22 @@ export function useMissionBuilder() {
           const next = updater(prev);
           return {
               ...next,
+              scans: (next.scans ?? []).map((scan) => ({
+                  ...scan,
+                  key_levels: (scan.key_levels ?? []).map((level) => ({
+                      ...level,
+                      center_offset: [0, 0] as [number, number],
+                  })),
+              })),
               obj_path: next.obj_path || config.obj_path,
           };
       });
   };
+
+  const scanProjectCompileSignature = useMemo(
+      () => JSON.stringify(scanProject),
+      [scanProject]
+  );
 
   const addScan = () => {
       updateScanProject((prev) => {
@@ -509,6 +555,13 @@ export function useMissionBuilder() {
           }
           if (selectedConnectorId && !nextConnectors.some((c) => c.id === selectedConnectorId)) {
               setSelectedConnectorId(null);
+          }
+          if (
+              selectedScanCenterHandle &&
+              (selectedScanCenterHandle.scanId === scanId ||
+                  !nextScans.some((scan) => scan.id === selectedScanCenterHandle.scanId))
+          ) {
+              setSelectedScanCenterHandle(null);
           }
           if (
               selectedKeyLevelHandle &&
@@ -573,20 +626,32 @@ export function useMissionBuilder() {
       keyLevelId: string,
       patch: Partial<ScanDefinition['key_levels'][number]>
   ) => {
+      const { center_offset: _ignoredCenterOffset, ...patchWithoutCenterOffset } = patch;
       updateScanProject((prev) => ({
           ...prev,
           scans: prev.scans.map((scan) => {
               if (scan.id !== scanId) return scan;
               const nextLevels = scan.key_levels
-                  .map((level) =>
-                      level.id === keyLevelId
+                  .map((level) => {
+                      const isTarget = level.id === keyLevelId;
+                      const nextLevel = isTarget
                           ? {
                                 ...level,
-                                ...patch,
-                                t: Math.max(0, Math.min(1, Number(patch.t ?? level.t))),
+                                ...patchWithoutCenterOffset,
+                                t: Math.max(
+                                    0,
+                                    Math.min(
+                                        1,
+                                        Number(patchWithoutCenterOffset.t ?? level.t)
+                                    )
+                                ),
                             }
-                          : level
-                  )
+                          : level;
+                      return {
+                          ...nextLevel,
+                          center_offset: [0, 0] as [number, number],
+                      };
+                  })
                   .sort((a, b) => a.t - b.t);
               return { ...scan, key_levels: nextLevels };
           }),
@@ -666,6 +731,24 @@ export function useMissionBuilder() {
       ];
   };
 
+  const projectPointToAxisThrough = (
+      point: [number, number, number],
+      axis: [number, number, number],
+      origin: [number, number, number]
+  ): [number, number, number] => {
+      const rel: [number, number, number] = [
+          point[0] - origin[0],
+          point[1] - origin[1],
+          point[2] - origin[2],
+      ];
+      const t = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
+      return [
+          origin[0] + axis[0] * t,
+          origin[1] + axis[1] * t,
+          origin[2] + axis[2] * t,
+      ];
+  };
+
   const setScanAxisAligned = (scanId: string, axis: BodyAxis) => {
       const axisVec = resolveBodyAxisVector(axis);
       updateScanProject((prev) => ({
@@ -675,8 +758,34 @@ export function useMissionBuilder() {
                   ? {
                         ...scan,
                         axis,
-                        plane_a: projectPointToBodyAxis(scan.plane_a, axisVec),
-                        plane_b: projectPointToBodyAxis(scan.plane_b, axisVec),
+                        ...(() => {
+                            const midpoint: [number, number, number] = [
+                                0.5 * (scan.plane_a[0] + scan.plane_b[0]),
+                                0.5 * (scan.plane_a[1] + scan.plane_b[1]),
+                                0.5 * (scan.plane_a[2] + scan.plane_b[2]),
+                            ];
+                            const halfSpan = Math.max(
+                                1e-6,
+                                0.5 *
+                                    Math.sqrt(
+                                        (scan.plane_b[0] - scan.plane_a[0]) ** 2 +
+                                            (scan.plane_b[1] - scan.plane_a[1]) ** 2 +
+                                            (scan.plane_b[2] - scan.plane_a[2]) ** 2
+                                    )
+                            );
+                            return {
+                                plane_a: [
+                                    midpoint[0] - axisVec[0] * halfSpan,
+                                    midpoint[1] - axisVec[1] * halfSpan,
+                                    midpoint[2] - axisVec[2] * halfSpan,
+                                ] as [number, number, number],
+                                plane_b: [
+                                    midpoint[0] + axisVec[0] * halfSpan,
+                                    midpoint[1] + axisVec[1] * halfSpan,
+                                    midpoint[2] + axisVec[2] * halfSpan,
+                                ] as [number, number, number],
+                            };
+                        })(),
                     }
                   : scan
           ),
@@ -691,7 +800,8 @@ export function useMissionBuilder() {
       const scan = scanProject.scans.find((item) => item.id === scanId);
       if (!scan) return;
       const axisVec = resolveBodyAxisVector(scan.axis);
-      const constrained = projectPointToBodyAxis(position, axisVec);
+      const anchor = handle === 'a' ? scan.plane_b : scan.plane_a;
+      const constrained = projectPointToAxisThrough(position, axisVec, anchor);
       updateScanProject((prev) => ({
           ...prev,
           scans: prev.scans.map((item) => {
@@ -700,6 +810,90 @@ export function useMissionBuilder() {
               return { ...item, plane_b: constrained };
           }),
       }));
+  };
+
+  const beginScanCenterDrag = (scanId: string) => {
+      const scan = scanProject.scans.find((item) => item.id === scanId);
+      if (!scan) return;
+      centerDragActiveRef.current = true;
+      centerDragScanIdRef.current = scanId;
+      centerDragStartPlaneARef.current = [...scan.plane_a] as [number, number, number];
+      centerDragStartPlaneBRef.current = [...scan.plane_b] as [number, number, number];
+      centerDragStartMidpointRef.current = [
+          0.5 * (scan.plane_a[0] + scan.plane_b[0]),
+          0.5 * (scan.plane_a[1] + scan.plane_b[1]),
+          0.5 * (scan.plane_a[2] + scan.plane_b[2]),
+      ];
+      setCenterDragActive(true);
+  };
+
+  const updateScanCenterDrag = (
+      scanId: string,
+      worldPos: [number, number, number]
+  ) => {
+      if (
+          !centerDragActiveRef.current ||
+          centerDragScanIdRef.current !== scanId ||
+          !centerDragStartPlaneARef.current ||
+          !centerDragStartPlaneBRef.current ||
+          !centerDragStartMidpointRef.current
+      ) {
+          beginScanCenterDrag(scanId);
+      }
+
+      const startA = centerDragStartPlaneARef.current;
+      const startB = centerDragStartPlaneBRef.current;
+      const startMid = centerDragStartMidpointRef.current;
+      if (!startA || !startB || !startMid) return;
+
+      const delta: [number, number, number] = [
+          worldPos[0] - startMid[0],
+          worldPos[1] - startMid[1],
+          worldPos[2] - startMid[2],
+      ];
+
+      const nextA: [number, number, number] = [
+          startA[0] + delta[0],
+          startA[1] + delta[1],
+          startA[2] + delta[2],
+      ];
+      const nextB: [number, number, number] = [
+          startB[0] + delta[0],
+          startB[1] + delta[1],
+          startB[2] + delta[2],
+      ];
+
+      updateScanProject((prev) => ({
+          ...prev,
+          scans: prev.scans.map((item) => {
+              if (item.id !== scanId) return item;
+              return {
+                  ...item,
+                  plane_a: nextA,
+                  plane_b: nextB,
+                  key_levels: item.key_levels.map((level) => ({
+                      ...level,
+                      center_offset: [0, 0] as [number, number],
+                  })),
+              };
+          }),
+      }));
+  };
+
+  const endScanCenterDrag = () => {
+      centerDragActiveRef.current = false;
+      centerDragScanIdRef.current = null;
+      centerDragStartPlaneARef.current = null;
+      centerDragStartPlaneBRef.current = null;
+      centerDragStartMidpointRef.current = null;
+      setCenterDragActive(false);
+  };
+
+  const updateScanCenterPosition = (
+      scanId: string,
+      position: [number, number, number]
+  ) => {
+      updateScanCenterDrag(scanId, position);
   };
 
   const updateKeyLevelHandlePosition = (
@@ -715,8 +909,8 @@ export function useMissionBuilder() {
 
       const { normal, uAxis, vAxis } = resolveScanFrameAxes(scan.axis);
       const normalVec = new THREE.Vector3(...normal);
-      const aProjected = projectPointToBodyAxis(scan.plane_a, normal);
-      const bProjected = projectPointToBodyAxis(scan.plane_b, normal);
+      const aProjected = scan.plane_a;
+      const bProjected = projectPointToAxisThrough(scan.plane_b, normal, scan.plane_a);
       const t = Math.max(0, Math.min(1, keyLevel.t));
       const baseCenter: [number, number, number] = [
           aProjected[0] + (bProjected[0] - aProjected[0]) * t,
@@ -731,7 +925,6 @@ export function useMissionBuilder() {
           baseCenter[2] + uAxis[2] * keyLevel.center_offset[0] + vAxis[2] * keyLevel.center_offset[1]
       );
       const pos = new THREE.Vector3(position[0], position[1], position[2]);
-      const relToBase = pos.clone().sub(new THREE.Vector3(...baseCenter));
       const relToCenter = pos.clone().sub(center);
 
       const rot = (keyLevel.rotation_deg * Math.PI) / 180;
@@ -739,12 +932,19 @@ export function useMissionBuilder() {
       const minor = uVec.clone().multiplyScalar(-Math.sin(rot)).add(vVec.clone().multiplyScalar(Math.cos(rot))).normalize();
 
       if (handle === 'center') {
-          const projected = relToBase.sub(normalVec.clone().multiplyScalar(relToBase.dot(normalVec)));
-          const offX = projected.dot(uVec);
-          const offY = projected.dot(vVec);
-          updateKeyLevel(scanId, keyLevelId, {
-              center_offset: [offX, offY],
-          });
+          updateScanProject((prev) => ({
+              ...prev,
+              scans: prev.scans.map((item) => {
+                  if (item.id !== scanId) return item;
+                  return {
+                      ...item,
+                      key_levels: item.key_levels.map((level) => ({
+                          ...level,
+                          center_offset: [0, 0] as [number, number],
+                      })),
+                  };
+              }),
+          }));
           return;
       }
 
@@ -851,13 +1051,21 @@ export function useMissionBuilder() {
       updateConnector(connectorId, { [control]: position } as Partial<ScanConnector>);
   };
 
+  type CompileScanOptions = {
+      silent?: boolean;
+  };
+
   const compileScanProjectNow = async (
       quality: 'preview' | 'final' = 'preview',
-      includeCollision = true
+      includeCollision = true,
+      options: CompileScanOptions = {}
   ) => {
+      const silent = Boolean(options.silent);
       const validationError = validateScanProject(scanProject);
       if (validationError) {
-          alert(validationError);
+          if (!silent) {
+              alert(validationError);
+          }
           return null;
       }
       setLoading(true);
@@ -890,7 +1098,9 @@ export function useMissionBuilder() {
           return response;
       } catch (err: any) {
           console.error(err);
-          alert(`Scan compile failed: ${err.message || err}`);
+          if (!silent) {
+              alert(`Scan compile failed: ${err.message || err}`);
+          }
           return null;
       } finally {
           setLoading(false);
@@ -900,18 +1110,38 @@ export function useMissionBuilder() {
   const compileScanProjectDebounced = (
       quality: 'preview' | 'final' = 'preview',
       includeCollision = true,
-      delayMs = 250
+      delayMs = 250,
+      options: CompileScanOptions = {}
   ) => {
       if (compileDebounceRef.current !== null) {
           window.clearTimeout(compileDebounceRef.current);
       }
       setCompilePending(true);
       compileDebounceRef.current = window.setTimeout(() => {
-          compileScanProjectNow(quality, includeCollision).finally(() => {
+          compileScanProjectNow(quality, includeCollision, options).finally(() => {
               setCompilePending(false);
           });
       }, delayMs);
   };
+
+  const previewScanProject = (delayMs = 100) => {
+      setScanProjectAutoPreviewEnabled(true);
+      lastAutoPreviewSignatureRef.current = scanProjectCompileSignature;
+      compileScanProjectDebounced('preview', true, delayMs);
+  };
+
+  useEffect(() => {
+      if (!scanProjectAutoPreviewEnabled) return;
+      if (!(scanProject.obj_path || config.obj_path)) return;
+      if (scanProjectCompileSignature === lastAutoPreviewSignatureRef.current) return;
+      lastAutoPreviewSignatureRef.current = scanProjectCompileSignature;
+      compileScanProjectDebounced('preview', true, 120, { silent: true });
+  }, [
+      scanProjectAutoPreviewEnabled,
+      scanProjectCompileSignature,
+      scanProject.obj_path,
+      config.obj_path,
+  ]);
 
   const saveScanProject = async (name?: string) => {
       const projectName = (name ?? scanProject.name).trim();
@@ -937,17 +1167,30 @@ export function useMissionBuilder() {
 
   const loadScanProjectById = async (projectId: string) => {
       const loaded = await scanProjectsApi.loadScanProject(projectId);
-      setScanProject(loaded);
-      setSelectedScanId(loaded.scans[0]?.id ?? null);
-      setSelectedKeyLevelId(loaded.scans[0]?.key_levels?.[0]?.id ?? null);
+      const normalized: ScanProject = {
+          ...loaded,
+          scans: (loaded.scans ?? []).map((scan) => ({
+              ...scan,
+              key_levels: (scan.key_levels ?? []).map((level) => ({
+                  ...level,
+                  center_offset: [0, 0] as [number, number],
+              })),
+          })),
+      };
+      setScanProject(normalized);
+      setScanProjectAutoPreviewEnabled(false);
+      lastAutoPreviewSignatureRef.current = null;
+      setSelectedScanId(normalized.scans[0]?.id ?? null);
+      setSelectedKeyLevelId(normalized.scans[0]?.key_levels?.[0]?.id ?? null);
       setSelectedConnectorId(null);
       setSelectedConnectorControl(null);
+      setSelectedScanCenterHandle(null);
       setConnectMode(false);
       setConnectSourceEndpoint(null);
-      if (loaded.obj_path) {
-          selectModelPath(loaded.obj_path);
+      if (normalized.obj_path) {
+          selectModelPath(normalized.obj_path);
       }
-      return loaded;
+      return normalized;
   };
 
   const saveBakedPathFromCompiled = async (name: string) => {
@@ -1658,10 +1901,32 @@ export function useMissionBuilder() {
       ...prev,
       scans: prev.scans.map((scan) => {
         const axisVec = resolveBodyAxisVector(scan.axis);
+        const midpoint: [number, number, number] = [
+          0.5 * (scan.plane_a[0] + scan.plane_b[0]),
+          0.5 * (scan.plane_a[1] + scan.plane_b[1]),
+          0.5 * (scan.plane_a[2] + scan.plane_b[2]),
+        ];
+        const halfSpan = Math.max(
+          1e-6,
+          0.5 *
+            Math.sqrt(
+              (scan.plane_b[0] - scan.plane_a[0]) ** 2 +
+                (scan.plane_b[1] - scan.plane_a[1]) ** 2 +
+                (scan.plane_b[2] - scan.plane_a[2]) ** 2
+            )
+        );
         return {
           ...scan,
-          plane_a: projectPointToBodyAxis(scan.plane_a, axisVec),
-          plane_b: projectPointToBodyAxis(scan.plane_b, axisVec),
+          plane_a: [
+            midpoint[0] - axisVec[0] * halfSpan,
+            midpoint[1] - axisVec[1] * halfSpan,
+            midpoint[2] - axisVec[2] * halfSpan,
+          ],
+          plane_b: [
+            midpoint[0] + axisVec[0] * halfSpan,
+            midpoint[1] + axisVec[1] * halfSpan,
+            midpoint[2] + axisVec[2] * halfSpan,
+          ],
         };
       }),
     }));
@@ -1745,12 +2010,15 @@ export function useMissionBuilder() {
         selectedKeyLevelId,
         selectedConnectorId,
         selectedProjectScanPlaneHandle,
+        selectedScanCenterHandle,
         selectedKeyLevelHandle,
         selectedConnectorControl,
         connectMode,
         connectSourceEndpoint,
+        centerDragActive,
         compilePreviewState,
         compilePending,
+        scanProjectAutoPreviewEnabled,
         epoch,
         segments,
         selectedSegmentIndex,
@@ -1784,6 +2052,7 @@ export function useMissionBuilder() {
         setSelectedKeyLevelId,
         setSelectedConnectorId,
         setSelectedProjectScanPlaneHandle,
+        setSelectedScanCenterHandle,
         setSelectedKeyLevelHandle,
         setSelectedConnectorControl,
         setConnectMode,
@@ -1815,8 +2084,13 @@ export function useMissionBuilder() {
         removeKeyLevel,
         setScanAxisAligned,
         moveProjectScanPlaneHandle,
+        beginScanCenterDrag,
+        updateScanCenterDrag,
+        endScanCenterDrag,
+        updateScanCenterPosition,
         updateKeyLevelHandlePosition,
         setSelectedProjectScanPlaneHandle,
+        setSelectedScanCenterHandle,
         setSelectedKeyLevelHandle,
         updateConnector,
         removeConnector,
@@ -1827,6 +2101,7 @@ export function useMissionBuilder() {
         setSelectedConnectorControl,
         compileScanProjectNow,
         compileScanProjectDebounced,
+        previewScanProject,
         saveScanProject,
         loadScanProjectById,
         saveBakedPathFromCompiled,

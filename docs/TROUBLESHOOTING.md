@@ -205,7 +205,7 @@ ANGLE_TOLERANCE = np.deg2rad(5)  # degrees (was 3)
 
 ### Import Errors
 
-**Problem**: `ModuleNotFoundError: No module named 'src.satellite_control'`
+**Problem**: `ModuleNotFoundError: No module named 'satellite_control'`
 
 **Solutions**:
 
@@ -215,7 +215,7 @@ cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 pwd  # Should show project root
 
 # Run from project root
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 
 # If using pytest
 .venv311/bin/python -m pytest
@@ -281,7 +281,7 @@ Q_VELOCITY = 12000.0  # Was 10000
 
 ```bash
 # Check thruster activity in visualization
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 # Look at thruster_activity.png heatmap
 ```
 
@@ -334,7 +334,7 @@ ffmpeg -version
 # Look for "Error generating animation" messages
 
 # 3. Manually generate from existing data
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 
 # 4. Check disk space
 df -h  # Ensure sufficient free space
@@ -348,7 +348,7 @@ df -h  # Ensure sufficient free space
 
 ```python
 # Regenerate with fresh data
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 
 # Check CSV data integrity
 import pandas as pd
@@ -374,10 +374,10 @@ pip install --upgrade rich
 
 # Use basic mode if terminal incompatible
 export TERM=dumb
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 
 # Or run headless
-python run_simulation.py run --no-anim
+.venv311/bin/python scripts/run_simulation.py run --no-anim
 ```
 
 ### Video Quality Poor
@@ -511,7 +511,7 @@ print(np.isinf(df.select_dtypes(include=[np.number])).sum())
 
 ```bash
 # Run longer simulation
-python run_simulation.py run --duration 60.0
+.venv311/bin/python scripts/run_simulation.py run --duration 60.0
 
 # Check mission complete criteria
 # May need to adjust tolerances in config/models.py (MPCParams)
@@ -603,7 +603,7 @@ If you can't resolve the issue:
 
 ```bash
 # Check you're using the right command
-python run_simulation.py run  # NOT python simulation.py
+.venv311/bin/python scripts/run_simulation.py run  # NOT python simulation.py
 
 # Verify dependencies
 pip install -r requirements.txt
@@ -613,7 +613,7 @@ pip install -r requirements.txt
 
 ```bash
 # Run headless for max speed
-python run_simulation.py run --auto --no-anim
+.venv311/bin/python scripts/run_simulation.py run --auto --no-anim
 
 # Reduce horizon
 # Edit config/models.py: prediction_horizon = 30
@@ -626,7 +626,7 @@ python run_simulation.py run --auto --no-anim
 ffmpeg -version
 
 # Generate manually after run
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 ```
 
 ### Tests won't run

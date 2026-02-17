@@ -6,7 +6,7 @@ Core simulation and control components.
 Simulation
 ----------
 
-.. automodule:: src.satellite_control.core.simulation
+.. automodule:: satellite_control.core.simulation
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ Simulation
 MPC Runner
 ----------
 
-.. automodule:: src.satellite_control.core.mpc_runner
+.. automodule:: satellite_control.core.mpc_runner
    :members:
    :undoc-members:
    :show-inheritance:
@@ -23,7 +23,7 @@ MPC Runner
 Thruster Manager
 ----------------
 
-.. automodule:: src.satellite_control.core.thruster_manager
+.. automodule:: satellite_control.core.thruster_manager
    :members:
    :undoc-members:
    :show-inheritance:
@@ -31,7 +31,7 @@ Thruster Manager
 Error Handling
 --------------
 
-.. automodule:: src.satellite_control.core.error_handling
+.. automodule:: satellite_control.core.error_handling
    :members:
    :undoc-members:
    :show-inheritance:
@@ -39,7 +39,7 @@ Error Handling
 Exceptions
 ----------
 
-.. automodule:: src.satellite_control.core.exceptions
+.. automodule:: satellite_control.core.exceptions
    :members:
    :undoc-members:
    :show-inheritance:
@@ -47,7 +47,7 @@ Exceptions
 Performance Monitor
 -------------------
 
-.. automodule:: src.satellite_control.core.performance_monitor
+.. automodule:: satellite_control.core.performance_monitor
    :members:
    :undoc-members:
    :show-inheritance:
