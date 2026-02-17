@@ -1,5 +1,6 @@
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import type { ValidationIssueV2 } from '../../api/unifiedMissionApi';
+import { mapIssuePathToPlannerStep } from '../../utils/plannerValidation';
 
 interface MissionValidationPanelProps {
   builder: ReturnType<typeof useMissionBuilder>;
@@ -17,15 +18,16 @@ export function MissionValidationPanel({ builder }: MissionValidationPanelProps)
   const issues: ValidationIssueV2[] = report?.issues ?? [];
 
   const navigateToIssue = (path: string) => {
+    const step = mapIssuePathToPlannerStep(path);
     const match = /segments\[(\d+)\]/.exec(path);
     if (!match) {
-      actions.setAuthoringStep('target');
+      actions.setAuthoringStep(step);
       return;
     }
     const index = Number.parseInt(match[1], 10);
     if (!Number.isNaN(index)) {
       actions.selectSegment(index);
-      actions.setAuthoringStep('constraints');
+      actions.setAuthoringStep(step);
     }
   };
 

@@ -27,9 +27,9 @@ If you received a packaged archive:
 
 ## 2) Main Web Workflow
 
-1. `Mission Planner`: use the V2 stepper (`Target -> Segments -> Constraints -> Validate -> Save/Launch`).
-2. `Scan Planner`: create path assets and attach them to scan segments.
-3. `Mission Validation`: fix structured issues before save/launch.
+1. `Planner`: use the unified stepper (`Target -> Segments -> Scan Definition -> Constraints -> Validate -> Save/Launch`).
+2. `Scan Definition` step: create path assets and attach them to scan segments.
+3. `Validate` step: fix structured issues before save/launch.
 4. `Settings`: tune MPC/simulation settings and click `Save Changes`.
 5. `Runner`: start/stop simulation and watch logs.
 6. `Viewer`: inspect motion/attitude behavior.
@@ -37,8 +37,8 @@ If you received a packaged archive:
 
 ### Mission Draft Recovery
 
-- Draft autosave runs every ~5 seconds in Mission Planner.
-- On reload, the UI offers recovery from the latest saved draft.
+- Draft autosave runs every ~5 seconds in Planner.
+- On reload, Planner shows a one-shot restore card with `Restore` and `Discard`.
 
 ### Mission Templates
 

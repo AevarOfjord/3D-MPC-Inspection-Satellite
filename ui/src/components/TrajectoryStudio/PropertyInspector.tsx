@@ -12,13 +12,24 @@ interface PropertyInspectorProps {
 export function PropertyInspector({ builder }: PropertyInspectorProps) {
     const { state, actions } = builder;
     const { selectedSegmentIndex } = state;
+    const issues = state.validationReport?.issues ?? [];
+    const hasIssueForPath = (pathFragment: string) =>
+        issues.some((issue) => issue.path.includes(pathFragment));
+    const issueMessageForPath = (pathFragment: string) =>
+        issues.find((issue) => issue.path.includes(pathFragment))?.message ?? null;
+    const startHasIssue =
+        hasIssueForPath('start_pose') ||
+        hasIssueForPath('start_target_id') ||
+        hasIssueForPath('epoch');
     
     if (selectedSegmentIndex === null) return null;
     
     // --- Start Configuration Mode ---
     if (selectedSegmentIndex === -1) {
         return (
-            <div className="w-72 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-lg shadow-2xl flex flex-col max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <div className={`w-72 bg-slate-950/90 backdrop-blur-md border rounded-lg shadow-2xl flex flex-col max-h-[80vh] overflow-y-auto custom-scrollbar ${
+                startHasIssue ? 'border-amber-500/70' : 'border-slate-800'
+            }`}>
                 <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
                     <div className="flex items-center gap-2">
                         <Settings size={16} className="text-emerald-400" />
@@ -29,6 +40,11 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                     </button>
                 </div>
                 <div className="p-3 space-y-4">
+                    {startHasIssue && (
+                        <div className="text-[10px] text-amber-200 bg-amber-950/50 border border-amber-700/60 rounded px-2 py-1.5">
+                            Start configuration has validation issues. Review frame/target/position values.
+                        </div>
+                    )}
                      {/* Frame Selection */}
                      <div>
                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
@@ -117,6 +133,10 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
     
     const segment = state.segments[selectedSegmentIndex];
     if (!segment) return null;
+    const segmentPathPrefix = `segments[${selectedSegmentIndex}]`;
+    const segmentHasIssues = hasIssueForPath(segmentPathPrefix);
+    const targetIssue = issueMessageForPath(`${segmentPathPrefix}.target_id`);
+    const pathAssetIssue = issueMessageForPath(`${segmentPathPrefix}.path_asset`);
 
     const updateTransferConfig = (patch: any) => {
         const s = segment as TransferSegment;
@@ -127,7 +147,9 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
     };
 
     return (
-        <div className="w-72 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-lg shadow-2xl flex flex-col max-h-[80vh] overflow-y-auto custom-scrollbar">
+        <div className={`w-72 bg-slate-950/90 backdrop-blur-md border rounded-lg shadow-2xl flex flex-col max-h-[80vh] overflow-y-auto custom-scrollbar ${
+            segmentHasIssues ? 'border-amber-500/70' : 'border-slate-800'
+        }`}>
             {/* Header */}
             <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
                 <div className="flex items-center gap-2">
@@ -140,6 +162,11 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
             </div>
 
             <div className="p-3 space-y-4">
+                {segmentHasIssues && (
+                    <div className="text-[10px] text-amber-200 bg-amber-950/50 border border-amber-700/60 rounded px-2 py-1.5">
+                        This segment has validation issues. Open the Validate step for full details.
+                    </div>
+                )}
                 {/* Common Props */}
                 <div>
                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Type</label>
@@ -262,7 +289,9 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                                     const targetPos = target ? (target.position_m as [number, number, number]) : undefined;
                                     actions.assignScanTarget(targetId, targetPos);
                                 }}
-                                className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
+                                className={`w-full bg-slate-900/50 border text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500 ${
+                                    targetIssue ? 'border-amber-500/70' : 'border-slate-700'
+                                }`}
                             >
                                 <option value="">Select Object...</option>
                                 {orbitSnapshot.objects.map(obj => (
@@ -273,6 +302,9 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                                 <div className="text-[10px] text-amber-400 mt-1">
                                     Select the object the scan path is relative to.
                                 </div>
+                            )}
+                            {targetIssue && (
+                                <div className="text-[10px] text-amber-300 mt-1">{targetIssue}</div>
                             )}
                         </div>
 
@@ -289,7 +321,9 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                                         path_asset: e.target.value || undefined,
                                     });
                                 }}
-                                className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
+                                className={`w-full bg-slate-900/50 border text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500 ${
+                                    pathAssetIssue ? 'border-amber-500/70' : 'border-slate-700'
+                                }`}
                             >
                                 <option value="">Select Path Asset...</option>
                                 {state.pathAssets.map((asset) => (
@@ -300,8 +334,11 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                             </select>
                             {!(segment as ScanSegment).path_asset && (
                                 <div className="text-[10px] text-amber-400 mt-1">
-                                    Path assets are created in Scan Planner.
+                                    Path assets are created in the Scan Definition step.
                                 </div>
+                            )}
+                            {pathAssetIssue && (
+                                <div className="text-[10px] text-amber-300 mt-1">{pathAssetIssue}</div>
                             )}
                         </div>
                     </div>

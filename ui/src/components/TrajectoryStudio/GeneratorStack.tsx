@@ -21,18 +21,21 @@ import { CSS } from '@dnd-kit/utilities';
 
 interface GeneratorStackProps {
     builder: ReturnType<typeof useMissionBuilder>;
+    showExecutionActions?: boolean;
 }
 
 function SortableItem({
     id,
     segment,
     isSelected,
+    issueCount,
     onSelect,
     onRemove
 }: {
     id: string;
     segment: MissionSegment;
     isSelected: boolean;
+    issueCount: number;
     onSelect: () => void;
     onRemove: (e: React.MouseEvent) => void;
 }) {
@@ -95,6 +98,11 @@ function SortableItem({
 
             {/* Actions (visible on hover or select) */}
             <div className={`flex items-center gap-1 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                {issueCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full border border-amber-500/50 bg-amber-900/40 text-[10px] text-amber-100">
+                        {issueCount}
+                    </span>
+                )}
                 <button
                    onClick={onRemove}
                    className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-red-400"
@@ -111,11 +119,21 @@ function SortableItem({
     );
 }
 
-export function GeneratorStack({ builder }: GeneratorStackProps) {
+export function GeneratorStack({ builder, showExecutionActions = true }: GeneratorStackProps) {
     const { state, actions } = builder;
     const { selectedSegmentIndex } = state;
 
     const items = state.segments.map((segment) => segment.segment_id);
+    const issues = state.validationReport?.issues ?? [];
+    const startIssueCount = issues.filter(
+        (issue) =>
+            issue.path.includes('start_pose') ||
+            issue.path.includes('start_target_id') ||
+            issue.path.includes('epoch')
+    ).length;
+    const issueCountBySegment = state.segments.map((_, idx) =>
+        issues.filter((issue) => issue.path.includes(`segments[${idx}]`)).length
+    );
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -173,6 +191,11 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                              [{state.startPosition.map(v => v.toFixed(1)).join(', ')}]
                         </div>
                     </div>
+                    {startIssueCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full border border-amber-500/50 bg-amber-900/40 text-[10px] text-amber-100">
+                            {startIssueCount}
+                        </span>
+                    )}
                      {/* Selection Indicator */}
                     {selectedSegmentIndex === -1 && (
                         <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-cyan-500 rounded-l" />
@@ -196,6 +219,7 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                                 id={seg.segment_id}
                                 segment={seg}
                                 isSelected={selectedSegmentIndex === idx}
+                                issueCount={issueCountBySegment[idx] ?? 0}
                                 onSelect={() => actions.selectSegment(idx)}
                                 onRemove={(e) => { e.stopPropagation(); actions.removeSegment(idx); } }
                             />
@@ -220,25 +244,26 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                  </div>
             </div>
 
-            {/* Action Bar */}
-            <div className="p-3 border-t border-slate-800 bg-slate-900/50 flex gap-2">
-                 <button
-                    onClick={() => actions.generateUnifiedPath()}
-                    disabled={state.loading}
-                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase flex items-center justify-center gap-2 border border-slate-700 transition-all"
-                 >
-                     <RefreshCw size={14} className={state.loading ? 'animate-spin' : ''} />
-                     PREVIEW
-                 </button>
-                 <button
-                    onClick={() => actions.handleSaveUnifiedMission()}
-                    disabled={state.loading}
-                    className="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(8,145,178,0.4)] transition-all"
-                 >
-                     <Save size={14} />
-                     SAVE
-                 </button>
-            </div>
+            {showExecutionActions && (
+                <div className="p-3 border-t border-slate-800 bg-slate-900/50 flex gap-2">
+                     <button
+                        onClick={() => actions.generateUnifiedPath()}
+                        disabled={state.loading}
+                        className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase flex items-center justify-center gap-2 border border-slate-700 transition-all"
+                     >
+                         <RefreshCw size={14} className={state.loading ? 'animate-spin' : ''} />
+                         PREVIEW
+                     </button>
+                     <button
+                        onClick={() => actions.handleSaveUnifiedMission()}
+                        disabled={state.loading}
+                        className="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(8,145,178,0.4)] transition-all"
+                     >
+                         <Save size={14} />
+                         SAVE
+                     </button>
+                </div>
+            )}
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { MissionDraftResponse } from '../api/unifiedMissionApi';
 import type { UnifiedMission } from '../api/unifiedMission';
@@ -22,6 +22,13 @@ interface UseMissionDraftLifecycleArgs {
   isManualMode: boolean;
 }
 
+type PendingDraftRestore = {
+  draftId: string;
+  savedAt: string;
+  mission: UnifiedMission;
+  fallbackName?: string;
+};
+
 export function useMissionDraftLifecycle({
   storageKey,
   loadDraftById,
@@ -41,6 +48,8 @@ export function useMissionDraftLifecycle({
   isManualMode,
 }: UseMissionDraftLifecycleArgs) {
   const restoreAttemptedRef = useRef(false);
+  const [pendingDraftRestore, setPendingDraftRestore] =
+    useState<PendingDraftRestore | null>(null);
 
   useEffect(() => {
     if (restoreAttemptedRef.current) return;
@@ -52,17 +61,28 @@ export function useMissionDraftLifecycle({
     loadDraftById(storedDraftId)
       .then((draft) => {
         onDraftMetadata(draft.draft_id, draft.revision, draft.saved_at);
-        const shouldRestore = window.confirm(
-          `Restore mission draft from ${new Date(draft.saved_at).toLocaleString()}?`
-        );
-        if (shouldRestore) {
-          onRestoreMission(draft.mission, draft.mission.name);
-        }
+        setPendingDraftRestore({
+          draftId: draft.draft_id,
+          savedAt: draft.saved_at,
+          mission: draft.mission,
+          fallbackName: draft.mission.name,
+        });
       })
       .catch(() => {
         window.localStorage.removeItem(storageKey);
       });
   }, [storageKey, loadDraftById, onDraftMetadata, onRestoreMission]);
+
+  const restorePendingDraft = () => {
+    if (!pendingDraftRestore) return;
+    onRestoreMission(pendingDraftRestore.mission, pendingDraftRestore.fallbackName);
+    setPendingDraftRestore(null);
+  };
+
+  const discardPendingDraft = () => {
+    window.localStorage.removeItem(storageKey);
+    setPendingDraftRestore(null);
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -85,4 +105,14 @@ export function useMissionDraftLifecycle({
     previewPathPoints,
     isManualMode,
   ]);
+
+  return {
+    state: {
+      pendingDraftRestore,
+    },
+    actions: {
+      restorePendingDraft,
+      discardPendingDraft,
+    },
+  };
 }

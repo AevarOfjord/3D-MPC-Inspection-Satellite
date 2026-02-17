@@ -15,45 +15,29 @@ const RunnerView = lazy(() =>
   import('./components/RunnerWindow').then((m) => ({ default: m.RunnerView }))
 );
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Terminal, Rocket, Database, FileText, Target, Settings } from 'lucide-react';
+import { Monitor, Terminal, Rocket, Database, FileText, Settings } from 'lucide-react';
+import { useDialog } from './feedback/feedbackContext';
+import { parseStoredAppMode, type AppMode } from './utils/appMode';
 const SimulationDataView = lazy(() =>
   import('./components/SimulationDataView').then((m) => ({ default: m.SimulationDataView }))
 );
 const MPCSettingsView = lazy(() =>
   import('./components/MPCSettingsView').then((m) => ({ default: m.MPCSettingsView }))
 );
-const MissionModeView = lazy(() =>
-  import('./components/modes/MissionModeView').then((m) => ({ default: m.MissionModeView }))
-);
-const ScanModeView = lazy(() =>
-  import('./components/modes/ScanModeView').then((m) => ({ default: m.ScanModeView }))
+const PlannerModeView = lazy(() =>
+  import('./components/modes/PlannerModeView').then((m) => ({ default: m.PlannerModeView }))
 );
 const ViewerModeView = lazy(() =>
   import('./components/modes/ViewerModeView').then((m) => ({ default: m.ViewerModeView }))
 );
 import { ORBIT_SCALE } from './data/orbitSnapshot';
 
-type AppMode = 'viewer' | 'mission' | 'scan' | 'runner' | 'data' | 'settings';
 const APP_MODE_STORAGE_KEY = 'mission_control_app_mode_v1';
-
-function parseAppMode(value: unknown): AppMode | null {
-  if (
-    value === 'viewer' ||
-    value === 'mission' ||
-    value === 'scan' ||
-    value === 'runner' ||
-    value === 'data' ||
-    value === 'settings'
-  ) {
-    return value;
-  }
-  return null;
-}
 
 function getInitialAppMode(): AppMode {
   try {
     const raw = window.localStorage.getItem(APP_MODE_STORAGE_KEY);
-    const parsed = parseAppMode(raw);
+    const parsed = parseStoredAppMode(raw);
     if (parsed) return parsed;
   } catch {
     // no-op: fallback below
@@ -63,6 +47,7 @@ function getInitialAppMode(): AppMode {
 }
 
 function App() {
+  const dialog = useDialog();
   const [viewMode, setViewMode] = useState<'free' | 'chase' | 'top'>(() =>
     getInitialAppMode() === 'viewer' ? 'chase' : 'free'
   );
@@ -81,15 +66,14 @@ function App() {
     if (is3DPrefetchedRef.current) return;
     is3DPrefetchedRef.current = true;
     void Promise.all([
-      import('./components/modes/MissionModeView'),
-      import('./components/modes/ScanModeView'),
+      import('./components/modes/PlannerModeView'),
       import('./components/modes/ViewerModeView'),
     ]);
   };
 
-  const ensureCanLeaveSettings = (): boolean => {
+  const ensureCanLeaveSettings = async (): Promise<boolean> => {
     if (appMode === 'settings' && settingsDirty) {
-      return window.confirm(
+      return dialog.confirm(
         'You have unsaved settings changes. Leave Settings and discard unsaved edits?'
       );
     }
@@ -99,33 +83,34 @@ function App() {
   // Mode Switch Handlers
   const switchToViewer = () => {
       preload3DModules();
-      if (!ensureCanLeaveSettings()) return;
-      setAppMode('viewer');
-      setViewMode('chase'); // Default to chase in viewer
+      void ensureCanLeaveSettings().then((canLeave) => {
+        if (!canLeave) return;
+        setAppMode('viewer');
+        setViewMode('chase'); // Default to chase in viewer
+      });
   };
 
-  const switchToMissionPlanner = () => {
+  const switchToPlanner = () => {
       preload3DModules();
-      if (!ensureCanLeaveSettings()) return;
-      setAppMode('mission');
-      setViewMode('free'); // Free cam for planning
-  };
-
-  const switchToScanPlanner = () => {
-      preload3DModules();
-      if (!ensureCanLeaveSettings()) return;
-      setAppMode('scan');
-      setViewMode('free'); // Free cam for scan planning
+      void ensureCanLeaveSettings().then((canLeave) => {
+        if (!canLeave) return;
+        setAppMode('planner');
+        setViewMode('free'); // Free cam for planning
+      });
   };
 
   const switchToRunner = () => {
-      if (!ensureCanLeaveSettings()) return;
-      setAppMode('runner');
+      void ensureCanLeaveSettings().then((canLeave) => {
+        if (!canLeave) return;
+        setAppMode('runner');
+      });
   };
 
   const switchToDataView = () => {
-      if (!ensureCanLeaveSettings()) return;
-      setAppMode('data');
+      void ensureCanLeaveSettings().then((canLeave) => {
+        if (!canLeave) return;
+        setAppMode('data');
+      });
   };
 
   const switchToSettings = () => {
@@ -141,7 +126,7 @@ function App() {
   }, [appMode]);
 
   useEffect(() => {
-    if (appMode !== 'scan') return;
+    if (appMode !== 'planner' || builder.state.authoringStep !== 'scan_definition') return;
     const selectedObjectId = builder.state.selectedObjectId;
     const editingWaypoint = Boolean(
       selectedObjectId &&
@@ -194,6 +179,7 @@ function App() {
     builder.state.selectedScanCenterHandle,
     builder.state.selectedKeyLevelHandle,
     builder.state.selectedConnectorControl,
+    builder.state.authoringStep,
   ]);
 
   return (
@@ -224,30 +210,17 @@ function App() {
                 VIEWER
               </button>
               <button
-                onClick={switchToMissionPlanner}
+                onClick={switchToPlanner}
                 onMouseEnter={preload3DModules}
                 onFocus={preload3DModules}
                 className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'mission' 
-                    ? 'bg-purple-600 text-white shadow-sm' 
+                  appMode === 'planner'
+                    ? 'bg-teal-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
                 <FileText size={14} />
-                MISSION PLANNER
-              </button>
-              <button
-                onClick={switchToScanPlanner}
-                onMouseEnter={preload3DModules}
-                onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'scan' 
-                    ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
-                }`}
-              >
-                <Target size={14} />
-                SCAN PLANNER
+                PLANNER
               </button>
               <button
                 onClick={switchToRunner}
@@ -348,15 +321,9 @@ function App() {
       {/* Main Layout Area */}
       <main className="flex-1 relative flex overflow-hidden">
         
-        {appMode === 'mission' && (
-            <Suspense fallback={<ModeLoading label="Loading Mission Planner..." />}>
-              <MissionModeView viewMode={viewMode} builder={builder} />
-            </Suspense>
-        )}
-
-        {appMode === 'scan' && (
-            <Suspense fallback={<ModeLoading label="Loading Scan Planner..." />}>
-              <ScanModeView viewMode={viewMode} builder={builder} />
+        {appMode === 'planner' && (
+            <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
+              <PlannerModeView viewMode={viewMode} builder={builder} />
             </Suspense>
         )}
         {appMode === 'runner' && (

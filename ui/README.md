@@ -50,8 +50,8 @@ npm run dev
 Startup behavior:
 - The UI remembers the last selected top-level tab.
 - First launch defaults to `Runner` to avoid loading the 3D stack until needed.
-- Hovering/focusing `Viewer`, `Mission Planner`, or `Scan Planner` prefetches 3D modules for faster open.
-- `Viewer`, `Mission Planner`, and `Scan Planner` are loaded as separate lazy mode chunks.
+- Hovering/focusing `Viewer` or `Planner` prefetches 3D modules for faster open.
+- `Viewer` and unified `Planner` are loaded as separate lazy mode chunks.
 - Playback/Data run lists auto-refresh every 5 seconds and when the window regains focus.
 - Playback/Data also receive backend push updates over `/simulations/runs/ws` for near-instant new-run discovery.
 
