@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 from satellite_control.dashboard.app import app
 from satellite_control.dashboard.routes import runner as runner_routes
 from satellite_control.mission import repository as mission_repo

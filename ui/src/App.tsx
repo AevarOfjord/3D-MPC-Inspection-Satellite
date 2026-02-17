@@ -142,6 +142,19 @@ function App() {
 
   useEffect(() => {
     if (appMode !== 'scan') return;
+    const selectedObjectId = builder.state.selectedObjectId;
+    const editingWaypoint = Boolean(
+      selectedObjectId &&
+        (selectedObjectId.startsWith('waypoint-') || selectedObjectId.startsWith('spline-'))
+    );
+    const editingScanControls =
+      editingWaypoint ||
+      builder.state.centerDragActive ||
+      !!builder.state.selectedProjectScanPlaneHandle ||
+      !!builder.state.selectedScanCenterHandle ||
+      !!builder.state.selectedKeyLevelHandle ||
+      !!builder.state.selectedConnectorControl;
+    if (editingScanControls) return;
     const path = builder.state.previewPath;
     if (!path || path.length === 0) return;
     let minX = path[0][0];
@@ -172,7 +185,16 @@ function App() {
       [center[0] * ORBIT_SCALE, center[1] * ORBIT_SCALE, center[2] * ORBIT_SCALE],
       distance * ORBIT_SCALE
     );
-  }, [appMode, builder.state.previewPath]);
+  }, [
+    appMode,
+    builder.state.previewPath,
+    builder.state.selectedObjectId,
+    builder.state.centerDragActive,
+    builder.state.selectedProjectScanPlaneHandle,
+    builder.state.selectedScanCenterHandle,
+    builder.state.selectedKeyLevelHandle,
+    builder.state.selectedConnectorControl,
+  ]);
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200">

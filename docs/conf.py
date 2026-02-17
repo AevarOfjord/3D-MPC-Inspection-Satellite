@@ -3,13 +3,12 @@
 import os
 import sys
 
-# Add source directory to path for autodoc
-sys.path.insert(0, os.path.abspath(".."))
-sys.path.insert(0, os.path.abspath("../src"))
+# Add Python package source directory for autodoc
+sys.path.insert(0, os.path.abspath("../src/python"))
 
 # -- Project information -----------------------------------------------------
 project = "Satellite Control System"
-copyright = "2024, Aevar Ofjord"
+copyright = "2026, Aevar Ofjord"
 author = "Aevar Ofjord"
 release = "1.0.0"  # Keep in sync with pyproject.toml
 
@@ -18,7 +17,6 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
     "myst_parser",  # For markdown support
 ]
@@ -52,7 +50,7 @@ autodoc_default_options = {
 }
 autodoc_typehints = "description"
 autodoc_typehints_format = "short"
-autodoc_mock_imports = ["osqp", "gurobipy"]  # Mock external dependencies
+autodoc_mock_imports = ["osqp"]  # Mock optional solver dependency during docs builds
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "sphinx_rtd_theme"
@@ -61,9 +59,3 @@ html_title = "Satellite Thruster Control System"
 
 # Create _static if it doesn't exist
 os.makedirs("_static", exist_ok=True)
-
-# Intersphinx mapping
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "numpy": ("https://numpy.org/doc/stable/", None),
-}

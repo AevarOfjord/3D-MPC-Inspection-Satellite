@@ -38,7 +38,7 @@ pip install pytest pytest-cov
 ### Run Your First Simulation Test
 
 ```bash
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 ```
 
 Select a saved unified mission from `missions/` to run a basic test.
@@ -50,7 +50,7 @@ Select a saved unified mission from `missions/` to run a basic test.
 ### Interactive Mode
 
 ```bash
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 ```
 
 **Use Cases:**
@@ -63,13 +63,13 @@ python run_simulation.py run
 
 ```bash
 # Default auto mode
-python run_simulation.py run --auto
+.venv311/bin/python scripts/run_simulation.py run --auto
 
 # Custom duration
-python run_simulation.py run --auto --duration 30.0
+.venv311/bin/python scripts/run_simulation.py run --auto --duration 30.0
 
 # Headless (no visualization)
-python run_simulation.py run --no-anim --auto
+.venv311/bin/python scripts/run_simulation.py run --no-anim --auto
 ```
 
 ### Mission Flow for Testing
@@ -238,7 +238,7 @@ with pytest.raises(ValueError, match="error message"):
 ```python
 # conftest.py
 import pytest
-from src.satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.config.simulation_config import SimulationConfig
 
 @pytest.fixture
 def satellite_params():
@@ -353,7 +353,7 @@ for q_pos in q_positions:
         # Update config (or use environment variables)
         # Run simulation
         subprocess.run([
-            'python', 'run_simulation.py', 'run',
+            '.venv311/bin/python', 'scripts/run_simulation.py', 'run',
             '--auto', '--no-anim', '--duration', '20'
         ])
         # Collect and analyze results
@@ -527,19 +527,19 @@ pip install pytest pytest-cov
 
 ```bash
 # Interactive test
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 
 # Fast automated test
-python run_simulation.py run --auto --no-anim --duration 10
+.venv311/bin/python scripts/run_simulation.py run --auto --no-anim --duration 10
 
 # Run pytest suite
 .venv311/bin/python -m pytest -v
 
 # Smoke-check CLI wiring with a saved mission
-python run_simulation.py run --mission missions/<YourMission>.json --no-anim
+.venv311/bin/python scripts/run_simulation.py run --mission missions/<YourMission>.json --no-anim
 
 # Generate plots from existing data
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 ```
 
 ---

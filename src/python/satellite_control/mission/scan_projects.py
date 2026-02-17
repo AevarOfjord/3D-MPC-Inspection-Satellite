@@ -259,12 +259,20 @@ def _generate_scan_path(
     plane_a = _to_vec3(scan.get("plane_a"), (0.0, 0.0, -0.5))
     plane_b = _to_vec3(scan.get("plane_b"), (0.0, 0.0, 0.5))
 
-    d_a = float(np.dot(plane_a - model_center, normal))
-    d_b = float(np.dot(plane_b - model_center, normal))
-    center_a = model_center + normal * d_a
-    center_b = model_center + normal * d_b
+    # Use the user-defined plane centers as the source of truth for the scan
+    # centerline. Keep the line axis-locked by projecting B onto the selected
+    # axis through A.
+    axis_span = float(np.dot(plane_b - plane_a, normal))
+    if abs(axis_span) < 1e-9:
+        # Fallback for degenerate input where A and B collapse along the axis.
+        axis_span = float(np.dot(plane_b - model_center, normal) - np.dot(plane_a - model_center, normal))
+    if abs(axis_span) < 1e-9:
+        axis_span = 1.0
 
-    scan_span = float(max(abs(d_b - d_a), 1e-6))
+    center_a = plane_a
+    center_b = plane_a + normal * axis_span
+
+    scan_span = float(max(abs(axis_span), 1e-6))
     spacing_raw = scan.get("level_spacing_m")
     if spacing_raw is None:
         spacing_raw = scan.get("level_spacing")

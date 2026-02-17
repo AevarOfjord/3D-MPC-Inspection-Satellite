@@ -20,7 +20,7 @@ simulation loop architecture.
 
 The active runtime is **path-based MPC only** using unified mission v2 JSON
 files. Missions are authored in the web UI, saved to `missions/`, then
-run from the terminal (`make sim` or `python run_simulation.py run --mission ...`).
+run from the terminal (`make sim` or `.venv311/bin/python scripts/run_simulation.py run --mission ...`).
 The simulation uses a high-fidelity custom C++ physics engine with MPC running
 at different rates for optimal performance.
 
@@ -29,7 +29,7 @@ at different rates for optimal performance.
 ```bash
 make sim
 # Or
-python run_simulation.py run --auto
+.venv311/bin/python scripts/run_simulation.py run --auto
 ```
 
 ---
@@ -233,13 +233,13 @@ Quick launch without interactive menu:
 
 ```bash
 # Auto mode with defaults
-python run_simulation.py run --auto
+.venv311/bin/python scripts/run_simulation.py run --auto
 
 # Custom duration
-python run_simulation.py run --duration 30.0
+.venv311/bin/python scripts/run_simulation.py run --duration 30.0
 
 # Headless mode (no animation)
-python run_simulation.py run --no-anim
+.venv311/bin/python scripts/run_simulation.py run --no-anim
 
 ```
 
@@ -317,7 +317,7 @@ All constants modifiable in `src/python/satellite_control/config/timing.py`.
 ### Interactive Mode (Default)
 
 ```bash
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 ```
 
 **Workflow:**
@@ -365,7 +365,7 @@ Data/
 **Check:**
 
 1. MPC solve times in `control_data.csv`
-2. Disable visualization: `python run_simulation.py run --no-anim`
+2. Disable visualization: `.venv311/bin/python scripts/run_simulation.py run --no-anim`
 3. Reduce horizon: Set `MPC_PREDICTION_HORIZON = 30`
 
 ### Physics Instability

@@ -125,7 +125,7 @@ def run(
         try:
             loaded_overrides = json.loads(cfg_path.read_text())
             if not isinstance(loaded_overrides, dict):
-                 console.print(f"[red]Config file must contain a JSON object.[/red]")
+                 console.print("[red]Config file must contain a JSON object.[/red]")
                  raise typer.Exit(code=1)
             config_overrides = loaded_overrides
             console.print(f"[green]Loaded configuration overrides from {cfg_path}[/green]")

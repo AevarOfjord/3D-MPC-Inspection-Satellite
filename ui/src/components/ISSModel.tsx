@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { ORBIT_SCALE } from '../data/orbitSnapshot';
+import { API_BASE_URL } from '../config/endpoints';
 
 interface ISSModelProps {
   position: [number, number, number];
@@ -11,7 +12,8 @@ interface ISSModelProps {
 }
 
 export function ISSModel({ position, orientation, scale = 1, realSpanMeters }: ISSModelProps) {
-  const gltf = useGLTF('/model_files/ISS/ISS.glb');
+  const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/ISS/ISS.glb')}`;
+  const gltf = useGLTF(modelUrl);
   const clonedObj = useMemo(() => {
     const clone = gltf.scene.clone();
     clone.traverse((child) => {

@@ -5,12 +5,11 @@ Tests core math functions, orbital dynamics equations, and navigation utilities.
 Consolidates `test_math_utils.py`, `test_orbital_mechanics.py`, and parts of `physics/test_orbital_dynamics.py`.
 """
 
-import math
 import numpy as np
 import pytest
 from satellite_control.utils.navigation_utils import (
-    normalize_angle,
     angle_difference,
+    normalize_angle,
     point_to_line_distance,
 )
 

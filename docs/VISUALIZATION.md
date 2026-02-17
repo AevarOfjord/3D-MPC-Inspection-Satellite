@@ -11,7 +11,7 @@ After each simulation run, the system automatically generates comprehensive visu
 ### Running a Simulation
 
 ```bash
-python run_simulation.py run
+.venv311/bin/python scripts/run_simulation.py run
 ```
 
 After the simulation completes, find your results:
@@ -171,7 +171,7 @@ start Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
 Generate detailed static plots on demand:
 
 ```bash
-python -m src.satellite_control.visualization.unified_visualizer
+.venv311/bin/python -m satellite_control.visualization.unified_visualizer
 ```
 
 This creates multiple PNG plots in the same `Data/Simulation/<timestamp>/Plots/` directory.
@@ -357,7 +357,7 @@ Thruster 3: ░░░░░░░░████░░  (fired for final correct
 Edit `src/python/satellite_control/visualization/plot_style.py` for shared defaults:
 
 ```python
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 
 # Figure sizing
 PlotStyle.FIGSIZE_SUBPLOTS = (12, 9)
@@ -390,7 +390,7 @@ For rendering quality and style changes, update `video_renderer.py` and
 ### Generating Only Specific Plots
 
 ```python
-from src.satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
+from satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
 
 viz = UnifiedVisualizationGenerator(data_directory="Data/Simulation")
 viz.load_csv_data()
@@ -442,7 +442,7 @@ plt.savefig('comparison.png')
 ### High-Quality Still Images
 
 ```python
-from src.satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
+from satellite_control.visualization.unified_visualizer import UnifiedVisualizationGenerator
 
 viz = UnifiedVisualizationGenerator(data_directory="Data/Simulation")
 viz.load_csv_data()
@@ -484,7 +484,7 @@ ffmpeg -i Simulation_3D_Render.mp4 -vf "fps=15,scale=800:-1" output.gif
 2. CSV files exist in `Data/Simulation/<timestamp>/`
 3. Run the visualizer manually:
    ```bash
-   python -m src.satellite_control.visualization.unified_visualizer
+   .venv311/bin/python -m satellite_control.visualization.unified_visualizer
    ```
 
 ### Animation File Corrupted
@@ -503,7 +503,7 @@ ffmpeg -i Simulation_3D_Render.mp4 -vf "fps=15,scale=800:-1" output.gif
 
 ```python
 # In plot_style.py
-from src.satellite_control.visualization.plot_style import PlotStyle
+from satellite_control.visualization.plot_style import PlotStyle
 PlotStyle.DPI = 300
 
 # In video_renderer.py
@@ -569,7 +569,7 @@ After each simulation, you get:
 
 **Next Steps:**
 
-- Run a simulation: `python run_simulation.py run`
+- Run a simulation: `.venv311/bin/python scripts/run_simulation.py run`
 - Find your data: `ls Data/Simulation/`
 - Review the animation and plots
 - Iterate on MPC parameters if needed

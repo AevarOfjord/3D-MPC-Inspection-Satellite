@@ -3,6 +3,7 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Optimization: OSQP](https://img.shields.io/badge/Optimization-OSQP-green.svg)](https://osqp.org/)
+[![CI](https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/actions/workflows/ci.yml/badge.svg)](https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/actions/workflows/ci.yml)
 
 **A 6-DOF orbital inspection satellite simulation with path-based MPC, reaction wheels, and a web mission builder.**
 
@@ -54,6 +55,9 @@ make run-app
 # Open http://localhost:8000
 #
 # Dev mode (hot reload): make run
+
+# 3) Run the CLI directly (optional)
+.venv311/bin/python scripts/run_simulation.py run --auto --no-anim
 ```
 
 ## 📘 Usage Guide
@@ -70,16 +74,15 @@ It is not configured as an internet-facing hosted service by default.
 ## ✅ Known-Good Local Verification
 
 ```bash
-# Backend lint (high-signal correctness checks)
-.venv311/bin/python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
+# Canonical backend lint command
+make lint-backend
 
-# Backend tests
-.venv311/bin/python -m pytest -q
+# Backend tests with coverage gate
+make test-cov
 
 # Frontend quality/build checks
-cd ui
-npm run lint
-npm run build
+make lint-ui
+make ui-build
 ```
 
 ## 🧪 Tests
@@ -101,6 +104,13 @@ npm run build
 
 Mission definitions live in `missions/` (saved)
 and drive the path-following MPC setup.
+
+## 🤝 First Contribution
+
+- Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and workflow.
+- Please follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) in all project spaces.
+- Report vulnerabilities via [SECURITY.md](SECURITY.md).
+- Good first task: run `make lint-backend` and pick one lint/docs cleanup item from open issues.
 
 ## 📄 License
 

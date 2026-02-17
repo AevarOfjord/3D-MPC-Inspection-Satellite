@@ -4,6 +4,7 @@ import { useGLTF } from '@react-three/drei';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { orbitSnapshot, ORBIT_SCALE, EARTH_RADIUS_M } from '../data/orbitSnapshot';
+import { API_BASE_URL } from '../config/endpoints';
 import { StarlinkModel } from './StarlinkModel';
 import { ISSModel } from './ISSModel';
 
@@ -61,7 +62,8 @@ export function OrbitSnapshotLayer({
 }) {
   const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const earthRadius = EARTH_RADIUS_M * ORBIT_SCALE;
-  const earthGltf = useGLTF('/model_files/Earth/Earth.glb');
+  const earthModelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/Earth/Earth.glb')}`;
+  const earthGltf = useGLTF(earthModelUrl);
   const earthScale = useMemo(() => {
     const box = new THREE.Box3().setFromObject(earthGltf.scene);
     const size = new THREE.Vector3();

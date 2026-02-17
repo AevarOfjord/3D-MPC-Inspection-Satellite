@@ -200,3 +200,68 @@ def test_scan_project_compile_multi_scan_chain_validation_and_collision_fields()
 
     if project_path.exists():
         project_path.unlink()
+
+
+def test_scan_project_compile_translation_preserves_centerline_shift():
+    with TestClient(app) as client:
+        base = _default_scan_project('TestScanProject_Translation_Base')
+        base['scans'][0]['axis'] = 'X'
+        base['scans'][0]['plane_a'] = [-0.5, 0.0, 0.0]
+        base['scans'][0]['plane_b'] = [0.5, 0.0, 0.0]
+        base['scans'][0]['turns'] = 3.0
+
+        shifted = _default_scan_project('TestScanProject_Translation_Shifted')
+        shifted['scans'][0]['axis'] = 'X'
+        delta = [2.5, -1.2, 0.7]
+        shifted['scans'][0]['plane_a'] = [
+            base['scans'][0]['plane_a'][0] + delta[0],
+            base['scans'][0]['plane_a'][1] + delta[1],
+            base['scans'][0]['plane_a'][2] + delta[2],
+        ]
+        shifted['scans'][0]['plane_b'] = [
+            base['scans'][0]['plane_b'][0] + delta[0],
+            base['scans'][0]['plane_b'][1] + delta[1],
+            base['scans'][0]['plane_b'][2] + delta[2],
+        ]
+        shifted['scans'][0]['turns'] = 3.0
+
+        base_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': base,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert base_resp.status_code == 200
+        base_path = base_resp.json()['combined_path']
+        assert len(base_path) > 2
+
+        shifted_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': shifted,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert shifted_resp.status_code == 200
+        shifted_path = shifted_resp.json()['combined_path']
+        assert len(shifted_path) == len(base_path)
+
+        def _centroid(path: list[list[float]]) -> list[float]:
+            n = float(len(path))
+            return [
+                sum(p[0] for p in path) / n,
+                sum(p[1] for p in path) / n,
+                sum(p[2] for p in path) / n,
+            ]
+
+        c0 = _centroid(base_path)
+        c1 = _centroid(shifted_path)
+        actual_delta = [c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]]
+
+        tol = 1e-4
+        assert abs(actual_delta[0] - delta[0]) <= tol
+        assert abs(actual_delta[1] - delta[1]) <= tol
+        assert abs(actual_delta[2] - delta[2]) <= tol

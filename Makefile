@@ -50,14 +50,16 @@ else
 endif
 
 # Dependency/build settings.
-REQS_FILE ?= requirements.txt
 SYSTEM_CMAKE := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g; s|$(CURDIR)/$(VENV_BIN)||g') command -v cmake 2>/dev/null || echo "")
 UI_DIR ?= ui
 UI_NODE_MODULES := $(UI_DIR)/node_modules
 UI_LOCKFILES := $(UI_DIR)/package-lock.json $(UI_DIR)/package.json
+ASSET_MODEL_DIR := assets/model_files
+UI_DIST_MODEL_DIR := $(UI_DIR)/dist/model_files
 RELEASE_DIR ?= release
 APP_BUNDLE_NAME ?= satellite-control-app
 APP_BUNDLE_DIR := $(RELEASE_DIR)/$(APP_BUNDLE_NAME)
+PACKAGE_MAX_MB ?= 150
 # Stamp file used to avoid reinstalling Node dependencies on every `make run`.
 UI_DEPS_STAMP := $(UI_NODE_MODULES)/.deps-installed
 # Try to detect active scikit-build editable output directory.
@@ -66,13 +68,15 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 # Skip scikit-build editable runtime rebuild checks by default for faster startup.
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
+LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
+TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=src/python/satellite_control --cov-report=term-missing --cov-fail-under=30
 
 # ============================================================================
 # Help
 # ============================================================================
 
-.PHONY: help run run-app stop backend backend-prod frontend ui-build package-app package-clean \
-	sim install test lint clean rebuild \
+.PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-clean \
+	sim install test test-cov lint lint-backend lint-ui docs-build clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -86,12 +90,17 @@ help:
 	@echo "  make run          Start backend + frontend dev servers (stops existing instances first)"
 	@echo "  make run-app      Start backend only and serve prebuilt UI from ui/dist at :8000"
 	@echo "  make stop         Stop running backend and frontend processes"
+	@echo "  make sync-ui-model-assets Sync canonical assets/model_files -> ui/dist/model_files"
 	@echo "  make ui-build     Build production UI bundle into ui/dist"
 	@echo "  make package-app  Create distributable prebuilt app bundle under ./release"
 	@echo "  make package-clean Remove generated app bundles in ./release"
 	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
 	@echo "  make test         Run pytest suite"
-	@echo "  make lint         Lint Python + UI"
+	@echo "  make test-cov     Run pytest with coverage gate (>=30%)"
+	@echo "  make lint-backend Run backend lint checks (canonical command)"
+	@echo "  make lint-ui      Run frontend lint checks"
+	@echo "  make lint         Run backend + frontend lint checks"
+	@echo "  make docs-build   Build docs with warnings-as-errors"
 	@echo "  make clean        Remove venv, build artifacts, caches"
 	@echo ""
 
@@ -169,9 +178,15 @@ $(UI_DEPS_STAMP): $(UI_LOCKFILES)
 frontend: $(UI_DEPS_STAMP)
 	cd $(UI_DIR) && npm run dev
 
+# Keep `assets/model_files` as the canonical source and mirror into built UI assets.
+sync-ui-model-assets:
+	@mkdir -p "$(UI_DIST_MODEL_DIR)"
+	@rsync -a --delete "$(ASSET_MODEL_DIR)/" "$(UI_DIST_MODEL_DIR)/"
+
 # Build production UI assets consumed by backend-prod/run-app.
 ui-build: $(UI_DEPS_STAMP)
 	cd $(UI_DIR) && npm run build
+	@$(MAKE) sync-ui-model-assets
 
 # One-command app startup using prebuilt UI bundle.
 run-app: stop backend-prod
@@ -198,8 +213,11 @@ package-app: ui-build
 		--exclude '/build/' \
 		--exclude '/dist/' \
 		--exclude '/release/' \
+		--exclude '.venv311/' \
 		--exclude 'ui/node_modules/' \
 		--exclude 'ui/npm_cache/' \
+		--exclude 'ui/public/model_files/' \
+		--exclude 'ui/dist/model_files/' \
 		--exclude '/Data/Simulation/' \
 		./ "$(APP_BUNDLE_DIR)/"
 	@mkdir -p "$(APP_BUNDLE_DIR)/Data/Simulation"
@@ -222,7 +240,15 @@ package-app: ui-build
 	@chmod +x "$(APP_BUNDLE_DIR)/RUN_APP.command"
 	@ARCHIVE_PATH="$(RELEASE_DIR)/$(APP_BUNDLE_NAME)-$$(date +%Y%m%d_%H%M%S).tar.gz"; \
 	tar -czf "$$ARCHIVE_PATH" -C "$(RELEASE_DIR)" "$(APP_BUNDLE_NAME)"; \
-	echo "Created app archive: $$ARCHIVE_PATH"
+	ARCHIVE_BYTES=$$(wc -c < "$$ARCHIVE_PATH"); \
+	ARCHIVE_MB=$$(( (ARCHIVE_BYTES + 1048575) / 1048576 )); \
+	MAX_BYTES=$$(( $(PACKAGE_MAX_MB) * 1024 * 1024 )); \
+	if [ "$(PACKAGE_MAX_MB)" -gt 0 ] && [ "$$ARCHIVE_BYTES" -gt "$$MAX_BYTES" ]; then \
+		echo "Error: package archive exceeds limit ($${ARCHIVE_MB}MB > $(PACKAGE_MAX_MB)MB)."; \
+		echo "Set PACKAGE_MAX_MB=0 to disable the check intentionally."; \
+		exit 1; \
+	fi; \
+	echo "Created app archive: $$ARCHIVE_PATH ($${ARCHIVE_MB}MB)"
 
 # Remove generated distributable bundles.
 package-clean:
@@ -307,16 +333,13 @@ venv: check-python
 # Install Python deps and (re)build C++ extensions in editable mode.
 install: venv check-cmake
 	@echo ""
-	@echo "=== Installing Python dependencies ==="
-	$(VENV_PY) -m pip install -r $(REQS_FILE)
-	@echo ""
 	@echo "=== Installing C++ build dependencies ==="
 	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
 	@echo ""
-	@echo "=== Building C++ extensions ==="
+	@echo "=== Installing project + development dependencies ==="
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
-		$(VENV_PY) -m pip install --no-build-isolation -e .
+		$(VENV_PY) -m pip install --no-build-isolation -e ".[dev]"
 	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 # ============================================================================
@@ -327,10 +350,28 @@ install: venv check-cmake
 test:
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
 
-# Run Python + frontend lint checks.
-lint:
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
+# Run test suite with coverage quality gate.
+test-cov:
+	$(TEST_COV_CMD)
+
+# Build docs with warnings treated as errors.
+docs-build:
+	@if ! $(VENV_PY) -c "import sphinx, myst_parser" >/dev/null 2>&1; then \
+		echo "Missing docs dependencies. Install with: $(VENV_PY) -m pip install -e \".[docs]\""; \
+		exit 1; \
+	fi
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m sphinx -W -b html docs docs/_build/html
+
+# Canonical backend lint command reused by CI and README.
+lint-backend:
+	$(LINT_BACKEND_CMD)
+
+# Frontend lint command.
+lint-ui: $(UI_DEPS_STAMP)
 	cd ui && npx eslint .
+
+# Run Python + frontend lint checks.
+lint: lint-backend lint-ui
 
 # ============================================================================
 # Clean targets

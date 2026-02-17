@@ -9,8 +9,8 @@ import pytest
 from pydantic import ValidationError
 from satellite_control.config import physics as physics_cfg
 from satellite_control.config.models import SatellitePhysicalParams
+from satellite_control.config.presets import list_presets, load_preset
 from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.config.presets import load_preset, list_presets
 
 
 class TestConfigValidation:

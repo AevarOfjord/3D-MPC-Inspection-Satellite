@@ -30,7 +30,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: |
-            requirements.txt
+            pyproject.toml
             requirements.txt
 
       - name: Install system deps (Linux)
@@ -51,21 +51,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/
-          key: cpp-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/satellite_control/cpp/*.cpp') }}
+          key: cpp-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/cpp/**/*.cpp', 'src/cpp/**/*.hpp') }}
           restore-keys: cpp-${{ runner.os }}-
 
-      - name: Install Python deps
+      - name: Install project
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
-          python -m pip install --no-build-isolation -e .
+          make install
 
       - name: Lint Python
-        run: python -m ruff check src tests --select E9,F63,F7,F82,F401,F541,F841,E402,E722
+        run: make lint-backend
 
       - name: Run tests
-        run: python -m pytest -q --tb=short --cov=src/satellite_control --cov-report=term-missing
+        run: make test-cov
 
   ui:
     runs-on: ubuntu-latest
@@ -92,6 +89,48 @@ jobs:
       - name: Build UI
         run: npm run build
 
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install system deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential ffmpeg libeigen3-dev
+
+      - name: Install project
+        run: make install
+
+      - name: Build package (size budget enforced)
+        run: make package-app PACKAGE_MAX_MB=150
+
+      - name: Verify package excludes virtualenv
+        run: |
+          LATEST_TAR=$(ls -t release/satellite-control-app-*.tar.gz | head -n1)
+          test -n "$LATEST_TAR"
+          if tar -tzf "$LATEST_TAR" | grep -q '^satellite-control-app/.venv311/'; then
+            echo "Error: package archive contains .venv311/"
+            exit 1
+          fi
+
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -102,6 +141,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
 
       - name: Install doc deps
         run: |
@@ -126,7 +169,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: |
-            requirements.txt
+            pyproject.toml
             requirements.txt
 
       - name: Install system deps (Linux)
@@ -134,12 +177,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential ffmpeg libeigen3-dev
 
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
-          python -m pip install --no-build-isolation -e .
+      - name: Install project
+        run: make install
 
       - name: Run E2E simulation test
         env:

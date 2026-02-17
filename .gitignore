@@ -18,6 +18,7 @@ venv/
 build/
 develop-eggs/
 dist/
+release/
 downloads/
 eggs/
 .eggs/
@@ -55,10 +56,9 @@ node_modules/
 ui/node_modules/
 ui/npm_cache/
 ui/dist/
-
-# C++ extension artifacts
-src/satellite_control/cpp/*.so
-src/satellite_control/cpp/*.pyd
+ui/public/model_files/**/*.obj
+ui/public/model_files/**/*.mtl
+ui/public/model_files/**/*.usdz
 
 # Docker
 .dockerignore
@@ -67,4 +67,5 @@ src/satellite_control/cpp/*.pyd
 docs/_build/
 docs/_static/
 src/python/satellite_control/cpp/*.so
+src/python/satellite_control/cpp/*.pyd
 src/python/satellite_control/cpp/*.dylib

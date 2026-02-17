@@ -34,7 +34,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 ├── ui/                      # React + Three.js web interface
 ├── tests/                   # pytest test suite
 ├── docs/                    # Documentation
-├── run_simulation.py        # Simulation entry point
+├── scripts/run_simulation.py        # Simulation entry point
 ├── scripts/run_dashboard.py         # Dashboard entry point
 └── Makefile                 # Build targets
 ```
@@ -47,7 +47,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 
 | File | Purpose |
 |------|---------|
-| `run_simulation.py` | CLI entry → delegates to `cli.py` |
+| `scripts/run_simulation.py` | CLI entry → delegates to `cli.py` |
 | `scripts/run_dashboard.py` | Starts FastAPI server for web 3D visualization |
 | `Makefile` | Build targets: `sim`, `backend`, `frontend`, `install` |
 

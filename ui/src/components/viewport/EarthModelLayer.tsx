@@ -1,13 +1,15 @@
 import { useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { API_BASE_URL } from '../../config/endpoints';
 
 interface EarthModelLayerProps {
   earthRadius: number;
 }
 
 export function EarthModelLayer({ earthRadius }: EarthModelLayerProps) {
-  const earthGltf = useGLTF('/model_files/Earth/Earth.glb');
+  const earthModelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/Earth/Earth.glb')}`;
+  const earthGltf = useGLTF(earthModelUrl);
   const earthScale = useMemo(() => {
     const box = new THREE.Box3().setFromObject(earthGltf.scene);
     const size = new THREE.Vector3();
@@ -19,4 +21,3 @@ export function EarthModelLayer({ earthRadius }: EarthModelLayerProps) {
 
   return <primitive object={earthGltf.scene} scale={[earthScale, earthScale, earthScale]} />;
 }
-

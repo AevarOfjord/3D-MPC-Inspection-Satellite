@@ -5,8 +5,8 @@ Tests mission state management, serialization, and end-to-end mission execution 
 Combines `test_mission_state_refactor.py` and `test_unified_mission_workflow.py`.
 """
 
-from dataclasses import asdict
 import json
+from dataclasses import asdict
 
 from satellite_control.config.mission_state import MissionState, PathFollowingState
 from satellite_control.mission import repository as mission_repo

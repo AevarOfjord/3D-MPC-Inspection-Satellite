@@ -6,7 +6,7 @@ This guide explains how to run and interpret performance benchmarks for the Sate
 
 ```bash
 # Install benchmark dependencies
-pip install -e ".[dev]"
+pip install -e ".[dev,docs]"
 
 # Run all benchmarks
 .venv311/bin/python -m pytest tests/benchmarks/ --benchmark-only
@@ -198,7 +198,7 @@ Benchmarks run automatically in CI but don't fail the build:
 pip install pytest-benchmark
 
 # Or install all dev dependencies
-pip install -e ".[dev]"
+pip install -e ".[dev,docs]"
 ```
 
 ## Advanced Usage

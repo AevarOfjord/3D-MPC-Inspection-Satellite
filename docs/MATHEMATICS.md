@@ -1197,6 +1197,7 @@ $$\underline{\mathbf{x}} \leq \mathbf{x}_k \leq \overline{\mathbf{x}} \quad \for
 
 The model keeps the following variables:
 
+```python
 # Create continuous state variables with bounds
 
 x_vars = []
@@ -1208,8 +1209,7 @@ x*k = model.addVars(range(6), lb=state_lb, ub=state_ub, name=f"x*{k}")
 x_vars.append(x_k)
 
 # Result: x_vars[k][i] = state dimension i at time k, ∈ ℝ with bounds
-
-````
+```
 
 ### Constraint Structure
 
@@ -1219,7 +1219,7 @@ x_vars.append(x_k)
 # x[0] = x_current (exactly)
 for i in range(6):
     model.addConstr(x_vars[0][i] == x_current[i], name=f"init_{i}")
-````
+```
 
 Mathematically:
 $$x_{0,i} = x_{\text{current}, i} \quad \forall i \in \{0, 1, \ldots, 5\}$$

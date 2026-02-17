@@ -1,7 +1,6 @@
 import numpy as np
-
-from satellite_control.mission import unified_compiler
 from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.mission import unified_compiler
 from satellite_control.mission.unified_mission import (
     Frame,
     MissionDefinition,
