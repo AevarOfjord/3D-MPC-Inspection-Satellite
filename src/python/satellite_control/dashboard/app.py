@@ -6,6 +6,7 @@ registers route modules, and wires up lifecycle hooks.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from fastapi.responses import FileResponse
 
 from satellite_control.dashboard.routes import assets as asset_routes
 from satellite_control.dashboard.routes import missions as mission_routes
+from satellite_control.dashboard.routes import missions_v2 as mission_v2_routes
 from satellite_control.dashboard.routes import runner as runner_routes
 from satellite_control.dashboard.routes import simulations as sim_routes
 from satellite_control.dashboard.runner_manager import RunnerManager
@@ -25,7 +27,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
 # --- Shared constants ---
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+def _resolve_project_root() -> Path:
+    override = os.environ.get("SATELLITE_CONTROL_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path(__file__).resolve().parents[4]
+
+
+PROJECT_ROOT = _resolve_project_root()
 DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
 MODEL_ALLOWED_ROOTS = (
     (PROJECT_ROOT / "assets" / "model_files").resolve(),
@@ -88,7 +97,6 @@ app.add_middleware(
 )
 
 # --- Wire dependencies and register routers ---
-# --- Wire dependencies and register routers ---
 sim_routes.set_dependencies(sim_manager, DATA_DIR)
 mission_routes.set_dependencies(sim_manager)
 asset_routes.set_dependencies(PROJECT_ROOT, MODEL_ALLOWED_ROOTS)
@@ -96,6 +104,7 @@ runner_routes.set_runner_manager(runner_manager)
 
 app.include_router(sim_routes.router)
 app.include_router(mission_routes.router)
+app.include_router(mission_v2_routes.router)
 app.include_router(asset_routes.router)
 app.include_router(runner_routes.router)
 

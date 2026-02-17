@@ -27,11 +27,24 @@ If you received a packaged archive:
 
 ## 2) Main Web Workflow
 
-1. `Mission Planner` or `Scan Planner`: create/edit mission.
-2. `Settings`: tune MPC/simulation settings and click `Save Changes`.
-3. `Runner`: start/stop simulation and watch logs.
-4. `Viewer`: inspect motion/attitude behavior.
-5. `Data`: browse generated files and download artifacts.
+1. `Mission Planner`: use the V2 stepper (`Target -> Segments -> Constraints -> Validate -> Save/Launch`).
+2. `Scan Planner`: create path assets and attach them to scan segments.
+3. `Mission Validation`: fix structured issues before save/launch.
+4. `Settings`: tune MPC/simulation settings and click `Save Changes`.
+5. `Runner`: start/stop simulation and watch logs.
+6. `Viewer`: inspect motion/attitude behavior.
+7. `Data`: browse generated files and download artifacts.
+
+### Mission Draft Recovery
+
+- Draft autosave runs every ~5 seconds in Mission Planner.
+- On reload, the UI offers recovery from the latest saved draft.
+
+### Mission Templates
+
+- `Quick Inspect`
+- `Single Target Spiral`
+- `Transfer + Scan`
 
 ## 3) Build & Package From UI
 
@@ -82,7 +95,9 @@ make ui-build       # build production frontend bundle
 make run            # backend + Vite dev mode
 make run-app        # backend serves prebuilt UI on :8000
 make package-app    # create distributable bundle in ./release
+make package-pyinstaller  # build native PyInstaller artifact for current OS
 make stop           # stop app processes on known ports
+.venv311/bin/python scripts/migrate_missions_v1_to_v2.py missions_unified --recursive --output-dir missions_v2_migrated
 ```
 
 ## 7) Troubleshooting
@@ -94,3 +109,5 @@ make stop           # stop app processes on known ports
 - Import didn’t overwrite expected items:
   - re-run `Inspect Workspace`
   - verify global replace toggles and per-item selections
+- Mission save blocked by validation:
+  - open the `Validate` step and click issue rows to jump to affected fields

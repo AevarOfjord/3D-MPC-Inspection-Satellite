@@ -5,9 +5,11 @@ import type {
   ScanProject,
 } from '../types/scanProject';
 
+let idCounter = 0;
+
 export function makeId(prefix: string): string {
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${prefix}_${Date.now().toString(36)}_${rand}`;
+  idCounter += 1;
+  return `${prefix}_${idCounter.toString().padStart(6, '0')}`;
 }
 
 export function createDefaultKeyLevels(): ScanKeyLevel[] {
@@ -64,7 +66,7 @@ export function createDefaultScan(index = 1, axis: BodyAxis = 'Z'): ScanDefiniti
 
 export function createDefaultScanProject(objPath = ''): ScanProject {
   return {
-    schema_version: 1,
+    schema_version: 2,
     id: null,
     name: 'Scan Project 1',
     obj_path: objPath,

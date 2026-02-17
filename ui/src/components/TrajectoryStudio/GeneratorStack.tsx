@@ -23,17 +23,6 @@ interface GeneratorStackProps {
     builder: ReturnType<typeof useMissionBuilder>;
 }
 
-// Ensure items have unique IDs for dnd-kit
-// Since segments don't have IDs by default, we'll map them to an index-based ID for now,
-// but for robustness we should probably use stable IDs.
-// For this implementation, we will assume index stability is handled by parent re-render.
-// Actually, dnd-kit needs stable IDs. We will generate temporary IDs or use index strings if list is simple.
-// Using index strings "0", "1" etc is risky if items change.
-// But since we are modifying the list itself, let's use a wrapper with generated IDs if needed.
-// For now, let's use "segment-{index}" and hope for the best, or stable IDs if we had them.
-// We don't have stable IDs on segments. We will use index for now, but this is fragile.
-// Better to rely on index solely for lookups.
-
 function SortableItem({
     id,
     segment,
@@ -42,7 +31,6 @@ function SortableItem({
     onRemove
 }: {
     id: string;
-    index: number;
     segment: MissionSegment;
     isSelected: boolean;
     onSelect: () => void;
@@ -127,19 +115,7 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
     const { state, actions } = builder;
     const { selectedSegmentIndex } = state;
 
-    // Create stable-ish IDs for the list.
-    // Ideally we'd modify the segment type to include a UUID, but for now we'll construct them.
-    // NOTE: If segments change order, using index as ID in loop is problematic for DND.
-    // We strictly need stable IDs. Since we don't have them in the data model yet,
-    // let's rely on map `index` but be careful.
-    // Actually, `dnd-kit` needs to key off something persistent.
-    // We will generate a local map of IDs if needed, but let's try simple index-keying first
-    // knowing it might act weird on re-sort if not careful.
-    // A better approach for this MVP: Attach a temp ID to items in memory if needed,
-    // OR just fix the data model.
-    // Let's generate a list of strings "0", "1", etc. and assume standard sorting behavior.
-
-    const items = state.segments.map((_, i) => `${i}`);
+    const items = state.segments.map((segment) => segment.segment_id);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -150,11 +126,11 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        if (active.id !== over?.id) {
-            const oldIndex = parseInt(active.id as string);
-            const newIndex = parseInt(over?.id as string);
-            actions.reorderSegments(oldIndex, newIndex);
-        }
+        if (!over || active.id === over.id) return;
+        const oldIndex = state.segments.findIndex((segment) => segment.segment_id === active.id);
+        const newIndex = state.segments.findIndex((segment) => segment.segment_id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+        actions.reorderSegments(oldIndex, newIndex);
     };
 
     return (
@@ -216,12 +192,13 @@ export function GeneratorStack({ builder }: GeneratorStackProps) {
                     >
                         {state.segments.map((seg: MissionSegment, idx: number) => (
                             <SortableItem
-                                key={idx} // Using index as key is generally bad for DND but unavoidable without IDs
-                                id={`${idx}`}
+                                key={seg.segment_id}
+                                id={seg.segment_id}
                                 segment={seg}
                                 isSelected={selectedSegmentIndex === idx}
                                 onSelect={() => actions.selectSegment(idx)}
-                                onRemove={(e) => { e.stopPropagation(); actions.removeSegment(idx); } } index={0}                            />
+                                onRemove={(e) => { e.stopPropagation(); actions.removeSegment(idx); } }
+                            />
                         ))}
                     </SortableContext>
                 </DndContext>

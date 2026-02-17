@@ -67,6 +67,57 @@ def _compute_path_length(path: list[list[float]]) -> float:
     return float(np.sum(np.linalg.norm(arr[1:] - arr[:-1], axis=1)))
 
 
+def _deterministic_scan_id(scan: dict[str, Any], index: int) -> str:
+    existing = str(scan.get("id") or "").strip()
+    if existing:
+        return existing
+    name = str(scan.get("name") or f"scan_{index + 1}")
+    return f"scan_{index + 1:02d}_{_safe_id(name)}"
+
+
+def _normalize_scan_project_payload(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    scans_raw = data.get("scans") or []
+    scans: list[dict[str, Any]] = []
+    for index, scan in enumerate(scans_raw):
+        if not isinstance(scan, dict):
+            continue
+        scan_id = _deterministic_scan_id(scan, index)
+        key_levels = scan.get("key_levels") or []
+        normalized_key_levels: list[dict[str, Any]] = []
+        for level_index, level in enumerate(key_levels):
+            if not isinstance(level, dict):
+                continue
+            level_id = str(level.get("id") or f"{scan_id}_kl_{level_index + 1:02d}")
+            normalized_key_levels.append(
+                {
+                    **level,
+                    "id": level_id,
+                }
+            )
+        normalized_key_levels.sort(key=lambda item: float(item.get("t", 0.0)))
+        scans.append(
+            {
+                **scan,
+                "id": scan_id,
+                "key_levels": normalized_key_levels,
+            }
+        )
+
+    connectors_raw = data.get("connectors") or []
+    connectors: list[dict[str, Any]] = []
+    for index, connector in enumerate(connectors_raw):
+        if not isinstance(connector, dict):
+            continue
+        connector_id = str(connector.get("id") or f"connector_{index + 1:02d}")
+        connectors.append(
+            {
+                **connector,
+                "id": connector_id,
+            }
+        )
+    return scans, connectors
+
+
 def save_scan_project(data: dict[str, Any]) -> dict[str, Any]:
     _ensure_dir()
 
@@ -75,17 +126,15 @@ def save_scan_project(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Scan project name is required")
 
     project_id = str(data.get("id") or _safe_id(name))
-    scans = data.get("scans") or []
+    scans, connectors = _normalize_scan_project_payload(data)
     if not isinstance(scans, list) or len(scans) == 0:
         raise ValueError("Scan project requires at least one scan")
-
-    connectors = data.get("connectors") or []
     if not isinstance(connectors, list):
         raise ValueError("connectors must be a list")
 
     now_iso = datetime.now(UTC).isoformat()
     payload: dict[str, Any] = {
-        "schema_version": int(data.get("schema_version") or 1),
+        "schema_version": max(2, int(data.get("schema_version") or 0)),
         "id": project_id,
         "name": name,
         "obj_path": str(data.get("obj_path") or ""),

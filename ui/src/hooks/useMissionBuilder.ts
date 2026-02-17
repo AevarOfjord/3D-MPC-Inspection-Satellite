@@ -6,7 +6,10 @@ import {
   type ModelInfo,
 } from '../api/trajectory';
 import { scanProjectsApi } from '../api/scanProjects';
-import { unifiedMissionApi } from '../api/unifiedMissionApi';
+import {
+  unifiedMissionApi,
+  type ValidationReportV2,
+} from '../api/unifiedMissionApi';
 import { pathAssetsApi, type PathAssetSummary } from '../api/pathAssets';
 import type {
   MissionSegment,
@@ -42,8 +45,32 @@ import { ORBIT_SCALE } from '../data/orbitSnapshot';
 
 export type TransformMode = 'translate' | 'rotate';
 export type SelectionType = 'satellite' | 'reference' | `obstacle-${number}` | `waypoint-${number}` | `spline-${number}` | null;
+export type MissionAuthoringStep =
+  | 'target'
+  | 'segments'
+  | 'constraints'
+  | 'validate'
+  | 'save_launch';
+
+const DRAFT_ID_STORAGE_KEY = 'mission_control_draft_id_v2';
+
+let segmentCounter = 0;
+let missionCounter = 0;
+
+const nextSegmentId = (prefix: string) => {
+  segmentCounter += 1;
+  return `${prefix}_${segmentCounter.toString().padStart(4, '0')}`;
+};
+
+const nextMissionId = () => {
+  missionCounter += 1;
+  return `mission_${missionCounter.toString().padStart(6, '0')}`;
+};
 
 const defaultTransferSegment = (): TransferSegment => ({
+  segment_id: nextSegmentId('transfer'),
+  title: null,
+  notes: null,
   type: 'transfer',
   end_pose: { frame: 'ECI', position: [0, 0, 0] },
   constraints: { speed_max: 0.25, accel_max: 0.05, angular_rate_max: 0.1 },
@@ -63,6 +90,9 @@ const defaultScanConfig = (): ScanConfig => ({
 });
 
 const defaultScanSegment = (): ScanSegment => ({
+  segment_id: nextSegmentId('scan'),
+  title: null,
+  notes: null,
   type: 'scan',
   target_id: '',
   scan: defaultScanConfig(),
@@ -70,6 +100,9 @@ const defaultScanSegment = (): ScanSegment => ({
 });
 
 const defaultHoldSegment = (): HoldSegment => ({
+  segment_id: nextSegmentId('hold'),
+  title: null,
+  notes: null,
   type: 'hold',
   duration: 0,
   constraints: { speed_max: 0.1 },
@@ -238,11 +271,19 @@ export function useMissionBuilder() {
   const [centerDragActive, setCenterDragActive] = useState<boolean>(false);
 
   // Unified Mission (V2)
+  const [missionId, setMissionId] = useState<string>(() => nextMissionId());
+  const [missionName, setMissionName] = useState<string>('Mission_V2');
   const [epoch, setEpoch] = useState<string>(new Date().toISOString());
   const [segments, setSegments] = useState<MissionSegment[]>([]);
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
   const [splineControls, setSplineControls] = useState<SplineControl[]>([]);
   const [savedUnifiedMissions, setSavedUnifiedMissions] = useState<string[]>([]);
+  const [authoringStep, setAuthoringStep] = useState<MissionAuthoringStep>('target');
+  const [validationReport, setValidationReport] = useState<ValidationReportV2 | null>(null);
+  const [validationBusy, setValidationBusy] = useState<boolean>(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
   const computePathLength = (path: [number, number, number][]) => {
       if (!path || path.length < 2) return 0;
@@ -276,6 +317,48 @@ export function useMissionBuilder() {
       console.warn('Failed to load scan projects', err);
     });
   }, []);
+
+  useEffect(() => {
+    const storedDraftId = window.localStorage.getItem(DRAFT_ID_STORAGE_KEY);
+    if (!storedDraftId) return;
+    unifiedMissionApi
+      .loadDraft(storedDraftId)
+      .then((draft) => {
+        setDraftId(draft.draft_id);
+        setDraftRevision(draft.revision);
+        setDraftSavedAt(draft.saved_at);
+        const shouldRestore = window.confirm(
+          `Restore mission draft from ${new Date(draft.saved_at).toLocaleString()}?`
+        );
+        if (shouldRestore) {
+          applyLoadedMission(draft.mission, draft.mission.name);
+        }
+      })
+      .catch(() => {
+        window.localStorage.removeItem(DRAFT_ID_STORAGE_KEY);
+      });
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void saveMissionDraft().catch((err) => {
+        console.warn('Draft autosave failed', err);
+      });
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [
+    missionId,
+    missionName,
+    epoch,
+    startFrame,
+    startTargetId,
+    startPosition,
+    segments,
+    splineControls,
+    obstacles,
+    previewPath,
+    isManualMode,
+  ]);
 
   useEffect(() => {
     if (scanProject.scans.length === 0) {
@@ -1518,11 +1601,14 @@ export function useMissionBuilder() {
     }
 
     return {
+      schema_version: 2,
+      mission_id: missionId,
+      name: missionName,
       epoch,
       start_pose: resolvedStartPose,
-      start_target_id: resolvedStartTargetId, // Should be undefined if resolved, but kept if ECI? No, clean up.
-
+      start_target_id: resolvedStartTargetId,
       segments: segments.map((seg) => {
+        const segmentId = seg.segment_id || nextSegmentId(seg.type || 'segment');
         // Resolve Relative Transfers to Absolute ECI
         if (seg.type === 'transfer' && seg.end_pose.frame === 'LVLH' && seg.target_id) {
             const targetObj = orbitSnapshot.objects.find(o => o.id === seg.target_id);
@@ -1540,6 +1626,7 @@ export function useMissionBuilder() {
                 
                 return {
                     ...seg,
+                    segment_id: segmentId,
                     end_pose: {
                         frame: 'ECI',
                         position: absPos,
@@ -1555,17 +1642,27 @@ export function useMissionBuilder() {
           if (resolvedPose) {
             return {
               ...seg,
+              segment_id: segmentId,
               target_pose: resolvedPose,
             } as ScanSegment;
           }
         }
-        return seg;
+        return {
+          ...seg,
+          segment_id: segmentId,
+          title: seg.title ?? null,
+          notes: seg.notes ?? null,
+        };
       }),
       obstacles: obstacles.map((o) => ({
         position: [...o.position] as [number, number, number],
         radius: o.radius,
       })),
       overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+      metadata: {
+        version: Math.max(1, draftRevision ?? 1),
+        updated_at: new Date().toISOString(),
+      },
     };
   };
 
@@ -1585,29 +1682,48 @@ export function useMissionBuilder() {
       alert(validationError);
       return;
     }
+    const remoteValidation = await validateUnifiedMission();
+    if (!remoteValidation.valid) {
+      alert('Mission has validation errors. Open the Validate step to resolve them.');
+      setAuthoringStep('validate');
+      return;
+    }
     const name = prompt('Enter mission name (e.g. Starlink_Scan_M01):');
     if (!name) return;
     try {
-      await saveUnifiedMission(name);
+      const saved = await saveUnifiedMission(name);
+      setMissionId(saved.mission_id);
+      setMissionName(name);
       await refreshUnifiedMissions();
       alert(`Mission saved: ${name}`);
+      setAuthoringStep('save_launch');
     } catch (err: any) {
       console.error(err);
       alert(`Failed to save mission: ${err.message || err}`);
     }
   };
 
-  const loadUnifiedMission = async (name: string) => {
-    const mission = await unifiedMissionApi.loadMission(name);
+  const applyLoadedMission = (mission: UnifiedMission, fallbackName?: string) => {
+    setMissionId(mission.mission_id || nextMissionId());
+    setMissionName(mission.name || fallbackName || 'Mission_V2');
     setEpoch(mission.epoch);
     const hydratedSegments = mission.segments.map((seg) => {
+      const segWithId = {
+        ...seg,
+        segment_id: seg.segment_id || nextSegmentId(seg.type || 'segment'),
+        title: seg.title ?? null,
+        notes: seg.notes ?? null,
+      };
       if (seg.type === 'scan' && seg.target_id && !seg.target_pose) {
         const resolvedPose = resolveOrbitTargetPose(seg.target_id);
         if (resolvedPose) {
-          return { ...seg, target_pose: resolvedPose } as ScanSegment;
+          return {
+            ...segWithId,
+            target_pose: resolvedPose,
+          } as ScanSegment;
         }
       }
-      return seg;
+      return segWithId;
     });
     setSegments(hydratedSegments);
     setSplineControls(mission.overrides?.spline_controls || []);
@@ -1640,11 +1756,55 @@ export function useMissionBuilder() {
     }
     const firstScan = hydratedSegments.find(seg => seg.type === 'scan') as ScanSegment | undefined;
     setSelectedOrbitTargetId(firstScan?.target_id ?? null);
+    setValidationReport(null);
+  };
+
+  const loadUnifiedMission = async (name: string) => {
+    const mission = await unifiedMissionApi.loadMission(name);
+    applyLoadedMission(mission, name);
   };
 
   const pushUnifiedMission = async () => {
     const mission = buildUnifiedMission({ includeManualPath: true });
     return unifiedMissionApi.setMission(mission);
+  };
+
+  const validateUnifiedMission = async () => {
+    setValidationBusy(true);
+    try {
+      const mission = buildUnifiedMission({ includeManualPath: true });
+      const report = await unifiedMissionApi.validateMission(mission);
+      setValidationReport(report);
+      if (!report.valid && report.issues.length > 0) {
+        const firstIssue = report.issues[0];
+        const segmentMatch = /segments\[(\d+)\]/.exec(firstIssue.path);
+        if (segmentMatch) {
+          const segIndex = Number.parseInt(segmentMatch[1], 10);
+          if (!Number.isNaN(segIndex)) {
+            setSelectedSegmentIndex(segIndex);
+            setAuthoringStep('constraints');
+          }
+        } else {
+          setAuthoringStep('target');
+        }
+      }
+      return report;
+    } finally {
+      setValidationBusy(false);
+    }
+  };
+
+  const saveMissionDraft = async () => {
+    const mission = buildUnifiedMission({ includeManualPath: true });
+    const draft = await unifiedMissionApi.saveDraft(mission, {
+      draft_id: draftId ?? undefined,
+      base_revision: draftRevision ?? undefined,
+    });
+    setDraftId(draft.draft_id);
+    setDraftRevision(draft.revision);
+    setDraftSavedAt(draft.saved_at);
+    window.localStorage.setItem(DRAFT_ID_STORAGE_KEY, draft.draft_id);
+    return draft;
   };
 
   const generateUnifiedPath = async () => {
@@ -1653,6 +1813,12 @@ export function useMissionBuilder() {
         const validationError = validateScanSegments();
         if (validationError) {
           alert(validationError);
+          return;
+        }
+        const remoteValidation = await validateUnifiedMission();
+        if (!remoteValidation.valid) {
+          alert('Mission has validation errors. Resolve them before preview.');
+          setAuthoringStep('validate');
           return;
         }
         setIsManualMode(false);
@@ -1703,6 +1869,42 @@ export function useMissionBuilder() {
       setSelectedSegmentIndex(next.length - 1);
       return next;
     });
+  };
+
+  const applyMissionTemplate = (
+    template: 'quick_inspect' | 'single_target_spiral' | 'transfer_scan'
+  ) => {
+    const defaultTarget = selectedOrbitTargetId || orbitSnapshot.objects[0]?.id || '';
+    if (template === 'quick_inspect') {
+      const scan = defaultScanSegment();
+      scan.target_id = defaultTarget;
+      scan.scan.revolutions = 2;
+      scan.scan.standoff = 8;
+      setSegments([scan]);
+      setSelectedSegmentIndex(0);
+      setAuthoringStep('segments');
+      return;
+    }
+    if (template === 'single_target_spiral') {
+      const scan = defaultScanSegment();
+      scan.target_id = defaultTarget;
+      scan.scan.pattern = 'spiral';
+      scan.scan.revolutions = 4;
+      scan.scan.standoff = 10;
+      setSegments([scan]);
+      setSelectedSegmentIndex(0);
+      setAuthoringStep('segments');
+      return;
+    }
+    const transfer = defaultTransferSegment();
+    transfer.end_pose.position = [5, 0, 0];
+    transfer.target_id = defaultTarget || undefined;
+    const scan = defaultScanSegment();
+    scan.target_id = defaultTarget;
+    scan.scan.pattern = 'spiral';
+    setSegments([transfer, scan]);
+    setSelectedSegmentIndex(1);
+    setAuthoringStep('segments');
   };
 
   const removeSegment = (index: number) => {
@@ -2019,12 +2221,20 @@ export function useMissionBuilder() {
         compilePreviewState,
         compilePending,
         scanProjectAutoPreviewEnabled,
+        missionId,
+        missionName,
         epoch,
         segments,
         selectedSegmentIndex,
         splineControls,
         savedUnifiedMissions,
         selectedOrbitTargetId,
+        authoringStep,
+        validationReport,
+        validationBusy,
+        draftId,
+        draftRevision,
+        draftSavedAt,
         // History State
         canUndo: pathHistory.canUndo,
         canRedo: pathHistory.canRedo
@@ -2058,9 +2268,13 @@ export function useMissionBuilder() {
         setConnectMode,
         setConnectSourceEndpoint,
         setCompilePreviewState,
+        setMissionId,
+        setMissionName,
         setEpoch,
         setSelectedSegmentIndex,
-        setSegments
+        setSegments,
+        setAuthoringStep,
+        setValidationReport
     },
     actions: {
         handleFileUpload,
@@ -2127,6 +2341,10 @@ export function useMissionBuilder() {
         removeSplineControl,
         assignScanTarget,
         setSelectedOrbitTargetId,
+        setAuthoringStep,
+        validateUnifiedMission,
+        saveMissionDraft,
+        applyMissionTemplate,
         refreshUnifiedMissions,
         saveUnifiedMission,
         loadUnifiedMission,

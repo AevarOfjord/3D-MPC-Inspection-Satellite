@@ -22,6 +22,7 @@ Model Predictive Control system for satellite thruster control with a custom C++
    :maxdepth: 1
    :caption: Additional Documentation
 
+   V2_MIGRATION
    SIMULATION
    VISUALIZATION
    MATHEMATICS

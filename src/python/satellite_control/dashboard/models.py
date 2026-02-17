@@ -1,6 +1,6 @@
 """Pydantic request/response models for the dashboard API."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -209,7 +209,7 @@ class ScanConnectorModel(BaseModel):
 
 
 class ScanProjectModel(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 2
     id: str | None = None
     name: str
     obj_path: str
@@ -411,3 +411,150 @@ class SaveUnifiedMissionRequest(BaseModel):
 
 class RunMissionRequest(BaseModel):
     mission_name: str
+
+
+# ============================================================================
+# V2 mission authoring models
+# ============================================================================
+
+
+class MissionMetadataV2Model(BaseModel):
+    version: int = 1
+    created_at: str | None = None
+    updated_at: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class TransferSegmentV2Model(BaseModel):
+    segment_id: str
+    title: str | None = None
+    notes: str | None = None
+    type: Literal["transfer"]
+    target_id: str | None = None
+    end_pose: PoseModel
+    constraints: ConstraintsModel | None = None
+
+
+class ScanSegmentV2Model(BaseModel):
+    segment_id: str
+    title: str | None = None
+    notes: str | None = None
+    type: Literal["scan"]
+    target_id: str
+    target_pose: PoseModel | None = None
+    scan: ScanConfigModel
+    path_asset: str | None = None
+    constraints: ConstraintsModel | None = None
+
+
+class HoldSegmentV2Model(BaseModel):
+    segment_id: str
+    title: str | None = None
+    notes: str | None = None
+    type: Literal["hold"]
+    duration: float = 0.0
+    constraints: ConstraintsModel | None = None
+
+
+MissionSegmentV2Model = Annotated[
+    TransferSegmentV2Model | ScanSegmentV2Model | HoldSegmentV2Model,
+    Field(discriminator="type"),
+]
+
+
+class UnifiedMissionV2Model(BaseModel):
+    schema_version: Literal[2] = 2
+    mission_id: str
+    name: str
+    epoch: str
+    start_pose: PoseModel
+    start_target_id: str | None = None
+    segments: list[MissionSegmentV2Model]
+    obstacles: list[ObstacleModel] = Field(default_factory=list)
+    overrides: MissionOverridesModel | None = None
+    metadata: MissionMetadataV2Model = Field(default_factory=MissionMetadataV2Model)
+
+    @model_validator(mode="after")
+    def validate_v2_identity(self) -> "UnifiedMissionV2Model":
+        if not self.mission_id.strip():
+            raise ValueError("mission_id is required")
+        if not self.name.strip():
+            raise ValueError("name is required")
+        segment_ids = [segment.segment_id for segment in self.segments]
+        if len(segment_ids) != len(set(segment_ids)):
+            raise ValueError("segment_id values must be unique")
+        return self
+
+
+class MissionConstraintSummaryV2Model(BaseModel):
+    speed_max: float | None = None
+    accel_max: float | None = None
+    angular_rate_max: float | None = None
+
+
+class ValidationIssueV2Model(BaseModel):
+    code: str
+    severity: Literal["error", "warning", "info"] = "error"
+    path: str
+    message: str
+    suggestion: str | None = None
+
+
+class ValidationSummaryV2Model(BaseModel):
+    errors: int = 0
+    warnings: int = 0
+    info: int = 0
+
+
+class ValidationReportV2Model(BaseModel):
+    valid: bool
+    issues: list[ValidationIssueV2Model] = Field(default_factory=list)
+    summary: ValidationSummaryV2Model
+
+
+class PreviewMissionV2ResponseModel(BaseModel):
+    path: list[list[float]]
+    path_length: float
+    path_speed: float
+    eta_s: float
+    risk_flags: list[str] = Field(default_factory=list)
+    constraint_summary: MissionConstraintSummaryV2Model
+
+
+class SaveMissionV2Request(BaseModel):
+    name: str
+    mission: UnifiedMissionV2Model
+
+
+class SaveMissionV2ResponseModel(BaseModel):
+    mission_id: str
+    version: int
+    saved_at: str
+    filename: str
+
+
+class MissionSummaryV2Model(BaseModel):
+    name: str
+    mission_id: str
+    updated_at: str | None = None
+    segments_count: int
+    filename: str
+    schema_version: int = 2
+
+
+class MissionDraftSaveRequestV2Model(BaseModel):
+    draft_id: str | None = None
+    base_revision: int | None = None
+    mission: UnifiedMissionV2Model
+
+
+class MissionDraftResponseV2Model(BaseModel):
+    draft_id: str
+    revision: int
+    saved_at: str
+    mission: UnifiedMissionV2Model
+
+
+class LegacyMissionMigrateRequestV2Model(BaseModel):
+    payload: dict[str, Any]
+    name_hint: str | None = None

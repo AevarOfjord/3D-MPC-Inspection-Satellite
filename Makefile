@@ -59,6 +59,8 @@ UI_DIST_MODEL_DIR := $(UI_DIR)/dist/model_files
 RELEASE_DIR ?= release
 APP_BUNDLE_NAME ?= satellite-control-app
 APP_BUNDLE_DIR := $(RELEASE_DIR)/$(APP_BUNDLE_NAME)
+PYINSTALLER_APP_NAME ?= SatelliteControl
+PYINSTALLER_BUNDLE_DIR := $(RELEASE_DIR)/pyinstaller/$(PLATFORM)/$(PYINSTALLER_APP_NAME)
 PACKAGE_MAX_MB ?= 150
 # Stamp file used to avoid reinstalling Node dependencies on every `make run`.
 UI_DEPS_STAMP := $(UI_NODE_MODULES)/.deps-installed
@@ -75,8 +77,8 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHON
 # Help
 # ============================================================================
 
-.PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-clean \
-	sim install test test-cov lint lint-backend lint-ui docs-build clean rebuild \
+.PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
+	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-build clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -93,10 +95,14 @@ help:
 	@echo "  make sync-ui-model-assets Sync canonical assets/model_files -> ui/dist/model_files"
 	@echo "  make ui-build     Build production UI bundle into ui/dist"
 	@echo "  make package-app  Create distributable prebuilt app bundle under ./release"
+	@echo "  make package-pyinstaller Build OS-native PyInstaller bundle + archive under ./release"
+	@echo "  make smoke-pyinstaller Launch smoke test on latest PyInstaller bundle"
 	@echo "  make package-clean Remove generated app bundles in ./release"
 	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make test-cov     Run pytest with coverage gate (>=30%)"
+	@echo "  make test-ui      Run frontend unit/component tests (Vitest)"
+	@echo "  make test-ui-e2e  Run frontend Playwright smoke tests"
 	@echo "  make lint-backend Run backend lint checks (canonical command)"
 	@echo "  make lint-ui      Run frontend lint checks"
 	@echo "  make lint         Run backend + frontend lint checks"
@@ -255,6 +261,26 @@ package-clean:
 	@rm -rf "$(RELEASE_DIR)"
 	@echo "Removed $(RELEASE_DIR)"
 
+# Build OS-native PyInstaller bundle and archive.
+package-pyinstaller: ui-build
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -c "import satellite_control, fastapi, uvicorn" >/dev/null 2>&1; then \
+		echo "Runtime deps missing in $(VENV_DIR); running 'make install' first..."; \
+		$(MAKE) install || exit $$?; \
+	fi
+	@if ! $(VENV_PY) -c "import PyInstaller" >/dev/null 2>&1; then \
+		echo "PyInstaller missing in $(VENV_DIR); installing..."; \
+		$(VENV_PY) -m pip install "pyinstaller>=6.0.0" || exit $$?; \
+	fi
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" \
+		$(VENV_PY) scripts/build_pyinstaller_bundle.py --max-mb "$(PACKAGE_MAX_MB)"
+
+# Launch latest PyInstaller output and verify HTTP readiness.
+smoke-pyinstaller:
+	@$(MAKE) venv
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" \
+		$(VENV_PY) scripts/smoke_test_packaged_app.py
+
 # Run CLI simulation, repairing Python/build prerequisites when needed.
 sim:
 	@$(MAKE) venv
@@ -353,6 +379,14 @@ test:
 # Run test suite with coverage quality gate.
 test-cov:
 	$(TEST_COV_CMD)
+
+# Run frontend unit/component tests.
+test-ui: $(UI_DEPS_STAMP)
+	cd ui && npm run test
+
+# Run frontend E2E smoke tests.
+test-ui-e2e: $(UI_DEPS_STAMP)
+	cd ui && npm run test:e2e
 
 # Build docs with warnings treated as errors.
 docs-build:
