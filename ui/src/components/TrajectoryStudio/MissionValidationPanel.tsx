@@ -1,4 +1,5 @@
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
+import type { ValidationIssueV2 } from '../../api/unifiedMissionApi';
 
 interface MissionValidationPanelProps {
   builder: ReturnType<typeof useMissionBuilder>;
@@ -13,7 +14,7 @@ const severityClass: Record<'error' | 'warning' | 'info', string> = {
 export function MissionValidationPanel({ builder }: MissionValidationPanelProps) {
   const { state, actions } = builder;
   const report = state.validationReport;
-  const issues = report?.issues ?? [];
+  const issues: ValidationIssueV2[] = report?.issues ?? [];
 
   const navigateToIssue = (path: string) => {
     const match = /segments\[(\d+)\]/.exec(path);
@@ -52,7 +53,7 @@ export function MissionValidationPanel({ builder }: MissionValidationPanelProps)
         {issues.length === 0 ? (
           <div className="text-xs text-slate-400">No issues detected.</div>
         ) : (
-          issues.map((issue, idx) => (
+          issues.map((issue: ValidationIssueV2, idx: number) => (
             <button
               key={`${issue.code}-${idx}`}
               type="button"
@@ -74,4 +75,3 @@ export function MissionValidationPanel({ builder }: MissionValidationPanelProps)
     </div>
   );
 }
-
