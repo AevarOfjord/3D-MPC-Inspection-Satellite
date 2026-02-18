@@ -76,3 +76,19 @@ test('draft restore banner is one-shot and discard clears it', async ({ page }) 
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await expect(page.getByText('Restore mission draft from')).toHaveCount(0);
 });
+
+test('command palette and planner shortcuts work', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+K');
+  await expect(page.getByText('Command Palette')).toBeVisible();
+  await page.getByPlaceholder('Search commands...').fill('switch to planner');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Scan Definition' })).toBeVisible();
+
+  await page.keyboard.press('Alt+5');
+  await expect(page.getByRole('heading', { name: 'Validation' })).toBeVisible();
+
+  await page.click('body');
+  await page.keyboard.press('?');
+  await expect(page.getByText('Keyboard Shortcuts')).toBeVisible();
+});

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useMemo } from 'react';
 import { TelemetryBridge } from './components/TelemetryBridge';
 const EventLog = lazy(() =>
   import('./components/EventLog').then((m) => ({ default: m.EventLog }))
@@ -15,9 +15,12 @@ const RunnerView = lazy(() =>
   import('./components/RunnerWindow').then((m) => ({ default: m.RunnerView }))
 );
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Terminal, Rocket, Database, FileText, Settings } from 'lucide-react';
+import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard } from 'lucide-react';
 import { useDialog } from './feedback/feedbackContext';
 import { parseStoredAppMode, type AppMode } from './utils/appMode';
+import { type PlannerStep } from './utils/plannerValidation';
+import { CommandPalette, type CommandPaletteItem } from './components/CommandPalette';
+import { ShortcutHelpPanel } from './components/ShortcutHelpPanel';
 const SimulationDataView = lazy(() =>
   import('./components/SimulationDataView').then((m) => ({ default: m.SimulationDataView }))
 );
@@ -33,6 +36,25 @@ const ViewerModeView = lazy(() =>
 import { ORBIT_SCALE } from './data/orbitSnapshot';
 
 const APP_MODE_STORAGE_KEY = 'mission_control_app_mode_v1';
+const PLANNER_STEP_KEYS: Record<string, PlannerStep> = {
+  '1': 'target',
+  '2': 'segments',
+  '3': 'scan_definition',
+  '4': 'constraints',
+  '5': 'validate',
+  '6': 'save_launch',
+};
+
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    target.isContentEditable ||
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT'
+  );
+}
 
 function getInitialAppMode(): AppMode {
   try {
@@ -54,6 +76,8 @@ function App() {
   const [appMode, setAppMode] = useState<AppMode>(() => getInitialAppMode());
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [eventLogOpen, setEventLogOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
   const scanFocusRef = useRef<string>('');
@@ -117,6 +141,119 @@ function App() {
       setAppMode('settings');
   };
 
+  const jumpToPlannerStep = (step: PlannerStep) => {
+    if (appMode !== 'planner') {
+      switchToPlanner();
+    }
+    builder.actions.setAuthoringStep(step);
+  };
+
+  const commandItems = useMemo<CommandPaletteItem[]>(() => {
+    const items: CommandPaletteItem[] = [
+      {
+        id: 'mode-viewer',
+        label: 'Switch to Viewer',
+        shortcut: 'Ctrl/Cmd+1',
+        keywords: ['mode', 'viewer'],
+        onSelect: switchToViewer,
+      },
+      {
+        id: 'mode-planner',
+        label: 'Switch to Planner',
+        shortcut: 'Ctrl/Cmd+2',
+        keywords: ['mode', 'planner', 'mission'],
+        onSelect: switchToPlanner,
+      },
+      {
+        id: 'mode-runner',
+        label: 'Switch to Runner',
+        shortcut: 'Ctrl/Cmd+3',
+        keywords: ['mode', 'runner'],
+        onSelect: switchToRunner,
+      },
+      {
+        id: 'mode-data',
+        label: 'Switch to Data',
+        shortcut: 'Ctrl/Cmd+4',
+        keywords: ['mode', 'data'],
+        onSelect: switchToDataView,
+      },
+      {
+        id: 'mode-settings',
+        label: 'Switch to Settings',
+        shortcut: 'Ctrl/Cmd+5',
+        keywords: ['mode', 'settings'],
+        onSelect: switchToSettings,
+      },
+    ];
+
+    if (appMode === 'planner') {
+      items.push(
+        {
+          id: 'planner-step-target',
+          label: 'Go to Planner Step: Target',
+          shortcut: 'Alt+1',
+          onSelect: () => jumpToPlannerStep('target'),
+        },
+        {
+          id: 'planner-step-segments',
+          label: 'Go to Planner Step: Segments',
+          shortcut: 'Alt+2',
+          onSelect: () => jumpToPlannerStep('segments'),
+        },
+        {
+          id: 'planner-step-scan',
+          label: 'Go to Planner Step: Scan Definition',
+          shortcut: 'Alt+3',
+          onSelect: () => jumpToPlannerStep('scan_definition'),
+        },
+        {
+          id: 'planner-step-constraints',
+          label: 'Go to Planner Step: Constraints',
+          shortcut: 'Alt+4',
+          onSelect: () => jumpToPlannerStep('constraints'),
+        },
+        {
+          id: 'planner-step-validate',
+          label: 'Go to Planner Step: Validate',
+          shortcut: 'Alt+5',
+          onSelect: () => jumpToPlannerStep('validate'),
+        },
+        {
+          id: 'planner-step-save',
+          label: 'Go to Planner Step: Save/Launch',
+          shortcut: 'Alt+6',
+          onSelect: () => jumpToPlannerStep('save_launch'),
+        },
+        {
+          id: 'planner-validate',
+          label: 'Planner: Run Validation',
+          shortcut: 'Ctrl/Cmd+Shift+V',
+          onSelect: () => {
+            void builder.actions.validateUnifiedMission();
+          },
+        },
+        {
+          id: 'planner-save',
+          label: 'Planner: Save Mission',
+          shortcut: 'Ctrl/Cmd+S',
+          onSelect: () => {
+            void builder.actions.handleSaveUnifiedMission();
+          },
+        },
+        {
+          id: 'planner-launch',
+          label: 'Planner: Launch Mission',
+          shortcut: 'Ctrl/Cmd+Enter',
+          onSelect: () => {
+            void builder.actions.handleRun();
+          },
+        }
+      );
+    }
+    return items;
+  }, [appMode, builder.actions, switchToDataView, switchToPlanner, switchToRunner, switchToSettings, switchToViewer]);
+
   useEffect(() => {
     try {
       window.localStorage.setItem(APP_MODE_STORAGE_KEY, appMode);
@@ -124,6 +261,83 @@ function App() {
       // no-op
     }
   }, [appMode]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const mod = event.metaKey || event.ctrlKey;
+
+      if (mod && key === 'k') {
+        event.preventDefault();
+        setShortcutHelpOpen(false);
+        setCommandPaletteOpen(true);
+        return;
+      }
+
+      if (event.key === '?') {
+        event.preventDefault();
+        setCommandPaletteOpen(false);
+        setShortcutHelpOpen(true);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        if (shortcutHelpOpen) {
+          setShortcutHelpOpen(false);
+        }
+        return;
+      }
+
+      if (isEditableEventTarget(event.target)) return;
+
+      if (mod && event.key >= '1' && event.key <= '5') {
+        event.preventDefault();
+        if (event.key === '1') switchToViewer();
+        if (event.key === '2') switchToPlanner();
+        if (event.key === '3') switchToRunner();
+        if (event.key === '4') switchToDataView();
+        if (event.key === '5') switchToSettings();
+        return;
+      }
+
+      if (appMode !== 'planner') return;
+
+      if (event.altKey && PLANNER_STEP_KEYS[event.key]) {
+        event.preventDefault();
+        builder.actions.setAuthoringStep(PLANNER_STEP_KEYS[event.key]);
+        return;
+      }
+
+      if (mod && event.shiftKey && key === 'v') {
+        event.preventDefault();
+        void builder.actions.validateUnifiedMission();
+        return;
+      }
+
+      if (mod && key === 's') {
+        event.preventDefault();
+        void builder.actions.handleSaveUnifiedMission();
+        return;
+      }
+
+      if (mod && event.key === 'Enter') {
+        event.preventDefault();
+        void builder.actions.handleRun();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    appMode,
+    builder.actions,
+    shortcutHelpOpen,
+    switchToDataView,
+    switchToPlanner,
+    switchToRunner,
+    switchToSettings,
+    switchToViewer,
+  ]);
 
   useEffect(() => {
     if (appMode !== 'planner' || builder.state.authoringStep !== 'scan_definition') return;
@@ -257,6 +471,29 @@ function App() {
               </button>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShortcutHelpOpen(false);
+                setCommandPaletteOpen(true);
+              }}
+              className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-cyan-500 hover:text-cyan-200"
+            >
+              Command Palette <span className="text-slate-500 ml-1">Ctrl/Cmd+K</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCommandPaletteOpen(false);
+                setShortcutHelpOpen(true);
+              }}
+              className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-cyan-500 hover:text-cyan-200 flex items-center gap-1"
+            >
+              <Keyboard size={11} />
+              Shortcuts
+            </button>
+          </div>
         </div>
 
         {appMode === 'viewer' && (
@@ -351,6 +588,15 @@ function App() {
           </Suspense>
         )}
       </main>
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        items={commandItems}
+      />
+      <ShortcutHelpPanel
+        open={shortcutHelpOpen}
+        onClose={() => setShortcutHelpOpen(false)}
+      />
     </div>
   );
 }

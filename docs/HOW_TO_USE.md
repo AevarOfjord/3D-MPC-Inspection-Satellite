@@ -54,6 +54,19 @@ Go to `Settings` -> `Build & Package`.
 - `Download Latest Archive`: downloads newest built app package.
 - `Refresh`: updates package status/logs.
 
+## 3.1) Keyboard Workflow (V3.1)
+
+- Open command palette: `Ctrl/Cmd + K`
+- Open shortcut help: `?`
+- Switch modes: `Ctrl/Cmd + 1..5`
+  - `1 Viewer`, `2 Planner`, `3 Runner`, `4 Data`, `5 Settings`
+- Planner step jump: `Alt + 1..6`
+  - `1 Target`, `2 Segments`, `3 Scan Definition`, `4 Constraints`, `5 Validate`, `6 Save/Launch`
+- Planner actions:
+  - `Ctrl/Cmd + Shift + V`: validate
+  - `Ctrl/Cmd + S`: save mission
+  - `Ctrl/Cmd + Enter`: launch mission
+
 ## 4) Workspace Backup/Restore
 
 Go to `Settings` -> `Build & Package`.

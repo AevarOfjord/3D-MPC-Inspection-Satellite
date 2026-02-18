@@ -52,6 +52,7 @@ Startup behavior:
 - First launch defaults to `Runner` to avoid loading the 3D stack until needed.
 - Hovering/focusing `Viewer` or `Planner` prefetches 3D modules for faster open.
 - `Viewer` and unified `Planner` are loaded as separate lazy mode chunks.
+- V3.1 adds command palette (`Ctrl/Cmd+K`) and shortcut help (`?`) for quick navigation and planner actions.
 - Playback/Data run lists auto-refresh every 5 seconds and when the window regains focus.
 - Playback/Data also receive backend push updates over `/simulations/runs/ws` for near-instant new-run discovery.
 
