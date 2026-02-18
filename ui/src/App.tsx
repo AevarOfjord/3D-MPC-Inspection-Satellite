@@ -37,12 +37,11 @@ import { ORBIT_SCALE } from './data/orbitSnapshot';
 
 const APP_MODE_STORAGE_KEY = 'mission_control_app_mode_v1';
 const PLANNER_STEP_KEYS: Record<string, PlannerStep> = {
-  '1': 'target',
-  '2': 'segments',
-  '3': 'scan_definition',
-  '4': 'constraints',
-  '5': 'validate',
-  '6': 'save_launch',
+  '1': 'scan_definition',
+  '2': 'target',
+  '3': 'constraints',
+  '4': 'segments',
+  '5': 'save_launch',
 };
 
 function isEditableEventTarget(target: EventTarget | null): boolean {
@@ -190,39 +189,33 @@ function App() {
     if (appMode === 'planner') {
       items.push(
         {
-          id: 'planner-step-target',
-          label: 'Go to Planner Step: Target',
+          id: 'planner-step-path-library',
+          label: 'Go to Planner Step: Path Library',
           shortcut: 'Alt+1',
-          onSelect: () => jumpToPlannerStep('target'),
-        },
-        {
-          id: 'planner-step-segments',
-          label: 'Go to Planner Step: Segments',
-          shortcut: 'Alt+2',
-          onSelect: () => jumpToPlannerStep('segments'),
-        },
-        {
-          id: 'planner-step-scan',
-          label: 'Go to Planner Step: Scan Definition',
-          shortcut: 'Alt+3',
           onSelect: () => jumpToPlannerStep('scan_definition'),
         },
         {
-          id: 'planner-step-constraints',
-          label: 'Go to Planner Step: Constraints',
-          shortcut: 'Alt+4',
+          id: 'planner-step-start-transfer',
+          label: 'Go to Planner Step: Start + Transfer',
+          shortcut: 'Alt+2',
+          onSelect: () => jumpToPlannerStep('target'),
+        },
+        {
+          id: 'planner-step-obstacles',
+          label: 'Go to Planner Step: Obstacles',
+          shortcut: 'Alt+3',
           onSelect: () => jumpToPlannerStep('constraints'),
         },
         {
-          id: 'planner-step-validate',
-          label: 'Go to Planner Step: Validate',
-          shortcut: 'Alt+5',
-          onSelect: () => jumpToPlannerStep('validate'),
+          id: 'planner-step-path-edit',
+          label: 'Go to Planner Step: Path Edit',
+          shortcut: 'Alt+4',
+          onSelect: () => jumpToPlannerStep('segments'),
         },
         {
           id: 'planner-step-save',
-          label: 'Go to Planner Step: Save/Launch',
-          shortcut: 'Alt+6',
+          label: 'Go to Planner Step: Save Mission',
+          shortcut: 'Alt+5',
           onSelect: () => jumpToPlannerStep('save_launch'),
         },
         {

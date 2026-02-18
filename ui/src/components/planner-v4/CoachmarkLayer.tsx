@@ -9,24 +9,32 @@ interface CoachmarkLayerProps {
 
 const CARD_COPY: Record<CoachmarkId, { title: string; body: string }> = {
   step_rail: {
-    title: 'Step Rail',
-    body: 'Use guided mode for first missions. Advanced mode unlocks direct step jumps.',
+    title: '5-Step Rail',
+    body: 'Follow the steps in order for the simplest mission-creation flow.',
   },
   templates: {
-    title: 'Templates',
-    body: 'Start from Quick Inspect or Transfer+Scan to reduce setup time.',
+    title: 'Path Sources',
+    body: 'Choose library path, create new, or duplicate an existing path.',
   },
   context_panel: {
-    title: 'Context Panel',
-    body: 'Right panel changes by step. Keep edits focused to lower validation churn.',
+    title: 'Step Controls',
+    body: 'The right panel only shows controls for the current task to reduce clutter.',
+  },
+  path_edit: {
+    title: 'Path Edit',
+    body: 'Drag spline points in the viewport. Use add/remove + undo/redo in the panel.',
+  },
+  save: {
+    title: 'Save Mission',
+    body: 'Validation runs here. Fix issues, then save or launch when preflight is green.',
   },
   validation: {
-    title: 'Validation Navigator',
-    body: 'Click any issue to jump directly to the field that needs fixing.',
+    title: 'Validation',
+    body: 'Validation issues are grouped and clickable for fast fixes.',
   },
   save_launch: {
-    title: 'Save / Launch',
-    body: 'Preflight checklist must pass before save and launch controls activate.',
+    title: 'Save',
+    body: 'Final step for preflight and mission save.',
   },
 };
 

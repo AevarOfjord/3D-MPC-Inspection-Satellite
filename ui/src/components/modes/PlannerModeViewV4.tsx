@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import { useCameraStore } from '../../store/cameraStore';
@@ -22,6 +22,12 @@ import { ConstraintPresetsCardV4 } from '../planner-v4/ConstraintPresetsCardV4';
 import { ValidationNavigatorCardV4 } from '../planner-v4/ValidationNavigatorCardV4';
 import { SaveLaunchCardV4 } from '../planner-v4/SaveLaunchCardV4';
 import { CoachmarkLayer } from '../planner-v4/CoachmarkLayer';
+import {
+  ObstaclesStepCardV41,
+  PathEditStepCardV41,
+  PathLibraryStepCardV41,
+  StartTransferStepCardV41,
+} from '../planner-v4/FlowStepCardsV41';
 
 interface PlannerModeViewV4Props {
   viewMode: 'free' | 'chase' | 'top';
@@ -68,13 +74,14 @@ function IntroBanner({
       }
       className="w-[34rem]"
     >
-      Create a mission using step-by-step guidance. You can switch to advanced mode at any time.
+      Create missions in 5 simple steps: path library, start+transfer, obstacles, path edit, save.
     </InlineBanner>
   );
 }
 
 export function PlannerModeViewV4({ viewMode, builder }: PlannerModeViewV4Props) {
   const [timelineCollapsed, setTimelineCollapsed] = useState(true);
+  const hasAutoValidatedSaveStepRef = useRef(false);
 
   const wizard = usePlannerWizard({
     authoringStep: builder.state.authoringStep,
@@ -83,44 +90,84 @@ export function PlannerModeViewV4({ viewMode, builder }: PlannerModeViewV4Props)
     startTargetId: builder.state.startTargetId,
     segments: builder.state.segments,
     validationReport: builder.state.validationReport,
+    obstaclesCount: builder.state.obstacles.length,
+    previewPathPoints: builder.state.previewPath.length,
+    isManualMode: builder.state.isManualMode,
   });
 
   const onboarding = usePlannerOnboarding();
 
-  const plannerStep = builder.state.authoringStep;
-  const viewportMode = plannerStep === 'scan_definition' ? 'scan' : 'mission';
-  const showOrbitTargets = plannerStep !== 'scan_definition';
+  const plannerStep = wizard.state.flowStep;
+  const viewportMode = plannerStep === 'path_library' ? 'scan' : 'mission';
+  const showOrbitTargets = plannerStep !== 'path_library';
+
+  useEffect(() => {
+    if (plannerStep === 'save') {
+      if (!hasAutoValidatedSaveStepRef.current) {
+        hasAutoValidatedSaveStepRef.current = true;
+        void builder.actions.validateUnifiedMission();
+      }
+      return;
+    }
+    hasAutoValidatedSaveStepRef.current = false;
+  }, [plannerStep, builder.actions.validateUnifiedMission]);
 
   const contextPanel = useMemo(() => {
-    if (plannerStep === 'target') {
-      return [<TargetCardV4 key="target" builder={builder} />];
-    }
-    if (plannerStep === 'segments') {
+    if (plannerStep === 'path_library') {
       return [
-        <SegmentComposerCardV4 key="segments-list" builder={builder} />,
-        <SegmentDetailsCardV4 key="segments-details" builder={builder} />,
+        <PathLibraryStepCardV41 key="path-library" builder={builder} />,
+        ...(wizard.state.uxMode === 'advanced'
+          ? [
+              <ScanBasicsCardV4 key="scan-basics" builder={builder} />,
+              <ScanGeometryAdvancedCardV4 key="scan-geometry" builder={builder} />,
+              <ScanAssetsCardV4 key="scan-assets" builder={builder} />,
+              <ScanDiagnosticsCardV4 key="scan-diagnostics" builder={builder} />,
+            ]
+          : []),
       ];
     }
-    if (plannerStep === 'scan_definition') {
+    if (plannerStep === 'start_transfer') {
       return [
-        <ScanBasicsCardV4 key="scan-basics" builder={builder} />,
-        <ScanGeometryAdvancedCardV4 key="scan-geometry" builder={builder} />,
-        <ScanAssetsCardV4 key="scan-assets" builder={builder} />,
-        <ScanDiagnosticsCardV4 key="scan-diagnostics" builder={builder} />,
+        <StartTransferStepCardV41 key="start-transfer" builder={builder} />,
+        <SegmentComposerCardV4 key="transfer-segments" builder={builder} />,
+        ...(wizard.state.uxMode === 'advanced'
+          ? [<TargetCardV4 key="target-advanced" builder={builder} />]
+          : []),
       ];
     }
-    if (plannerStep === 'constraints') {
+    if (plannerStep === 'obstacles') {
       return [
-        <ConstraintPresetsCardV4 key="constraint-presets" builder={builder} />,
-        <SegmentComposerCardV4 key="constraint-segments" builder={builder} emphasizeConstraints />,
-        <SegmentDetailsCardV4 key="constraint-details" builder={builder} constraintsOnly />,
+        <ObstaclesStepCardV41 key="obstacles" builder={builder} />,
+        ...(wizard.state.uxMode === 'advanced'
+          ? [
+              <ConstraintPresetsCardV4 key="constraint-presets" builder={builder} />,
+              <SegmentComposerCardV4
+                key="constraint-segments"
+                builder={builder}
+                emphasizeConstraints
+              />,
+              <SegmentDetailsCardV4 key="constraint-details" builder={builder} constraintsOnly />,
+            ]
+          : []),
       ];
     }
-    if (plannerStep === 'validate') {
-      return [<ValidationNavigatorCardV4 key="validate" builder={builder} />];
+    if (plannerStep === 'path_edit') {
+      return [
+        <PathEditStepCardV41
+          key="path-edit"
+          builder={builder}
+          onFinishEditing={() => wizard.actions.goToStep('save')}
+        />,
+        ...(wizard.state.uxMode === 'advanced'
+          ? [<SegmentComposerCardV4 key="path-edit-segments" builder={builder} />]
+          : []),
+      ];
     }
-    return [<SaveLaunchCardV4 key="save" builder={builder} />];
-  }, [plannerStep, builder]);
+    return [
+      <ValidationNavigatorCardV4 key="validate" builder={builder} />,
+      <SaveLaunchCardV4 key="save" builder={builder} />,
+    ];
+  }, [plannerStep, builder, wizard.state.uxMode, wizard.actions]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

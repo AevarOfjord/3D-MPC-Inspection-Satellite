@@ -3,17 +3,18 @@ import { useState } from 'react';
 import { unifiedMissionApi, type ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { UnifiedMission } from '../api/unifiedMission';
 import { mapIssuePathToPlannerStep } from '../utils/plannerValidation';
-
 import type { MissionAuthoringStep } from './useMissionState';
 
 interface UseMissionValidationArgs {
   buildMission: () => UnifiedMission;
-  onFocusSegment: (index: number) => void;
-  setAuthoringStep: (step: MissionAuthoringStep) => void;
+  jumpToFirstIssue?: boolean;
+  onFocusSegment?: (index: number) => void;
+  setAuthoringStep?: (step: MissionAuthoringStep) => void;
 }
 
 export function useMissionValidation({
   buildMission,
+  jumpToFirstIssue = true,
   onFocusSegment,
   setAuthoringStep,
 }: UseMissionValidationArgs) {
@@ -28,17 +29,17 @@ export function useMissionValidation({
       const mission = buildMission();
       const report = await unifiedMissionApi.validateMission(mission);
       setValidationReport(report);
-      if (!report.valid && report.issues.length > 0) {
+      if (jumpToFirstIssue && !report.valid && report.issues.length > 0 && setAuthoringStep) {
         const firstIssue = report.issues[0];
         const targetStep = mapIssuePathToPlannerStep(firstIssue.path);
         const segmentMatch = /segments\[(\d+)\]/.exec(firstIssue.path);
-        if (segmentMatch) {
+        if (segmentMatch && onFocusSegment) {
           const segIndex = Number.parseInt(segmentMatch[1], 10);
           if (!Number.isNaN(segIndex)) {
             onFocusSegment(segIndex);
             setAuthoringStep(targetStep);
           }
-        } else {
+        } else if (!segmentMatch) {
           setAuthoringStep(targetStep);
         }
       }

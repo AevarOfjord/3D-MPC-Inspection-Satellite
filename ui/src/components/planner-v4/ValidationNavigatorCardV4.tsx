@@ -53,7 +53,7 @@ export function ValidationNavigatorCardV4({ builder }: ValidationNavigatorCardV4
 
   return (
     <Panel
-      title="Step 5 · Validate"
+      title="Preflight Validation"
       subtitle="Grouped issue navigator with click-to-field guidance"
       actions={
         <button

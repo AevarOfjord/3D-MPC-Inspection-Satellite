@@ -373,6 +373,7 @@ export function useMissionBuilder() {
 
   const missionValidation = useMissionValidation({
     buildMission: () => buildUnifiedMission({ includeManualPath: true }),
+    jumpToFirstIssue: false,
     onFocusSegment: setSelectedSegmentIndex,
     setAuthoringStep,
   });

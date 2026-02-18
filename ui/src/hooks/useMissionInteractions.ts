@@ -50,7 +50,8 @@ export function useMissionInteractions<SelectionId extends string>({
 }: UseMissionInteractionsArgs<SelectionId>) {
   const addObstacle = (
     origin?: [number, number, number],
-    offset: [number, number, number] = [5, 0, 0]
+    offset: [number, number, number] = [5, 0, 0],
+    radius = 0.5
   ) => {
     const base = origin ?? [0, 0, 0];
     const position: [number, number, number] = [
@@ -58,7 +59,7 @@ export function useMissionInteractions<SelectionId extends string>({
       base[1] + offset[1],
       base[2] + offset[2],
     ];
-    setObstacles([...obstacles, { position, radius: 0.5 }]);
+    setObstacles([...obstacles, { position, radius }]);
   };
 
   const removeObstacle = (idx: number) => {
