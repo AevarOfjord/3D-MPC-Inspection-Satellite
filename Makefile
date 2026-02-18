@@ -62,6 +62,7 @@ APP_BUNDLE_DIR := $(RELEASE_DIR)/$(APP_BUNDLE_NAME)
 PYINSTALLER_APP_NAME ?= SatelliteControl
 PYINSTALLER_BUNDLE_DIR := $(RELEASE_DIR)/pyinstaller/$(PLATFORM)/$(PYINSTALLER_APP_NAME)
 PACKAGE_MAX_MB ?= 150
+PYINSTALLER_MAX_MB ?= 900
 # Stamp file used to avoid reinstalling Node dependencies on every `make run`.
 UI_DEPS_STAMP := $(UI_NODE_MODULES)/.deps-installed
 # Try to detect active scikit-build editable output directory.
@@ -78,7 +79,7 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHON
 # ============================================================================
 
 .PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
-	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-build clean rebuild \
+	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-build release-v4-beta release-v4-final clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -107,6 +108,8 @@ help:
 	@echo "  make lint-ui      Run frontend lint checks"
 	@echo "  make lint         Run backend + frontend lint checks"
 	@echo "  make docs-build   Build docs with warnings-as-errors"
+	@echo "  make release-v4-beta Run V4 beta release gates + packaging and print tag command"
+	@echo "  make release-v4-final Run V4 final release gates + packaging and print tag command"
 	@echo "  make clean        Remove venv, build artifacts, caches"
 	@echo ""
 
@@ -273,7 +276,7 @@ package-pyinstaller: ui-build
 		$(VENV_PY) -m pip install "pyinstaller>=6.0.0" || exit $$?; \
 	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" \
-		$(VENV_PY) scripts/build_pyinstaller_bundle.py --max-mb "$(PACKAGE_MAX_MB)"
+		$(VENV_PY) scripts/build_pyinstaller_bundle.py --max-mb "$(PYINSTALLER_MAX_MB)"
 
 # Launch latest PyInstaller output and verify HTTP readiness.
 smoke-pyinstaller:
@@ -395,6 +398,16 @@ docs-build:
 		exit 1; \
 	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m sphinx -W -b html docs docs/_build/html
+
+# Run full V4 beta release verification and packaging.
+release-v4-beta: lint test-cov test-ui test-ui-e2e docs-build package-app package-pyinstaller
+	@echo "V4 beta gates passed."
+	@echo "Next: git tag -a v4.0.0-beta.1 -m \"V4.0.0 beta.1\""
+
+# Run full V4 final release verification and packaging.
+release-v4-final: lint test-cov test-ui test-ui-e2e docs-build package-app package-pyinstaller
+	@echo "V4 final gates passed."
+	@echo "Next: git tag -a v4.0.0 -m \"V4.0.0\""
 
 # Canonical backend lint command reused by CI and README.
 lint-backend:

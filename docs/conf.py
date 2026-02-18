@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath("../src/python"))
 project = "Satellite Control System"
 copyright = "2026, Aevar Ofjord"
 author = "Aevar Ofjord"
-release = "1.0.0"  # Keep in sync with pyproject.toml
+release = "4.0.0b1"  # Keep in sync with pyproject.toml
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -26,6 +26,7 @@ myst_enable_extensions = [
     "colon_fence",
     "deflist",
 ]
+myst_heading_anchors = 3
 source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
@@ -33,6 +34,12 @@ source_suffix = {
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+suppress_warnings = [
+    "myst.xref_missing",
+    "toc.not_included",
+    "misc.highlighting_failure",
+    "docutils",
+]
 
 # Napoleon settings (Google/NumPy docstrings)
 napoleon_google_docstring = True

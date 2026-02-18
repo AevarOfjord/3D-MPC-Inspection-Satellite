@@ -27,18 +27,26 @@ If you received a packaged archive:
 
 ## 2) Main Web Workflow
 
-1. `Planner`: use the unified stepper (`Target -> Segments -> Scan Definition -> Constraints -> Validate -> Save/Launch`).
-2. `Scan Definition` step: create path assets and attach them to scan segments.
-3. `Validate` step: fix structured issues before save/launch.
-4. `Settings`: tune MPC/simulation settings and click `Save Changes`.
-5. `Runner`: start/stop simulation and watch logs.
-6. `Viewer`: inspect motion/attitude behavior.
-7. `Data`: browse generated files and download artifacts.
+1. `Planner`: use the unified guided rail (`Target -> Segments -> Scan Definition -> Constraints -> Validate -> Save/Launch`).
+2. `Planner` defaults to `Guided` mode; switch to `Advanced` for free step navigation.
+3. `Scan Definition` step: use basics first, then optional advanced geometry/connectors.
+4. `Validate` step: issues are grouped by severity; click an issue row to jump to its field context.
+5. `Save/Launch` step: use preflight checklist + naming helper before launch.
+6. `Settings`: tune MPC/simulation settings and click `Save Changes`.
+7. `Runner`: start/stop simulation and watch logs.
+8. `Viewer`: inspect motion/attitude behavior.
+9. `Data`: browse generated files and download artifacts.
 
 ### Mission Draft Recovery
 
 - Draft autosave runs every ~5 seconds in Planner.
 - On reload, Planner shows a one-shot restore card with `Restore` and `Discard`.
+
+### Planner Onboarding (V4.0)
+
+- First planner open shows a non-blocking `Take 60s Tour` banner.
+- Tour coachmarks are dismissable and optional.
+- `Never show again` persists per browser profile.
 
 ### Mission Templates
 
@@ -124,3 +132,7 @@ make stop           # stop app processes on known ports
   - verify global replace toggles and per-item selections
 - Mission save blocked by validation:
   - open the `Validate` step and click issue rows to jump to affected fields
+
+## 8) Release Ops
+
+- V4 release and tagging checklist: `docs/RELEASE_V4.md`
