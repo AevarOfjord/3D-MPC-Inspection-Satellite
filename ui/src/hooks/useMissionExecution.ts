@@ -7,6 +7,11 @@ import type {
 } from '../api/unifiedMissionApi';
 import type { MissionAuthoringStep } from './useMissionState';
 import { useDialog, useToast } from '../feedback/feedbackContext';
+import type { DialogIntent } from '../feedback/feedbackContext';
+
+type DialogFormFn = (
+  options: Omit<Extract<DialogIntent, { type: 'form' }>, 'type'>
+) => Promise<Record<string, string> | null>;
 
 type BuildMissionFn = (options?: { includeManualPath?: boolean }) => UnifiedMission;
 
@@ -62,17 +67,44 @@ export function useMissionExecution({
         tone: 'error',
         title: 'Validation',
         message: 'Mission has validation errors. Open the Validate step to resolve them.',
+        actionLabel: 'Open Validate',
+        onAction: () => setAuthoringStep('validate'),
       });
       setAuthoringStep('validate');
       return;
     }
 
-    const name = await dialog.prompt('Enter mission name (e.g. Starlink_Scan_M01):', {
-      title: 'Save Mission',
-      confirmLabel: 'Save',
-      placeholder: 'Starlink_Scan_M01',
-      requireNonEmpty: true,
-    });
+    const defaultName = buildMission({ includeManualPath: true }).name;
+    let name: string | null = null;
+
+    const maybeForm = (dialog as unknown as { form?: DialogFormFn }).form;
+    if (typeof maybeForm === 'function') {
+      const values = await maybeForm({
+        title: 'Save Mission',
+        message: 'Provide a mission name before saving.',
+        confirmLabel: 'Save',
+        fields: [
+          {
+            id: 'name',
+            label: 'Mission Name',
+            placeholder: 'Starlink_Scan_M01',
+            defaultValue: defaultName,
+            required: true,
+          },
+        ],
+      });
+      name = values?.name?.trim() || null;
+    }
+    if (!name) {
+      const promptName = await dialog.prompt('Enter mission name (e.g. Starlink_Scan_M01):', {
+        title: 'Save Mission',
+        confirmLabel: 'Save',
+        placeholder: 'Starlink_Scan_M01',
+        defaultValue: defaultName,
+        requireNonEmpty: true,
+      });
+      name = promptName?.trim() || null;
+    }
     if (!name) return;
 
     try {
@@ -107,6 +139,8 @@ export function useMissionExecution({
           tone: 'error',
           title: 'Validation',
           message: 'Mission has validation errors. Resolve them before preview.',
+          actionLabel: 'Open Validate',
+          onAction: () => setAuthoringStep('validate'),
         });
         setAuthoringStep('validate');
         return;

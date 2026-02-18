@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
+    // 3D vendor chunks are intentionally heavy in desktop-local mode.
+    // Raise warning threshold after manual chunking so CI noise is reduced.
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id) {

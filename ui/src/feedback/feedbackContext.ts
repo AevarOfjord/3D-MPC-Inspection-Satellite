@@ -7,6 +7,16 @@ export interface ToastIntent {
   message: string;
   tone?: ToastTone;
   durationMs?: number;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+export interface DialogFormField {
+  id: string;
+  label: string;
+  placeholder?: string;
+  defaultValue?: string;
+  required?: boolean;
 }
 
 export type DialogIntent =
@@ -35,14 +45,25 @@ export type DialogIntent =
       placeholder?: string;
       defaultValue?: string;
       requireNonEmpty?: boolean;
+    }
+  | {
+      type: 'form';
+      title?: string;
+      message?: string;
+      tone?: ToastTone;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      fields: DialogFormField[];
     };
+
+export type DialogResult = boolean | string | Record<string, string> | null;
 
 export interface ToastContextValue {
   showToast: (intent: ToastIntent) => void;
 }
 
 export interface DialogContextValue {
-  openDialog: (intent: DialogIntent) => Promise<boolean | string | null>;
+  openDialog: (intent: DialogIntent) => Promise<DialogResult>;
   alert: (
     message: string,
     options?: Omit<Extract<DialogIntent, { type: 'alert' }>, 'type' | 'message'>
@@ -55,6 +76,9 @@ export interface DialogContextValue {
     message: string,
     options?: Omit<Extract<DialogIntent, { type: 'prompt' }>, 'type' | 'message'>
   ) => Promise<string | null>;
+  form: (
+    options: Omit<Extract<DialogIntent, { type: 'form' }>, 'type'>
+  ) => Promise<Record<string, string> | null>;
 }
 
 export const ToastContext = createContext<ToastContextValue | null>(null);

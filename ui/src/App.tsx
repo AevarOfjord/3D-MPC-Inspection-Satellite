@@ -27,8 +27,8 @@ const SimulationDataView = lazy(() =>
 const MPCSettingsView = lazy(() =>
   import('./components/MPCSettingsView').then((m) => ({ default: m.MPCSettingsView }))
 );
-const PlannerModeView = lazy(() =>
-  import('./components/modes/PlannerModeView').then((m) => ({ default: m.PlannerModeView }))
+const PlannerModeViewV4 = lazy(() =>
+  import('./components/modes/PlannerModeViewV4').then((m) => ({ default: m.PlannerModeViewV4 }))
 );
 const ViewerModeView = lazy(() =>
   import('./components/modes/ViewerModeView').then((m) => ({ default: m.ViewerModeView }))
@@ -90,7 +90,7 @@ function App() {
     if (is3DPrefetchedRef.current) return;
     is3DPrefetchedRef.current = true;
     void Promise.all([
-      import('./components/modes/PlannerModeView'),
+      import('./components/modes/PlannerModeViewV4'),
       import('./components/modes/ViewerModeView'),
     ]);
   };
@@ -560,7 +560,7 @@ function App() {
         
         {appMode === 'planner' && (
             <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
-              <PlannerModeView viewMode={viewMode} builder={builder} />
+              <PlannerModeViewV4 viewMode={viewMode} builder={builder} />
             </Suspense>
         )}
         {appMode === 'runner' && (

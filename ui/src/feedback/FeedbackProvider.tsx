@@ -10,6 +10,7 @@ import {
   ToastContext,
   type DialogContextValue,
   type DialogIntent,
+  type DialogResult,
   type ToastContextValue,
   type ToastIntent,
   type ToastTone,
@@ -17,7 +18,7 @@ import {
 
 type ActiveDialog = {
   intent: DialogIntent;
-  resolve: (value: boolean | string | null) => void;
+  resolve: (value: DialogResult) => void;
 };
 
 type ToastEntry = ToastIntent & { id: number; tone: ToastTone };
@@ -38,6 +39,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const [activeDialog, setActiveDialog] = useState<ActiveDialog | null>(null);
   const [promptValue, setPromptValue] = useState('');
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
   const toastIdRef = useRef(0);
 
   const showToast = useCallback((intent: ToastIntent) => {
@@ -49,17 +51,26 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       durationMs: intent.durationMs ?? 3200,
       title: intent.title,
       message: intent.message,
+      actionLabel: intent.actionLabel,
+      onAction: intent.onAction,
     };
     setToasts((prev) => [...prev, entry]);
     window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, entry.durationMs);
   }, []);
 
   const openDialog = useCallback((intent: DialogIntent) => {
-    return new Promise<boolean | string | null>((resolve) => {
+    return new Promise<DialogResult>((resolve) => {
       if (intent.type === 'prompt') {
         setPromptValue(intent.defaultValue ?? '');
+      }
+      if (intent.type === 'form') {
+        const initial = intent.fields.reduce<Record<string, string>>((acc, field) => {
+          acc[field.id] = field.defaultValue ?? '';
+          return acc;
+        }, {});
+        setFormValues(initial);
       }
       setActiveDialog({ intent, resolve });
     });
@@ -91,6 +102,14 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         });
         return typeof result === 'string' ? result : null;
       },
+      form: async (options) => {
+        const result = await openDialog({
+          ...options,
+          type: 'form',
+        });
+        if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+        return result;
+      },
     }),
     [openDialog]
   );
@@ -113,13 +132,18 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       closeDialog();
       return;
     }
+    if (activeDialog.intent.type === 'form') {
+      activeDialog.resolve(formValues);
+      closeDialog();
+      return;
+    }
     activeDialog.resolve(true);
     closeDialog();
   };
 
   const handleDialogCancel = () => {
     if (!activeDialog) return;
-    if (activeDialog.intent.type === 'prompt') {
+    if (activeDialog.intent.type === 'prompt' || activeDialog.intent.type === 'form') {
       activeDialog.resolve(null);
       closeDialog();
       return;
@@ -129,10 +153,29 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   };
 
   const dialogTone = activeDialog?.intent.tone ?? 'info';
-  const dialogCanConfirm =
-    activeDialog?.intent.type !== 'prompt' ||
-    !activeDialog.intent.requireNonEmpty ||
-    promptValue.trim().length > 0;
+  const dialogTitle =
+    activeDialog?.intent.title ??
+    (activeDialog?.intent.type === 'confirm'
+      ? 'Confirm Action'
+      : activeDialog?.intent.type === 'prompt'
+      ? 'Enter Value'
+      : activeDialog?.intent.type === 'form'
+      ? 'Fill Details'
+      : 'Notice');
+
+  const dialogCanConfirm = useMemo(() => {
+    if (!activeDialog) return false;
+    if (activeDialog.intent.type === 'prompt') {
+      return !activeDialog.intent.requireNonEmpty || promptValue.trim().length > 0;
+    }
+    if (activeDialog.intent.type === 'form') {
+      return activeDialog.intent.fields.every((field) => {
+        if (!field.required) return true;
+        return (formValues[field.id] ?? '').trim().length > 0;
+      });
+    }
+    return true;
+  }, [activeDialog, promptValue, formValues]);
 
   return (
     <DialogContext.Provider value={dialog}>
@@ -151,6 +194,15 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
                 </div>
               ) : null}
               <div className="text-xs">{entry.message}</div>
+              {entry.actionLabel && entry.onAction ? (
+                <button
+                  type="button"
+                  className="mt-2 px-2 py-1 text-[10px] uppercase tracking-wide rounded border border-current/60"
+                  onClick={() => entry.onAction?.()}
+                >
+                  {entry.actionLabel}
+                </button>
+              ) : null}
             </div>
           ))}
         </div>
@@ -158,29 +210,52 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         {activeDialog ? (
           <div className="fixed inset-0 z-[130] bg-slate-950/70 backdrop-blur-[1px] flex items-center justify-center p-4">
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={dialogTitle}
               className={`w-full max-w-lg rounded-lg border bg-slate-950 text-slate-200 shadow-2xl ${dialogToneClass[dialogTone]}`}
             >
               <div className="px-4 py-3 border-b border-slate-800">
-                <div className="text-sm font-semibold">
-                  {activeDialog.intent.title ??
-                    (activeDialog.intent.type === 'confirm'
-                      ? 'Confirm Action'
-                      : activeDialog.intent.type === 'prompt'
-                      ? 'Enter Value'
-                      : 'Notice')}
-                </div>
+                <div className="text-sm font-semibold">{dialogTitle}</div>
               </div>
               <div className="px-4 py-4 space-y-3">
-                <div className="text-sm text-slate-200">{activeDialog.intent.message}</div>
+                {activeDialog.intent.message ? (
+                  <div className="text-sm text-slate-200">{activeDialog.intent.message}</div>
+                ) : null}
                 {activeDialog.intent.type === 'prompt' ? (
                   <input
                     type="text"
                     value={promptValue}
                     autoFocus
                     placeholder={activeDialog.intent.placeholder}
-                    onChange={(e) => setPromptValue(e.target.value)}
+                    onChange={(event) => setPromptValue(event.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-cyan-500"
                   />
+                ) : null}
+                {activeDialog.intent.type === 'form' ? (
+                  <div className="space-y-2">
+                    {activeDialog.intent.fields.map((field, index) => (
+                      <label key={field.id} className="block" htmlFor={`dialog-field-${field.id}`}>
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400 mb-1">
+                          {field.label}
+                        </div>
+                        <input
+                          id={`dialog-field-${field.id}`}
+                          autoFocus={index === 0}
+                          type="text"
+                          value={formValues[field.id] ?? ''}
+                          placeholder={field.placeholder}
+                          onChange={(event) =>
+                            setFormValues((prev) => ({
+                              ...prev,
+                              [field.id]: event.target.value,
+                            }))
+                          }
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-cyan-500"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 ) : null}
               </div>
               <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-end gap-2">

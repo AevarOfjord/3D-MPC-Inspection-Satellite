@@ -52,6 +52,9 @@ Startup behavior:
 - First launch defaults to `Runner` to avoid loading the 3D stack until needed.
 - Hovering/focusing `Viewer` or `Planner` prefetches 3D modules for faster open.
 - `Viewer` and unified `Planner` are loaded as separate lazy mode chunks.
+- V4.0 planner uses a guided UX by default with a 3-column layout and optional coachmarks.
+- Planner UX mode persistence key: `mission_control_planner_ux_mode_v1` (`guided` or `advanced`).
+- Planner onboarding persistence key: `mission_control_coachmarks_v1`.
 - V3.1 adds command palette (`Ctrl/Cmd+K`) and shortcut help (`?`) for quick navigation and planner actions.
 - Playback/Data run lists auto-refresh every 5 seconds and when the window regains focus.
 - Playback/Data also receive backend push updates over `/simulations/runs/ws` for near-instant new-run discovery.
@@ -70,3 +73,11 @@ make ui-build
 make run-app
 # then open http://localhost:8000
 ```
+
+## V4 Readiness Checks
+
+```
+npx playwright test tests/e2e/v4_readiness.spec.ts --config playwright.config.ts
+```
+
+Covers V4 KPI flow, desktop layout stability (1280/1440/1920), and keyboard focus/navigation checks.
