@@ -5,49 +5,54 @@ import type { usePlannerWizard } from '../../hooks/usePlannerWizard';
 import { Panel } from '../ui-v4/Panel';
 import { StepBadge } from '../ui-v4/StepBadge';
 import { StatusPill } from '../ui-v4/StatusPill';
-import { PLANNER_STEP_ORDER } from '../../types/plannerUx';
-import type { PlannerStep } from '../../utils/plannerValidation';
+import { PLANNER_FLOW_STEP_ORDER_V5, type PlannerFlowStepV5 } from '../../types/plannerUx';
 
 interface PlannerStepRailV4Props {
   builder: ReturnType<typeof useMissionBuilder>;
   wizard: ReturnType<typeof usePlannerWizard>;
 }
 
-const STEP_LABEL: Record<PlannerStep, string> = {
-  target: 'Target',
-  segments: 'Segments',
-  scan_definition: 'Scan Definition',
-  constraints: 'Constraints',
-  validate: 'Validate',
-  save_launch: 'Save & Launch',
+const STEP_LABEL: Record<PlannerFlowStepV5, string> = {
+  path_library: 'Path Library',
+  start_transfer: 'Start + Transfer',
+  obstacles: 'Obstacles',
+  path_edit: 'Path Edit',
+  save: 'Save Mission',
+};
+
+const STEP_HINT: Record<PlannerFlowStepV5, string> = {
+  path_library: 'Create/load object paths',
+  start_transfer: 'Place satellite + auto-route',
+  obstacles: 'Add hazards + recompute',
+  path_edit: 'Refine editable spline',
+  save: 'Validate, save, launch',
 };
 
 export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
   const { state, actions } = builder;
 
-  const jumpToStep = (step: PlannerStep) => {
-    if (step === 'target') {
-      actions.selectSegment(-1);
-    }
-    if (step === 'scan_definition') {
+  const jumpToStep = (step: PlannerFlowStepV5) => {
+    if (step === 'path_library') {
       const firstScan = state.segments.findIndex((segment) => segment.type === 'scan');
       if (firstScan >= 0) {
         actions.selectSegment(firstScan);
       }
     }
-    if (step === 'segments' && state.selectedSegmentIndex === null && state.segments.length > 0) {
+    if (step === 'path_edit' && state.selectedSegmentIndex === null && state.segments.length > 0) {
       actions.selectSegment(0);
     }
     wizard.actions.goToStep(step);
   };
 
-  const progressPercent = Math.round((wizard.state.completedCount / PLANNER_STEP_ORDER.length) * 100);
+  const progressPercent = Math.round(
+    (wizard.state.completedCount / PLANNER_FLOW_STEP_ORDER_V5.length) * 100
+  );
 
   return (
     <div id="coachmark-step_rail" className="space-y-3">
       <Panel
         title="Mission Planner"
-        subtitle="Guided step flow for mission creation"
+        subtitle="Simple 5-step mission creator"
         actions={<StatusPill tone="info">{progressPercent}% Ready</StatusPill>}
         className="w-[20rem]"
       >
@@ -78,8 +83,8 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
           </div>
 
           <div className="space-y-1.5">
-            {PLANNER_STEP_ORDER.map((step, index) => {
-              const active = step === state.authoringStep;
+            {PLANNER_FLOW_STEP_ORDER_V5.map((step, index) => {
+              const active = step === wizard.state.flowStep;
               const status = wizard.state.stepStatuses[step];
               const issues = wizard.state.stepIssueCounts[step];
               const disabled = wizard.state.uxMode === 'guided' && status === 'locked';
@@ -103,6 +108,9 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
                       <div className="text-sm font-semibold text-[color:var(--v4-text-1)] truncate">
                         {STEP_LABEL[step]}
                       </div>
+                      <div className="text-[11px] text-[color:var(--v4-text-3)] truncate">
+                        {STEP_HINT[step]}
+                      </div>
                     </div>
                     <StepBadge status={status} issueCount={issues} />
                   </div>
@@ -117,10 +125,10 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
         title={
           <span className="flex items-center gap-2">
             <Sparkles size={14} />
-            Templates
+            Quick Starts
           </span>
         }
-        subtitle="Start faster with common mission patterns"
+        subtitle="Apply a starter mission then tweak as needed"
         className="w-[20rem]"
       >
         <div id="coachmark-templates" className="grid gap-2">
@@ -163,11 +171,11 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
           </div>
           <div className="pt-1 flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
             <Layers3 size={12} />
-            Guided mode enforces step readiness. Advanced mode allows free navigation.
+            Guided mode keeps the workflow simple. Advanced mode removes step locks.
           </div>
           <div className="flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
             <Workflow size={12} />
-            Use `Alt + 1..6` to jump steps quickly.
+            Use `Alt + 1..5` to jump between planner steps.
           </div>
         </div>
       </Panel>

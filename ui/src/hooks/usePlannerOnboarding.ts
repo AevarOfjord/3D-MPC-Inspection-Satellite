@@ -11,12 +11,31 @@ function parseCoachmarkState(raw: string | null): PlannerCoachmarkState {
   if (!raw) return DEFAULT_COACHMARK_STATE;
   try {
     const parsed = JSON.parse(raw) as Partial<PlannerCoachmarkState>;
+    const normalizeId = (id: string): CoachmarkId | null => {
+      if (id === 'validation') return 'save';
+      if (id === 'save_launch') return 'save';
+      if (
+        id === 'step_rail' ||
+        id === 'templates' ||
+        id === 'context_panel' ||
+        id === 'path_edit' ||
+        id === 'save'
+      ) {
+        return id;
+      }
+      return null;
+    };
+
+    const dismissed = Array.isArray(parsed.dismissedIds)
+      ? parsed.dismissedIds
+          .map((id) => (typeof id === 'string' ? normalizeId(id) : null))
+          .filter((id): id is CoachmarkId => Boolean(id))
+      : [];
+
     return {
       introSeen: Boolean(parsed.introSeen),
       neverShowAgain: Boolean(parsed.neverShowAgain),
-      dismissedIds: Array.isArray(parsed.dismissedIds)
-        ? parsed.dismissedIds.filter((id): id is CoachmarkId => typeof id === 'string')
-        : [],
+      dismissedIds: Array.from(new Set(dismissed)),
     };
   } catch {
     return DEFAULT_COACHMARK_STATE;
@@ -45,7 +64,7 @@ export function usePlannerOnboarding() {
 
   const visibleCoachmarks = useMemo(
     () =>
-      (['step_rail', 'templates', 'context_panel', 'validation', 'save_launch'] as CoachmarkId[])
+      (['step_rail', 'templates', 'context_panel', 'path_edit', 'save'] as CoachmarkId[])
         .filter((id) => !state.dismissedIds.includes(id)),
     [state.dismissedIds]
   );

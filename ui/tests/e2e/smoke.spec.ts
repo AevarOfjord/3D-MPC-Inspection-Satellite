@@ -1,4 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function dismissIntroIfVisible(page: Page) {
+  const dismiss = page.getByRole('button', { name: 'Dismiss' });
+  const visible = await dismiss
+    .waitFor({ state: 'visible', timeout: 1200 })
+    .then(() => true)
+    .catch(() => false);
+  if (visible) {
+    await dismiss.click();
+  }
+}
 
 test('app shell loads', async ({ page }) => {
   await page.goto('/');
@@ -7,6 +18,10 @@ test('app shell loads', async ({ page }) => {
 });
 
 test('planner flow renders unified steps and save/launch is gated', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
+  });
   await page.route('**/api/v2/missions/validate', async (route) => {
     await route.fulfill({
       status: 200,
@@ -29,18 +44,18 @@ test('planner flow renders unified steps and save/launch is gated', async ({ pag
 
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
-  await expect(page.getByRole('button', { name: /Scan Definition/ })).toBeVisible();
+  await dismissIntroIfVisible(page);
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
+    )
+    .toBe('advanced');
+  await expect(page.getByRole('button', { name: /Path Library/ })).toBeVisible();
   await page.getByRole('button', { name: 'Quick Inspect' }).click();
-  await page.getByRole('button', { name: /Validate/ }).click();
-  await page.getByRole('button', { name: 'Re-run' }).click();
-
-  const scanDefinitionStep = page.getByRole('button', { name: /Scan Definition/ });
-  await expect(scanDefinitionStep).toContainText('1');
-
-  await page.getByRole('button', { name: 'Advanced' }).click();
-  await page.getByRole('button', { name: /Save.*Launch/ }).click();
+  await page.keyboard.press('Alt+5');
+  await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Save$/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /^Launch$/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Launch Now$/ })).toBeDisabled();
 });
 
 test('draft restore banner is one-shot and discard clears it', async ({ page }) => {
@@ -80,17 +95,26 @@ test('draft restore banner is one-shot and discard clears it', async ({ page }) 
 });
 
 test('command palette and planner shortcuts work', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
+  });
   await page.goto('/');
   await page.getByRole('button', { name: /Command Palette/ }).click();
   await expect(page.getByPlaceholder('Search commands...')).toBeVisible();
   await page.getByPlaceholder('Search commands...').fill('switch to planner');
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: /Scan Definition/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Path Library/ })).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
+    )
+    .toBe('advanced');
 
   await page.keyboard.press('Alt+5');
-  await expect(page.getByText('Step 5 · Validate')).toBeVisible();
+  await expect(page.getByText('Step 5 · Save Mission')).toBeVisible();
 
-  await page.click('body');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('?');
   await expect(page.getByText('Keyboard Shortcuts')).toBeVisible();
 });

@@ -54,8 +54,8 @@ export function SaveLaunchCardV4({ builder }: SaveLaunchCardV4Props) {
 
   return (
     <Panel
-      title="Step 6 · Save / Launch"
-      subtitle="Run preflight checks, save mission, then launch"
+      title="Step 5 · Save Mission"
+      subtitle="Preflight validation, naming helper, save, then optional launch"
       actions={
         ready ? <StatusPill tone="success">Ready</StatusPill> : <StatusPill tone="warning">Blocked</StatusPill>
       }
@@ -135,7 +135,7 @@ export function SaveLaunchCardV4({ builder }: SaveLaunchCardV4Props) {
             disabled={!ready}
             className="v4-focus v4-button px-3 py-2 bg-blue-900/35 border-blue-700 text-blue-100 flex items-center justify-center gap-1"
           >
-            <Play size={13} /> Launch
+            <Play size={13} /> Launch Now
           </button>
         </div>
 

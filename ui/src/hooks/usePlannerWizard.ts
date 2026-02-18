@@ -3,16 +3,20 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { MissionSegment } from '../api/unifiedMission';
 import {
-  canAccessPlannerStep,
-  buildPlannerStepStatusMap,
-  nextPlannerStep,
-  previousPlannerStep,
-  getStepIssueCounts,
-} from '../utils/plannerCompletion';
+  buildPlannerFlowStepStatusMap,
+  canAccessFlowStep,
+  getFlowStepIssueCounts,
+  mapFlowStepToInternalStep,
+  mapInternalStepToFlowStep,
+  nextFlowStep,
+  previousFlowStep,
+} from '../utils/plannerFlowV5';
 import type { PlannerStep } from '../utils/plannerValidation';
 import {
+  PLANNER_FLOW_STATE_STORAGE_KEY,
   PLANNER_UX_MODE_STORAGE_KEY,
-  type PlannerStepStatusMap,
+  type PlannerFlowStepStatusMap,
+  type PlannerFlowStepV5,
   type PlannerUxMode,
 } from '../types/plannerUx';
 
@@ -23,11 +27,27 @@ interface UsePlannerWizardArgs {
   startTargetId?: string;
   segments: MissionSegment[];
   validationReport: ValidationReportV2 | null;
+  obstaclesCount: number;
+  previewPathPoints: number;
+  isManualMode: boolean;
 }
 
 function parseStoredUxMode(raw: string | null): PlannerUxMode {
   if (raw === 'advanced') return 'advanced';
   return 'guided';
+}
+
+function parseStoredFlowStep(raw: string | null): PlannerFlowStepV5 | null {
+  if (
+    raw === 'path_library' ||
+    raw === 'start_transfer' ||
+    raw === 'obstacles' ||
+    raw === 'path_edit' ||
+    raw === 'save'
+  ) {
+    return raw;
+  }
+  return null;
 }
 
 export function usePlannerWizard({
@@ -37,6 +57,9 @@ export function usePlannerWizard({
   startTargetId,
   segments,
   validationReport,
+  obstaclesCount,
+  previewPathPoints,
+  isManualMode,
 }: UsePlannerWizardArgs) {
   const [uxMode, setUxModeState] = useState<PlannerUxMode>(() => {
     try {
@@ -44,6 +67,17 @@ export function usePlannerWizard({
     } catch {
       return 'guided';
     }
+  });
+  const [flowStep, setFlowStepState] = useState<PlannerFlowStepV5>(() => {
+    try {
+      const stored = parseStoredFlowStep(
+        window.localStorage.getItem(PLANNER_FLOW_STATE_STORAGE_KEY)
+      );
+      if (stored) return stored;
+    } catch {
+      // ignore storage read errors
+    }
+    return mapInternalStepToFlowStep(authoringStep);
   });
 
   useEffect(() => {
@@ -53,40 +87,72 @@ export function usePlannerWizard({
       // ignore storage write errors
     }
   }, [uxMode]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PLANNER_FLOW_STATE_STORAGE_KEY, flowStep);
+    } catch {
+      // ignore storage write errors
+    }
+  }, [flowStep]);
 
-  const stepStatuses = useMemo<PlannerStepStatusMap>(
+  const stepStatuses = useMemo<PlannerFlowStepStatusMap>(
     () =>
-      buildPlannerStepStatusMap({
+      buildPlannerFlowStepStatusMap({
         startFrame,
         startTargetId,
         segments,
         validationReport,
+        obstaclesCount,
+        previewPathPoints,
+        isManualMode,
       }),
-    [startFrame, startTargetId, segments, validationReport]
+    [
+      startFrame,
+      startTargetId,
+      segments,
+      validationReport,
+      obstaclesCount,
+      previewPathPoints,
+      isManualMode,
+    ]
   );
 
   const stepIssueCounts = useMemo(
-    () => getStepIssueCounts(validationReport),
+    () => getFlowStepIssueCounts(validationReport),
     [validationReport]
   );
 
   useEffect(() => {
-    if (canAccessPlannerStep(authoringStep, stepStatuses, uxMode)) return;
-    setAuthoringStep('target');
-  }, [authoringStep, stepStatuses, uxMode, setAuthoringStep]);
+    const mappedFlowStep = mapInternalStepToFlowStep(authoringStep);
+    if (mappedFlowStep !== flowStep) {
+      setFlowStepState(mappedFlowStep);
+    }
+  }, [authoringStep, flowStep]);
 
-  const goToStep = (step: PlannerStep) => {
-    if (!canAccessPlannerStep(step, stepStatuses, uxMode)) return;
-    setAuthoringStep(step);
+  useEffect(() => {
+    if (canAccessFlowStep(flowStep, stepStatuses, uxMode)) return;
+    setFlowStepState('path_library');
+  }, [flowStep, stepStatuses, uxMode]);
+
+  useEffect(() => {
+    const internalStep = mapFlowStepToInternalStep(flowStep);
+    if (authoringStep !== internalStep) {
+      setAuthoringStep(internalStep);
+    }
+  }, [flowStep, authoringStep, setAuthoringStep]);
+
+  const goToStep = (step: PlannerFlowStepV5) => {
+    if (!canAccessFlowStep(step, stepStatuses, uxMode)) return;
+    setFlowStepState(step);
   };
 
   const goNext = () => {
-    const step = nextPlannerStep(authoringStep);
+    const step = nextFlowStep(flowStep);
     goToStep(step);
   };
 
   const goPrevious = () => {
-    const step = previousPlannerStep(authoringStep);
+    const step = previousFlowStep(flowStep);
     goToStep(step);
   };
 
@@ -105,6 +171,7 @@ export function usePlannerWizard({
   return {
     state: {
       uxMode,
+      flowStep,
       stepStatuses,
       stepIssueCounts,
       completedCount,

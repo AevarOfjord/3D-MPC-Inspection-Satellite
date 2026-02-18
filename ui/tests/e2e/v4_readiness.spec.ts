@@ -2,7 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function dismissIntroIfVisible(page: Page) {
   const dismiss = page.getByRole('button', { name: 'Dismiss' });
-  if (await dismiss.isVisible().catch(() => false)) {
+  const visible = await dismiss
+    .waitFor({ state: 'visible', timeout: 1200 })
+    .then(() => true)
+    .catch(() => false);
+  if (visible) {
     await dismiss.click();
   }
 }
@@ -55,16 +59,15 @@ test('v4 kpi: create + validate + reach save-ready state within 5 minutes from c
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
 
-  await page.getByRole('button', { name: /Segments/ }).first().click();
-  await page.getByRole('button', { name: /^Transfer$/ }).click();
+  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Start \+ Transfer/ }).first().click();
+  await page.getByRole('button', { name: /\+ Transfer Segment/ }).click();
 
-  await page.getByRole('button', { name: /Validate/ }).first().click();
-  await page.getByRole('button', { name: 'Re-run' }).click();
-
-  await page.getByRole('button', { name: /Save.*Launch/ }).click();
+  await page.getByRole('button', { name: 'Advanced' }).click();
+  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Save Mission/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
   const saveLaunchPanel = page.locator('#coachmark-save_launch');
   const saveButton = saveLaunchPanel.getByRole('button', { name: /^Save$/ });
-  await expect(saveButton).toBeEnabled();
+  await expect.poll(async () => saveButton.isEnabled()).toBe(true);
 
   await expect.poll(() => validateCalls).toBeGreaterThan(0);
 
@@ -80,13 +83,19 @@ test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
   ] as const;
 
   for (const size of sizes) {
+    await page.addInitScript(() => {
+      window.localStorage.clear();
+    });
     await page.setViewportSize(size);
     await page.goto('/');
     await page.getByRole('button', { name: 'PLANNER' }).click();
     await dismissIntroIfVisible(page);
 
     await expect(page.getByText('Mission Planner')).toBeVisible();
-    await expect(page.getByText('Step 1 · Target')).toBeVisible();
+    await expect(
+      page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Library/ }).first()
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Step [1-5] ·/ })).toBeVisible();
     await expect(page.getByText('Diagnostics Timeline')).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => {
@@ -98,14 +107,21 @@ test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
 });
 
 test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
+  await page.getByRole('button', { name: 'Advanced' }).click();
 
-  const segmentsStepButton = page.locator('#coachmark-step_rail').getByRole('button', { name: /Segments/ }).first();
-  await segmentsStepButton.focus();
+  const startTransferButton = page
+    .locator('#coachmark-step_rail')
+    .getByRole('button', { name: /Start \+ Transfer/ })
+    .first();
+  await startTransferButton.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Segment Composer')).toBeVisible();
+  await expect(page.getByText('Step 2 · Start + Auto Transfer')).toBeVisible();
 
   let foundFocusVisible = false;
   for (let i = 0; i < 25; i += 1) {
@@ -129,5 +145,5 @@ test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ 
   expect(foundFocusVisible).toBe(true);
 
   await page.keyboard.press('Alt+5');
-  await expect(page.getByText('Step 5 · Validate')).toBeVisible();
+  await expect(page.getByText('Step 5 · Save Mission')).toBeVisible();
 });
