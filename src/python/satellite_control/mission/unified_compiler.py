@@ -388,7 +388,9 @@ def compile_unified_mission_path(
 
     path: list[tuple[float, float, float]] = [tuple(start_pos)]
     current = np.array(path[-1], dtype=float)
-    obstacles = mission.obstacles
+    # V4.2 planner policy: obstacles are visual diagnostics in authoring and
+    # must not alter generated transfer/connect geometry.
+    obstacles: Sequence[MissionObstacle] = ()
     margin = float(sim_config.app_config.mpc.obstacle_margin)
 
     # Choose a conservative path speed based on constraints
@@ -479,6 +481,12 @@ def compile_unified_mission_path(
                 ]
 
             if scan_path:
+                # Start scan traversal from the endpoint closest to the current position.
+                # This makes transfer-to-start vs transfer-to-end behavior deterministic.
+                first_p = np.array(scan_path[0], dtype=float)
+                last_p = np.array(scan_path[-1], dtype=float)
+                if np.linalg.norm(current - last_p) + 1e-9 < np.linalg.norm(current - first_p):
+                    scan_path = list(reversed(scan_path))
                 start_p = current
                 end_p = np.array(scan_path[0], dtype=float)
                 dist_conn = np.linalg.norm(end_p - start_p)

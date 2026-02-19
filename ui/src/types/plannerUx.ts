@@ -5,12 +5,21 @@ export type PlannerUxMode = 'guided' | 'advanced';
 export type PlannerStepStatus = 'locked' | 'ready' | 'complete' | 'error';
 export type PlannerFlowStepStatus = PlannerStepStatus;
 
-export type PlannerFlowStepV5 =
-  | 'path_library'
-  | 'start_transfer'
+export type PlannerFlowStepV42 =
+  | 'path_maker'
+  | 'transfer'
   | 'obstacles'
   | 'path_edit'
-  | 'save';
+  | 'mission_saver';
+export type PlannerFlowStepV5 = PlannerFlowStepV42;
+
+export interface SpiralEndpointRef {
+  scanId: string;
+  endpoint: 'start' | 'end';
+}
+
+export type TransferTargetRef = SpiralEndpointRef | null;
+export type PathPairId = string;
 
 export type CoachmarkId =
   | 'step_rail'
@@ -31,11 +40,11 @@ export interface PlannerStepStatusMap {
 }
 
 export interface PlannerFlowStepStatusMap {
-  path_library: PlannerFlowStepStatus;
-  start_transfer: PlannerFlowStepStatus;
+  path_maker: PlannerFlowStepStatus;
+  transfer: PlannerFlowStepStatus;
   obstacles: PlannerFlowStepStatus;
   path_edit: PlannerFlowStepStatus;
-  save: PlannerFlowStepStatus;
+  mission_saver: PlannerFlowStepStatus;
 }
 
 export const PLANNER_UX_MODE_STORAGE_KEY = 'mission_control_planner_ux_mode_v1';
@@ -52,11 +61,11 @@ export const PLANNER_STEP_ORDER: PlannerStep[] = [
 ];
 
 export const PLANNER_FLOW_STEP_ORDER_V5: PlannerFlowStepV5[] = [
-  'path_library',
-  'start_transfer',
+  'path_maker',
+  'transfer',
   'obstacles',
   'path_edit',
-  'save',
+  'mission_saver',
 ];
 
 export interface PlannerCoachmarkState {

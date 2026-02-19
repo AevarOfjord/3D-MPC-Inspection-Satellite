@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { MissionSegment } from '../api/unifiedMission';
@@ -27,6 +27,9 @@ interface UsePlannerWizardArgs {
   startTargetId?: string;
   segments: MissionSegment[];
   validationReport: ValidationReportV2 | null;
+  scanPairCount: number;
+  scanEndpointCount: number;
+  transferTargetSelected: boolean;
   obstaclesCount: number;
   previewPathPoints: number;
   isManualMode: boolean;
@@ -38,15 +41,12 @@ function parseStoredUxMode(raw: string | null): PlannerUxMode {
 }
 
 function parseStoredFlowStep(raw: string | null): PlannerFlowStepV5 | null {
-  if (
-    raw === 'path_library' ||
-    raw === 'start_transfer' ||
-    raw === 'obstacles' ||
-    raw === 'path_edit' ||
-    raw === 'save'
-  ) {
+  if (raw === 'path_maker' || raw === 'transfer' || raw === 'obstacles' || raw === 'path_edit' || raw === 'mission_saver') {
     return raw;
   }
+  if (raw === 'path_library') return 'path_maker';
+  if (raw === 'start_transfer') return 'transfer';
+  if (raw === 'save') return 'mission_saver';
   return null;
 }
 
@@ -57,10 +57,15 @@ export function usePlannerWizard({
   startTargetId,
   segments,
   validationReport,
+  scanPairCount,
+  scanEndpointCount,
+  transferTargetSelected,
   obstaclesCount,
   previewPathPoints,
   isManualMode,
 }: UsePlannerWizardArgs) {
+  const syncingFromFlowRef = useRef(false);
+  const syncingFromAuthoringRef = useRef(false);
   const [uxMode, setUxModeState] = useState<PlannerUxMode>(() => {
     try {
       return parseStoredUxMode(window.localStorage.getItem(PLANNER_UX_MODE_STORAGE_KEY));
@@ -102,6 +107,9 @@ export function usePlannerWizard({
         startTargetId,
         segments,
         validationReport,
+        scanPairCount,
+        scanEndpointCount,
+        transferTargetSelected,
         obstaclesCount,
         previewPathPoints,
         isManualMode,
@@ -111,6 +119,9 @@ export function usePlannerWizard({
       startTargetId,
       segments,
       validationReport,
+      scanPairCount,
+      scanEndpointCount,
+      transferTargetSelected,
       obstaclesCount,
       previewPathPoints,
       isManualMode,
@@ -123,22 +134,34 @@ export function usePlannerWizard({
   );
 
   useEffect(() => {
-    const mappedFlowStep = mapInternalStepToFlowStep(authoringStep);
-    if (mappedFlowStep !== flowStep) {
-      setFlowStepState(mappedFlowStep);
+    if (syncingFromFlowRef.current) {
+      syncingFromFlowRef.current = false;
+      return;
     }
-  }, [authoringStep, flowStep]);
+    const mappedFlowStep = mapInternalStepToFlowStep(authoringStep);
+    setFlowStepState((prev) => {
+      if (prev === mappedFlowStep) return prev;
+      syncingFromAuthoringRef.current = true;
+      return mappedFlowStep;
+    });
+  }, [authoringStep]);
 
   useEffect(() => {
     if (canAccessFlowStep(flowStep, stepStatuses, uxMode)) return;
-    setFlowStepState('path_library');
+    setFlowStepState('path_maker');
   }, [flowStep, stepStatuses, uxMode]);
 
   useEffect(() => {
-    const internalStep = mapFlowStepToInternalStep(flowStep);
-    if (authoringStep !== internalStep) {
-      setAuthoringStep(internalStep);
+    if (syncingFromAuthoringRef.current) {
+      syncingFromAuthoringRef.current = false;
+      return;
     }
+    const internalStep = mapFlowStepToInternalStep(flowStep);
+    // Avoid ping-pong updates for equivalent mappings (e.g. validate/save_launch -> mission_saver).
+    if (mapInternalStepToFlowStep(authoringStep) === flowStep) return;
+    if (authoringStep === internalStep) return;
+    syncingFromFlowRef.current = true;
+    setAuthoringStep(internalStep);
   }, [flowStep, authoringStep, setAuthoringStep]);
 
   const goToStep = (step: PlannerFlowStepV5) => {

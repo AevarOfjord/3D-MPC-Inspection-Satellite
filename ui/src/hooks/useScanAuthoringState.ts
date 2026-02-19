@@ -11,6 +11,7 @@ import type {
   SelectedScanCenterHandle,
 } from './useScanProjectEditor';
 import { createDefaultScanProject } from '../utils/scanProjectValidation';
+import type { TransferTargetRef } from '../types/plannerUx';
 
 export function useScanAuthoringState() {
   const [config, setConfig] = useState<MeshScanConfig>({
@@ -54,6 +55,7 @@ export function useScanAuthoringState() {
   const [connectSourceEndpoint, setConnectSourceEndpoint] = useState<ConnectEndpoint>(null);
   const [compilePreviewState, setCompilePreviewState] =
     useState<ScanCompileResponse | null>(null);
+  const [transferTargetRef, setTransferTargetRef] = useState<TransferTargetRef>(null);
   const [compilePending, setCompilePending] = useState<boolean>(false);
   const [scanProjectAutoPreviewEnabled, setScanProjectAutoPreviewEnabled] = useState<boolean>(false);
   const [centerDragActive, setCenterDragActive] = useState<boolean>(false);
@@ -83,6 +85,7 @@ export function useScanAuthoringState() {
       connectMode,
       connectSourceEndpoint,
       compilePreviewState,
+      transferTargetRef,
       compilePending,
       scanProjectAutoPreviewEnabled,
       centerDragActive,
@@ -111,6 +114,7 @@ export function useScanAuthoringState() {
       setConnectMode,
       setConnectSourceEndpoint,
       setCompilePreviewState,
+      setTransferTargetRef,
       setCompilePending,
       setScanProjectAutoPreviewEnabled,
       setCenterDragActive,

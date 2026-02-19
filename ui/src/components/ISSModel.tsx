@@ -11,9 +11,12 @@ interface ISSModelProps {
   realSpanMeters?: number;
 }
 
+const ISS_GLB_PATH = 'assets/model_files/ISS/ISS.glb';
+const ISS_GLB_URL = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(ISS_GLB_PATH)}`;
+useGLTF.preload(ISS_GLB_URL);
+
 export function ISSModel({ position, orientation, scale = 1, realSpanMeters }: ISSModelProps) {
-  const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/ISS/ISS.glb')}`;
-  const gltf = useGLTF(modelUrl);
+  const gltf = useGLTF(ISS_GLB_URL);
   const clonedObj = useMemo(() => {
     const clone = gltf.scene.clone();
     clone.traverse((child) => {

@@ -62,10 +62,16 @@ def compile_unified_mission_runtime(
     # Create mutable working copy to avoid frozen dataclass violations
     sim_config = base_config.clone()
 
+    resolved_output_frame = (
+        output_frame.upper()
+        if output_frame is not None
+        else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
+    )
+
     path, path_length, path_speed, origin = compile_unified_mission_path(
         mission=mission,
         sim_config=sim_config,
-        output_frame=output_frame,
+        output_frame=resolved_output_frame,
     )
 
     # Disable Two-Body gravity (1/r^2) for runtime missions.
@@ -82,6 +88,7 @@ def compile_unified_mission_runtime(
     mission_state.path_length = float(path_length)
     mission_state.path_speed = float(path_speed)
     mission_state.frame_origin = origin
+    mission_state.path_frame = resolved_output_frame
     (
         mission_state.scan_attitude_center,
         mission_state.scan_attitude_axis,
@@ -89,7 +96,7 @@ def compile_unified_mission_runtime(
     ) = _resolve_scan_attitude_context(
         mission=mission,
         origin=np.array(origin, dtype=float),
-        output_frame=output_frame,
+        output_frame=resolved_output_frame,
     )
 
     start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)

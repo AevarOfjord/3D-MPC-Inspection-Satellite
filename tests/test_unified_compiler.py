@@ -4,8 +4,11 @@ from satellite_control.mission import unified_compiler
 from satellite_control.mission.unified_mission import (
     Frame,
     MissionDefinition,
+    MissionObstacle,
     MissionOverrides,
     Pose,
+    SegmentType,
+    TransferSegment,
 )
 
 
@@ -55,3 +58,35 @@ def test_compile_unified_mission_path_prefers_manual_path_override():
     assert path == [(10.0, 0.0, 0.0), (11.0, 1.0, 0.0), (12.0, 1.0, 0.0)]
     assert path_length > 0.0
     assert path_speed == float(sim_cfg.app_config.mpc.path_speed)
+
+
+def test_compile_unified_mission_path_ignores_obstacles_for_generation(monkeypatch):
+    captured = {"obstacles": None}
+
+    def _fake_builder(waypoints, obstacles, step_size=0.1, safety_margin=0.0):
+        captured["obstacles"] = obstacles
+        return [tuple(map(float, p)) for p in waypoints]
+
+    monkeypatch.setattr(unified_compiler, "build_point_to_point_path", _fake_builder)
+
+    mission = MissionDefinition(
+        epoch="2026-01-01T00:00:00Z",
+        start_pose=Pose(frame=Frame.ECI, position=[0.0, 0.0, 0.0]),
+        segments=[
+            TransferSegment(
+                type=SegmentType.TRANSFER,
+                end_pose=Pose(frame=Frame.ECI, position=[5.0, 0.0, 0.0]),
+            )
+        ],
+        obstacles=[MissionObstacle(position=[1.0, 0.0, 0.0], radius=1.0)],
+    )
+    sim_cfg = SimulationConfig.create_default()
+
+    path, _path_length, _path_speed, _origin = unified_compiler.compile_unified_mission_path(
+        mission=mission,
+        sim_config=sim_cfg,
+        output_frame="ECI",
+    )
+
+    assert captured["obstacles"] in ([], ())
+    assert path[-1] == (5.0, 0.0, 0.0)

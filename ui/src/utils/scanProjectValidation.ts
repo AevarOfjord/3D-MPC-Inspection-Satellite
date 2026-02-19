@@ -33,21 +33,25 @@ export function createDefaultKeyLevels(): ScanKeyLevel[] {
   ];
 }
 
-export function createDefaultScan(index = 1, axis: BodyAxis = 'Z'): ScanDefinition {
-  const planeA: [number, number, number] = [0, 0, -0.5];
-  const planeB: [number, number, number] = [0, 0, 0.5];
+export function createDefaultScan(
+  index = 1,
+  axis: BodyAxis = 'Z',
+  center: [number, number, number] = [0, 0, 0]
+): ScanDefinition {
+  const planeA: [number, number, number] = [center[0], center[1], center[2] - 0.5];
+  const planeB: [number, number, number] = [center[0], center[1], center[2] + 0.5];
 
   if (axis === 'X') {
-    planeA[0] = -0.5;
-    planeA[2] = 0;
-    planeB[0] = 0.5;
-    planeB[2] = 0;
+    planeA[0] = center[0] - 0.5;
+    planeA[2] = center[2];
+    planeB[0] = center[0] + 0.5;
+    planeB[2] = center[2];
   }
   if (axis === 'Y') {
-    planeA[1] = -0.5;
-    planeA[2] = 0;
-    planeB[1] = 0.5;
-    planeB[2] = 0;
+    planeA[1] = center[1] - 0.5;
+    planeA[2] = center[2];
+    planeB[1] = center[1] + 0.5;
+    planeB[2] = center[2];
   }
 
   return {

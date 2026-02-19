@@ -1,6 +1,6 @@
 // PlannedPath.tsx
 import { useEffect, useState, useMemo } from 'react';
-import { Vector3, CatmullRomCurve3 } from 'three';
+import { Vector3 } from 'three';
 import { Line } from '@react-three/drei';
 import { telemetry } from '../services/telemetry';
 import { ReferenceMarker } from './Earth';
@@ -40,18 +40,8 @@ export function PlannedPath({ origin = [0, 0, 0] }: PlannedPathProps) {
   // Compute View Coordinates and Spline
   const displayPath = useMemo(() => {
     if (path.length < 2) return [];
-    
-    // Project world points to view space
-    const viewPoints = path.map(p => p.clone().sub(originVec));
-    
-    // Apply smoothing for better visualization of sparse waypoints
-    // We only have ~800 points for a complex spiral, so native lines look jagged.
-    // CatmullRom restores the "Mission Planner" smooth look.
-    const curve = new CatmullRomCurve3(viewPoints, false, 'centripetal');
-    
-    // Adaptive sample count: roughly 10 samples per segment
-    const sampleCount = Math.max(viewPoints.length * 10, 200);
-    return curve.getPoints(sampleCount);
+    // Render exact planned waypoints in view-space to match MPC reference path.
+    return path.map((p) => p.clone().sub(originVec));
   }, [path, originVec]);
 
   if (displayPath.length < 2) return null;

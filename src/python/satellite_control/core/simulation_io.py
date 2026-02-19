@@ -138,7 +138,12 @@ class SimulationIO:
             return
 
         metadata = {"mission_type": "path_following"}
-        metadata["planned_path_frame"] = "LVLH"
+        planned_path_frame_raw = str(
+            getattr(mission_state, "path_frame", "LVLH")
+        ).upper()
+        metadata["planned_path_frame"] = (
+            planned_path_frame_raw if planned_path_frame_raw in {"ECI", "LVLH"} else "LVLH"
+        )
         frame_origin = getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0))
         try:
             metadata["frame_origin"] = [

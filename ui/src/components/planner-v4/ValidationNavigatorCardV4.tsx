@@ -19,7 +19,7 @@ const STEP_LABEL: Record<ReturnType<typeof mapIssuePathToPlannerStep>, string> =
   scan_definition: 'Scan Definition',
   constraints: 'Constraints',
   validate: 'Validate',
-  save_launch: 'Save/Launch',
+  save_launch: 'Mission Saver',
 };
 
 const severityTone: Record<Severity, 'danger' | 'warning' | 'info'> = {
@@ -69,11 +69,11 @@ export function ValidationNavigatorCardV4({ builder }: ValidationNavigatorCardV4
       <div id="coachmark-validation" className="space-y-3">
         {!report ? (
           <InlineBanner tone="info" title="Run Validation">
-            Validation report is empty. Run validation to inspect issues before save/launch.
+            Validation report is empty. Run validation to inspect issues before saving.
           </InlineBanner>
         ) : report.valid ? (
           <InlineBanner tone="success" title="Validation Pass">
-            Mission is valid and ready for Save/Launch.
+            Mission is valid and ready for Mission Saver.
           </InlineBanner>
         ) : (
           <InlineBanner tone="warning" title="Validation Requires Attention">

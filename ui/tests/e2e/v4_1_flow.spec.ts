@@ -11,7 +11,7 @@ async function dismissIntroIfVisible(page: Page) {
   }
 }
 
-test('v4.1 happy path: 5-step mission flow stays usable and save-ready', async ({ page }) => {
+test('v4.2 happy path: 5-step mission flow stays usable and save-ready', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
@@ -37,27 +37,23 @@ test('v4.1 happy path: 5-step mission flow stays usable and save-ready', async (
     )
     .toBe('advanced');
 
-  await expect(page.getByRole('button', { name: /Path Library/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Start \+ Transfer/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Obstacles/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Path Edit/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Save Mission/ })).toBeVisible();
+  const stepRail = page.locator('#coachmark-step_rail');
+  await expect(stepRail.getByRole('button', { name: /Step 1/ }).first()).toContainText('Path Maker');
+  await expect(stepRail.getByRole('button', { name: /Step 2/ }).first()).toContainText('Transfer');
+  await expect(stepRail.getByRole('button', { name: /Step 3/ }).first()).toContainText('Obstacles');
+  await expect(stepRail.getByRole('button', { name: /Step 4/ }).first()).toContainText('Path Edit');
+  await expect(stepRail.getByRole('button', { name: /Step 5/ }).first()).toContainText('Mission Saver');
 
-  await page
-    .locator('#coachmark-step_rail')
-    .getByRole('button', { name: /Start \+ Transfer/ })
-    .first()
-    .click();
-  await expect(page.getByRole('heading', { name: 'Step 2 · Start + Auto Transfer' })).toBeVisible();
-  await page.getByRole('button', { name: /\+ Transfer Segment/ }).click();
+  await stepRail.getByRole('button', { name: /Step 2/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Step 2 · Transfer' })).toBeVisible();
 
   await page.keyboard.press('Alt+5');
   await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
-  const saveButton = page.locator('#coachmark-save_launch').getByRole('button', { name: /^Save$/ });
+  const saveButton = page.locator('#coachmark-save').getByRole('button', { name: /^Save Mission$/ });
   await expect.poll(async () => saveButton.isEnabled()).toBe(true);
 });
 
-test('v4.1 failure path: validation issue can route back to the fixing step', async ({ page }) => {
+test('v4.2 failure path: validation issue can route back to the fixing step', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
@@ -90,11 +86,11 @@ test('v4.1 failure path: validation issue can route back to the fixing step', as
       page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
     )
     .toBe('advanced');
-  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Save Mission/ }).first().click();
+  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Step 5/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
 
   await expect(page.getByText('Validation Requires Attention')).toBeVisible();
   await expect(
-    page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Library/ }).first()
+    page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Maker/ }).first()
   ).toContainText('1');
 });

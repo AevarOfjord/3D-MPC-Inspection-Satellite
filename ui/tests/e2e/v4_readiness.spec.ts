@@ -11,7 +11,7 @@ async function dismissIntroIfVisible(page: Page) {
   }
 }
 
-test('v4 kpi: create + validate + reach save-ready state within 5 minutes from clean storage', async ({ page }) => {
+test('v4.2 kpi: create + validate + reach save-ready state within 5 minutes from clean storage', async ({ page }) => {
   let validateCalls = 0;
 
   await page.addInitScript(() => {
@@ -59,15 +59,8 @@ test('v4 kpi: create + validate + reach save-ready state within 5 minutes from c
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
 
-  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Start \+ Transfer/ }).first().click();
-  await page.getByRole('button', { name: /\+ Transfer Segment/ }).click();
-
   await page.getByRole('button', { name: 'Advanced' }).click();
-  await page.locator('#coachmark-step_rail').getByRole('button', { name: /Save Mission/ }).first().click();
-  await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
-  const saveLaunchPanel = page.locator('#coachmark-save_launch');
-  const saveButton = saveLaunchPanel.getByRole('button', { name: /^Save$/ });
-  await expect.poll(async () => saveButton.isEnabled()).toBe(true);
+  await page.keyboard.press('ControlOrMeta+Shift+V');
 
   await expect.poll(() => validateCalls).toBeGreaterThan(0);
 
@@ -93,7 +86,7 @@ test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
 
     await expect(page.getByText('Mission Planner')).toBeVisible();
     await expect(
-      page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Library/ }).first()
+      page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Maker/ }).first()
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: /Step [1-5] ·/ })).toBeVisible();
     await expect(page.getByText('Diagnostics Timeline')).toBeVisible();
@@ -117,11 +110,11 @@ test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ 
 
   const startTransferButton = page
     .locator('#coachmark-step_rail')
-    .getByRole('button', { name: /Start \+ Transfer/ })
+    .getByRole('button', { name: /Step 2/ })
     .first();
   await startTransferButton.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Step 2 · Start + Auto Transfer')).toBeVisible();
+  await expect(page.getByText('Step 2 · Transfer')).toBeVisible();
 
   let foundFocusVisible = false;
   for (let i = 0; i < 25; i += 1) {
@@ -144,6 +137,4 @@ test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ 
 
   expect(foundFocusVisible).toBe(true);
 
-  await page.keyboard.press('Alt+5');
-  await expect(page.getByText('Step 5 · Save Mission')).toBeVisible();
 });

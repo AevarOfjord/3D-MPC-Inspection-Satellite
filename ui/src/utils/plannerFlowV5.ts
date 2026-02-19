@@ -1,4 +1,4 @@
-import type { MissionSegment, ScanSegment } from '../api/unifiedMission';
+import type { MissionSegment } from '../api/unifiedMission';
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 import type {
   PlannerFlowStepStatusMap,
@@ -12,6 +12,9 @@ interface BuildPlannerFlowStatusArgs {
   startTargetId?: string;
   segments: MissionSegment[];
   validationReport: ValidationReportV2 | null;
+  scanPairCount: number;
+  scanEndpointCount: number;
+  transferTargetSelected: boolean;
   obstaclesCount: number;
   previewPathPoints: number;
   isManualMode: boolean;
@@ -22,10 +25,8 @@ function hasTargetReady(startFrame: 'ECI' | 'LVLH', startTargetId?: string): boo
   return Boolean(startTargetId);
 }
 
-function hasPathLibraryReady(segments: MissionSegment[]): boolean {
-  const scans = segments.filter((segment) => segment.type === 'scan') as ScanSegment[];
-  if (scans.length === 0) return false;
-  return scans.some((scan) => Boolean(scan.path_asset));
+function hasPathMakerReady(scanPairCount: number, scanEndpointCount: number): boolean {
+  return scanPairCount > 0 && scanEndpointCount > 0;
 }
 
 function hasTransferSegment(segments: MissionSegment[]): boolean {
@@ -33,19 +34,19 @@ function hasTransferSegment(segments: MissionSegment[]): boolean {
 }
 
 export function mapFlowStepToInternalStep(step: PlannerFlowStepV5): PlannerStep {
-  if (step === 'path_library') return 'scan_definition';
-  if (step === 'start_transfer') return 'target';
+  if (step === 'path_maker') return 'scan_definition';
+  if (step === 'transfer') return 'target';
   if (step === 'obstacles') return 'constraints';
   if (step === 'path_edit') return 'segments';
   return 'save_launch';
 }
 
 export function mapInternalStepToFlowStep(step: PlannerStep): PlannerFlowStepV5 {
-  if (step === 'scan_definition') return 'path_library';
-  if (step === 'target') return 'start_transfer';
+  if (step === 'scan_definition') return 'path_maker';
+  if (step === 'target') return 'transfer';
   if (step === 'constraints') return 'obstacles';
   if (step === 'segments') return 'path_edit';
-  return 'save';
+  return 'mission_saver';
 }
 
 export function buildPlannerFlowStepStatusMap({
@@ -53,29 +54,36 @@ export function buildPlannerFlowStepStatusMap({
   startTargetId,
   segments,
   validationReport,
+  scanPairCount,
+  scanEndpointCount,
+  transferTargetSelected,
   obstaclesCount,
   previewPathPoints,
   isManualMode,
 }: BuildPlannerFlowStatusArgs): PlannerFlowStepStatusMap {
-  const pathLibraryComplete = hasPathLibraryReady(segments);
+  const pathMakerComplete = hasPathMakerReady(scanPairCount, scanEndpointCount);
   const startTransferComplete =
     hasTargetReady(startFrame, startTargetId) &&
     hasTransferSegment(segments) &&
+    transferTargetSelected &&
     previewPathPoints > 1;
   const obstaclesComplete = obstaclesCount > 0;
   const pathEditComplete = isManualMode && previewPathPoints > 2;
-  const validationReady = Boolean(validationReport?.valid);
 
   const statuses: PlannerFlowStepStatusMap = {
-    path_library: pathLibraryComplete ? 'complete' : 'ready',
-    start_transfer: startTransferComplete ? 'complete' : 'ready',
+    path_maker: pathMakerComplete ? 'complete' : 'ready',
+    transfer: pathMakerComplete
+      ? startTransferComplete
+        ? 'complete'
+        : 'ready'
+      : 'locked',
     obstacles: startTransferComplete
       ? obstaclesComplete
         ? 'complete'
         : 'ready'
       : 'locked',
     path_edit: startTransferComplete ? (pathEditComplete ? 'complete' : 'ready') : 'locked',
-    save: startTransferComplete ? (validationReady ? 'ready' : 'ready') : 'locked',
+    mission_saver: startTransferComplete ? 'ready' : 'locked',
   };
 
   for (const issue of validationReport?.issues ?? []) {
@@ -99,30 +107,30 @@ export function canAccessFlowStep(
 }
 
 export function nextFlowStep(step: PlannerFlowStepV5): PlannerFlowStepV5 {
-  if (step === 'path_library') return 'start_transfer';
-  if (step === 'start_transfer') return 'obstacles';
+  if (step === 'path_maker') return 'transfer';
+  if (step === 'transfer') return 'obstacles';
   if (step === 'obstacles') return 'path_edit';
-  if (step === 'path_edit') return 'save';
-  return 'save';
+  if (step === 'path_edit') return 'mission_saver';
+  return 'mission_saver';
 }
 
 export function previousFlowStep(step: PlannerFlowStepV5): PlannerFlowStepV5 {
-  if (step === 'save') return 'path_edit';
+  if (step === 'mission_saver') return 'path_edit';
   if (step === 'path_edit') return 'obstacles';
-  if (step === 'obstacles') return 'start_transfer';
-  if (step === 'start_transfer') return 'path_library';
-  return 'path_library';
+  if (step === 'obstacles') return 'transfer';
+  if (step === 'transfer') return 'path_maker';
+  return 'path_maker';
 }
 
 export function getFlowStepIssueCounts(
   report: ValidationReportV2 | null
 ): Record<PlannerFlowStepV5, number> {
   const counts: Record<PlannerFlowStepV5, number> = {
-    path_library: 0,
-    start_transfer: 0,
+    path_maker: 0,
+    transfer: 0,
     obstacles: 0,
     path_edit: 0,
-    save: 0,
+    mission_saver: 0,
   };
   for (const issue of report?.issues ?? []) {
     const flowStep = mapInternalStepToFlowStep(mapIssuePathToPlannerStep(issue.path));
