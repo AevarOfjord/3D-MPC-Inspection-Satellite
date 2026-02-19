@@ -250,43 +250,25 @@ export function StartTransferStepCardV41({ builder }: BaseCardProps) {
         </InlineBanner>
 
         <FieldRow label="Reference Frame">
-          <div className="grid grid-cols-2 gap-2">
-            {(['ECI', 'LVLH'] as const).map((frame) => (
-              <button
-                key={frame}
-                type="button"
-                onClick={() => {
-                  setters.setStartFrame(frame);
-                  if (frame === 'ECI') setters.setStartTargetId(undefined);
-                }}
-                className={`v4-focus v4-button px-2 py-1.5 ${
-                  state.startFrame === frame
-                    ? 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
-                    : 'bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]'
-                }`}
-              >
-                {frame}
-              </button>
-            ))}
+          <div className="v4-subtle-panel px-3 py-2 text-xs text-[color:var(--v4-text-2)]">
+            LVLH (fixed)
           </div>
         </FieldRow>
 
-        {state.startFrame === 'LVLH' ? (
-          <FieldRow label="Relative To">
-            <select
-              className="v4-field"
-              value={selectedTargetId}
-              onChange={(event) => setters.setStartTargetId(event.target.value || undefined)}
-            >
-              <option value="">Select object...</option>
-              {orbitSnapshot.objects.map((obj) => (
-                <option key={obj.id} value={obj.id}>
-                  {obj.name}
-                </option>
-              ))}
-            </select>
-          </FieldRow>
-        ) : null}
+        <FieldRow label="Relative To">
+          <select
+            className="v4-field"
+            value={selectedTargetId}
+            onChange={(event) => setters.setStartTargetId(event.target.value || undefined)}
+          >
+            <option value="">Select object...</option>
+            {orbitSnapshot.objects.map((obj) => (
+              <option key={obj.id} value={obj.id}>
+                {obj.name}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
 
         <FieldRow label="Start Position (m)">
           <div className="grid grid-cols-3 gap-2">

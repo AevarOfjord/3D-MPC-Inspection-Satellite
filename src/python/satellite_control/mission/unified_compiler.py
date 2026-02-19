@@ -329,6 +329,44 @@ def _convert_position(
     return pos
 
 
+def _infer_manual_path_frame(
+    manual_path: Sequence[Sequence[float]],
+    origin: np.ndarray,
+    frame_mode: str,
+) -> str:
+    """
+    Infer legacy manual-path frame to preserve compatibility.
+
+    - New planner behavior stores manual_path in LVLH.
+    - Older planner behavior stored manual_path in ECI.
+    """
+    target_frame = _normalize_frame(frame_mode)
+    valid_points = [np.array(p, dtype=float) for p in manual_path if len(p) == 3]
+    if not valid_points:
+        return target_frame
+
+    origin_norm = float(np.linalg.norm(origin))
+    if origin_norm < 1e5:
+        return target_frame
+
+    absolute_like = 0
+    local_like = 0
+    for point in valid_points:
+        point_norm = float(np.linalg.norm(point))
+        dist_to_origin = float(np.linalg.norm(point - origin))
+        if point_norm > 1e5 and dist_to_origin < 1e5:
+            absolute_like += 1
+        if point_norm < 1e5:
+            local_like += 1
+
+    threshold = max(1, len(valid_points) // 2)
+    if target_frame == "LVLH" and absolute_like >= threshold and absolute_like > local_like:
+        return "ECI"
+    if target_frame == "ECI" and local_like >= threshold and local_like > absolute_like:
+        return "LVLH"
+    return target_frame
+
+
 def compile_unified_mission_path(
     mission: MissionDefinition,
     sim_config: SimulationConfig,
@@ -349,14 +387,18 @@ def compile_unified_mission_path(
 
     manual_path = getattr(getattr(mission, "overrides", None), "manual_path", None) or []
     if manual_path:
-        # Mission planner saves edited preview points in ECI coordinates.
+        manual_path_source_frame = _infer_manual_path_frame(
+            manual_path=manual_path,
+            origin=origin,
+            frame_mode=frame_mode,
+        )
         path = [
             tuple(
                 map(
                     float,
                     _convert_position(
                         p,
-                        "ECI",
+                        manual_path_source_frame,
                         frame_mode,
                         origin,
                     ),

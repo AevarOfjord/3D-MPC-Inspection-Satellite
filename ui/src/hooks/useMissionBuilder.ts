@@ -399,6 +399,8 @@ export function useMissionBuilder() {
     speedMax: config.speed_max,
     setStats,
     setSelectedSegmentIndex,
+    setStartFrame,
+    setStartTargetId,
     setStartPosition,
     setObstacles,
     setSelectedOrbitTargetId,

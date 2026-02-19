@@ -34,6 +34,40 @@ type UseMissionExecutionArgs = {
   editPointLimit: number;
 };
 
+function resolveMissionOrigin(mission: UnifiedMission): [number, number, number] | null {
+  const startTargetId = mission.start_target_id;
+  if (startTargetId) {
+    const matchingScan = mission.segments.find(
+      (segment) =>
+        segment.type === 'scan' &&
+        segment.target_id === startTargetId &&
+        segment.target_pose?.position &&
+        segment.target_pose.position.length === 3
+    );
+    if (matchingScan?.type === 'scan' && matchingScan.target_pose?.position) {
+      return [
+        matchingScan.target_pose.position[0],
+        matchingScan.target_pose.position[1],
+        matchingScan.target_pose.position[2],
+      ];
+    }
+  }
+  const firstScanWithPose = mission.segments.find(
+    (segment) =>
+      segment.type === 'scan' &&
+      segment.target_pose?.position &&
+      segment.target_pose.position.length === 3
+  );
+  if (firstScanWithPose?.type === 'scan' && firstScanWithPose.target_pose?.position) {
+    return [
+      firstScanWithPose.target_pose.position[0],
+      firstScanWithPose.target_pose.position[1],
+      firstScanWithPose.target_pose.position[2],
+    ];
+  }
+  return null;
+}
+
 export function useMissionExecution({
   buildMission,
   validateScanSegments,
@@ -150,7 +184,19 @@ export function useMissionExecution({
       const mission = buildMission({ includeManualPath: false });
       const preview = await previewMission(mission);
       if (preview.path && preview.path.length > 0) {
-        const editablePath = downsamplePath(preview.path, editPointLimit);
+        const previewPathForEditor =
+          mission.start_pose.frame === 'LVLH'
+            ? (() => {
+                const origin = resolveMissionOrigin(mission);
+                if (!origin) return preview.path;
+                return preview.path.map((point) => [
+                  point[0] + origin[0],
+                  point[1] + origin[1],
+                  point[2] + origin[2],
+                ] as [number, number, number]);
+              })()
+            : preview.path;
+        const editablePath = downsamplePath(previewPathForEditor, editPointLimit);
         setPreviewPath(editablePath);
         setStats({
           duration: preview.path_speed > 0 ? preview.path_length / preview.path_speed : 0,
