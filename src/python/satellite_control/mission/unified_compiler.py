@@ -454,9 +454,9 @@ def compile_unified_mission_path(
                 frame_mode,
                 origin,
             )
-            dist = np.linalg.norm(end - current)
-            # Dynamic step size: clamp between 0.1m and 100m, target ~1000 points per segment if long
-            step_size = max(0.1, min(100.0, dist / 1000.0))
+            # Fixed 1m waypoint spacing for transfer segments.
+            # Point count scales with segment length (no dynamic thinning).
+            step_size = 1.0
 
             seg_path = _build_segment_path(
                 start=current,
@@ -531,8 +531,8 @@ def compile_unified_mission_path(
                     scan_path = list(reversed(scan_path))
                 start_p = current
                 end_p = np.array(scan_path[0], dtype=float)
-                dist_conn = np.linalg.norm(end_p - start_p)
-                step_size_conn = max(0.1, min(100.0, dist_conn / 1000.0))
+                # Fixed 1m waypoint spacing for transfer-to-scan connector.
+                step_size_conn = 1.0
 
                 connect = _build_segment_path(
                     start=start_p,

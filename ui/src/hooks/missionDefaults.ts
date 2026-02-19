@@ -23,7 +23,16 @@ export const nextMissionId = () => {
 
 export const defaultTransferSegment = (): TransferSegment => ({
   segment_id: nextSegmentId('transfer'),
-  title: null,
+  title: 'Transfer',
+  notes: null,
+  type: 'transfer',
+  end_pose: { frame: 'LVLH', position: [0, 0, 0] },
+  constraints: { speed_max: 0.25, accel_max: 0.05, angular_rate_max: 0.1 },
+});
+
+export const defaultTransferToPathSegment = (): TransferSegment => ({
+  segment_id: nextSegmentId('transfer'),
+  title: 'Transfer To Path',
   notes: null,
   type: 'transfer',
   end_pose: { frame: 'LVLH', position: [0, 0, 0] },

@@ -2,16 +2,17 @@ import { useEffect, useRef } from 'react';
 
 import { telemetry } from '../services/telemetry';
 import type { MeshScanConfig } from '../api/trajectory';
-import type { ScanSegment } from '../api/unifiedMission';
+import type { MissionSegment, ScanSegment, TransferSegment } from '../api/unifiedMission';
 
 interface HistoryAdapter {
   set: (next: [number, number, number][]) => void;
 }
 
 interface UseMissionRuntimeEffectsArgs {
-  segmentsLength: number;
-  setSegments: (next: ScanSegment[]) => void;
+  segments: MissionSegment[];
+  setSegments: (next: MissionSegment[] | ((prev: MissionSegment[]) => MissionSegment[])) => void;
   defaultScanSegment: () => ScanSegment;
+  defaultTransferToPathSegment: () => TransferSegment;
   refreshModelList: () => Promise<unknown>;
   refreshPathAssets: () => Promise<unknown>;
   refreshScanProjects: () => Promise<unknown>;
@@ -25,9 +26,10 @@ interface UseMissionRuntimeEffectsArgs {
 }
 
 export function useMissionRuntimeEffects({
-  segmentsLength,
+  segments,
   setSegments,
   defaultScanSegment,
+  defaultTransferToPathSegment,
   refreshModelList,
   refreshPathAssets,
   refreshScanProjects,
@@ -40,10 +42,45 @@ export function useMissionRuntimeEffects({
   handlePreview,
 }: UseMissionRuntimeEffectsArgs) {
   useEffect(() => {
-    if (segmentsLength === 0) {
-      setSegments([defaultScanSegment()]);
+    const hasScan = segments.some((segment) => segment.type === 'scan');
+    const transferIndices = segments
+      .map((segment, index) => (segment.type === 'transfer' ? index : -1))
+      .filter((index) => index >= 0);
+    const hasCoreTransfer = segments.some(
+      (segment) => segment.type === 'transfer' && segment.title === 'Transfer To Path'
+    );
+    if (hasScan && transferIndices.length > 0) {
+      if (!hasCoreTransfer && transferIndices.length > 0) {
+        setSegments((prev) => {
+          let promoted = false;
+          return prev.map((segment, index) => {
+            if (
+              !promoted &&
+              index === transferIndices[0] &&
+              segment.type === 'transfer'
+            ) {
+              promoted = true;
+              return { ...segment, title: 'Transfer To Path' };
+            }
+            return segment;
+          });
+        });
+      }
+      return;
     }
-  }, [segmentsLength, setSegments, defaultScanSegment]);
+    setSegments((prev) => {
+      const next = [...prev];
+      const nextHasScan = next.some((segment) => segment.type === 'scan');
+      if (!nextHasScan) {
+        next.push(defaultScanSegment());
+      }
+      const nextHasTransfer = next.some((segment) => segment.type === 'transfer');
+      if (!nextHasTransfer) {
+        next.unshift(defaultTransferToPathSegment());
+      }
+      return next;
+    });
+  }, [segments, setSegments, defaultScanSegment, defaultTransferToPathSegment]);
 
   useEffect(() => {
     refreshModelList().catch((err) => {
