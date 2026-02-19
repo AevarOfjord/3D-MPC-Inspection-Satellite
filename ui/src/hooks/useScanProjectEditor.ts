@@ -173,7 +173,7 @@ export function useScanProjectEditor({
   const createDefaultScanProjectState = (objPath?: string) => {
     const created = createDefaultScanProject(objPath ?? scanProject.obj_path ?? configObjPath ?? '');
     setScanProject(created);
-    setScanProjectAutoPreviewEnabled(false);
+    setScanProjectAutoPreviewEnabled(true);
     lastAutoPreviewSignatureRef.current = null;
     setSelectedScanId(created.scans[0]?.id ?? null);
     setSelectedKeyLevelId(created.scans[0]?.key_levels?.[0]?.id ?? null);
@@ -732,6 +732,7 @@ export function useScanProjectEditor({
 
   type CompileScanOptions = {
     silent?: boolean;
+    signature?: string;
   };
 
   const compileScanProjectNow = async (
@@ -740,6 +741,7 @@ export function useScanProjectEditor({
     options: CompileScanOptions = {}
   ) => {
     const silent = Boolean(options.silent);
+    const signature = options.signature ?? scanProjectCompileSignature;
     const validationError = validateScanProject(scanProject);
     if (validationError) {
       if (!silent) {
@@ -777,6 +779,8 @@ export function useScanProjectEditor({
         length: response.path_length,
         points: response.points,
       });
+      // Mark signature as compiled only after successful compile.
+      lastAutoPreviewSignatureRef.current = signature;
       return response;
     } catch (err: any) {
       console.error(err);
@@ -799,12 +803,16 @@ export function useScanProjectEditor({
     delayMs = 250,
     options: CompileScanOptions = {}
   ) => {
+    const signatureAtSchedule = scanProjectCompileSignature;
     if (compileDebounceRef.current !== null) {
       window.clearTimeout(compileDebounceRef.current);
     }
     setCompilePending(true);
     compileDebounceRef.current = window.setTimeout(() => {
-      compileScanProjectNow(quality, includeCollision, options).finally(() => {
+      compileScanProjectNow(quality, includeCollision, {
+        ...options,
+        signature: signatureAtSchedule,
+      }).finally(() => {
         setCompilePending(false);
       });
     }, delayMs);
@@ -812,7 +820,6 @@ export function useScanProjectEditor({
 
   const previewScanProject = (delayMs = 100) => {
     setScanProjectAutoPreviewEnabled(true);
-    lastAutoPreviewSignatureRef.current = scanProjectCompileSignature;
     compileScanProjectDebounced('preview', true, delayMs);
   };
 
@@ -859,7 +866,7 @@ export function useScanProjectEditor({
       })),
     };
     setScanProject(normalized);
-    setScanProjectAutoPreviewEnabled(false);
+    setScanProjectAutoPreviewEnabled(true);
     lastAutoPreviewSignatureRef.current = null;
     setSelectedScanId(normalized.scans[0]?.id ?? null);
     setSelectedKeyLevelId(normalized.scans[0]?.key_levels?.[0]?.id ?? null);
@@ -884,11 +891,10 @@ export function useScanProjectEditor({
       });
       return null;
     }
-    let compiled = compilePreviewState;
-    if (!compiled || !compiled.combined_path?.length) {
-      compiled = await compileScanProjectNow('final', true);
-      if (!compiled) return null;
-    }
+    // Always bake from final-quality compile output.
+    // Preview compile is intentionally lighter and can look faceted in playback.
+    const compiled = await compileScanProjectNow('final', true);
+    if (!compiled || !compiled.combined_path?.length) return null;
     const payload = {
       name: trimmed,
       obj_path: scanProject.obj_path || configObjPath,
@@ -958,7 +964,6 @@ export function useScanProjectEditor({
     if (!scanProjectAutoPreviewEnabled) return;
     if (!(scanProject.obj_path || configObjPath)) return;
     if (scanProjectCompileSignature === lastAutoPreviewSignatureRef.current) return;
-    lastAutoPreviewSignatureRef.current = scanProjectCompileSignature;
     compileScanProjectDebounced('preview', true, 120, { silent: true });
   }, [
     scanProjectAutoPreviewEnabled,

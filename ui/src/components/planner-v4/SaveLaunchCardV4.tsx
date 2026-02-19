@@ -122,13 +122,6 @@ export function SaveLaunchCardV4({ builder, onOpenRunner }: SaveLaunchCardV4Prop
           </button>
           <button
             type="button"
-            onClick={() => void actions.generateUnifiedPath()}
-            className="v4-focus v4-button px-3 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
-          >
-            Preview Path
-          </button>
-          <button
-            type="button"
             onClick={() => void actions.handleSaveUnifiedMission()}
             disabled={!ready}
             className="v4-focus v4-button px-3 py-2 bg-emerald-900/35 border-emerald-700 text-emerald-100 flex items-center justify-center gap-1"

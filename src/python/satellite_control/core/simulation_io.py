@@ -164,6 +164,21 @@ class SimulationIO:
             except Exception as exc:
                 logger.warning(f"Failed to serialize planned_path for metadata: {exc}")
 
+        mission_obstacles = getattr(mission_state, "obstacles", None) or []
+        serialized_obstacles: list[dict[str, Any]] = []
+        for obs in mission_obstacles:
+            try:
+                position_raw = getattr(obs, "position", None)
+                radius_raw = getattr(obs, "radius", None)
+                if position_raw is None or radius_raw is None:
+                    continue
+                position = [float(position_raw[0]), float(position_raw[1]), float(position_raw[2])]
+                radius = float(radius_raw)
+                serialized_obstacles.append({"position": position, "radius": radius})
+            except Exception:
+                continue
+        metadata["obstacles"] = serialized_obstacles
+
         metadata_path = self.sim.data_save_path / "mission_metadata.json"
         try:
             metadata_path.write_text(json.dumps(metadata, indent=2))

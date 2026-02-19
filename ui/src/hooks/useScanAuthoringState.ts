@@ -57,7 +57,7 @@ export function useScanAuthoringState() {
     useState<ScanCompileResponse | null>(null);
   const [transferTargetRef, setTransferTargetRef] = useState<TransferTargetRef>(null);
   const [compilePending, setCompilePending] = useState<boolean>(false);
-  const [scanProjectAutoPreviewEnabled, setScanProjectAutoPreviewEnabled] = useState<boolean>(false);
+  const [scanProjectAutoPreviewEnabled, setScanProjectAutoPreviewEnabled] = useState<boolean>(true);
   const [centerDragActive, setCenterDragActive] = useState<boolean>(false);
 
   return {

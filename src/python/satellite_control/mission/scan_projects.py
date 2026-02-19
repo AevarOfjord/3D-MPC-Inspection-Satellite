@@ -365,9 +365,18 @@ def _generate_scan_path(
         t = idx / float(max(1, coarse_points - 1))
         coarse_path.append(_point_at_t(t))
 
-    densify_multiplier = max(1, int(scan.get("densify_multiplier", 8)))
+    # Keep preview fidelity as-is for fast authoring, but make final output much denser.
+    # Current baseline behavior:
+    # - preview ~= base * 0.5
+    # - final   ~= base
+    # V4.2 tuning request:
+    # - preview unchanged
+    # - final   = 10x denser than previous final
+    base_densify = max(1, int(scan.get("densify_multiplier", 8)))
     if quality == "preview":
-        densify_multiplier = max(1, int(round(densify_multiplier * 0.5)))
+        densify_multiplier = max(1, int(round(base_densify * 0.5)))
+    else:
+        densify_multiplier = max(1, base_densify * 10)
 
     dense_points = max(len(coarse_path), (len(coarse_path) - 1) * densify_multiplier + 1)
     dense_path: list[list[float]] = []
@@ -639,9 +648,12 @@ def compile_scan_project(
             c1 = _to_vec3(control1, tuple(_auto_connector_controls(start, end)[0]))
             c2 = _to_vec3(control2, tuple(_auto_connector_controls(start, end)[1]))
 
-        samples = max(4, int(connector.get("samples", 24)))
+        # Preserve current preview connector density, but make final connectors 10x finer.
+        base_samples = max(4, int(connector.get("samples", 24)))
         if quality == "preview":
-            samples = max(6, samples // 2)
+            samples = max(6, base_samples // 2)
+        else:
+            samples = max(4, base_samples * 10)
 
         connector_path = _sample_cubic_bezier(start, c1, c2, end, samples=samples)
         if combined_path and np.linalg.norm(

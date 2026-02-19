@@ -78,7 +78,8 @@ export function useMissionAssets({
     setModelPath(path);
     setConfig((prev) => ({ ...prev, obj_path: path }));
     setScanProject((prev) => ({ ...prev, obj_path: path }));
-    setScanProjectAutoPreviewEnabled(false);
+    // Planner V4.2 relies on auto-compile for immediate spiral visibility.
+    setScanProjectAutoPreviewEnabled(true);
     setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
     trajectoryApi
       .getModelBounds(path)
@@ -106,7 +107,8 @@ export function useMissionAssets({
       setModelPath(res.path);
       setConfig((prev) => ({ ...prev, obj_path: res.path }));
       setScanProject((prev) => ({ ...prev, obj_path: res.path }));
-      setScanProjectAutoPreviewEnabled(false);
+      // Keep auto-compile on after upload so Step 1 spiral appears without extra actions.
+      setScanProjectAutoPreviewEnabled(true);
       trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
     } catch (err) {
       console.error(err);

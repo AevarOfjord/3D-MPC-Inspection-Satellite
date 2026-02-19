@@ -116,6 +116,7 @@ async def get_simulation_telemetry(
     metadata_path = run_dir / "mission_metadata.json"
     scan_object = None
     planned_path = None
+    obstacles: list[dict[str, object]] = []
     # Playback should be interpreted as LVLH by default.
     frame = "LVLH"
     frame_origin = [0.0, 0.0, 0.0]
@@ -125,6 +126,30 @@ async def get_simulation_telemetry(
             metadata = json.loads(metadata_path.read_text())
             scan_object = metadata.get("scan_object")
             planned_path = metadata.get("planned_path")
+            metadata_obstacles = metadata.get("obstacles")
+            if isinstance(metadata_obstacles, list):
+                parsed_obstacles: list[dict[str, object]] = []
+                for obstacle in metadata_obstacles:
+                    if not isinstance(obstacle, dict):
+                        continue
+                    position = obstacle.get("position")
+                    radius = obstacle.get("radius")
+                    if not isinstance(position, list) or len(position) < 3:
+                        continue
+                    try:
+                        parsed_obstacles.append(
+                            {
+                                "position": [
+                                    float(position[0]),
+                                    float(position[1]),
+                                    float(position[2]),
+                                ],
+                                "radius": float(radius),
+                            }
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                obstacles = parsed_obstacles
             planned_path_frame_raw = str(
                 metadata.get("planned_path_frame", "LVLH")
             ).upper()
@@ -331,7 +356,7 @@ async def get_simulation_telemetry(
                             to_float(row.get("RW_Torque_Y")),
                             to_float(row.get("RW_Torque_Z")),
                         ],
-                        "obstacles": [],
+                        "obstacles": obstacles,
                         "solve_time": to_float(row.get("Solve_Time", 0.0)) / 1000.0,
                         "pos_error": float(np.linalg.norm([err_x, err_y, err_z])),
                         "ang_error": float(quat_angle_error(reference_quat, quat)),
