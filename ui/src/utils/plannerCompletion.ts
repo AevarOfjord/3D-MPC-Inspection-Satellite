@@ -18,7 +18,7 @@ function hasTargetReady(startFrame: 'ECI' | 'LVLH', startTargetId?: string): boo
 function hasScanAssets(segments: MissionSegment[]): boolean {
   const scanSegments = segments.filter((segment) => segment.type === 'scan') as ScanSegment[];
   if (scanSegments.length === 0) return false;
-  return scanSegments.every((segment) => Boolean(segment.target_id && segment.path_asset));
+  return scanSegments.every((segment) => Boolean(segment.target_id));
 }
 
 function hasConstraintsConfigured(segments: MissionSegment[]): boolean {

@@ -8,6 +8,8 @@ import { CameraManager } from './CameraManager';
 import { CanvasRegistrar } from './CanvasRegistrar';
 import { useCameraStore } from '../store/cameraStore';
 import { useTelemetryStore } from '../store/telemetryStore';
+import { StarlinkModel } from './StarlinkModel';
+import { ISSModel } from './ISSModel';
 
 // --- Live Telemetry Components ---
 import { telemetry } from '../services/telemetry';
@@ -25,10 +27,6 @@ const ReferenceMarker = lazy(() =>
 );
 const Trajectory = lazy(() => import('./Trajectory').then((m) => ({ default: m.Trajectory })));
 const PlannedPath = lazy(() => import('./PlannedPath').then((m) => ({ default: m.PlannedPath })));
-const StarlinkModel = lazy(() =>
-  import('./StarlinkModel').then((m) => ({ default: m.StarlinkModel }))
-);
-const ISSModel = lazy(() => import('./ISSModel').then((m) => ({ default: m.ISSModel })));
 const CustomMeshModel = lazy(() =>
   import('./CustomMeshModel').then((m) => ({ default: m.CustomMeshModel }))
 );
@@ -402,6 +400,15 @@ function SatellitePreview({ position, rotation }: { position: [number, number, n
     );
 }
 
+function ReferenceModelFallback() {
+  return (
+    <mesh>
+      <sphereGeometry args={[0.4, 16, 16]} />
+      <meshStandardMaterial color="#60a5fa" wireframe opacity={0.75} transparent />
+    </mesh>
+  );
+}
+
 // TrajectoryPath removed as it is replaced by EditableTrajectory
 
 // --- Main Unified Viewport ---
@@ -483,6 +490,41 @@ export function UnifiedViewport({
     (EARTH_RADIUS_M * 0.9 - sceneOrigin[1]) * ORBIT_SCALE,
     (EARTH_RADIUS_M * 0.6 - sceneOrigin[2]) * ORBIT_SCALE,
   ] as [number, number, number];
+  const homeFocus = useMemo(() => {
+    if (isPlanning && builderState) {
+      const targetId = builderState.selectedOrbitTargetId || builderState.startTargetId;
+      if (targetId) {
+        const targetObj = orbitSnapshot.objects.find((o) => o.id === targetId);
+        if (targetObj) {
+          const spanMeters = targetObj.real_span_m ?? 4;
+          return {
+            target: scaleToScene(targetObj.position_m),
+            distance: Math.max(spanMeters * 6, 4) * ORBIT_SCALE,
+          };
+        }
+      }
+      return {
+        target: scaleToScene(builderState.referencePosition),
+        distance: Math.max(8 * ORBIT_SCALE, 4),
+      };
+    }
+
+    const viewerTarget = latestTelemetry?.reference_position ?? latestTelemetry?.scan_object?.position;
+    if (viewerTarget && viewerTarget.length === 3) {
+      return {
+        target: [viewerTarget[0], viewerTarget[1], viewerTarget[2]] as [number, number, number],
+        distance: Math.max(8 * ORBIT_SCALE, 4),
+      };
+    }
+
+    return null;
+  }, [
+    builderState,
+    isPlanning,
+    latestTelemetry?.reference_position,
+    latestTelemetry?.scan_object?.position,
+    scaleToScene,
+  ]);
 
   const handleControlsRef = useCallback((node: TrackballControlsImpl | null) => {
     controlsRef.current = node;
@@ -612,9 +654,11 @@ export function UnifiedViewport({
                       ]}
                     >
                       {builderState.modelPath ? (
-                        resolvePreviewModel(builderState.modelPath) ?? (
-                          <ObjWithMtl objPath={builderState.modelPath} />
-                        )
+                        <Suspense fallback={<ReferenceModelFallback />}>
+                          {resolvePreviewModel(builderState.modelPath) ?? (
+                            <ObjWithMtl objPath={builderState.modelPath} />
+                          )}
+                        </Suspense>
                       ) : (
                         <mesh>
                           <boxGeometry args={[1, 1, 1]} />
@@ -1167,6 +1211,11 @@ export function UnifiedViewport({
                                       builderActions.setSelectedScanId(scanId);
                                       if (builderState.connectMode) {
                                         builderActions.selectEndpointForConnect(scanId, item.key);
+                                      } else if (builderState.authoringStep === 'target') {
+                                        builderActions.setTransferTargetRef({
+                                          scanId,
+                                          endpoint: item.key,
+                                        });
                                       }
                                     }}
                                   >
@@ -1386,6 +1435,19 @@ export function UnifiedViewport({
             </HudPanel>
         </div>
       )}
+
+      <button
+        type="button"
+        className="absolute top-6 right-28 z-20 rounded-md border border-cyan-500/50 bg-slate-900/85 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-200 transition hover:border-cyan-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+        onClick={() => {
+          if (!homeFocus) return;
+          requestFocus(homeFocus.target, homeFocus.distance);
+        }}
+        disabled={!homeFocus}
+        title="Home: zoom back to selected object"
+      >
+        Home
+      </button>
     </div>
   );
 }

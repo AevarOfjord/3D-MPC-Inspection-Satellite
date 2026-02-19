@@ -101,6 +101,7 @@ export function useMissionBuilder() {
       connectMode,
       connectSourceEndpoint,
       compilePreviewState,
+      transferTargetRef,
       compilePending,
       scanProjectAutoPreviewEnabled,
       centerDragActive,
@@ -129,6 +130,7 @@ export function useMissionBuilder() {
       setConnectMode,
       setConnectSourceEndpoint,
       setCompilePreviewState,
+      setTransferTargetRef,
       setCompilePending,
       setScanProjectAutoPreviewEnabled,
       setCenterDragActive,
@@ -400,6 +402,7 @@ export function useMissionBuilder() {
     setStartPosition,
     setObstacles,
     setSelectedOrbitTargetId,
+    setTransferTargetRef,
     setValidationReport,
   });
   const {
@@ -536,6 +539,7 @@ export function useMissionBuilder() {
       connectSourceEndpoint,
       centerDragActive,
       compilePreviewState,
+      transferTargetRef,
       compilePending,
       scanProjectAutoPreviewEnabled,
     },
@@ -595,6 +599,7 @@ export function useMissionBuilder() {
       setConnectMode,
       setConnectSourceEndpoint,
       setCompilePreviewState,
+      setTransferTargetRef,
     },
     missionSetters: {
       setMissionId,
@@ -653,6 +658,7 @@ export function useMissionBuilder() {
       setSelectedScanId,
       setSelectedKeyLevelId,
       setSelectedConnectorId,
+      setTransferTargetRef,
     },
     interactionActions: {
       addObstacle,

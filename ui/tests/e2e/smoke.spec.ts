@@ -17,7 +17,7 @@ test('app shell loads', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'RUNNER' })).toBeVisible();
 });
 
-test('planner flow renders unified steps and save/launch is gated', async ({ page }) => {
+test('planner flow renders V4.2 steps and mission saver is gated', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
@@ -50,12 +50,12 @@ test('planner flow renders unified steps and save/launch is gated', async ({ pag
       page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
     )
     .toBe('advanced');
-  await expect(page.getByRole('button', { name: /Path Library/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Path Maker/ })).toBeVisible();
   await page.getByRole('button', { name: 'Quick Inspect' }).click();
   await page.keyboard.press('Alt+5');
   await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Save$/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /^Launch Now$/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Save Mission$/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^Open Runner$/ })).toBeDisabled();
 });
 
 test('draft restore banner is one-shot and discard clears it', async ({ page }) => {
@@ -104,7 +104,7 @@ test('command palette and planner shortcuts work', async ({ page }) => {
   await expect(page.getByPlaceholder('Search commands...')).toBeVisible();
   await page.getByPlaceholder('Search commands...').fill('switch to planner');
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: /Path Library/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Path Maker/ })).toBeVisible();
   await expect
     .poll(async () =>
       page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))

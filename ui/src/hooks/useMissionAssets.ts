@@ -7,6 +7,7 @@ import { useCameraStore } from '../store/cameraStore';
 import { ORBIT_SCALE } from '../data/orbitSnapshot';
 import { resamplePath, downsamplePath } from '../utils/pathResample';
 import type { Dispatch, SetStateAction } from 'react';
+import { useCallback } from 'react';
 import { useToast } from '../feedback/feedbackContext';
 
 interface HistoryAdapter {
@@ -54,25 +55,25 @@ export function useMissionAssets({
 }: UseMissionAssetsArgs) {
   const { showToast } = useToast();
 
-  const refreshModelList = async () => {
+  const refreshModelList = useCallback(async () => {
     const models = await trajectoryApi.listModels();
     setAvailableModels(models);
     return models;
-  };
+  }, [setAvailableModels]);
 
-  const refreshPathAssets = async () => {
+  const refreshPathAssets = useCallback(async () => {
     const assets = await pathAssetsApi.list();
     setPathAssets(assets);
     return assets;
-  };
+  }, [setPathAssets]);
 
-  const refreshScanProjects = async () => {
+  const refreshScanProjects = useCallback(async () => {
     const projects = await scanProjectsApi.listScanProjects();
     setScanProjects(projects);
     return projects;
-  };
+  }, [setScanProjects]);
 
-  const selectModelPath = (path: string) => {
+  const selectModelPath = useCallback((path: string) => {
     if (!path) return;
     setModelPath(path);
     setConfig((prev) => ({ ...prev, obj_path: path }));
@@ -84,19 +85,19 @@ export function useMissionAssets({
       .then((bounds) => {
         const extent = Math.max(bounds.extents[0], bounds.extents[1], bounds.extents[2]);
         const distance = Math.max(extent * 2.5, 5);
-        useCameraStore.getState().requestFocus(
-          [
-            bounds.center[0] * ORBIT_SCALE,
-            bounds.center[1] * ORBIT_SCALE,
-            bounds.center[2] * ORBIT_SCALE,
-          ],
-          distance * ORBIT_SCALE
-        );
+        // Planner uses floating-origin scene space; center focus on local origin.
+        useCameraStore.getState().requestFocus([0, 0, 0], distance * ORBIT_SCALE);
       })
       .catch(() => null);
-  };
+  }, [
+    setModelPath,
+    setConfig,
+    setScanProject,
+    setScanProjectAutoPreviewEnabled,
+    setModelUrl,
+  ]);
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = useCallback(async (file: File) => {
     setLoading(true);
     try {
       const url = URL.createObjectURL(file);
@@ -113,9 +114,18 @@ export function useMissionAssets({
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    setLoading,
+    setModelUrl,
+    setModelPath,
+    setConfig,
+    setScanProject,
+    setScanProjectAutoPreviewEnabled,
+    setAvailableModels,
+    showToast,
+  ]);
 
-  const savePathAsset = async (name: string) => {
+  const savePathAsset = useCallback(async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) {
       showToast({
@@ -152,9 +162,15 @@ export function useMissionAssets({
     const saved = await pathAssetsApi.save(payload);
     await refreshPathAssets();
     return saved;
-  };
+  }, [
+    config.obj_path,
+    previewPath,
+    savePointMultiplier,
+    showToast,
+    refreshPathAssets,
+  ]);
 
-  const loadPathAsset = async (assetId: string) => {
+  const loadPathAsset = useCallback(async (assetId: string) => {
     const asset = await pathAssetsApi.get(assetId);
     if (asset.path && asset.path.length > 0) {
       const editablePath = downsamplePath(asset.path, editPointLimit);
@@ -173,7 +189,16 @@ export function useMissionAssets({
       setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(asset.obj_path)}`);
     }
     return asset;
-  };
+  }, [
+    editPointLimit,
+    pathHistory,
+    setIsManualMode,
+    config.speed_max,
+    setStats,
+    setModelPath,
+    setConfig,
+    setModelUrl,
+  ]);
 
   return {
     actions: {

@@ -13,8 +13,8 @@ const CARD_COPY: Record<CoachmarkId, { title: string; body: string }> = {
     body: 'Follow the steps in order for the simplest mission-creation flow.',
   },
   templates: {
-    title: 'Path Sources',
-    body: 'Choose library path, create new, or duplicate an existing path.',
+    title: 'Quick Starts',
+    body: 'Apply a starter mission, then tune each step in the guided flow.',
   },
   context_panel: {
     title: 'Step Controls',
@@ -25,8 +25,8 @@ const CARD_COPY: Record<CoachmarkId, { title: string; body: string }> = {
     body: 'Drag spline points in the viewport. Use add/remove + undo/redo in the panel.',
   },
   save: {
-    title: 'Save Mission',
-    body: 'Validation runs here. Fix issues, then save or launch when preflight is green.',
+    title: 'Mission Saver',
+    body: 'Validation runs here. Fix issues, save mission, then open Runner to launch.',
   },
   validation: {
     title: 'Validation',

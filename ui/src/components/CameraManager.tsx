@@ -88,7 +88,16 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
       (controls as any).target.copy(target);
       (controls as any).update();
     }
-  }, [camera, controls, focusDistance, focusNonce, focusTarget]);
+  }, [
+    camera,
+    controls,
+    focusDistance,
+    focusNonce,
+    focusTarget,
+    origin[0],
+    origin[1],
+    origin[2],
+  ]);
 
   useEffect(() => {
     if (!viewPreset) return;
@@ -132,7 +141,17 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
       (controls as any).target.copy(target);
       (controls as any).update();
     }
-  }, [camera, controls, focusTarget, viewNonce, viewPreset, baseDistance]);
+  }, [
+    camera,
+    controls,
+    focusTarget,
+    viewNonce,
+    viewPreset,
+    baseDistance,
+    origin[0],
+    origin[1],
+    origin[2],
+  ]);
 
   useFrame(() => {
     if (mode === 'chase') {

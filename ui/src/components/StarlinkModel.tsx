@@ -12,6 +12,10 @@ interface StarlinkModelProps {
   pivot?: 'center' | 'minY' | 'maxY' | 'centroid' | 'origin';
 }
 
+const STARLINK_GLB_PATH = 'assets/model_files/Starlink/starlink.glb';
+const STARLINK_GLB_URL = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(STARLINK_GLB_PATH)}`;
+useGLTF.preload(STARLINK_GLB_URL);
+
 export function StarlinkModel({
   position,
   orientation,
@@ -19,8 +23,7 @@ export function StarlinkModel({
   realSpanMeters,
   pivot = 'center',
 }: StarlinkModelProps) {
-  const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent('assets/model_files/Starlink/starlink.glb')}`;
-  const gltf = useGLTF(modelUrl);
+  const gltf = useGLTF(STARLINK_GLB_URL);
 
   // Clone and apply fallback material if needed
   const clonedObj = useMemo(() => {

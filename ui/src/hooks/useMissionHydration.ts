@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import type { ScanSegment, SplineControl, UnifiedMission } from '../api/unifiedMission';
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
+import type { TransferTargetRef } from '../types/plannerUx';
 import { computePathLength } from '../utils/pathMetrics';
 
 interface UseMissionHydrationArgs {
@@ -23,6 +24,7 @@ interface UseMissionHydrationArgs {
   setStartPosition: Dispatch<SetStateAction<[number, number, number]>>;
   setObstacles: Dispatch<SetStateAction<{ position: [number, number, number]; radius: number }[]>>;
   setSelectedOrbitTargetId: Dispatch<SetStateAction<string | null>>;
+  setTransferTargetRef: Dispatch<SetStateAction<TransferTargetRef>>;
   setValidationReport: Dispatch<SetStateAction<ValidationReportV2 | null>>;
 }
 
@@ -43,6 +45,7 @@ export function useMissionHydration({
   setStartPosition,
   setObstacles,
   setSelectedOrbitTargetId,
+  setTransferTargetRef,
   setValidationReport,
 }: UseMissionHydrationArgs) {
   const applyLoadedMission = (mission: UnifiedMission, fallbackName?: string) => {
@@ -106,6 +109,7 @@ export function useMissionHydration({
       | ScanSegment
       | undefined;
     setSelectedOrbitTargetId(firstScan?.target_id ?? null);
+    setTransferTargetRef(null);
     setValidationReport(null);
   };
 

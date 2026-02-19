@@ -27,15 +27,18 @@ If you received a packaged archive:
 
 ## 2) Main Web Workflow
 
-1. `Planner`: use the unified guided rail (`Target -> Segments -> Scan Definition -> Constraints -> Validate -> Save/Launch`).
+1. `Planner`: use the guided 5-step rail (`Path Maker -> Transfer -> Obstacles -> Path Edit -> Mission Saver`).
 2. `Planner` defaults to `Guided` mode; switch to `Advanced` for free step navigation.
-3. `Scan Definition` step: use basics first, then optional advanced geometry/connectors.
-4. `Validate` step: issues are grouped by severity; click an issue row to jump to its field context.
-5. `Save/Launch` step: use preflight checklist + naming helper before launch.
-6. `Settings`: tune MPC/simulation settings and click `Save Changes`.
-7. `Runner`: start/stop simulation and watch logs.
-8. `Viewer`: inspect motion/attitude behavior.
-9. `Data`: browse generated files and download artifacts.
+3. `Path Maker` step: define plane pairs, shape spirals with handles, and connect endpoints.
+4. `Transfer` step: set start pose, select a spiral endpoint, and generate transfer.
+5. `Obstacles` step: place spherical obstacles (`position + radius` only, visual diagnostics only).
+6. `Path Edit` step: manually drag/add/delete spline points and resolve warnings.
+7. `Mission Saver` step: validation + naming helper + save mission.
+8. Launch runs from `Runner` mode (Planner save step is save-only in V4.2).
+9. `Settings`: tune MPC/simulation settings and click `Save Changes`.
+10. `Runner`: start/stop simulation and watch logs.
+11. `Viewer`: inspect motion/attitude behavior.
+12. `Data`: browse generated files and download artifacts.
 
 ### Mission Draft Recovery
 
@@ -68,12 +71,11 @@ Go to `Settings` -> `Build & Package`.
 - Open shortcut help: `?`
 - Switch modes: `Ctrl/Cmd + 1..5`
   - `1 Viewer`, `2 Planner`, `3 Runner`, `4 Data`, `5 Settings`
-- Planner step jump: `Alt + 1..6`
-  - `1 Target`, `2 Segments`, `3 Scan Definition`, `4 Constraints`, `5 Validate`, `6 Save/Launch`
+- Planner step jump: `Alt + 1..5`
+  - `1 Path Maker`, `2 Transfer`, `3 Obstacles`, `4 Path Edit`, `5 Mission Saver`
 - Planner actions:
   - `Ctrl/Cmd + Shift + V`: validate
   - `Ctrl/Cmd + S`: save mission
-  - `Ctrl/Cmd + Enter`: launch mission
 
 ## 4) Workspace Backup/Restore
 
@@ -131,7 +133,7 @@ make stop           # stop app processes on known ports
   - re-run `Inspect Workspace`
   - verify global replace toggles and per-item selections
 - Mission save blocked by validation:
-  - open the `Validate` step and click issue rows to jump to affected fields
+  - open the `Mission Saver` step and click issue rows to jump to affected fields
 
 ## 8) Release Ops
 

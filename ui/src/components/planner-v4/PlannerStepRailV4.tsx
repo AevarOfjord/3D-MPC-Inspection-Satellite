@@ -13,26 +13,26 @@ interface PlannerStepRailV4Props {
 }
 
 const STEP_LABEL: Record<PlannerFlowStepV5, string> = {
-  path_library: 'Path Library',
-  start_transfer: 'Start + Transfer',
+  path_maker: 'Path Maker',
+  transfer: 'Transfer',
   obstacles: 'Obstacles',
   path_edit: 'Path Edit',
-  save: 'Save Mission',
+  mission_saver: 'Mission Saver',
 };
 
 const STEP_HINT: Record<PlannerFlowStepV5, string> = {
-  path_library: 'Create/load object paths',
-  start_transfer: 'Place satellite + auto-route',
-  obstacles: 'Add hazards + recompute',
+  path_maker: 'Create paired panels + spirals',
+  transfer: 'Start pose to spline endpoint',
+  obstacles: 'Place spheres and radius',
   path_edit: 'Refine editable spline',
-  save: 'Validate, save, launch',
+  mission_saver: 'Validate and save mission',
 };
 
 export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
   const { state, actions } = builder;
 
   const jumpToStep = (step: PlannerFlowStepV5) => {
-    if (step === 'path_library') {
+    if (step === 'path_maker') {
       const firstScan = state.segments.findIndex((segment) => segment.type === 'scan');
       if (firstScan >= 0) {
         actions.selectSegment(firstScan);
@@ -52,7 +52,7 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
     <div id="coachmark-step_rail" className="space-y-3">
       <Panel
         title="Mission Planner"
-        subtitle="Simple 5-step mission creator"
+        subtitle="Path-maker first 5-step mission creator"
         actions={<StatusPill tone="info">{progressPercent}% Ready</StatusPill>}
         className="w-[20rem]"
       >
@@ -171,7 +171,7 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
           </div>
           <div className="pt-1 flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
             <Layers3 size={12} />
-            Guided mode keeps the workflow simple. Advanced mode removes step locks.
+            {'Guided mode follows Path Maker -> Transfer -> Obstacles -> Path Edit -> Mission Saver.'}
           </div>
           <div className="flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
             <Workflow size={12} />

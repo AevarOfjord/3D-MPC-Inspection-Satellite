@@ -189,14 +189,14 @@ function App() {
     if (appMode === 'planner') {
       items.push(
         {
-          id: 'planner-step-path-library',
-          label: 'Go to Planner Step: Path Library',
+          id: 'planner-step-path-maker',
+          label: 'Go to Planner Step: Path Maker',
           shortcut: 'Alt+1',
           onSelect: () => jumpToPlannerStep('scan_definition'),
         },
         {
-          id: 'planner-step-start-transfer',
-          label: 'Go to Planner Step: Start + Transfer',
+          id: 'planner-step-transfer',
+          label: 'Go to Planner Step: Transfer',
           shortcut: 'Alt+2',
           onSelect: () => jumpToPlannerStep('target'),
         },
@@ -213,8 +213,8 @@ function App() {
           onSelect: () => jumpToPlannerStep('segments'),
         },
         {
-          id: 'planner-step-save',
-          label: 'Go to Planner Step: Save Mission',
+          id: 'planner-step-mission-saver',
+          label: 'Go to Planner Step: Mission Saver',
           shortcut: 'Alt+5',
           onSelect: () => jumpToPlannerStep('save_launch'),
         },
@@ -234,14 +234,6 @@ function App() {
             void builder.actions.handleSaveUnifiedMission();
           },
         },
-        {
-          id: 'planner-launch',
-          label: 'Planner: Launch Mission',
-          shortcut: 'Ctrl/Cmd+Enter',
-          onSelect: () => {
-            void builder.actions.handleRun();
-          },
-        }
       );
     }
     return items;
@@ -313,10 +305,6 @@ function App() {
         return;
       }
 
-      if (mod && event.key === 'Enter') {
-        event.preventDefault();
-        void builder.actions.handleRun();
-      }
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -553,7 +541,7 @@ function App() {
         
         {appMode === 'planner' && (
             <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
-              <PlannerModeViewV4 viewMode={viewMode} builder={builder} />
+              <PlannerModeViewV4 viewMode={viewMode} builder={builder} onOpenRunner={switchToRunner} />
             </Suspense>
         )}
         {appMode === 'runner' && (

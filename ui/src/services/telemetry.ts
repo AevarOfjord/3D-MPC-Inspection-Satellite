@@ -74,10 +74,23 @@ class TelemetryService {
     }
 
     const origin = data.frame_origin;
-    const add = (p?: [number, number, number]) =>
-      p
-        ? ([p[0] + origin[0], p[1] + origin[1], p[2] + origin[2]] as [number, number, number])
-        : p;
+    const distance = (a: [number, number, number], b: [number, number, number]) =>
+      Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+    // Compatibility guard for older runs that were tagged LVLH in metadata
+    // even though points were already absolute near the frame origin.
+    const shouldTreatAsAbsolute = (p?: [number, number, number]) =>
+      Boolean(
+        p &&
+          Math.hypot(origin[0], origin[1], origin[2]) > 1e5 &&
+          distance(p, origin) < 1e5
+      );
+
+    const add = (p?: [number, number, number]) => {
+      if (!p) return p;
+      if (shouldTreatAsAbsolute(p)) return p;
+      return [p[0] + origin[0], p[1] + origin[1], p[2] + origin[2]] as [number, number, number];
+    };
 
     const addPath = (path?: [number, number, number][]) =>
       path ? path.map((p) => add(p) as [number, number, number]) : path;

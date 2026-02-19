@@ -1,6 +1,5 @@
-import { Play, Rocket, Save, WandSparkles } from 'lucide-react';
+import { ArrowRightCircle, Save, WandSparkles } from 'lucide-react';
 
-import type { ScanSegment } from '../../api/unifiedMission';
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import { isSaveLaunchReady } from '../../utils/plannerValidation';
 import { Panel } from '../ui-v4/Panel';
@@ -9,6 +8,7 @@ import { StatusPill } from '../ui-v4/StatusPill';
 
 interface SaveLaunchCardV4Props {
   builder: ReturnType<typeof useMissionBuilder>;
+  onOpenRunner?: () => void;
 }
 
 function suggestMissionName(current: string, selectedTargetId: string | null, segmentsCount: number): string {
@@ -25,20 +25,26 @@ function suggestMissionName(current: string, selectedTargetId: string | null, se
   return `${target}_M${segmentsCount}_${timestamp}`;
 }
 
-export function SaveLaunchCardV4({ builder }: SaveLaunchCardV4Props) {
+export function SaveLaunchCardV4({ builder, onOpenRunner }: SaveLaunchCardV4Props) {
   const { state, setters, actions } = builder;
   const report = state.validationReport;
   const ready = isSaveLaunchReady(report);
-
-  const scanSegments = state.segments.filter((segment) => segment.type === 'scan') as ScanSegment[];
   const checklist = [
     {
       label: 'At least one segment added',
       done: state.segments.length > 0,
     },
     {
-      label: 'All scan segments have path assets',
-      done: scanSegments.length > 0 && scanSegments.every((segment) => Boolean(segment.path_asset)),
+      label: 'All scan segments have a target',
+      done:
+        state.segments.filter((segment) => segment.type === 'scan').length > 0 &&
+        state.segments
+          .filter((segment) => segment.type === 'scan')
+          .every((segment) => Boolean(segment.target_id)),
+    },
+    {
+      label: 'Transfer endpoint selected',
+      done: Boolean(state.transferTargetRef),
     },
     {
       label: 'Validation passed',
@@ -55,19 +61,19 @@ export function SaveLaunchCardV4({ builder }: SaveLaunchCardV4Props) {
   return (
     <Panel
       title="Step 5 · Save Mission"
-      subtitle="Preflight validation, naming helper, save, then optional launch"
+      subtitle="Preflight validation and save-only mission handoff"
       actions={
         ready ? <StatusPill tone="success">Ready</StatusPill> : <StatusPill tone="warning">Blocked</StatusPill>
       }
     >
-      <div id="coachmark-save_launch" className="space-y-3">
+      <div id="coachmark-save" className="space-y-3">
         {ready ? (
           <InlineBanner tone="success" title="Preflight Pass">
-            Mission is valid. You can save and launch.
+            Mission is valid. Save now, then open Runner when ready.
           </InlineBanner>
         ) : (
           <InlineBanner tone="warning" title="Preflight Incomplete">
-            Complete the checklist items below before save/launch.
+            Complete the checklist items below before saving.
           </InlineBanner>
         )}
 
@@ -127,21 +133,22 @@ export function SaveLaunchCardV4({ builder }: SaveLaunchCardV4Props) {
             disabled={!ready}
             className="v4-focus v4-button px-3 py-2 bg-emerald-900/35 border-emerald-700 text-emerald-100 flex items-center justify-center gap-1"
           >
-            <Save size={13} /> Save
+            <Save size={13} /> Save Mission
           </button>
           <button
             type="button"
-            onClick={() => void actions.handleRun()}
-            disabled={!ready}
+            onClick={() => {
+              if (onOpenRunner) onOpenRunner();
+            }}
+            disabled={!ready || !onOpenRunner}
             className="v4-focus v4-button px-3 py-2 bg-blue-900/35 border-blue-700 text-blue-100 flex items-center justify-center gap-1"
           >
-            <Play size={13} /> Launch Now
+            <ArrowRightCircle size={13} /> Open Runner
           </button>
         </div>
 
         <div className="text-[11px] text-[color:var(--v4-text-3)] flex items-center gap-1">
-          <Rocket size={12} />
-          Save and launch behavior uses existing v2 backend flow with no API changes.
+          Save uses existing v2 backend flow with no API changes. Launch remains in Runner mode.
         </div>
       </div>
     </Panel>

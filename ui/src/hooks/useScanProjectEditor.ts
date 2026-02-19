@@ -195,7 +195,7 @@ export function useScanProjectEditor({
 
   const addScan = () => {
     updateScanProject((prev) => {
-      const nextScan = createDefaultScan(prev.scans.length + 1, 'Z');
+      const nextScan = createDefaultScan(prev.scans.length + 1, 'Z', referencePosition);
       const next = { ...prev, scans: [...prev.scans, nextScan] };
       setSelectedScanId(nextScan.id);
       setSelectedKeyLevelId(nextScan.key_levels[0]?.id ?? null);
@@ -600,13 +600,39 @@ export function useScanProjectEditor({
     if (handle === 'rx_pos' || handle === 'rx_neg') {
       const projected = relToCenter.sub(normalVec.clone().multiplyScalar(relToCenter.dot(normalVec)));
       const radius = Math.max(0.01, Math.abs(projected.dot(major)));
-      updateKeyLevel(scanId, keyLevelId, { radius_x: radius });
+      updateScanProject((prev) => ({
+        ...prev,
+        scans: prev.scans.map((item) => {
+          if (item.id !== scanId) return item;
+          return {
+            ...item,
+            key_levels: item.key_levels.map((level) => ({
+              ...level,
+              radius_x: radius,
+              center_offset: [0, 0] as [number, number],
+            })),
+          };
+        }),
+      }));
       return;
     }
 
     const projected = relToCenter.sub(normalVec.clone().multiplyScalar(relToCenter.dot(normalVec)));
     const radius = Math.max(0.01, Math.abs(projected.dot(minor)));
-    updateKeyLevel(scanId, keyLevelId, { radius_y: radius });
+    updateScanProject((prev) => ({
+      ...prev,
+      scans: prev.scans.map((item) => {
+        if (item.id !== scanId) return item;
+        return {
+          ...item,
+          key_levels: item.key_levels.map((level) => ({
+            ...level,
+            radius_y: radius,
+            center_offset: [0, 0] as [number, number],
+          })),
+        };
+      }),
+    }));
   };
 
   const updateConnector = (connectorId: string, patch: Partial<ScanConnector>) => {
@@ -866,7 +892,13 @@ export function useScanProjectEditor({
     const payload = {
       name: trimmed,
       obj_path: scanProject.obj_path || configObjPath,
-      path: compiled.combined_path,
+      // Store baked scan-project paths relative to the selected reference target.
+      // This keeps runtime path coordinates local/LVLH-friendly for MPC precision.
+      path: compiled.combined_path.map((p) => [
+        p[0] - referencePosition[0],
+        p[1] - referencePosition[1],
+        p[2] - referencePosition[2],
+      ]) as [number, number, number][],
       open: true,
       relative_to_obj: true,
     };

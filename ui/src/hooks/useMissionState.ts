@@ -131,7 +131,12 @@ export function useMissionState({
       if (targetIndex < 0) return prev;
       const seg = prev[targetIndex] as ScanSegment;
       const next = prev.map((s, i) =>
-        i === targetIndex ? { ...seg, path_asset: assetId } : s
+        i === targetIndex
+          ? {
+              ...seg,
+              path_asset: assetId,
+            }
+          : s
       );
       setSelectedSegmentIndex(targetIndex);
       return next;
@@ -240,10 +245,6 @@ export function useMissionState({
       if (!seg.target_id) {
         setSelectedSegmentIndex(idx);
         return 'Scan segment requires a target object. Select one in the Inspector.';
-      }
-      if (!seg.path_asset) {
-        setSelectedSegmentIndex(idx);
-        return 'Scan segment requires a saved Path Asset. Create one in Planner Step 3: Scan Definition.';
       }
     }
     return null;

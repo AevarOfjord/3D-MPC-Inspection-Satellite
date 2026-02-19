@@ -79,6 +79,8 @@ class MissionState:
     path_tracking_trajectory_dt: float = timing.CONTROL_DT
     # Origin of the simulation frame in ECI coordinates [x, y, z]
     frame_origin: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Path frame used for compiled mission waypoints ("ECI" or "LVLH").
+    path_frame: str = "LVLH"
     # Optional scan-attitude context for MPC (+Z alignment and object-facing side).
     scan_attitude_center: tuple[float, float, float] | None = None
     scan_attitude_axis: tuple[float, float, float] | None = None
@@ -159,6 +161,7 @@ class MissionState:
         self.path_tracking_return_angle = (0.0, 0.0, 0.0)
         self.path_tracking_trajectory = None
         self.path_tracking_trajectory_dt = timing.CONTROL_DT
+        self.path_frame = "LVLH"
         self.scan_attitude_center = None
         self.scan_attitude_axis = None
         self.scan_attitude_direction = "CW"
