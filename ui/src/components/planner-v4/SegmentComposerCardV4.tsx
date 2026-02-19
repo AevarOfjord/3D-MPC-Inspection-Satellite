@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Plus, Route, ScanLine, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plus, Route, Trash2 } from 'lucide-react';
 
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import { mapIssuePathToPlannerStep } from '../../utils/plannerValidation';
@@ -23,6 +23,31 @@ function segmentSummary(segment: ReturnType<typeof useMissionBuilder>['state']['
   return `Duration: ${segment.duration.toFixed(1)} s`;
 }
 
+function isCoreTransferSegment(
+  segment: ReturnType<typeof useMissionBuilder>['state']['segments'][number],
+  index: number,
+  state: ReturnType<typeof useMissionBuilder>['state']
+): boolean {
+  if (segment.type !== 'transfer') return false;
+  const titledIndex = state.segments.findIndex(
+    (item) => item.type === 'transfer' && item.title === 'Transfer To Path'
+  );
+  if (titledIndex >= 0) return index === titledIndex;
+  const firstTransfer = state.segments.findIndex((item) => item.type === 'transfer');
+  return firstTransfer === index;
+}
+
+function segmentDisplayName(
+  segment: ReturnType<typeof useMissionBuilder>['state']['segments'][number],
+  index: number,
+  state: ReturnType<typeof useMissionBuilder>['state']
+): string {
+  if (segment.type === 'scan') return 'Scan';
+  if (isCoreTransferSegment(segment, index, state)) return 'Transfer To Path';
+  if (segment.type === 'transfer') return 'Transfer';
+  return 'Hold';
+}
+
 export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }: SegmentComposerCardV4Props) {
   const { state, actions } = builder;
 
@@ -36,7 +61,7 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
   return (
     <Panel
       title="Segment Composer"
-      subtitle="Add and order transfer/scan/hold mission segments"
+      subtitle="Core mission segments + optional Transfer/Hold"
       actions={<StatusPill tone="info">{state.segments.length} Segments</StatusPill>}
     >
       <div className="space-y-3">
@@ -77,6 +102,9 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
             state.segments.map((segment, index) => {
               const selected = state.selectedSegmentIndex === index;
               const issueCount = issueCountBySegment[index] ?? 0;
+              const lockedCore = segment.type === 'scan' || isCoreTransferSegment(segment, index, state);
+              const canMoveUp = !lockedCore && index > 0;
+              const canMoveDown = !lockedCore && index < state.segments.length - 1;
               return (
                 <div
                   key={segment.segment_id}
@@ -94,7 +122,7 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--v4-text-3)]">
-                          {index + 1}. {segment.type}
+                          {index + 1}. {segmentDisplayName(segment, index, state)}
                         </div>
                         <div className="text-xs text-[color:var(--v4-text-2)] truncate">
                           {segmentSummary(segment)}
@@ -109,7 +137,7 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
                     <button
                       type="button"
                       onClick={() => actions.reorderSegments(index, Math.max(0, index - 1))}
-                      disabled={index === 0}
+                      disabled={!canMoveUp}
                       className="v4-focus v4-button px-2 py-1 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
                     >
                       <ArrowUp size={12} />
@@ -117,18 +145,24 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
                     <button
                       type="button"
                       onClick={() => actions.reorderSegments(index, Math.min(state.segments.length - 1, index + 1))}
-                      disabled={index === state.segments.length - 1}
+                      disabled={!canMoveDown}
                       className="v4-focus v4-button px-2 py-1 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
                     >
                       <ArrowDown size={12} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => actions.removeSegment(index)}
-                      className="v4-focus v4-button ml-auto px-2 py-1 bg-red-900/35 border-red-700/70 text-red-200"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    {lockedCore ? (
+                      <div className="ml-auto text-[10px] uppercase tracking-[0.12em] text-[color:var(--v4-text-3)] px-2">
+                        Core
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => actions.removeSegment(index)}
+                        className="v4-focus v4-button ml-auto px-2 py-1 bg-red-900/35 border-red-700/70 text-red-200"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -136,20 +170,13 @@ export function SegmentComposerCardV4({ builder, emphasizeConstraints = false }:
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => actions.addTransferSegment()}
             className="v4-focus v4-button px-2 py-2 bg-blue-900/35 border-blue-700/70 text-blue-100 flex items-center justify-center gap-1"
           >
             <Route size={12} /> Transfer
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.addScanSegment()}
-            className="v4-focus v4-button px-2 py-2 bg-violet-900/35 border-violet-700/70 text-violet-100 flex items-center justify-center gap-1"
-          >
-            <ScanLine size={12} /> Scan
           </button>
           <button
             type="button"

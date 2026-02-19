@@ -669,15 +669,25 @@ export function UnifiedViewport({
                     </group>
 
                     {/* Obstacles */}
-                    {builderState.obstacles.map((obs, i) => (
-                        <mesh
-                            key={i}
-                            position={scaleToScene(obs.position)}
-                        >
-                            <sphereGeometry args={[obs.radius * ORBIT_SCALE, 16, 16]} />
-                            <meshStandardMaterial color="#ef4444" transparent opacity={0.4} wireframe />
+                    {builderState.obstacles.map((obs, i) => {
+                      let obstacleMeters: [number, number, number] = [...obs.position];
+                      if (builderState.startFrame === 'LVLH' && builderState.startTargetId) {
+                        const target = orbitSnapshot.objects.find((o) => o.id === builderState.startTargetId);
+                        if (target) {
+                          obstacleMeters = [
+                            target.position_m[0] + obs.position[0],
+                            target.position_m[1] + obs.position[1],
+                            target.position_m[2] + obs.position[2],
+                          ];
+                        }
+                      }
+                      return (
+                        <mesh key={i} position={scaleToScene(obstacleMeters)}>
+                          <sphereGeometry args={[Math.max(obs.radius, 0.1) * ORBIT_SCALE, 20, 20]} />
+                          <meshStandardMaterial color="#ef4444" transparent opacity={0.5} wireframe />
                         </mesh>
-                    ))}
+                      );
+                    })}
 
                     {/* Scan Project Authoring Overlays */}
                     {mode === 'scan' && builderState.scanProject?.scans?.length > 0 && (

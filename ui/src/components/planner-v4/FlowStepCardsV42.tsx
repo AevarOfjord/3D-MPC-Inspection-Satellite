@@ -13,6 +13,7 @@ import {
 import type { TransferSegment } from '../../api/unifiedMission';
 import { ORBIT_SCALE, orbitSnapshot } from '../../data/orbitSnapshot';
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
+import type { TransferTargetRef } from '../../types/plannerUx';
 import { makeId } from '../../utils/scanProjectValidation';
 import type { ScanDefinition } from '../../types/scanProject';
 import { useCameraStore } from '../../store/cameraStore';
@@ -93,9 +94,15 @@ function flattenEndpoints(
 function resolveTransferEndpoint(
   builder: ReturnType<typeof useMissionBuilder>
 ): EndpointRow | null {
-  const ref = builder.state.transferTargetRef;
-  if (!ref) return null;
-  const endpoint = builder.state.compilePreviewState?.endpoints?.[ref.scanId];
+  return resolveEndpointFromRef(builder.state.transferTargetRef, builder.state.compilePreviewState?.endpoints);
+}
+
+function resolveEndpointFromRef(
+  ref: TransferTargetRef,
+  endpoints: Record<string, { start: [number, number, number]; end: [number, number, number] }> | undefined
+): EndpointRow | null {
+  if (!ref || !endpoints) return null;
+  const endpoint = endpoints[ref.scanId];
   if (!endpoint) return null;
   return {
     scanId: ref.scanId,
@@ -103,6 +110,17 @@ function resolveTransferEndpoint(
     position: endpoint[ref.endpoint],
     label: `${ref.scanId} · ${ref.endpoint === 'start' ? 'Start' : 'End'}`,
   };
+}
+
+function resolveCoreTransferIndex(
+  segments: ReturnType<typeof useMissionBuilder>['state']['segments']
+): number | null {
+  const titled = segments.findIndex(
+    (segment) => segment.type === 'transfer' && segment.title === 'Transfer To Path'
+  );
+  if (titled >= 0) return titled;
+  const firstTransfer = segments.findIndex((segment) => segment.type === 'transfer');
+  return firstTransfer >= 0 ? firstTransfer : null;
 }
 
 function summarizePathWarnings(
@@ -142,6 +160,7 @@ function summarizePathWarnings(
 export function PathMakerStepCardV42({ builder }: BaseCardProps) {
   const { state, actions, setters } = builder;
   const activeTargetId = state.selectedOrbitTargetId ?? state.startTargetId ?? '';
+  const canConnectEndpoints = state.scanProject.scans.length > 1;
   const selectedPair =
     state.scanProject.scans.find((scan) => scan.id === state.selectedScanId) ??
     state.scanProject.scans[0] ??
@@ -414,34 +433,36 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
               </div>
             </div>
 
-            <div className="v4-subtle-panel p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-[color:var(--v4-text-2)]">Endpoint Connect</div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    state.connectMode ? actions.cancelConnectMode() : actions.startConnectMode()
-                  }
-                  className={`v4-focus v4-button px-2 py-1.5 ${
-                    state.connectMode
-                      ? 'bg-amber-900/35 border-amber-700 text-amber-100'
-                      : 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
-                  }`}
-                >
-                  <Link2 size={12} /> {state.connectMode ? 'Cancel Connect' : 'Connect Endpoints'}
-                </button>
+            {canConnectEndpoints ? (
+              <div className="v4-subtle-panel p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-[color:var(--v4-text-2)]">Endpoint Connect</div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      state.connectMode ? actions.cancelConnectMode() : actions.startConnectMode()
+                    }
+                    className={`v4-focus v4-button px-2 py-1.5 ${
+                      state.connectMode
+                        ? 'bg-amber-900/35 border-amber-700 text-amber-100'
+                        : 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
+                    }`}
+                  >
+                    <Link2 size={12} /> {state.connectMode ? 'Cancel Connect' : 'Connect Endpoints'}
+                  </button>
+                </div>
+                {state.connectSourceEndpoint ? (
+                  <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                    Source selected: {state.connectSourceEndpoint.scanId} ·{' '}
+                    {state.connectSourceEndpoint.endpoint.toUpperCase()}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                    Turn on connect mode, then click two endpoints in the viewport.
+                  </div>
+                )}
               </div>
-              {state.connectSourceEndpoint ? (
-                <div className="text-[11px] text-[color:var(--v4-text-3)]">
-                  Source selected: {state.connectSourceEndpoint.scanId} ·{' '}
-                  {state.connectSourceEndpoint.endpoint.toUpperCase()}
-                </div>
-              ) : (
-                <div className="text-[11px] text-[color:var(--v4-text-3)]">
-                  Turn on connect mode, then click two endpoints in the viewport.
-                </div>
-              )}
-            </div>
+            ) : null}
 
             <button
               type="button"
@@ -476,16 +497,54 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
 export function TransferStepCardV42({ builder }: BaseCardProps) {
   const { state, actions, setters } = builder;
   const [pendingGenerate, setPendingGenerate] = useState(false);
-  const selectedTargetId = state.startTargetId ?? state.selectedOrbitTargetId ?? '';
+  const [optionalTransferSourceRefs, setOptionalTransferSourceRefs] = useState<
+    Record<string, TransferTargetRef>
+  >({});
+  const [optionalTransferDestinationMode, setOptionalTransferDestinationMode] = useState<
+    Record<string, 'endpoint' | 'manual'>
+  >({});
+  const composerSelection = state.selectedSegmentIndex;
+  const selectedSegmentIndex =
+    composerSelection !== null && composerSelection >= 0 && composerSelection < state.segments.length
+      ? composerSelection
+      : null;
+  const selectedSegment = selectedSegmentIndex !== null ? state.segments[selectedSegmentIndex] : null;
+  const selectedType =
+    composerSelection === -1 ? 'start' : selectedSegment ? selectedSegment.type : null;
+  const coreTransferIndex = resolveCoreTransferIndex(state.segments);
+  const selectedTransferIndex =
+    selectedSegment?.type === 'transfer' && selectedSegmentIndex !== null ? selectedSegmentIndex : null;
+  const activeTransferIndex = selectedTransferIndex ?? coreTransferIndex;
+  const activeTransferSegment =
+    activeTransferIndex !== null && state.segments[activeTransferIndex]?.type === 'transfer'
+      ? (state.segments[activeTransferIndex] as TransferSegment)
+      : null;
+  const selectedTransferSegment =
+    selectedType === 'transfer' && selectedSegment?.type === 'transfer' ? selectedSegment : null;
+  const selectedTransferSegmentId = selectedTransferSegment?.segment_id ?? null;
+  const isCoreTransferSelected =
+    selectedType === 'transfer' && selectedSegmentIndex !== null && selectedSegmentIndex === coreTransferIndex;
+  const startTargetId = state.startTargetId ?? state.selectedOrbitTargetId ?? '';
+  const transferTargetId = selectedTransferSegment?.target_id ?? startTargetId;
   const selectedTarget = useMemo(
-    () => orbitSnapshot.objects.find((obj) => obj.id === selectedTargetId),
-    [selectedTargetId]
+    () => orbitSnapshot.objects.find((obj) => obj.id === transferTargetId),
+    [transferTargetId]
   );
   const endpoints = useMemo(
     () => flattenEndpoints(state.compilePreviewState?.endpoints),
     [state.compilePreviewState?.endpoints]
   );
   const selectedEndpoint = resolveTransferEndpoint(builder);
+  const selectedOptionalSourceRef =
+    selectedTransferSegmentId ? optionalTransferSourceRefs[selectedTransferSegmentId] ?? null : null;
+  const selectedOptionalSourceEndpoint = useMemo(
+    () => resolveEndpointFromRef(selectedOptionalSourceRef, state.compilePreviewState?.endpoints),
+    [selectedOptionalSourceRef, state.compilePreviewState?.endpoints]
+  );
+  const optionalDestinationMode =
+    selectedTransferSegmentId
+      ? optionalTransferDestinationMode[selectedTransferSegmentId] ?? 'endpoint'
+      : 'endpoint';
   const selectedEndpointRelative = useMemo(() => {
     if (!selectedEndpoint || !selectedTarget) return null;
     return [
@@ -530,14 +589,30 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
     void generateUnifiedPath();
   }, [pendingGenerate, generateUnifiedPath]);
 
-  const ensureTransferToSelectedEndpoint = async () => {
-    if (!selectedEndpoint || !selectedEndpointRelative || !selectedTargetId) return;
+  const updateActiveTransfer = (patch: Partial<TransferSegment>) => {
+    if (activeTransferIndex === null || !activeTransferSegment) return;
+    actions.updateSegment(activeTransferIndex, {
+      ...activeTransferSegment,
+      ...patch,
+    });
+  };
+
+  const ensureTransferToSelectedEndpoint = async (targetId: string) => {
+    if (!selectedEndpoint || !selectedEndpointRelative || !targetId) return;
+    let nextTransferIndex: number | null = null;
     setSegments((prev) => {
-      const existing = prev.find((segment) => segment.type === 'transfer') as TransferSegment | undefined;
+      const preferredIndex =
+        selectedTransferIndex !== null && prev[selectedTransferIndex]?.type === 'transfer'
+          ? selectedTransferIndex
+          : prev.findIndex((segment) => segment.type === 'transfer');
+      const existing =
+        preferredIndex >= 0 && prev[preferredIndex]?.type === 'transfer'
+          ? (prev[preferredIndex] as TransferSegment)
+          : undefined;
       const transfer: TransferSegment = existing
         ? {
             ...existing,
-            target_id: selectedTargetId,
+            target_id: targetId,
             end_pose: {
               ...existing.end_pose,
               frame: 'LVLH',
@@ -547,9 +622,9 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
         : {
             segment_id: `transfer_${Date.now()}`,
             type: 'transfer',
-            title: null,
+            title: 'Transfer To Path',
             notes: null,
-            target_id: selectedTargetId,
+            target_id: targetId,
             end_pose: {
               frame: 'LVLH',
               position: [...selectedEndpointRelative] as [number, number, number],
@@ -560,12 +635,20 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
               angular_rate_max: 0.1,
             },
           };
+      if (preferredIndex >= 0) {
+        nextTransferIndex = preferredIndex;
+        return prev.map((segment, index) => (index === preferredIndex ? transfer : segment));
+      }
+      nextTransferIndex = 0;
       const nonTransfer = prev.filter((segment) => segment.type !== 'transfer');
       return [transfer, ...nonTransfer];
     });
-    selectSegment(0);
+    selectSegment(nextTransferIndex ?? 0);
 
-    const scanIndex = state.segments.findIndex((segment) => segment.type === 'scan');
+    const scanIndex =
+      selectedSegment?.type === 'scan' && selectedSegmentIndex !== null
+        ? selectedSegmentIndex
+        : state.segments.findIndex((segment) => segment.type === 'scan');
     if (scanIndex >= 0) {
       const scanSegment = state.segments[scanIndex];
       if (scanSegment.type === 'scan') {
@@ -587,6 +670,32 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
     setPendingGenerate(true);
   };
 
+  const setOptionalSourceFromSelectedEndpoint = () => {
+    if (!selectedTransferSegmentId || !state.transferTargetRef) return;
+    setOptionalTransferSourceRefs((prev) => ({
+      ...prev,
+      [selectedTransferSegmentId]: state.transferTargetRef,
+    }));
+  };
+
+  const setOptionalDestinationMode = (mode: 'endpoint' | 'manual') => {
+    if (!selectedTransferSegmentId) return;
+    setOptionalTransferDestinationMode((prev) => ({
+      ...prev,
+      [selectedTransferSegmentId]: mode,
+    }));
+  };
+
+  const generateOptionalTransfer = async () => {
+    if (!selectedTransferSegment) return;
+    if (!transferTargetId) return;
+    if (optionalDestinationMode === 'endpoint') {
+      await ensureTransferToSelectedEndpoint(transferTargetId);
+      return;
+    }
+    setPendingGenerate(true);
+  };
+
   return (
     <Panel
       title="Step 2 · Transfer"
@@ -594,80 +703,274 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
       actions={<StatusPill tone="info">{endpoints.length} Endpoints</StatusPill>}
     >
       <div className="space-y-3">
-        <InlineBanner tone="info" title="Transfer target">
-          Choose one endpoint from Step 1 and generate a transfer spline to that endpoint.
+        <InlineBanner tone="info" title="Segment Composer selection">
+          {selectedType === 'start'
+            ? 'Editing Start.'
+            : selectedType
+            ? `Editing ${selectedType.toUpperCase()} segment #${(selectedSegmentIndex ?? 0) + 1}.`
+            : 'Select Start or a segment in Segment Composer.'}
         </InlineBanner>
 
-        <FieldRow label="Relative To">
-          <select
-            className="v4-field"
-            value={selectedTargetId}
-            onChange={(event) => setStartTargetId(event.target.value || undefined)}
-          >
-            <option value="">Select object...</option>
-            {orbitSnapshot.objects.map((obj) => (
-              <option key={obj.id} value={obj.id}>
-                {obj.name}
-              </option>
-            ))}
-          </select>
-        </FieldRow>
-
-        <FieldRow label="Start Position (m)">
-          <div className="grid grid-cols-3 gap-2">
-            {[0, 1, 2].map((index) => (
-              <input
-                key={index}
+        {selectedType === 'start' ? (
+          <>
+            <FieldRow label="Relative To">
+              <select
                 className="v4-field"
-                value={state.startPosition[index]}
-                onChange={(event) => {
-                  const next = [...state.startPosition] as [number, number, number];
-                  next[index] = parseNum(event.target.value, state.startPosition[index]);
-                  setters.setStartPosition(next);
-                }}
-              />
-            ))}
-          </div>
-        </FieldRow>
-
-        {endpoints.length === 0 ? (
-          <InlineBanner tone="warning" title="No endpoints yet">
-            Return to Path Maker and click Build Spiral Preview first.
-          </InlineBanner>
-        ) : (
-          <InlineBanner tone="info" title="Pick in viewport">
-            Click a `S` or `E` endpoint marker in the viewport to select transfer target.
-          </InlineBanner>
-        )}
-
-        {selectedEndpoint ? (
-          <div className="v4-subtle-panel p-3 text-[11px] text-[color:var(--v4-text-3)]">
-            Selected endpoint: {selectedEndpoint.label}
-            <div className="mt-1">
-              {selectedEndpointRelative
-                ? `[${selectedEndpointRelative.map((v) => v.toFixed(2)).join(', ')}]`
-                : 'Select a target object to compute LVLH-relative endpoint.'}
-            </div>
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={() => setTransferTargetRef(null)}
-                className="v4-focus v4-button px-2 py-1 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
+                value={startTargetId}
+                onChange={(event) => setStartTargetId(event.target.value || undefined)}
               >
-                Clear Endpoint
-              </button>
-            </div>
-          </div>
+                <option value="">Select object...</option>
+                {orbitSnapshot.objects.map((obj) => (
+                  <option key={obj.id} value={obj.id}>
+                    {obj.name}
+                  </option>
+                ))}
+              </select>
+            </FieldRow>
+
+            <FieldRow label="Start Position (m)">
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((index) => (
+                  <input
+                    key={index}
+                    className="v4-field"
+                    value={state.startPosition[index]}
+                    onChange={(event) => {
+                      const next = [...state.startPosition] as [number, number, number];
+                      next[index] = parseNum(event.target.value, state.startPosition[index]);
+                      setters.setStartPosition(next);
+                    }}
+                  />
+                ))}
+              </div>
+            </FieldRow>
+          </>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => void ensureTransferToSelectedEndpoint()}
-          disabled={!selectedEndpoint || !selectedEndpointRelative || !selectedTargetId}
-          className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
-        >
-          <Sparkles size={12} /> Generate Transfer
-        </button>
+        {selectedType === 'transfer' ? (
+          <>
+            {isCoreTransferSelected ? (
+              <>
+                <InlineBanner tone="info" title="Transfer To Path">
+                  This transfer always starts from the Start segment position. Select an endpoint to transfer to.
+                </InlineBanner>
+                <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                  Uses Start: LVLH @ {startTargetId || 'Select target in Start'} ·
+                  [{state.startPosition.map((v) => v.toFixed(1)).join(', ')}]
+                </div>
+
+                {endpoints.length === 0 ? (
+                  <InlineBanner tone="warning" title="No endpoints yet">
+                    Return to Path Maker and click Build Spiral Preview first.
+                  </InlineBanner>
+                ) : (
+                  <InlineBanner tone="info" title="Endpoint required">
+                    Click a start/end endpoint marker in the viewport, then Generate Transfer.
+                  </InlineBanner>
+                )}
+
+                {selectedEndpoint ? (
+                  <div className="v4-subtle-panel p-3 text-[11px] text-[color:var(--v4-text-3)]">
+                    Selected endpoint: {selectedEndpoint.label}
+                    <div className="mt-1">
+                      {selectedEndpointRelative
+                        ? `[${selectedEndpointRelative.map((v) => v.toFixed(2)).join(', ')}]`
+                        : 'Select a target object to compute LVLH-relative endpoint.'}
+                    </div>
+                    {activeTransferSegment ? (
+                      <div className="mt-1 text-[color:var(--v4-text-3)]">
+                        Editing transfer segment #{(activeTransferIndex ?? 0) + 1}
+                      </div>
+                    ) : null}
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setTransferTargetRef(null)}
+                        className="v4-focus v4-button px-2 py-1 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
+                      >
+                        Clear Endpoint
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => void ensureTransferToSelectedEndpoint(startTargetId)}
+                  disabled={!selectedEndpoint || !selectedEndpointRelative || !startTargetId}
+                  className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
+                >
+                  <Sparkles size={12} /> Generate Transfer
+                </button>
+              </>
+            ) : (
+              <>
+                <InlineBanner tone="info" title="Transfer">
+                  Select a start endpoint, then set destination by endpoint selection or manual XYZ.
+                </InlineBanner>
+
+                <FieldRow label="Relative To">
+                  <select
+                    className="v4-field"
+                    value={transferTargetId}
+                    onChange={(event) => {
+                      const nextTarget = event.target.value || undefined;
+                      updateActiveTransfer({ target_id: nextTarget });
+                    }}
+                  >
+                    <option value="">Select object...</option>
+                    {orbitSnapshot.objects.map((obj) => (
+                      <option key={obj.id} value={obj.id}>
+                        {obj.name}
+                      </option>
+                    ))}
+                  </select>
+                </FieldRow>
+
+                <div className="v4-subtle-panel p-3 space-y-2">
+                  <div className="text-xs text-[color:var(--v4-text-2)]">Start Endpoint</div>
+                  <button
+                    type="button"
+                    onClick={setOptionalSourceFromSelectedEndpoint}
+                    disabled={!state.transferTargetRef}
+                    className="v4-focus v4-button w-full px-2 py-1.5 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)] disabled:opacity-40"
+                  >
+                    Use Selected Endpoint as Start
+                  </button>
+                  <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                    {selectedOptionalSourceEndpoint
+                      ? `${selectedOptionalSourceEndpoint.label} [${selectedOptionalSourceEndpoint.position
+                          .map((value) => value.toFixed(2))
+                          .join(', ')}]`
+                      : 'Click an endpoint in the viewport, then assign it as start.'}
+                  </div>
+                </div>
+
+                <FieldRow label="Destination Mode">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOptionalDestinationMode('endpoint')}
+                      className={`v4-focus v4-button px-2 py-1.5 ${
+                        optionalDestinationMode === 'endpoint'
+                          ? 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
+                          : 'bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]'
+                      }`}
+                    >
+                      Endpoint
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOptionalDestinationMode('manual')}
+                      className={`v4-focus v4-button px-2 py-1.5 ${
+                        optionalDestinationMode === 'manual'
+                          ? 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
+                          : 'bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]'
+                      }`}
+                    >
+                      Manual XYZ
+                    </button>
+                  </div>
+                </FieldRow>
+
+                {optionalDestinationMode === 'endpoint' ? (
+                  <div className="v4-subtle-panel p-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void ensureTransferToSelectedEndpoint(transferTargetId)}
+                      disabled={!selectedEndpoint || !selectedEndpointRelative || !transferTargetId}
+                      className="v4-focus v4-button w-full px-2 py-1.5 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
+                    >
+                      Use Selected Endpoint as Destination
+                    </button>
+                    <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                      {selectedEndpoint
+                        ? `${selectedEndpoint.label} ${
+                            selectedEndpointRelative
+                              ? `[${selectedEndpointRelative.map((v) => v.toFixed(2)).join(', ')}]`
+                              : ''
+                          }`
+                        : 'Click an endpoint in the viewport to choose destination.'}
+                    </div>
+                  </div>
+                ) : (
+                  <FieldRow label="End Position (m)">
+                    <div className="grid grid-cols-3 gap-2">
+                      {[0, 1, 2].map((index) => (
+                        <input
+                          key={index}
+                          className="v4-field"
+                          value={activeTransferSegment?.end_pose.position[index] ?? 0}
+                          onChange={(event) => {
+                            if (!activeTransferSegment) return;
+                            const next = [...activeTransferSegment.end_pose.position] as [number, number, number];
+                            next[index] = parseNum(event.target.value, activeTransferSegment.end_pose.position[index]);
+                            updateActiveTransfer({
+                              end_pose: {
+                                ...activeTransferSegment.end_pose,
+                                frame: 'LVLH',
+                                position: next,
+                              },
+                            });
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </FieldRow>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void generateOptionalTransfer()}
+                  disabled={
+                    !transferTargetId ||
+                    (optionalDestinationMode === 'endpoint' &&
+                      (!selectedEndpoint || !selectedEndpointRelative))
+                  }
+                  className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
+                >
+                  <Sparkles size={12} /> Generate Transfer
+                </button>
+              </>
+            )}
+          </>
+        ) : null}
+
+        {selectedType === 'scan' ? (
+          <>
+            <InlineBanner tone="warning" title="Scan is edited in Step 1">
+              To edit scan path go back to step 1.
+            </InlineBanner>
+            <button
+              type="button"
+              onClick={() => actions.setAuthoringStep('scan_definition')}
+              className="v4-focus v4-button w-full px-3 py-2 bg-violet-900/35 border-violet-700 text-violet-100"
+            >
+              Go to Step 1 · Path Maker
+            </button>
+          </>
+        ) : null}
+
+        {selectedType === 'hold' && selectedSegmentIndex !== null && selectedSegment?.type === 'hold' ? (
+          <FieldRow label="Duration (s)">
+            <input
+              className="v4-field"
+              value={selectedSegment.duration}
+              onChange={(event) => {
+                actions.updateSegment(selectedSegmentIndex, {
+                  ...selectedSegment,
+                  duration: Math.max(0.1, parseNum(event.target.value, selectedSegment.duration)),
+                });
+              }}
+            />
+          </FieldRow>
+        ) : null}
+
+        {!selectedType ? (
+          <InlineBanner tone="warning" title="No selection">
+            Select Start or a segment in Segment Composer to edit it here.
+          </InlineBanner>
+        ) : null}
 
         {state.stats ? (
           <div className="v4-subtle-panel p-3 grid grid-cols-3 gap-2 text-xs">
@@ -692,6 +995,31 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
 
 export function ObstaclesStepCardV42({ builder }: BaseCardProps) {
   const { state, actions } = builder;
+  const defaultObstacleTargetId =
+    state.startTargetId ?? state.selectedOrbitTargetId ?? orbitSnapshot.objects[0]?.id ?? '';
+  const [obstacleTargetId, setObstacleTargetId] = useState<string>(defaultObstacleTargetId);
+  const [obstaclePosition, setObstaclePosition] = useState<[number, number, number]>([0, 0, 0]);
+  const [obstacleRadius, setObstacleRadius] = useState<number>(0.5);
+
+  useEffect(() => {
+    if (obstacleTargetId) return;
+    if (!defaultObstacleTargetId) return;
+    setObstacleTargetId(defaultObstacleTargetId);
+  }, [obstacleTargetId, defaultObstacleTargetId]);
+
+  const addObstacleFromForm = () => {
+    const missionOriginTargetId = state.startTargetId ?? state.selectedOrbitTargetId ?? '';
+    const missionOrigin =
+      orbitSnapshot.objects.find((obj) => obj.id === missionOriginTargetId)?.position_m ?? [0, 0, 0];
+    const selectedOrigin =
+      orbitSnapshot.objects.find((obj) => obj.id === obstacleTargetId)?.position_m ?? missionOrigin;
+    const translatedPosition: [number, number, number] = [
+      obstaclePosition[0] + (selectedOrigin[0] - missionOrigin[0]),
+      obstaclePosition[1] + (selectedOrigin[1] - missionOrigin[1]),
+      obstaclePosition[2] + (selectedOrigin[2] - missionOrigin[2]),
+    ];
+    actions.addObstacle(undefined, translatedPosition, Math.max(0.05, obstacleRadius));
+  };
 
   return (
     <Panel
@@ -704,27 +1032,56 @@ export function ObstaclesStepCardV42({ builder }: BaseCardProps) {
           Obstacles do not auto-reroute paths. Place them here and fix collisions manually in Step 4.
         </InlineBanner>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="v4-subtle-panel p-3 space-y-3">
+          <FieldRow label="Relative To">
+            <select
+              className="v4-field"
+              value={obstacleTargetId}
+              onChange={(event) => setObstacleTargetId(event.target.value)}
+            >
+              <option value="">Select object...</option>
+              {orbitSnapshot.objects.map((obj) => (
+                <option key={obj.id} value={obj.id}>
+                  {obj.name}
+                </option>
+              ))}
+            </select>
+          </FieldRow>
+
+          <FieldRow label="3D Position (m)">
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2].map((axisIndex) => (
+                <input
+                  key={axisIndex}
+                  className="v4-field"
+                  value={obstaclePosition[axisIndex]}
+                  onChange={(event) => {
+                    const next = [...obstaclePosition] as [number, number, number];
+                    next[axisIndex] = parseNum(event.target.value, next[axisIndex]);
+                    setObstaclePosition(next);
+                  }}
+                />
+              ))}
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Sphere Radius (m)">
+            <input
+              className="v4-field"
+              value={obstacleRadius}
+              onChange={(event) =>
+                setObstacleRadius(Math.max(0.05, parseNum(event.target.value, obstacleRadius)))
+              }
+            />
+          </FieldRow>
+
           <button
             type="button"
-            onClick={() => actions.addObstacle(state.startPosition, [5, 0, 0], 0.3)}
-            className="v4-focus v4-button px-2 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
+            onClick={addObstacleFromForm}
+            disabled={!obstacleTargetId}
+            className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
           >
-            Small
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.addObstacle(state.startPosition, [6, 0, 0], 0.6)}
-            className="v4-focus v4-button px-2 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
-          >
-            Medium
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.addObstacle(state.startPosition, [7, 0, 0], 1.0)}
-            className="v4-focus v4-button px-2 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
-          >
-            Large
+            <Plus size={12} /> Add Obstacle
           </button>
         </div>
 

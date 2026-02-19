@@ -31,6 +31,7 @@ import {
   defaultHoldSegment,
   defaultScanSegment,
   defaultTransferSegment,
+  defaultTransferToPathSegment,
   nextMissionId,
   nextSegmentId,
   resolveOrbitTargetPose,
@@ -228,9 +229,10 @@ export function useMissionBuilder() {
   } = missionPathGeneration;
 
   useMissionRuntimeEffects({
-    segmentsLength: segments.length,
+    segments,
     setSegments,
     defaultScanSegment,
+    defaultTransferToPathSegment,
     refreshModelList,
     refreshPathAssets,
     refreshScanProjects,

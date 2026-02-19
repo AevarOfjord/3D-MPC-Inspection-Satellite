@@ -30,7 +30,7 @@ export function useScanAuthoringState() {
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [pathAssets, setPathAssets] = useState<PathAssetSummary[]>([]);
   const [scanProjects, setScanProjects] = useState<ScanProjectSummary[]>([]);
-  const [editPointLimit, setEditPointLimit] = useState<number>(500);
+  const [editPointLimit, setEditPointLimit] = useState<number>(Number.MAX_SAFE_INTEGER);
   const [savePointMultiplier, setSavePointMultiplier] = useState<number>(10);
   const [scanPlaneEnabled, setScanPlaneEnabled] = useState<boolean>(false);
   const [scanPlaneA, setScanPlaneA] = useState<[number, number, number]>([0, 0, -0.5]);
