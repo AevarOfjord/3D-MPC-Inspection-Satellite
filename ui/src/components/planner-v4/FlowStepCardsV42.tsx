@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
   Link2,
   Plus,
   Redo2,
   Save,
-  Sparkles,
   Trash2,
   Undo2,
 } from 'lucide-react';
@@ -464,15 +463,6 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
               </div>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => void actions.previewScanProject(80)}
-              disabled={!state.config.obj_path}
-              className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
-            >
-              <Sparkles size={12} /> Build Spiral Preview
-            </button>
-
             {selectedEndpoints.length > 0 ? (
               <div className="v4-subtle-panel p-3 space-y-2">
                 <div className="text-xs text-[color:var(--v4-text-2)]">Selected Pair Endpoints</div>
@@ -483,8 +473,8 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
                 ))}
               </div>
             ) : (
-              <InlineBanner tone="warning" title="Endpoints not ready">
-                Build spiral preview to expose endpoint targets for Step 2 transfer.
+              <InlineBanner tone={state.compilePending ? 'info' : 'warning'} title={state.compilePending ? 'Building endpoints' : 'Endpoints not ready'}>
+                Endpoints are generated automatically when the path changes.
               </InlineBanner>
             )}
           </>
@@ -497,6 +487,10 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
 export function TransferStepCardV42({ builder }: BaseCardProps) {
   const { state, actions, setters } = builder;
   const [pendingGenerate, setPendingGenerate] = useState(false);
+  const coreAutoSignatureRef = useRef<string | null>(null);
+  const optionalEndpointAutoSignatureRef = useRef<string | null>(null);
+  const optionalManualAutoSignatureRef = useRef<string | null>(null);
+  const optionalManualTimerRef = useRef<number | null>(null);
   const [optionalTransferSourceRefs, setOptionalTransferSourceRefs] = useState<
     Record<string, TransferTargetRef>
   >({});
@@ -562,33 +556,6 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
   const setStartTargetId = setters.setStartTargetId;
   const setSegments = setters.setSegments;
 
-  useEffect(() => {
-    if (state.startFrame !== 'LVLH') {
-      setStartFrame('LVLH');
-    }
-    if (!state.startTargetId && state.selectedOrbitTargetId) {
-      setStartTargetId(state.selectedOrbitTargetId);
-    }
-  }, [
-    state.startFrame,
-    state.startTargetId,
-    state.selectedOrbitTargetId,
-    setStartFrame,
-    setStartTargetId,
-  ]);
-
-  useEffect(() => {
-    if (!state.transferTargetRef) return;
-    if (selectedEndpoint) return;
-    setTransferTargetRef(null);
-  }, [state.transferTargetRef, selectedEndpoint, setTransferTargetRef]);
-
-  useEffect(() => {
-    if (!pendingGenerate) return;
-    setPendingGenerate(false);
-    void generateUnifiedPath();
-  }, [pendingGenerate, generateUnifiedPath]);
-
   const updateActiveTransfer = (patch: Partial<TransferSegment>) => {
     if (activeTransferIndex === null || !activeTransferSegment) return;
     actions.updateSegment(activeTransferIndex, {
@@ -597,7 +564,7 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
     });
   };
 
-  const ensureTransferToSelectedEndpoint = async (targetId: string) => {
+  async function ensureTransferToSelectedEndpoint(targetId: string) {
     if (!selectedEndpoint || !selectedEndpointRelative || !targetId) return;
     let nextTransferIndex: number | null = null;
     setSegments((prev) => {
@@ -668,7 +635,115 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
     }
 
     setPendingGenerate(true);
-  };
+  }
+
+  useEffect(() => {
+    if (state.startFrame !== 'LVLH') {
+      setStartFrame('LVLH');
+    }
+    if (!state.startTargetId && state.selectedOrbitTargetId) {
+      setStartTargetId(state.selectedOrbitTargetId);
+    }
+  }, [
+    state.startFrame,
+    state.startTargetId,
+    state.selectedOrbitTargetId,
+    setStartFrame,
+    setStartTargetId,
+  ]);
+
+  useEffect(() => {
+    if (!state.transferTargetRef) return;
+    if (selectedEndpoint) return;
+    setTransferTargetRef(null);
+  }, [state.transferTargetRef, selectedEndpoint, setTransferTargetRef]);
+
+  useEffect(() => {
+    if (!pendingGenerate) return;
+    setPendingGenerate(false);
+    void generateUnifiedPath();
+  }, [pendingGenerate, generateUnifiedPath]);
+
+  useEffect(() => {
+    if (!isCoreTransferSelected) return;
+    if (!selectedEndpoint || !selectedEndpointRelative || !startTargetId) return;
+    const signature = [
+      selectedEndpoint.scanId,
+      selectedEndpoint.endpoint,
+      startTargetId,
+      state.startPosition[0],
+      state.startPosition[1],
+      state.startPosition[2],
+    ].join('|');
+    if (coreAutoSignatureRef.current === signature) return;
+    coreAutoSignatureRef.current = signature;
+    void ensureTransferToSelectedEndpoint(startTargetId);
+  }, [
+    isCoreTransferSelected,
+    selectedEndpoint,
+    selectedEndpointRelative,
+    startTargetId,
+    state.startPosition,
+  ]);
+
+  useEffect(() => {
+    if (selectedType !== 'transfer' || isCoreTransferSelected) return;
+    if (optionalDestinationMode !== 'endpoint') return;
+    if (!selectedTransferSegmentId || !selectedEndpoint || !selectedEndpointRelative || !transferTargetId) {
+      return;
+    }
+    const signature = [
+      selectedTransferSegmentId,
+      transferTargetId,
+      selectedEndpoint.scanId,
+      selectedEndpoint.endpoint,
+    ].join('|');
+    if (optionalEndpointAutoSignatureRef.current === signature) return;
+    optionalEndpointAutoSignatureRef.current = signature;
+    void ensureTransferToSelectedEndpoint(transferTargetId);
+  }, [
+    selectedType,
+    isCoreTransferSelected,
+    optionalDestinationMode,
+    selectedTransferSegmentId,
+    selectedEndpoint,
+    selectedEndpointRelative,
+    transferTargetId,
+  ]);
+
+  useEffect(() => {
+    if (selectedType !== 'transfer' || isCoreTransferSelected) return;
+    if (optionalDestinationMode !== 'manual') return;
+    if (!selectedTransferSegmentId || !transferTargetId || !activeTransferSegment) return;
+    const signature = [
+      selectedTransferSegmentId,
+      transferTargetId,
+      activeTransferSegment.end_pose.position[0],
+      activeTransferSegment.end_pose.position[1],
+      activeTransferSegment.end_pose.position[2],
+    ].join('|');
+    if (optionalManualAutoSignatureRef.current === signature) return;
+    optionalManualAutoSignatureRef.current = signature;
+    if (optionalManualTimerRef.current !== null) {
+      window.clearTimeout(optionalManualTimerRef.current);
+    }
+    optionalManualTimerRef.current = window.setTimeout(() => {
+      setPendingGenerate(true);
+    }, 220);
+    return () => {
+      if (optionalManualTimerRef.current !== null) {
+        window.clearTimeout(optionalManualTimerRef.current);
+        optionalManualTimerRef.current = null;
+      }
+    };
+  }, [
+    selectedType,
+    isCoreTransferSelected,
+    optionalDestinationMode,
+    selectedTransferSegmentId,
+    transferTargetId,
+    activeTransferSegment,
+  ]);
 
   const setOptionalSourceFromSelectedEndpoint = () => {
     if (!selectedTransferSegmentId || !state.transferTargetRef) return;
@@ -684,16 +759,6 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
       ...prev,
       [selectedTransferSegmentId]: mode,
     }));
-  };
-
-  const generateOptionalTransfer = async () => {
-    if (!selectedTransferSegment) return;
-    if (!transferTargetId) return;
-    if (optionalDestinationMode === 'endpoint') {
-      await ensureTransferToSelectedEndpoint(transferTargetId);
-      return;
-    }
-    setPendingGenerate(true);
   };
 
   return (
@@ -761,11 +826,11 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
 
                 {endpoints.length === 0 ? (
                   <InlineBanner tone="warning" title="No endpoints yet">
-                    Return to Path Maker and click Build Spiral Preview first.
+                    Endpoints are generated automatically in Step 1 when the path updates.
                   </InlineBanner>
                 ) : (
                   <InlineBanner tone="info" title="Endpoint required">
-                    Click a start/end endpoint marker in the viewport, then Generate Transfer.
+                    Click a start/end endpoint marker in the viewport to auto-update transfer.
                   </InlineBanner>
                 )}
 
@@ -794,14 +859,9 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
                   </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => void ensureTransferToSelectedEndpoint(startTargetId)}
-                  disabled={!selectedEndpoint || !selectedEndpointRelative || !startTargetId}
-                  className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
-                >
-                  <Sparkles size={12} /> Generate Transfer
-                </button>
+                <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                  Transfer path updates automatically after endpoint selection.
+                </div>
               </>
             ) : (
               <>
@@ -875,14 +935,6 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
 
                 {optionalDestinationMode === 'endpoint' ? (
                   <div className="v4-subtle-panel p-3 space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void ensureTransferToSelectedEndpoint(transferTargetId)}
-                      disabled={!selectedEndpoint || !selectedEndpointRelative || !transferTargetId}
-                      className="v4-focus v4-button w-full px-2 py-1.5 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
-                    >
-                      Use Selected Endpoint as Destination
-                    </button>
                     <div className="text-[11px] text-[color:var(--v4-text-3)]">
                       {selectedEndpoint
                         ? `${selectedEndpoint.label} ${
@@ -891,6 +943,9 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
                               : ''
                           }`
                         : 'Click an endpoint in the viewport to choose destination.'}
+                    </div>
+                    <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                      Path updates automatically after destination selection.
                     </div>
                   </div>
                 ) : (
@@ -918,19 +973,9 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
                     </div>
                   </FieldRow>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => void generateOptionalTransfer()}
-                  disabled={
-                    !transferTargetId ||
-                    (optionalDestinationMode === 'endpoint' &&
-                      (!selectedEndpoint || !selectedEndpointRelative))
-                  }
-                  className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
-                >
-                  <Sparkles size={12} /> Generate Transfer
-                </button>
+                <div className="text-[11px] text-[color:var(--v4-text-3)]">
+                  Path updates automatically when destination settings change.
+                </div>
               </>
             )}
           </>
