@@ -92,7 +92,7 @@ async def preview_mission_v2(config: UnifiedMissionModel, response: Response):
     mission_runtime = compile_unified_mission_runtime(
         mission_def,
         simulation_config=SimulationConfig.create_default(),
-        output_frame="ECI",
+        output_frame="LVLH",
     )
     return {
         "path": [list(p) for p in mission_runtime.path],

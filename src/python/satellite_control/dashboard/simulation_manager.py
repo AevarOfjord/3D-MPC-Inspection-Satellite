@@ -14,7 +14,7 @@ from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.config.timing import SIMULATION_DT
 from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 from satellite_control.mission.runtime_loader import compile_unified_mission_runtime
-from satellite_control.mission.unified_mission import MissionDefinition, SegmentType
+from satellite_control.mission.unified_mission import MissionDefinition
 from satellite_control.utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 logger = logging.getLogger("dashboard")
@@ -196,50 +196,28 @@ class SimulationManager:
                 for o in self.sim_instance.simulation_config.mission_state.obstacles
             ]
 
-        frame = "ECI"
-        frame_origin = None
-        if self.current_unified_mission:
-
-            def norm_frame(val: Any) -> str:
-                if hasattr(val, "value"):
-                    return str(val.value).upper()
-                return str(val).upper()
-
-            uses_lvlh = False
-            if norm_frame(self.current_unified_mission.start_pose.frame) == "LVLH":
-                uses_lvlh = True
-            for seg in self.current_unified_mission.segments:
-                if seg.type == SegmentType.TRANSFER:
-                    if norm_frame(seg.end_pose.frame) == "LVLH":
-                        uses_lvlh = True
-                        break
-                if seg.type == SegmentType.SCAN:
-                    if norm_frame(seg.scan.frame) == "LVLH":
-                        uses_lvlh = True
-                        break
-
-            if uses_lvlh:
-                frame = "LVLH"
-                origin = None
-                start_target_id = getattr(
-                    self.current_unified_mission, "start_target_id", None
-                )
-                if start_target_id:
-                    for seg in self.current_unified_mission.segments:
-                        if (
-                            seg.type == SegmentType.SCAN
-                            and seg.target_id == start_target_id
-                            and seg.target_pose
-                        ):
-                            origin = list(seg.target_pose.position)
-                            break
-                if origin is None:
-                    for seg in self.current_unified_mission.segments:
-                        if seg.type == SegmentType.SCAN and seg.target_pose:
-                            origin = list(seg.target_pose.position)
-                            break
-                if origin is not None:
-                    frame_origin = origin
+        frame = "LVLH"
+        frame_origin: list[float] | None = None
+        mission_state = getattr(
+            getattr(self.sim_instance, "simulation_config", None), "mission_state", None
+        )
+        if mission_state is not None:
+            frame_raw = str(getattr(mission_state, "path_frame", "LVLH")).upper()
+            frame = frame_raw if frame_raw in {"LVLH", "ECI"} else "LVLH"
+            origin_raw = getattr(mission_state, "frame_origin", None)
+            if origin_raw is not None:
+                try:
+                    frame_origin = [
+                        float(origin_raw[0]),
+                        float(origin_raw[1]),
+                        float(origin_raw[2]),
+                    ]
+                except Exception:
+                    frame_origin = None
+        if frame == "LVLH" and frame_origin is None:
+            frame_origin = [0.0, 0.0, 0.0]
+        elif frame != "LVLH":
+            frame_origin = None
 
         return {
             "time": self.sim_instance.simulation_time,

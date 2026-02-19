@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { orbitSnapshot } from '../data/orbitSnapshot';
 
 export type TransformMode = 'translate' | 'rotate';
 export type SelectionType =
@@ -11,8 +12,10 @@ export type SelectionType =
 
 export function useMissionSceneState() {
   const [startPosition, setStartPosition] = useState<[number, number, number]>([10, 0, 0]);
-  const [startFrame, setStartFrame] = useState<'ECI' | 'LVLH'>('ECI');
-  const [startTargetId, setStartTargetId] = useState<string | undefined>(undefined);
+  const [startFrame, setStartFrame] = useState<'ECI' | 'LVLH'>('LVLH');
+  const [startTargetId, setStartTargetId] = useState<string | undefined>(
+    orbitSnapshot.objects[0]?.id
+  );
   const [startAngle, setStartAngle] = useState<[number, number, number]>([0, 0, 0]);
   const [referencePosition, setReferencePosition] = useState<[number, number, number]>([0, 0, 0]);
   const [referenceAngle, setReferenceAngle] = useState<[number, number, number]>([0, 0, 0]);

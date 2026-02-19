@@ -11,7 +11,7 @@ interface BuildPlannerStatusArgs {
 }
 
 function hasTargetReady(startFrame: 'ECI' | 'LVLH', startTargetId?: string): boolean {
-  if (startFrame === 'ECI') return true;
+  void startFrame;
   return Boolean(startTargetId);
 }
 

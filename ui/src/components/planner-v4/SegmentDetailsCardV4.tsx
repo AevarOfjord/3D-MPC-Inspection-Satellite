@@ -157,46 +157,31 @@ function TransferSegmentFields({
   return (
     <div className="space-y-2">
       <FieldRow label="Frame">
-        <div className="grid grid-cols-2 gap-2">
-          {(['ECI', 'LVLH'] as const).map((frame) => (
-            <button
-              key={frame}
-              type="button"
-              onClick={() =>
-                onChange({
-                  ...segment,
-                  end_pose: { ...segment.end_pose, frame },
-                  target_id: frame === 'ECI' ? undefined : segment.target_id,
-                })
-              }
-              className={`v4-focus v4-button px-2 py-1.5 ${
-                segment.end_pose.frame === frame
-                  ? 'bg-cyan-900/35 border-cyan-600 text-cyan-100'
-                  : 'bg-[color:var(--v4-surface-1)] text-[color:var(--v4-text-2)]'
-              }`}
-            >
-              {frame}
-            </button>
-          ))}
+        <div className="v4-subtle-panel px-3 py-2 text-xs text-[color:var(--v4-text-2)]">
+          LVLH (fixed)
         </div>
       </FieldRow>
 
-      {segment.end_pose.frame === 'LVLH' ? (
-        <FieldRow label="Relative To">
-          <select
-            className="v4-field"
-            value={segment.target_id || ''}
-            onChange={(event) => onChange({ ...segment, target_id: event.target.value || undefined })}
-          >
-            <option value="">Start / Previous State</option>
-            {orbitSnapshot.objects.map((obj) => (
-              <option key={obj.id} value={obj.id}>
-                {obj.name}
-              </option>
-            ))}
-          </select>
-        </FieldRow>
-      ) : null}
+      <FieldRow label="Relative To">
+        <select
+          className="v4-field"
+          value={segment.target_id || ''}
+          onChange={(event) =>
+            onChange({
+              ...segment,
+              target_id: event.target.value || undefined,
+              end_pose: { ...segment.end_pose, frame: 'LVLH' },
+            })
+          }
+        >
+          <option value="">Start / Previous State</option>
+          {orbitSnapshot.objects.map((obj) => (
+            <option key={obj.id} value={obj.id}>
+              {obj.name}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
 
       <FieldRow label="Target Position (m)">
         <div className="grid grid-cols-3 gap-2">

@@ -21,8 +21,8 @@ describe('planner completion status', () => {
 
   it('marks save_launch ready when validation report is valid', () => {
     const statuses = buildPlannerStepStatusMap({
-      startFrame: 'ECI',
-      startTargetId: undefined,
+      startFrame: 'LVLH',
+      startTargetId: 'ISS',
       segments: [
         {
           segment_id: 'scan-1',
@@ -30,7 +30,7 @@ describe('planner completion status', () => {
           target_id: 'ISS',
           path_asset: 'asset-1',
           scan: {
-            frame: 'ECI',
+            frame: 'LVLH',
             axis: '+X',
             standoff: 10,
             overlap: 0.2,

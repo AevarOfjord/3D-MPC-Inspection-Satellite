@@ -50,44 +50,26 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                             Reference Frame
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {(['ECI', 'LVLH'] as const).map(frame => (
-                                <button
-                                    key={frame}
-                                    onClick={() => {
-                                        builder.setters.setStartFrame(frame);
-                                        if (frame === 'ECI') builder.setters.setStartTargetId(undefined);
-                                    }}
-                                    className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                                        state.startFrame === frame
-                                            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-100'
-                                            : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
-                                    }`}
-                                >
-                                    {frame}
-                                </button>
-                            ))}
+                        <div className="text-xs py-1.5 rounded border border-slate-700 bg-slate-900/50 text-slate-300 uppercase text-center">
+                            LVLH
                         </div>
                     </div>
 
-                    {/* Target Selection (Only if LVLH) */}
-                    {state.startFrame === 'LVLH' && (
-                            <div>
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                Relative To
-                            </label>
-                            <select
-                                value={state.startTargetId || ''}
-                                onChange={(e) => builder.setters.setStartTargetId(e.target.value || undefined)}
-                                className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-emerald-500"
-                            >
-                                <option value="">Select Object...</option>
-                                {orbitSnapshot.objects.map(obj => (
-                                    <option key={obj.id} value={obj.id}>{obj.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                    <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                            Relative To
+                        </label>
+                        <select
+                            value={state.startTargetId || ''}
+                            onChange={(e) => builder.setters.setStartTargetId(e.target.value || undefined)}
+                            className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-emerald-500"
+                        >
+                            <option value="">Select Object...</option>
+                            {orbitSnapshot.objects.map(obj => (
+                                <option key={obj.id} value={obj.id}>{obj.name}</option>
+                            ))}
+                        </select>
+                    </div>
 
                     <div>
                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
@@ -181,51 +163,33 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
                             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                                 Reference Frame
                             </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {(['ECI', 'LVLH'] as const).map(frame => (
-                                    <button
-                                        key={frame}
-                                        onClick={() => {
-                                            const s = segment as TransferSegment;
-                                            updateTransferConfig({ frame });
-                                            // Reset target if switching to ECI (optional rule, but keeps it clean)
-                                            if (frame === 'ECI') {
-                                                actions.updateSegment(selectedSegmentIndex, { ...s, target_id: undefined });
-                                            }
-                                        }}
-                                        className={`text-xs py-1.5 rounded border transition-colors uppercase ${
-                                            (segment as TransferSegment).end_pose.frame === frame
-                                                ? 'bg-cyan-500/20 border-cyan-500 text-cyan-100'
-                                                : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:bg-slate-800'
-                                        }`}
-                                    >
-                                        {frame}
-                                    </button>
-                                ))}
+                            <div className="text-xs py-1.5 rounded border border-slate-700 bg-slate-900/50 text-slate-300 uppercase text-center">
+                                LVLH
                             </div>
                         </div>
 
-                         {/* Target Selection (Only if LVLH) */}
-                        {(segment as TransferSegment).end_pose.frame === 'LVLH' && (
-                             <div>
-                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                    Relative To
-                                </label>
-                                <select
-                                    value={(segment as TransferSegment).target_id || ''}
-                                    onChange={(e) => {
-                                        const s = segment as TransferSegment;
-                                        actions.updateSegment(selectedSegmentIndex, { ...s, target_id: e.target.value || undefined });
-                                    }}
-                                    className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
-                                >
-                                    <option value="">Start / Previous State</option>
-                                    {orbitSnapshot.objects.map(obj => (
-                                        <option key={obj.id} value={obj.id}>{obj.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                         <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                                Relative To
+                            </label>
+                            <select
+                                value={(segment as TransferSegment).target_id || ''}
+                                onChange={(e) => {
+                                    const s = segment as TransferSegment;
+                                    actions.updateSegment(selectedSegmentIndex, {
+                                        ...s,
+                                        target_id: e.target.value || undefined,
+                                        end_pose: { ...s.end_pose, frame: 'LVLH' },
+                                    });
+                                }}
+                                className="w-full bg-slate-900/50 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 outline-none focus:border-cyan-500"
+                            >
+                                <option value="">Start / Previous State</option>
+                                {orbitSnapshot.objects.map(obj => (
+                                    <option key={obj.id} value={obj.id}>{obj.name}</option>
+                                ))}
+                            </select>
+                        </div>
 
                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                             Target Position (m)

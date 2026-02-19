@@ -476,36 +476,71 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
   const { state, actions, setters } = builder;
   const [pendingGenerate, setPendingGenerate] = useState(false);
   const selectedTargetId = state.startTargetId ?? state.selectedOrbitTargetId ?? '';
+  const selectedTarget = useMemo(
+    () => orbitSnapshot.objects.find((obj) => obj.id === selectedTargetId),
+    [selectedTargetId]
+  );
   const endpoints = useMemo(
     () => flattenEndpoints(state.compilePreviewState?.endpoints),
     [state.compilePreviewState?.endpoints]
   );
   const selectedEndpoint = resolveTransferEndpoint(builder);
+  const selectedEndpointRelative = useMemo(() => {
+    if (!selectedEndpoint || !selectedTarget) return null;
+    return [
+      selectedEndpoint.position[0] - selectedTarget.position_m[0],
+      selectedEndpoint.position[1] - selectedTarget.position_m[1],
+      selectedEndpoint.position[2] - selectedTarget.position_m[2],
+    ] as [number, number, number];
+  }, [selectedEndpoint, selectedTarget]);
+  const setTransferTargetRef = actions.setTransferTargetRef;
+  const generateUnifiedPath = actions.generateUnifiedPath;
+  const selectSegment = actions.selectSegment;
+  const saveBakedPathFromCompiled = actions.saveBakedPathFromCompiled;
+  const applyPathAssetToSegment = actions.applyPathAssetToSegment;
+  const setStartFrame = setters.setStartFrame;
+  const setStartTargetId = setters.setStartTargetId;
+  const setSegments = setters.setSegments;
+
+  useEffect(() => {
+    if (state.startFrame !== 'LVLH') {
+      setStartFrame('LVLH');
+    }
+    if (!state.startTargetId && state.selectedOrbitTargetId) {
+      setStartTargetId(state.selectedOrbitTargetId);
+    }
+  }, [
+    state.startFrame,
+    state.startTargetId,
+    state.selectedOrbitTargetId,
+    setStartFrame,
+    setStartTargetId,
+  ]);
 
   useEffect(() => {
     if (!state.transferTargetRef) return;
     if (selectedEndpoint) return;
-    actions.setTransferTargetRef(null);
-  }, [state.transferTargetRef, selectedEndpoint, actions]);
+    setTransferTargetRef(null);
+  }, [state.transferTargetRef, selectedEndpoint, setTransferTargetRef]);
 
   useEffect(() => {
     if (!pendingGenerate) return;
     setPendingGenerate(false);
-    void actions.generateUnifiedPath();
-  }, [pendingGenerate, actions, state.segments]);
+    void generateUnifiedPath();
+  }, [pendingGenerate, generateUnifiedPath]);
 
   const ensureTransferToSelectedEndpoint = async () => {
-    if (!selectedEndpoint) return;
-    setters.setSegments((prev) => {
+    if (!selectedEndpoint || !selectedEndpointRelative || !selectedTargetId) return;
+    setSegments((prev) => {
       const existing = prev.find((segment) => segment.type === 'transfer') as TransferSegment | undefined;
       const transfer: TransferSegment = existing
         ? {
             ...existing,
-            target_id: existing.target_id ?? state.startTargetId ?? undefined,
+            target_id: selectedTargetId,
             end_pose: {
               ...existing.end_pose,
-              frame: existing.end_pose.frame ?? 'ECI',
-              position: [...selectedEndpoint.position] as [number, number, number],
+              frame: 'LVLH',
+              position: [...selectedEndpointRelative] as [number, number, number],
             },
           }
         : {
@@ -513,10 +548,10 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
             type: 'transfer',
             title: null,
             notes: null,
-            target_id: state.startTargetId ?? undefined,
+            target_id: selectedTargetId,
             end_pose: {
-              frame: 'ECI',
-              position: [...selectedEndpoint.position] as [number, number, number],
+              frame: 'LVLH',
+              position: [...selectedEndpointRelative] as [number, number, number],
             },
             constraints: {
               speed_max: 0.25,
@@ -527,7 +562,7 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
       const nonTransfer = prev.filter((segment) => segment.type !== 'transfer');
       return [transfer, ...nonTransfer];
     });
-    actions.selectSegment(0);
+    selectSegment(0);
 
     const scanIndex = state.segments.findIndex((segment) => segment.type === 'scan');
     if (scanIndex >= 0) {
@@ -541,9 +576,9 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
           return;
         }
         const autoAssetName = existingAssetId || `auto_compiled_${scanSegment.target_id || 'scan'}`;
-        const savedAsset = await actions.saveBakedPathFromCompiled(autoAssetName);
+        const savedAsset = await saveBakedPathFromCompiled(autoAssetName);
         if (savedAsset?.id) {
-          actions.applyPathAssetToSegment(savedAsset.id);
+          applyPathAssetToSegment(savedAsset.id);
         }
       }
     }
@@ -563,43 +598,25 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
         </InlineBanner>
 
         <FieldRow label="Reference Frame">
-          <div className="grid grid-cols-2 gap-2">
-            {(['ECI', 'LVLH'] as const).map((frame) => (
-              <button
-                key={frame}
-                type="button"
-                onClick={() => {
-                  setters.setStartFrame(frame);
-                  if (frame === 'ECI') setters.setStartTargetId(undefined);
-                }}
-                className={`v4-focus v4-button px-2 py-1.5 ${
-                  state.startFrame === frame
-                    ? 'bg-cyan-900/35 border-cyan-700 text-cyan-100'
-                    : 'bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]'
-                }`}
-              >
-                {frame}
-              </button>
-            ))}
+          <div className="v4-subtle-panel px-3 py-2 text-xs text-[color:var(--v4-text-2)]">
+            LVLH (fixed)
           </div>
         </FieldRow>
 
-        {state.startFrame === 'LVLH' ? (
-          <FieldRow label="Relative To">
-            <select
-              className="v4-field"
-              value={selectedTargetId}
-              onChange={(event) => setters.setStartTargetId(event.target.value || undefined)}
-            >
-              <option value="">Select object...</option>
-              {orbitSnapshot.objects.map((obj) => (
-                <option key={obj.id} value={obj.id}>
-                  {obj.name}
-                </option>
-              ))}
-            </select>
-          </FieldRow>
-        ) : null}
+        <FieldRow label="Relative To">
+          <select
+            className="v4-field"
+            value={selectedTargetId}
+            onChange={(event) => setStartTargetId(event.target.value || undefined)}
+          >
+            <option value="">Select object...</option>
+            {orbitSnapshot.objects.map((obj) => (
+              <option key={obj.id} value={obj.id}>
+                {obj.name}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
 
         <FieldRow label="Start Position (m)">
           <div className="grid grid-cols-3 gap-2">
@@ -630,10 +647,10 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
               onChange={(event) => {
                 const [scanId, endpointRaw] = event.target.value.split(':');
                 if (!scanId || (endpointRaw !== 'start' && endpointRaw !== 'end')) {
-                  actions.setTransferTargetRef(null);
+                  setTransferTargetRef(null);
                   return;
                 }
-                actions.setTransferTargetRef({ scanId, endpoint: endpointRaw });
+                setTransferTargetRef({ scanId, endpoint: endpointRaw });
               }}
             >
               <option value="">Select endpoint...</option>
@@ -656,14 +673,18 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
         {selectedEndpoint ? (
           <div className="v4-subtle-panel p-3 text-[11px] text-[color:var(--v4-text-3)]">
             Selected endpoint: {selectedEndpoint.label}
-            <div className="mt-1">[{selectedEndpoint.position.map((v) => v.toFixed(2)).join(', ')}]</div>
+            <div className="mt-1">
+              {selectedEndpointRelative
+                ? `[${selectedEndpointRelative.map((v) => v.toFixed(2)).join(', ')}]`
+                : 'Select a target object to compute LVLH-relative endpoint.'}
+            </div>
           </div>
         ) : null}
 
         <button
           type="button"
           onClick={() => void ensureTransferToSelectedEndpoint()}
-          disabled={!selectedEndpoint}
+          disabled={!selectedEndpoint || !selectedEndpointRelative || !selectedTargetId}
           className="v4-focus v4-button w-full px-3 py-2 bg-cyan-900/35 border-cyan-700 text-cyan-100 disabled:opacity-40"
         >
           <Sparkles size={12} /> Generate Transfer

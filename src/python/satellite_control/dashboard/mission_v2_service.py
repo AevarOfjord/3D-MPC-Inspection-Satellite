@@ -222,6 +222,17 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
             )
         )
 
+    if mission.start_pose.frame == "LVLH" and not (mission.start_target_id or "").strip():
+        issues.append(
+            ValidationIssueV2Model(
+                code="START_TARGET_REQUIRED",
+                severity="error",
+                path="start_target_id",
+                message="LVLH start pose requires start_target_id.",
+                suggestion="Choose the reference object for LVLH mission coordinates.",
+            )
+        )
+
     if not mission.segments:
         issues.append(
             ValidationIssueV2Model(
@@ -269,6 +280,21 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
                         suggestion="Attach a path asset generated in Scan Planner.",
                     )
                 )
+
+        if (
+            segment.type == "transfer"
+            and segment.end_pose.frame == "LVLH"
+            and not (segment.target_id or "").strip()
+        ):
+            issues.append(
+                ValidationIssueV2Model(
+                    code="TRANSFER_TARGET_REQUIRED",
+                    severity="error",
+                    path=f"{seg_path}.target_id",
+                    message="LVLH transfer segment requires target_id.",
+                    suggestion="Select a transfer reference object.",
+                )
+            )
 
         if segment.type == "hold" and segment.duration < 0:
             issues.append(
@@ -358,7 +384,7 @@ def preview_v2_mission(mission: UnifiedMissionV2Model) -> PreviewMissionV2Respon
     runtime = compile_unified_mission_runtime(
         mission_def,
         simulation_config=SimulationConfig.create_default(),
-        output_frame="ECI",
+        output_frame="LVLH",
     )
     path_speed = float(runtime.path_speed)
     path_length = float(runtime.path_length)
