@@ -16,7 +16,6 @@ interface UseMissionStateArgs {
   defaultTransferSegment: () => TransferSegment;
   defaultScanSegment: () => ScanSegment;
   defaultHoldSegment: () => MissionSegment;
-  defaultTargetId: string;
   resolveOrbitTargetPose: (targetId: string) => Pose | undefined;
 }
 
@@ -25,7 +24,6 @@ export function useMissionState({
   defaultTransferSegment,
   defaultScanSegment,
   defaultHoldSegment,
-  defaultTargetId,
   resolveOrbitTargetPose,
 }: UseMissionStateArgs) {
   const [missionId, setMissionId] = useState<string>(() => defaultMissionId());
@@ -66,42 +64,6 @@ export function useMissionState({
       setSelectedSegmentIndex(next.length - 1);
       return next;
     });
-  };
-
-  const applyMissionTemplate = (
-    template: 'quick_inspect' | 'single_target_spiral' | 'transfer_scan'
-  ) => {
-    const defaultTarget = selectedOrbitTargetId || defaultTargetId || '';
-    if (template === 'quick_inspect') {
-      const scan = defaultScanSegment();
-      scan.target_id = defaultTarget;
-      scan.scan.revolutions = 2;
-      scan.scan.standoff = 8;
-      setSegments([scan]);
-      setSelectedSegmentIndex(0);
-      setAuthoringStep('segments');
-      return;
-    }
-    if (template === 'single_target_spiral') {
-      const scan = defaultScanSegment();
-      scan.target_id = defaultTarget;
-      scan.scan.pattern = 'spiral';
-      scan.scan.revolutions = 4;
-      scan.scan.standoff = 10;
-      setSegments([scan]);
-      setSelectedSegmentIndex(0);
-      setAuthoringStep('segments');
-      return;
-    }
-    const transfer = defaultTransferSegment();
-    transfer.end_pose.position = [5, 0, 0];
-    transfer.target_id = defaultTarget || undefined;
-    const scan = defaultScanSegment();
-    scan.target_id = defaultTarget;
-    scan.scan.pattern = 'spiral';
-    setSegments([transfer, scan]);
-    setSelectedSegmentIndex(1);
-    setAuthoringStep('segments');
   };
 
   const removeSegment = (index: number) => {
@@ -277,7 +239,6 @@ export function useMissionState({
       addTransferSegment,
       addScanSegment,
       addHoldSegment,
-      applyMissionTemplate,
       removeSegment,
       updateSegment,
       applyPathAssetToSegment,

@@ -25,8 +25,7 @@ describe('planner flow v5', () => {
     expect(statuses.path_maker).toBe('complete');
     expect(statuses.transfer).toBe('ready');
     expect(statuses.obstacles).toBe('locked');
-    expect(canAccessFlowStep('transfer', statuses, 'guided')).toBe(true);
-    expect(canAccessFlowStep('transfer', statuses, 'advanced')).toBe(true);
+    expect(canAccessFlowStep('transfer', statuses)).toBe(true);
   });
 
   it('maps v5 flow steps to internal planner steps and back', () => {

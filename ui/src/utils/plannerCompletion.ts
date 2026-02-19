@@ -73,9 +73,9 @@ export function buildPlannerStepStatusMap({
 export function canAccessPlannerStep(
   step: PlannerStep,
   statuses: PlannerStepStatusMap,
-  mode: 'guided' | 'advanced'
+  mode: 'guided'
 ): boolean {
-  if (mode === 'advanced') return true;
+  void mode;
   return statuses[step] !== 'locked';
 }
 

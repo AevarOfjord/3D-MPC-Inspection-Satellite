@@ -42,12 +42,17 @@ function guessModelPathForTarget(
   availableModels: { name: string; filename: string; path: string }[]
 ): string | null {
   const query = targetId.trim().toLowerCase();
-  if (!query) return null;
-  const keywords = query.includes('starlink')
-    ? ['starlink']
-    : query.includes('iss')
-      ? ['iss']
-      : [query];
+  if (!query || availableModels.length === 0) return null;
+
+  const tokenSet = new Set<string>();
+  tokenSet.add(query);
+  for (const token of query.split(/[^a-z0-9]+/)) {
+    if (token) tokenSet.add(token);
+  }
+  if (query.includes('starlink')) tokenSet.add('starlink');
+  if (query.includes('iss')) tokenSet.add('iss');
+
+  const keywords = Array.from(tokenSet).sort((a, b) => b.length - a.length);
   for (const keyword of keywords) {
     const match = availableModels.find((model) => {
       const haystack = `${model.name} ${model.filename} ${model.path}`.toLowerCase();
@@ -168,6 +173,19 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
     actions.setSelectedKeyLevelId(duplicate.key_levels[0]?.id ?? null);
   };
 
+  useEffect(() => {
+    if (!activeTargetId || state.availableModels.length === 0) return;
+    const suggestedPath = guessModelPathForTarget(activeTargetId, state.availableModels);
+    if (!suggestedPath) return;
+    if (state.config.obj_path === suggestedPath) return;
+    actions.selectModelPath(suggestedPath);
+  }, [
+    activeTargetId,
+    state.availableModels,
+    state.config.obj_path,
+    actions,
+  ]);
+
   return (
     <Panel
       title="Step 1 · Path Maker"
@@ -242,11 +260,9 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
                 // Focusing [0,0,0] keeps camera pinned to the selected-object origin after recenter.
                 useCameraStore.getState().requestFocus([0, 0, 0], focusDistance * ORBIT_SCALE);
               }
-              if (!state.config.obj_path) {
-                const suggestedPath = guessModelPathForTarget(targetId, state.availableModels);
-                if (suggestedPath) {
-                  actions.selectModelPath(suggestedPath);
-                }
+              const suggestedPath = guessModelPathForTarget(targetId, state.availableModels);
+              if (suggestedPath) {
+                actions.selectModelPath(suggestedPath);
               }
             }}
           >
@@ -259,24 +275,9 @@ export function PathMakerStepCardV42({ builder }: BaseCardProps) {
           </select>
         </FieldRow>
 
-        <FieldRow label="Object Model">
-          <select
-            className="v4-field"
-            value={state.config.obj_path}
-            onChange={(event) => actions.selectModelPath(event.target.value)}
-          >
-            <option value="">Select OBJ model...</option>
-            {state.availableModels.map((model) => (
-              <option key={model.path} value={model.path}>
-                {model.name}
-              </option>
-            ))}
-          </select>
-        </FieldRow>
-
         {!state.config.obj_path ? (
-          <InlineBanner tone="warning" title="Model required">
-            Choose an OBJ model before building spiral preview.
+          <InlineBanner tone="warning" title="Model not mapped">
+            No OBJ model is mapped to this target yet. Add a matching model file/name for this target.
           </InlineBanner>
         ) : null}
 
@@ -597,12 +598,6 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
           Choose one endpoint from Step 1 and generate a transfer spline to that endpoint.
         </InlineBanner>
 
-        <FieldRow label="Reference Frame">
-          <div className="v4-subtle-panel px-3 py-2 text-xs text-[color:var(--v4-text-2)]">
-            LVLH (fixed)
-          </div>
-        </FieldRow>
-
         <FieldRow label="Relative To">
           <select
             className="v4-field"
@@ -635,38 +630,13 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
           </div>
         </FieldRow>
 
-        {endpoints.length > 0 ? (
-          <FieldRow label="Spline Endpoint">
-            <select
-              className="v4-field"
-              value={
-                state.transferTargetRef
-                  ? `${state.transferTargetRef.scanId}:${state.transferTargetRef.endpoint}`
-                  : ''
-              }
-              onChange={(event) => {
-                const [scanId, endpointRaw] = event.target.value.split(':');
-                if (!scanId || (endpointRaw !== 'start' && endpointRaw !== 'end')) {
-                  setTransferTargetRef(null);
-                  return;
-                }
-                setTransferTargetRef({ scanId, endpoint: endpointRaw });
-              }}
-            >
-              <option value="">Select endpoint...</option>
-              {endpoints.map((endpoint) => (
-                <option
-                  key={`${endpoint.scanId}:${endpoint.endpoint}`}
-                  value={`${endpoint.scanId}:${endpoint.endpoint}`}
-                >
-                  {endpoint.label}
-                </option>
-              ))}
-            </select>
-          </FieldRow>
-        ) : (
+        {endpoints.length === 0 ? (
           <InlineBanner tone="warning" title="No endpoints yet">
             Return to Path Maker and click Build Spiral Preview first.
+          </InlineBanner>
+        ) : (
+          <InlineBanner tone="info" title="Pick in viewport">
+            Click a `S` or `E` endpoint marker in the viewport to select transfer target.
           </InlineBanner>
         )}
 
@@ -677,6 +647,15 @@ export function TransferStepCardV42({ builder }: BaseCardProps) {
               {selectedEndpointRelative
                 ? `[${selectedEndpointRelative.map((v) => v.toFixed(2)).join(', ')}]`
                 : 'Select a target object to compute LVLH-relative endpoint.'}
+            </div>
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setTransferTargetRef(null)}
+                className="v4-focus v4-button px-2 py-1 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-2)]"
+              >
+                Clear Endpoint
+              </button>
             </div>
           </div>
         ) : null}

@@ -12,13 +12,6 @@ import { StateTimeline } from '../TrajectoryStudio/StateTimeline';
 import { InlineBanner } from '../ui-v4/InlineBanner';
 import { PlannerStepRailV4 } from '../planner-v4/PlannerStepRailV4';
 import { SegmentComposerCardV4 } from '../planner-v4/SegmentComposerCardV4';
-import { TargetCardV4 } from '../planner-v4/TargetCardV4';
-import { SegmentDetailsCardV4 } from '../planner-v4/SegmentDetailsCardV4';
-import { ScanBasicsCardV4 } from '../planner-v4/ScanBasicsCardV4';
-import { ScanGeometryAdvancedCardV4 } from '../planner-v4/ScanGeometryAdvancedCardV4';
-import { ScanAssetsCardV4 } from '../planner-v4/ScanAssetsCardV4';
-import { ScanDiagnosticsCardV4 } from '../planner-v4/ScanDiagnosticsCardV4';
-import { ConstraintPresetsCardV4 } from '../planner-v4/ConstraintPresetsCardV4';
 import { ValidationNavigatorCardV4 } from '../planner-v4/ValidationNavigatorCardV4';
 import { SaveLaunchCardV4 } from '../planner-v4/SaveLaunchCardV4';
 import { CoachmarkLayer } from '../planner-v4/CoachmarkLayer';
@@ -118,42 +111,16 @@ export function PlannerModeViewV4({ viewMode, builder, onOpenRunner }: PlannerMo
 
   const contextPanel = useMemo(() => {
     if (plannerStep === 'path_maker') {
-      return [
-        <PathMakerStepCardV42 key="path-maker" builder={builder} />,
-        ...(wizard.state.uxMode === 'advanced'
-          ? [
-              <ScanBasicsCardV4 key="scan-basics" builder={builder} />,
-              <ScanGeometryAdvancedCardV4 key="scan-geometry" builder={builder} />,
-              <ScanAssetsCardV4 key="scan-assets" builder={builder} />,
-              <ScanDiagnosticsCardV4 key="scan-diagnostics" builder={builder} />,
-            ]
-          : []),
-      ];
+      return [<PathMakerStepCardV42 key="path-maker" builder={builder} />];
     }
     if (plannerStep === 'transfer') {
       return [
         <TransferStepCardV42 key="transfer" builder={builder} />,
         <SegmentComposerCardV4 key="transfer-segments" builder={builder} />,
-        ...(wizard.state.uxMode === 'advanced'
-          ? [<TargetCardV4 key="target-advanced" builder={builder} />]
-          : []),
       ];
     }
     if (plannerStep === 'obstacles') {
-      return [
-        <ObstaclesStepCardV42 key="obstacles" builder={builder} />,
-        ...(wizard.state.uxMode === 'advanced'
-          ? [
-              <ConstraintPresetsCardV4 key="constraint-presets" builder={builder} />,
-              <SegmentComposerCardV4
-                key="constraint-segments"
-                builder={builder}
-                emphasizeConstraints
-              />,
-              <SegmentDetailsCardV4 key="constraint-details" builder={builder} constraintsOnly />,
-            ]
-          : []),
-      ];
+      return [<ObstaclesStepCardV42 key="obstacles" builder={builder} />];
     }
     if (plannerStep === 'path_edit') {
       return [
@@ -162,21 +129,18 @@ export function PlannerModeViewV4({ viewMode, builder, onOpenRunner }: PlannerMo
           builder={builder}
           onFinishEditing={() => wizard.actions.goToStep('mission_saver')}
         />,
-        ...(wizard.state.uxMode === 'advanced'
-          ? [<SegmentComposerCardV4 key="path-edit-segments" builder={builder} />]
-          : []),
       ];
     }
     return [
       <ValidationNavigatorCardV4 key="validate" builder={builder} />,
       <SaveLaunchCardV4 key="save" builder={builder} onOpenRunner={onOpenRunner} />,
     ];
-  }, [plannerStep, builder, wizard.state.uxMode, wizard.actions, onOpenRunner]);
+  }, [plannerStep, builder, wizard.actions, onOpenRunner]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 min-h-0 p-3 flex gap-3 overflow-hidden">
-        <aside className="w-[20rem] shrink-0 overflow-y-auto custom-scrollbar pr-1">
+        <aside className="w-[20rem] shrink-0 overflow-y-auto custom-scrollbar pr-1 relative z-30">
           <PlannerStepRailV4 builder={builder} wizard={wizard} />
         </aside>
 
@@ -274,7 +238,7 @@ export function PlannerModeViewV4({ viewMode, builder, onOpenRunner }: PlannerMo
           />
         </section>
 
-        <aside className="w-[28rem] shrink-0 overflow-y-auto custom-scrollbar pr-1 space-y-3">
+        <aside className="w-[28rem] shrink-0 overflow-y-auto custom-scrollbar pr-1 space-y-3 relative z-30">
           {contextPanel}
         </aside>
       </div>

@@ -1380,6 +1380,65 @@ export function UnifiedViewport({
                       </>
                     )}
 
+                    {mode !== 'scan' &&
+                      builderState.authoringStep === 'target' &&
+                      builderState.compilePreviewState?.endpoints &&
+                      Object.entries(builderState.compilePreviewState.endpoints).flatMap(
+                        ([scanId, ep]: any) =>
+                          ([
+                            { key: 'start', color: '#4ade80', label: 'S', pos: ep.start as [number, number, number] },
+                            { key: 'end', color: '#38bdf8', label: 'E', pos: ep.end as [number, number, number] },
+                          ] as const).map((item) => (
+                            <group key={`transfer-endpoint-${scanId}-${item.key}`}>
+                              {(() => {
+                                const hoverId = `endpoint:${scanId}:${item.key}`;
+                                const hovered = hoveredPlannerPointId === hoverId;
+                                const radius = Math.max(0.07 * ORBIT_SCALE, 0.000007);
+                                return (
+                                  <mesh
+                                    position={scaleToScene(item.pos)}
+                                    onPointerOver={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId(hoverId);
+                                    }}
+                                    onPointerOut={(e) => {
+                                      e.stopPropagation();
+                                      setHoveredPlannerPointId((prev) =>
+                                        prev === hoverId ? null : prev
+                                      );
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      builderActions.setTransferTargetRef({
+                                        scanId,
+                                        endpoint: item.key,
+                                      });
+                                    }}
+                                  >
+                                    <sphereGeometry
+                                      args={[radius * (hovered ? 1.25 : 1.0), 12, 12]}
+                                    />
+                                    <meshBasicMaterial
+                                      color={hovered ? '#ffffff' : item.color}
+                                      transparent
+                                      opacity={hovered ? 1.0 : 0.95}
+                                    />
+                                  </mesh>
+                                );
+                              })()}
+                              <Text
+                                position={scaleToScene(item.pos)}
+                                fontSize={Math.max(0.06 * ORBIT_SCALE, 0.000007)}
+                                color={item.color}
+                                anchorX="center"
+                                anchorY="middle"
+                              >
+                                {item.label}
+                              </Text>
+                            </group>
+                          ))
+                      )}
+
                     {/* Advanced Path Builder */}
                     <EditableTrajectory
                         points={builderState.previewPath.map(scaleToScene)}

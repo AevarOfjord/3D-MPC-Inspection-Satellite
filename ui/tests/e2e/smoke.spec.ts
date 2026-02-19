@@ -20,7 +20,6 @@ test('app shell loads', async ({ page }) => {
 test('planner flow renders V4.2 steps and mission saver is gated', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
   });
   await page.route('**/api/v2/missions/validate', async (route) => {
     await route.fulfill({
@@ -45,13 +44,11 @@ test('planner flow renders V4.2 steps and mission saver is gated', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
   await expect(page.getByRole('button', { name: /Path Maker/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Quick Inspect' }).click();
+  await page.getByRole('button', { name: /Step 2/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Step 2 · Transfer' })).toBeVisible();
+  await page.getByRole('button', { name: /Step 1/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Step 1 · Path Maker' })).toBeVisible();
   await page.keyboard.press('Alt+5');
   await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Save Mission$/ })).toBeDisabled();
@@ -97,7 +94,6 @@ test('draft restore banner is one-shot and discard clears it', async ({ page }) 
 test('command palette and planner shortcuts work', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
   });
   await page.goto('/');
   await page.getByRole('button', { name: /Command Palette/ }).click();
@@ -105,12 +101,6 @@ test('command palette and planner shortcuts work', async ({ page }) => {
   await page.getByPlaceholder('Search commands...').fill('switch to planner');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: /Path Maker/ })).toBeVisible();
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
-
   await page.keyboard.press('Alt+5');
   await expect(page.getByText('Step 5 · Save Mission')).toBeVisible();
 
@@ -119,7 +109,7 @@ test('command palette and planner shortcuts work', async ({ page }) => {
   await expect(page.getByText('Keyboard Shortcuts')).toBeVisible();
 });
 
-test('guided advanced mode persists and onboarding banner is one-shot', async ({ page }) => {
+test('guided mode persists and onboarding banner is one-shot', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
 
@@ -127,19 +117,7 @@ test('guided advanced mode persists and onboarding banner is one-shot', async ({
   await page.getByRole('button', { name: 'Dismiss' }).click();
   await expect(page.getByText('Take 60s Tour')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Advanced' }).click();
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
-
   await page.reload();
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await expect(page.getByText('Take 60s Tour')).toHaveCount(0);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
 });

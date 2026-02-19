@@ -14,10 +14,8 @@ import {
 import type { PlannerStep } from '../utils/plannerValidation';
 import {
   PLANNER_FLOW_STATE_STORAGE_KEY,
-  PLANNER_UX_MODE_STORAGE_KEY,
   type PlannerFlowStepStatusMap,
   type PlannerFlowStepV5,
-  type PlannerUxMode,
 } from '../types/plannerUx';
 
 interface UsePlannerWizardArgs {
@@ -33,11 +31,6 @@ interface UsePlannerWizardArgs {
   obstaclesCount: number;
   previewPathPoints: number;
   isManualMode: boolean;
-}
-
-function parseStoredUxMode(raw: string | null): PlannerUxMode {
-  if (raw === 'advanced') return 'advanced';
-  return 'guided';
 }
 
 function parseStoredFlowStep(raw: string | null): PlannerFlowStepV5 | null {
@@ -66,13 +59,6 @@ export function usePlannerWizard({
 }: UsePlannerWizardArgs) {
   const syncingFromFlowRef = useRef(false);
   const syncingFromAuthoringRef = useRef(false);
-  const [uxMode, setUxModeState] = useState<PlannerUxMode>(() => {
-    try {
-      return parseStoredUxMode(window.localStorage.getItem(PLANNER_UX_MODE_STORAGE_KEY));
-    } catch {
-      return 'guided';
-    }
-  });
   const [flowStep, setFlowStepState] = useState<PlannerFlowStepV5>(() => {
     try {
       const stored = parseStoredFlowStep(
@@ -85,13 +71,6 @@ export function usePlannerWizard({
     return mapInternalStepToFlowStep(authoringStep);
   });
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(PLANNER_UX_MODE_STORAGE_KEY, uxMode);
-    } catch {
-      // ignore storage write errors
-    }
-  }, [uxMode]);
   useEffect(() => {
     try {
       window.localStorage.setItem(PLANNER_FLOW_STATE_STORAGE_KEY, flowStep);
@@ -147,9 +126,9 @@ export function usePlannerWizard({
   }, [authoringStep]);
 
   useEffect(() => {
-    if (canAccessFlowStep(flowStep, stepStatuses, uxMode)) return;
+    if (canAccessFlowStep(flowStep, stepStatuses)) return;
     setFlowStepState('path_maker');
-  }, [flowStep, stepStatuses, uxMode]);
+  }, [flowStep, stepStatuses]);
 
   useEffect(() => {
     if (syncingFromAuthoringRef.current) {
@@ -165,7 +144,21 @@ export function usePlannerWizard({
   }, [flowStep, authoringStep, setAuthoringStep]);
 
   const goToStep = (step: PlannerFlowStepV5) => {
-    if (!canAccessFlowStep(step, stepStatuses, uxMode)) return;
+    if (step === 'path_maker') {
+      const internalStep = mapFlowStepToInternalStep(step);
+      if (authoringStep !== internalStep) {
+        syncingFromFlowRef.current = true;
+        setAuthoringStep(internalStep);
+      }
+      setFlowStepState(step);
+      return;
+    }
+    if (!canAccessFlowStep(step, stepStatuses)) return;
+    const internalStep = mapFlowStepToInternalStep(step);
+    if (authoringStep !== internalStep) {
+      syncingFromFlowRef.current = true;
+      setAuthoringStep(internalStep);
+    }
     setFlowStepState(step);
   };
 
@@ -187,20 +180,14 @@ export function usePlannerWizard({
     [stepStatuses]
   );
 
-  const setUxMode = (mode: PlannerUxMode) => {
-    setUxModeState(mode);
-  };
-
   return {
     state: {
-      uxMode,
       flowStep,
       stepStatuses,
       stepIssueCounts,
       completedCount,
     },
     actions: {
-      setUxMode,
       goToStep,
       goNext,
       goPrevious,

@@ -3,7 +3,6 @@ import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 import type {
   PlannerFlowStepStatusMap,
   PlannerFlowStepV5,
-  PlannerUxMode,
 } from '../types/plannerUx';
 import { mapIssuePathToPlannerStep, type PlannerStep } from './plannerValidation';
 
@@ -99,10 +98,8 @@ export function buildPlannerFlowStepStatusMap({
 
 export function canAccessFlowStep(
   step: PlannerFlowStepV5,
-  statuses: PlannerFlowStepStatusMap,
-  mode: PlannerUxMode
+  statuses: PlannerFlowStepStatusMap
 ): boolean {
-  if (mode === 'advanced') return true;
   return statuses[step] !== 'locked';
 }
 

@@ -265,3 +265,85 @@ def test_scan_project_compile_translation_preserves_centerline_shift():
         assert abs(actual_delta[0] - delta[0]) <= tol
         assert abs(actual_delta[1] - delta[1]) <= tol
         assert abs(actual_delta[2] - delta[2]) <= tol
+
+
+def test_scan_project_preview_connector_respects_selected_endpoint_direction():
+    with TestClient(app) as client:
+        project = _default_scan_project('TestScanProject_ConnectorPreviewDirection')
+        project['scans'].append(
+            {
+                'id': 'scan_2',
+                'name': 'Scan 2',
+                'axis': 'X',
+                'plane_a': [-0.3, 0.0, 0.0],
+                'plane_b': [0.6, 0.0, 0.0],
+                'turns': 3.0,
+                'coarse_points_per_turn': 4,
+                'densify_multiplier': 2,
+                'speed_max': 0.25,
+                'key_levels': [
+                    {
+                        'id': 'kl_3',
+                        't': 0.0,
+                        'center_offset': [0.0, 0.0],
+                        'radius_x': 0.8,
+                        'radius_y': 0.8,
+                        'rotation_deg': 0.0,
+                    },
+                    {
+                        'id': 'kl_4',
+                        't': 1.0,
+                        'center_offset': [0.1, -0.1],
+                        'radius_x': 1.0,
+                        'radius_y': 0.7,
+                        'rotation_deg': -5.0,
+                    },
+                ],
+            }
+        )
+
+        baseline_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': project,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert baseline_resp.status_code == 200
+        baseline = baseline_resp.json()
+        expected_start = baseline['endpoints']['scan_2']['start']
+        expected_end = baseline['endpoints']['scan_1']['end']
+
+        project['connectors'] = [
+            {
+                'id': 'conn_reverse_click_order',
+                'from_scan_id': 'scan_2',
+                'to_scan_id': 'scan_1',
+                'from_endpoint': 'start',
+                'to_endpoint': 'end',
+                'samples': 24,
+            }
+        ]
+
+        compile_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': project,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert compile_resp.status_code == 200
+        payload = compile_resp.json()
+        assert payload['status'] == 'success'
+        assert len(payload['connector_paths']) == 1
+
+        connector_path = payload['connector_paths'][0]['path']
+        assert len(connector_path) >= 2
+
+        def _distance(a: list[float], b: list[float]) -> float:
+            return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+
+        assert _distance(connector_path[0], expected_start) < 1e-6
+        assert _distance(connector_path[-1], expected_end) < 1e-6
