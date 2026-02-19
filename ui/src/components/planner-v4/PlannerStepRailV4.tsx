@@ -1,4 +1,4 @@
-import { Layers3, Sparkles, Workflow } from 'lucide-react';
+import { Workflow } from 'lucide-react';
 
 import type { useMissionBuilder } from '../../hooks/useMissionBuilder';
 import type { usePlannerWizard } from '../../hooks/usePlannerWizard';
@@ -6,6 +6,7 @@ import { Panel } from '../ui-v4/Panel';
 import { StepBadge } from '../ui-v4/StepBadge';
 import { StatusPill } from '../ui-v4/StatusPill';
 import { PLANNER_FLOW_STEP_ORDER_V5, type PlannerFlowStepV5 } from '../../types/plannerUx';
+import { mapFlowStepToInternalStep } from '../../utils/plannerFlowV5';
 
 interface PlannerStepRailV4Props {
   builder: ReturnType<typeof useMissionBuilder>;
@@ -32,6 +33,10 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
   const { state, actions } = builder;
 
   const jumpToStep = (step: PlannerFlowStepV5) => {
+    const internalStep = mapFlowStepToInternalStep(step);
+    if (state.authoringStep !== internalStep) {
+      actions.setAuthoringStep(internalStep);
+    }
     if (step === 'path_maker') {
       const firstScan = state.segments.findIndex((segment) => segment.type === 'scan');
       if (firstScan >= 0) {
@@ -52,42 +57,16 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
     <div id="coachmark-step_rail" className="space-y-3">
       <Panel
         title="Mission Planner"
-        subtitle="Path-maker first 5-step mission creator"
         actions={<StatusPill tone="info">{progressPercent}% Ready</StatusPill>}
         className="w-[20rem]"
       >
         <div className="space-y-3">
-          <div className="v4-subtle-panel p-1 flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => wizard.actions.setUxMode('guided')}
-              className={`v4-button v4-focus flex-1 px-2 py-1.5 ${
-                wizard.state.uxMode === 'guided'
-                  ? 'bg-cyan-700/35 border-cyan-500 text-cyan-100'
-                  : 'bg-slate-900 text-slate-300'
-              }`}
-            >
-              Guided
-            </button>
-            <button
-              type="button"
-              onClick={() => wizard.actions.setUxMode('advanced')}
-              className={`v4-button v4-focus flex-1 px-2 py-1.5 ${
-                wizard.state.uxMode === 'advanced'
-                  ? 'bg-cyan-700/35 border-cyan-500 text-cyan-100'
-                  : 'bg-slate-900 text-slate-300'
-              }`}
-            >
-              Advanced
-            </button>
-          </div>
-
           <div className="space-y-1.5">
             {PLANNER_FLOW_STEP_ORDER_V5.map((step, index) => {
               const active = step === wizard.state.flowStep;
               const status = wizard.state.stepStatuses[step];
               const issues = wizard.state.stepIssueCounts[step];
-              const disabled = wizard.state.uxMode === 'guided' && status === 'locked';
+              const disabled = status === 'locked' && step !== 'path_maker';
               return (
                 <button
                   key={step}
@@ -96,9 +75,9 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
                   disabled={disabled}
                   className={`v4-focus w-full rounded-[10px] border px-3 py-2.5 text-left transition-colors ${
                     active
-                      ? 'border-cyan-500/85 bg-cyan-900/30'
+                      ? 'border-cyan-500/85 bg-cyan-900/30 hover:border-cyan-400'
                       : 'border-[color:var(--v4-border)] bg-[color:var(--v4-surface-1)]/90 hover:border-cyan-700/70'
-                  } disabled:opacity-45 disabled:cursor-not-allowed`}
+                  } disabled:opacity-45 disabled:cursor-not-allowed relative z-[1]`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -118,41 +97,6 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
               );
             })}
           </div>
-        </div>
-      </Panel>
-
-      <Panel
-        title={
-          <span className="flex items-center gap-2">
-            <Sparkles size={14} />
-            Quick Starts
-          </span>
-        }
-        subtitle="Apply a starter mission then tweak as needed"
-        className="w-[20rem]"
-      >
-        <div id="coachmark-templates" className="grid gap-2">
-          <button
-            type="button"
-            onClick={() => actions.applyMissionTemplate('quick_inspect')}
-            className="v4-focus v4-button px-3 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-1)]"
-          >
-            Quick Inspect
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.applyMissionTemplate('single_target_spiral')}
-            className="v4-focus v4-button px-3 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-1)]"
-          >
-            Single Target Spiral
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.applyMissionTemplate('transfer_scan')}
-            className="v4-focus v4-button px-3 py-2 bg-[color:var(--v4-surface-2)] text-[color:var(--v4-text-1)]"
-          >
-            Transfer + Scan
-          </button>
           <div className="pt-1 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -168,10 +112,6 @@ export function PlannerStepRailV4({ builder, wizard }: PlannerStepRailV4Props) {
             >
               Next
             </button>
-          </div>
-          <div className="pt-1 flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
-            <Layers3 size={12} />
-            {'Guided mode follows Path Maker -> Transfer -> Obstacles -> Path Edit -> Mission Saver.'}
           </div>
           <div className="flex items-center gap-2 text-[10px] text-[color:var(--v4-text-3)]">
             <Workflow size={12} />

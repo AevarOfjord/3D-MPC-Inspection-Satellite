@@ -87,31 +87,7 @@ export function MissionAuthoringStepper({ builder }: MissionAuthoringStepperProp
           );
         })}
       </div>
-      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mb-2">
-        Templates
-      </div>
       <div className="grid gap-2 text-xs">
-        <button
-          type="button"
-          onClick={() => actions.applyMissionTemplate('quick_inspect')}
-          className="px-3 py-1.5 border border-slate-700 rounded text-left text-slate-300 hover:bg-slate-800"
-        >
-          Quick Inspect
-        </button>
-        <button
-          type="button"
-          onClick={() => actions.applyMissionTemplate('single_target_spiral')}
-          className="px-3 py-1.5 border border-slate-700 rounded text-left text-slate-300 hover:bg-slate-800"
-        >
-          Single Target Spiral
-        </button>
-        <button
-          type="button"
-          onClick={() => actions.applyMissionTemplate('transfer_scan')}
-          className="px-3 py-1.5 border border-slate-700 rounded text-left text-slate-300 hover:bg-slate-800"
-        >
-          Transfer + Scan
-        </button>
         <button
           type="button"
           onClick={() => void actions.validateUnifiedMission()}

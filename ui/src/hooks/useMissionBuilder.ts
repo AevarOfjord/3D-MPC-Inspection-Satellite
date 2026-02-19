@@ -143,7 +143,6 @@ export function useMissionBuilder() {
     defaultTransferSegment,
     defaultScanSegment,
     defaultHoldSegment,
-    defaultTargetId: orbitSnapshot.objects[0]?.id || '',
     resolveOrbitTargetPose,
   });
   const {
@@ -173,7 +172,6 @@ export function useMissionBuilder() {
       addTransferSegment,
       addScanSegment,
       addHoldSegment,
-      applyMissionTemplate,
       removeSegment,
       updateSegment,
       applyPathAssetToSegment,
@@ -689,7 +687,6 @@ export function useMissionBuilder() {
       assignScanTarget,
       setSelectedOrbitTargetId,
       setAuthoringStep,
-      applyMissionTemplate,
     },
     validationActions: {
       validateUnifiedMission,

@@ -12,10 +12,6 @@ const CARD_COPY: Record<CoachmarkId, { title: string; body: string }> = {
     title: '5-Step Rail',
     body: 'Follow the steps in order for the simplest mission-creation flow.',
   },
-  templates: {
-    title: 'Quick Starts',
-    body: 'Apply a starter mission, then tune each step in the guided flow.',
-  },
   context_panel: {
     title: 'Step Controls',
     body: 'The right panel only shows controls for the current task to reduce clutter.',

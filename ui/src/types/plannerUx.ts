@@ -1,7 +1,5 @@
 import type { PlannerStep } from '../utils/plannerValidation';
 
-export type PlannerUxMode = 'guided' | 'advanced';
-
 export type PlannerStepStatus = 'locked' | 'ready' | 'complete' | 'error';
 export type PlannerFlowStepStatus = PlannerStepStatus;
 
@@ -23,7 +21,6 @@ export type PathPairId = string;
 
 export type CoachmarkId =
   | 'step_rail'
-  | 'templates'
   | 'context_panel'
   | 'path_edit'
   | 'save'
@@ -47,7 +44,6 @@ export interface PlannerFlowStepStatusMap {
   mission_saver: PlannerFlowStepStatus;
 }
 
-export const PLANNER_UX_MODE_STORAGE_KEY = 'mission_control_planner_ux_mode_v1';
 export const PLANNER_FLOW_STATE_STORAGE_KEY = 'mission_control_planner_flow_v5_state_v1';
 export const PLANNER_COACHMARKS_STORAGE_KEY = 'mission_control_coachmarks_v1';
 

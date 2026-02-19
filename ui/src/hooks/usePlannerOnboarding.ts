@@ -16,7 +16,6 @@ function parseCoachmarkState(raw: string | null): PlannerCoachmarkState {
       if (id === 'save_launch') return 'save';
       if (
         id === 'step_rail' ||
-        id === 'templates' ||
         id === 'context_panel' ||
         id === 'path_edit' ||
         id === 'save'
@@ -64,7 +63,7 @@ export function usePlannerOnboarding() {
 
   const visibleCoachmarks = useMemo(
     () =>
-      (['step_rail', 'templates', 'context_panel', 'path_edit', 'save'] as CoachmarkId[])
+      (['step_rail', 'context_panel', 'path_edit', 'save'] as CoachmarkId[])
         .filter((id) => !state.dismissedIds.includes(id)),
     [state.dismissedIds]
   );

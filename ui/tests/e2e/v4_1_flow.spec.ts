@@ -14,7 +14,6 @@ async function dismissIntroIfVisible(page: Page) {
 test('v4.2 happy path: 5-step mission flow stays usable and save-ready', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
   });
   await page.route('**/api/v2/missions/validate', async (route) => {
     await route.fulfill({
@@ -31,12 +30,6 @@ test('v4.2 happy path: 5-step mission flow stays usable and save-ready', async (
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
-
   const stepRail = page.locator('#coachmark-step_rail');
   await expect(stepRail.getByRole('button', { name: /Step 1/ }).first()).toContainText('Path Maker');
   await expect(stepRail.getByRole('button', { name: /Step 2/ }).first()).toContainText('Transfer');
@@ -56,7 +49,6 @@ test('v4.2 happy path: 5-step mission flow stays usable and save-ready', async (
 test('v4.2 failure path: validation issue can route back to the fixing step', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('mission_control_planner_ux_mode_v1', 'advanced');
   });
   await page.route('**/api/v2/missions/validate', async (route) => {
     await route.fulfill({
@@ -81,11 +73,6 @@ test('v4.2 failure path: validation issue can route back to the fixing step', as
   await page.goto('/');
   await page.getByRole('button', { name: 'PLANNER' }).click();
   await dismissIntroIfVisible(page);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => window.localStorage.getItem('mission_control_planner_ux_mode_v1'))
-    )
-    .toBe('advanced');
   await page.locator('#coachmark-step_rail').getByRole('button', { name: /Step 5/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Step 5 · Save Mission' })).toBeVisible();
 

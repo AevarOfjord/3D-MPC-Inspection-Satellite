@@ -16,7 +16,6 @@ describe('planner completion status', () => {
     expect(statuses.scan_definition).toBe('locked');
     expect(statuses.save_launch).toBe('locked');
     expect(canAccessPlannerStep('scan_definition', statuses, 'guided')).toBe(false);
-    expect(canAccessPlannerStep('scan_definition', statuses, 'advanced')).toBe(true);
   });
 
   it('marks save_launch ready when validation report is valid', () => {

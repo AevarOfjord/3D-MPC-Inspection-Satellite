@@ -508,6 +508,7 @@ def compile_scan_project(
         incoming[to_id].append(connector)
 
     enforce_linear_chain = str(quality).lower() == "final"
+    preview_linear_chain = False
 
     if len(scans) > 1:
         if enforce_linear_chain and not connectors:
@@ -545,12 +546,39 @@ def compile_scan_project(
             # Preview mode: allow disconnected scans so users can author and inspect
             # independent scan paths before adding connectors.
             order = scan_ids
+            if connectors and len(connectors) == len(scans) - 1:
+                chain_like = True
+                for sid in scan_ids:
+                    if len(incoming[sid]) > 1 or len(outgoing[sid]) > 1:
+                        chain_like = False
+                        break
+                if chain_like and len(starts) == 1:
+                    candidate_order: list[str] = []
+                    current = starts[0]
+                    visited: set[str] = set()
+                    while True:
+                        if current in visited:
+                            chain_like = False
+                            break
+                        if current not in scans_by_id:
+                            chain_like = False
+                            break
+                        visited.add(current)
+                        candidate_order.append(current)
+                        out = outgoing[current]
+                        if not out:
+                            break
+                        current = str(out[0].get("to_scan_id"))
+
+                    if chain_like and len(candidate_order) == len(scans):
+                        order = candidate_order
+                        preview_linear_chain = True
     else:
         order = [scan_ids[0]]
 
     reverse_map: dict[str, bool] = {}
     for sid in order:
-        if not enforce_linear_chain:
+        if not (enforce_linear_chain or preview_linear_chain):
             reverse_map[sid] = False
             continue
         rev_from_in: bool | None = None
@@ -578,6 +606,66 @@ def compile_scan_project(
     scan_diagnostics: list[dict[str, Any]] = []
     connector_diagnostics: list[dict[str, Any]] = []
     endpoints: dict[str, dict[str, list[float]]] = {}
+
+    def _endpoint_for_scan(scan_id: str, endpoint: str) -> np.ndarray:
+        path = oriented_scan_paths[scan_id]
+        reversed_scan = reverse_map.get(scan_id, False)
+        if endpoint == "start":
+            point = path[-1] if reversed_scan else path[0]
+        else:
+            point = path[0] if reversed_scan else path[-1]
+        return np.asarray(point, dtype=float)
+
+    def _append_connector_path(connector: dict[str, Any], connector_index: int) -> None:
+        nonlocal combined_path
+        from_sid = str(connector.get("from_scan_id") or "")
+        to_sid = str(connector.get("to_scan_id") or "")
+        if from_sid not in oriented_scan_paths or to_sid not in oriented_scan_paths:
+            return
+
+        from_endpoint = str(connector.get("from_endpoint", "end"))
+        to_endpoint = str(connector.get("to_endpoint", "start"))
+        conn_id = str(connector.get("id") or f"conn_{connector_index + 1}")
+        start = _endpoint_for_scan(from_sid, from_endpoint)
+        end = _endpoint_for_scan(to_sid, to_endpoint)
+
+        control1 = connector.get("control1")
+        control2 = connector.get("control2")
+        if control1 is None or control2 is None:
+            auto_c1, auto_c2 = _auto_connector_controls(start, end)
+            c1 = auto_c1
+            c2 = auto_c2
+        else:
+            c1 = _to_vec3(control1, tuple(_auto_connector_controls(start, end)[0]))
+            c2 = _to_vec3(control2, tuple(_auto_connector_controls(start, end)[1]))
+
+        samples = max(4, int(connector.get("samples", 24)))
+        if quality == "preview":
+            samples = max(6, samples // 2)
+
+        connector_path = _sample_cubic_bezier(start, c1, c2, end, samples=samples)
+        if combined_path and np.linalg.norm(
+            np.asarray(combined_path[-1], dtype=float) - np.asarray(connector_path[0], dtype=float)
+        ) <= 1e-9:
+            combined_path.extend(connector_path[1:])
+        else:
+            combined_path.extend(connector_path)
+
+        min_clearance, collision_count, clearance = _collisions_for_path(
+            connector_path, tree, threshold=collision_threshold_m
+        )
+        connector_diagnostics.append(
+            {
+                "id": conn_id,
+                "kind": "connector",
+                "points": int(len(connector_path)),
+                "path_length": float(_compute_path_length(connector_path)),
+                "path": connector_path,
+                "min_clearance_m": min_clearance,
+                "collision_points_count": int(collision_count),
+                "clearance_per_point": clearance,
+            }
+        )
 
     for idx, sid in enumerate(order):
         path = oriented_scan_paths[sid]
@@ -608,52 +696,15 @@ def compile_scan_project(
             }
         )
 
-        if idx >= len(order) - 1:
-            continue
-
-        if not outgoing[sid]:
-            continue
-        connector = outgoing[sid][0]
-        conn_id = str(connector.get("id") or f"conn_{idx + 1}")
-        next_sid = order[idx + 1]
-        start = np.asarray(path[-1], dtype=float)
-        end = np.asarray(oriented_scan_paths[next_sid][0], dtype=float)
-
-        control1 = connector.get("control1")
-        control2 = connector.get("control2")
-        if control1 is None or control2 is None:
-            auto_c1, auto_c2 = _auto_connector_controls(start, end)
-            c1 = auto_c1
-            c2 = auto_c2
-        else:
-            c1 = _to_vec3(control1, tuple(_auto_connector_controls(start, end)[0]))
-            c2 = _to_vec3(control2, tuple(_auto_connector_controls(start, end)[1]))
-
-        samples = max(4, int(connector.get("samples", 24)))
-        if quality == "preview":
-            samples = max(6, samples // 2)
-
-        connector_path = _sample_cubic_bezier(start, c1, c2, end, samples=samples)
-        if combined_path:
-            combined_path.extend(connector_path[1:])
-        else:
-            combined_path.extend(connector_path)
-
-        min_clearance, collision_count, clearance = _collisions_for_path(
-            connector_path, tree, threshold=collision_threshold_m
-        )
-        connector_diagnostics.append(
-            {
-                "id": conn_id,
-                "kind": "connector",
-                "points": int(len(connector_path)),
-                "path_length": float(_compute_path_length(connector_path)),
-                "path": connector_path,
-                "min_clearance_m": min_clearance,
-                "collision_points_count": int(collision_count),
-                "clearance_per_point": clearance,
-            }
-        )
+        if enforce_linear_chain or preview_linear_chain:
+            if idx >= len(order) - 1:
+                continue
+            if not outgoing[sid]:
+                continue
+            _append_connector_path(outgoing[sid][0], idx)
+        elif outgoing[sid]:
+            for connector_index, connector in enumerate(outgoing[sid]):
+                _append_connector_path(connector, connector_index)
 
     total_length = _compute_path_length(combined_path)
     avg_speed = np.mean(
