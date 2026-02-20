@@ -347,7 +347,7 @@ class SimulationIO:
         config_meta = {
             "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH") or cfg_hash,
             "config_version": os.environ.get("SATCTRL_RUNNER_CONFIG_VERSION")
-            or "app_config_v1",
+            or "app_config_v2",
             "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
         }
 

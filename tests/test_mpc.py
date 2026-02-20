@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.control.mpc_controller import MPCController
+from satellite_control.core.mpc_runner import MPCRunner
 
 
 class TestMPCController:
@@ -108,3 +109,62 @@ class TestMPCController:
         )
         controller = MPCController(cfg.app_config)
         assert controller.enable_collision_avoidance is True
+
+
+class _DummyMPCController:
+    def __init__(self, next_action: np.ndarray):
+        self.num_thrusters = int(next_action.size)
+        self.num_rw_axes = 0
+        self._next_action = np.array(next_action, dtype=np.float64)
+
+    def set_next_action(self, action: np.ndarray) -> None:
+        self._next_action = np.array(action, dtype=np.float64)
+
+    def get_control_action(self, x_current, previous_thrusters=None):
+        return self._next_action.copy(), {"status": 1}
+
+
+class TestMPCRunnerHysteresis:
+    def test_thruster_hysteresis_toggle_behavior(self):
+        cfg = SimulationConfig.create_with_overrides(
+            {
+                "mpc": {
+                    "enable_thruster_hysteresis": True,
+                    "thruster_hysteresis_on": 0.02,
+                    "thruster_hysteresis_off": 0.01,
+                }
+            }
+        ).app_config
+        dummy = _DummyMPCController(np.array([0.03, 0.03, 0.0], dtype=np.float64))
+        runner = MPCRunner(dummy, config=cfg)
+        state = np.zeros(16, dtype=np.float64)
+
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.03, 0.03, 0.0]))
+
+        dummy.set_next_action(np.array([0.015, 0.009, 0.0], dtype=np.float64))
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.015, 0.0, 0.0]))
+
+        dummy.set_next_action(np.array([0.011, 0.015, 0.0], dtype=np.float64))
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.011, 0.0, 0.0]))
+
+    def test_thruster_hysteresis_disabled_passthrough(self):
+        cfg = SimulationConfig.create_with_overrides(
+            {"mpc": {"enable_thruster_hysteresis": False}}
+        ).app_config
+        dummy = _DummyMPCController(np.array([0.015, 0.0], dtype=np.float64))
+        runner = MPCRunner(dummy, config=cfg)
+        state = np.zeros(16, dtype=np.float64)
+
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.015, 0.0]))

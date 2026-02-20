@@ -27,6 +27,8 @@ from typing import Any
 
 import numpy as np
 
+from satellite_control.config.constants import Constants
+
 # Maximum number of timing samples to retain for percentile calculations.
 # 10 000 samples at 16 Hz control = ~10 min of data — sufficient for statistics.
 _MAX_TIMING_SAMPLES = 10_000
@@ -49,8 +51,8 @@ class PerformanceMetrics:
     mpc_timeout_count: int = 0
     mpc_failure_count: int = 0
     mpc_hard_limit_breach_count: int = 0
-    mpc_target_mean_solve_time_ms: float = 3.0
-    mpc_hard_max_solve_time_ms: float = 50.0
+    mpc_target_mean_solve_time_ms: float = Constants.TARGET_MEAN_SOLVE_TIME_MS
+    mpc_hard_max_solve_time_ms: float = Constants.HARD_MAX_SOLVE_TIME_MS
     enforce_mpc_timing_contract: bool = False
 
     # Physics Performance

@@ -12,6 +12,7 @@ Comprehensive guide for testing the Satellite Control System, including unit tes
 - [Writing Tests](#writing-tests)
 - [Simulation Testing & Validation](#simulation-testing--validation)
 - [Performance Benchmarks](#performance-benchmarks)
+- [MPC Quality Suite (V5)](#mpc-quality-suite-v5)
 - [Debugging](#debugging)
 - [Troubleshooting](#troubleshooting)
 
@@ -71,6 +72,26 @@ Select a saved unified mission from `missions/` to run a basic test.
 # Headless (no visualization)
 .venv311/bin/python scripts/run_simulation.py run --no-anim --auto
 ```
+
+## MPC Quality Suite (V5)
+
+Run deterministic MPC quality contracts (tracking, timing, chatter) against pinned scenarios.
+
+```bash
+# Fast PR contract (auto_short)
+.venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
+
+# Full suite (planner + stress scenarios)
+.venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
+```
+
+Outputs:
+
+- Per-run report: `Data/Simulation/<run>/mpc_quality_report.json`
+- Source metrics consumed:
+  - `kpi_summary.json`
+  - `performance_metrics.json`
+  - `mpc_step_stats.csv`
 
 ### Mission Flow for Testing
 

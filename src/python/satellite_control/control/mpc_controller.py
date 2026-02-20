@@ -162,6 +162,22 @@ class MPCController(Controller):
             mpc_params.progress_taper_distance = self.progress_taper_distance
         if hasattr(mpc_params, "progress_slowdown_distance"):
             mpc_params.progress_slowdown_distance = self.progress_slowdown_distance
+        if hasattr(mpc_params, "tracking_recovery_error_m"):
+            mpc_params.tracking_recovery_error_m = float(
+                self.tracking_recovery_error_m
+            )
+        if hasattr(mpc_params, "tracking_recovery_contour_boost"):
+            mpc_params.tracking_recovery_contour_boost = float(
+                self.tracking_recovery_contour_boost
+            )
+        if hasattr(mpc_params, "tracking_recovery_progress_scale"):
+            mpc_params.tracking_recovery_progress_scale = float(
+                self.tracking_recovery_progress_scale
+            )
+        if hasattr(mpc_params, "tracking_recovery_attitude_scale"):
+            mpc_params.tracking_recovery_attitude_scale = float(
+                self.tracking_recovery_attitude_scale
+            )
         if hasattr(mpc_params, "max_linear_velocity"):
             mpc_params.max_linear_velocity = float(self.max_linear_velocity)
         if hasattr(mpc_params, "max_angular_velocity"):
@@ -683,6 +699,27 @@ class MPCController(Controller):
         self.progress_taper_distance = getattr(mpc, "progress_taper_distance", 0.0)
         self.progress_slowdown_distance = getattr(
             mpc, "progress_slowdown_distance", 0.0
+        )
+        self.tracking_recovery_error_m = getattr(
+            mpc, "tracking_recovery_error_m", 0.12
+        )
+        self.tracking_recovery_contour_boost = getattr(
+            mpc, "tracking_recovery_contour_boost", 2.2
+        )
+        self.tracking_recovery_progress_scale = getattr(
+            mpc, "tracking_recovery_progress_scale", 0.65
+        )
+        self.tracking_recovery_attitude_scale = getattr(
+            mpc, "tracking_recovery_attitude_scale", 0.5
+        )
+        self.enable_thruster_hysteresis = bool(
+            getattr(mpc, "enable_thruster_hysteresis", True)
+        )
+        self.thruster_hysteresis_on = float(
+            getattr(mpc, "thruster_hysteresis_on", 0.015)
+        )
+        self.thruster_hysteresis_off = float(
+            getattr(mpc, "thruster_hysteresis_off", 0.007)
         )
 
         # Orbital parameters (for MPC linearization)

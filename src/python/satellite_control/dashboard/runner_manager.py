@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
 PRESETS_FILE = PROJECT_ROOT / "Data" / "Dashboard" / "runner_presets.json"
+APP_CONFIG_SCHEMA_VERSION = "app_config_v2"
 
 class RunnerManager:
     """
@@ -33,7 +34,7 @@ class RunnerManager:
         self.active_websockets: list[WebSocket] = []
         self._log_history: list[str] = []
         self.max_history_lines = 1000
-        self._custom_config: dict | None = None
+        self._custom_config: dict[str, Any] | None = None
         self._active_preset_name: str | None = None
         self._temp_config_path: str | None = None
         self._current_run_dir: Path | None = None
@@ -56,8 +57,11 @@ class RunnerManager:
                 config = item.get("config")
                 if not isinstance(config, dict):
                     continue
+                envelope = self._normalize_to_v2_envelope(config)
+                if not envelope:
+                    continue
                 normalized[name] = {
-                    "config": config,
+                    "config": envelope,
                     "updated_at": str(item.get("updated_at", "")),
                 }
             return normalized
@@ -69,7 +73,7 @@ class RunnerManager:
         """Persist in-memory presets to disk."""
         self._presets_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "version": 1,
+            "version": 2,
             "presets": self._presets,
         }
         self._presets_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -119,6 +123,13 @@ class RunnerManager:
             "enable_delta_u_coupling",
             "enable_gyro_jacobian",
             "enable_auto_state_bounds",
+            "tracking_recovery_error_m",
+            "tracking_recovery_contour_boost",
+            "tracking_recovery_progress_scale",
+            "tracking_recovery_attitude_scale",
+            "enable_thruster_hysteresis",
+            "thruster_hysteresis_on",
+            "thruster_hysteresis_off",
         }
 
         for key, value in legacy_mpc.items():
@@ -179,6 +190,13 @@ class RunnerManager:
                 "coast_pos_tolerance": "coast_pos_tolerance",
                 "coast_vel_tolerance": "coast_vel_tolerance",
                 "coast_min_speed": "coast_min_speed",
+                "tracking_recovery_error_m": "tracking_recovery_error_m",
+                "tracking_recovery_contour_boost": "tracking_recovery_contour_boost",
+                "tracking_recovery_progress_scale": "tracking_recovery_progress_scale",
+                "tracking_recovery_attitude_scale": "tracking_recovery_attitude_scale",
+                "enable_thruster_hysteresis": "enable_thruster_hysteresis",
+                "thruster_hysteresis_on": "thruster_hysteresis_on",
+                "thruster_hysteresis_off": "thruster_hysteresis_off",
             }
             for src, dst in path_map.items():
                 if src in path_following:
@@ -186,16 +204,64 @@ class RunnerManager:
 
         return mapped
 
-    def _normalize_overrides(self, overrides: dict[str, Any]) -> dict[str, Any]:
-        """Accept both new AppConfig shape and legacy UI shape."""
-        normalized: dict[str, Any] = {}
+    @staticmethod
+    def _clone_section(value: Any) -> dict[str, Any] | None:
+        if not isinstance(value, dict):
+            return None
+        return dict(value)
 
-        for section in ("physics", "mpc", "simulation", "input_file_path"):
-            if section in overrides:
-                normalized[section] = overrides[section]
+    @staticmethod
+    def _extract_app_config_sections(payload: dict[str, Any] | None) -> dict[str, Any]:
+        """Extract physics/mpc/simulation/input_file_path from legacy/v1/v2 payloads."""
+        if not isinstance(payload, dict):
+            return {}
+
+        source = payload
+        app_config_candidate = payload.get("app_config")
+        if isinstance(app_config_candidate, dict):
+            source = app_config_candidate
+
+        sections: dict[str, Any] = {}
+        for section in ("physics", "mpc", "simulation"):
+            section_payload = RunnerManager._clone_section(source.get(section))
+            if section_payload is not None:
+                sections[section] = section_payload
+
+        if "input_file_path" in source:
+            sections["input_file_path"] = source.get("input_file_path")
+        return sections
+
+    @staticmethod
+    def _extract_runtime_overrides(
+        payload: dict[str, Any] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Extract only the section dicts supported by SimulationConfig.create_with_overrides."""
+        sections = RunnerManager._extract_app_config_sections(payload)
+        runtime: dict[str, dict[str, Any]] = {}
+        for section in ("physics", "mpc", "simulation"):
+            value = sections.get(section)
+            if isinstance(value, dict):
+                runtime[section] = value
+        return runtime
+
+    @staticmethod
+    def _with_response_mirrors(payload: dict[str, Any]) -> dict[str, Any]:
+        """Mirror v2 app_config sections at top-level for transitional compatibility."""
+        mirrored = dict(payload)
+        app_config = payload.get("app_config")
+        app_cfg = app_config if isinstance(app_config, dict) else {}
+        mirrored["physics"] = app_cfg.get("physics", {})
+        mirrored["mpc"] = app_cfg.get("mpc", {})
+        mirrored["simulation"] = app_cfg.get("simulation", {})
+        mirrored["input_file_path"] = app_cfg.get("input_file_path")
+        return mirrored
+
+    def _normalize_overrides_to_sections(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Accept legacy, v1-flat, and v2-envelope payloads and return section overrides."""
+        normalized = self._extract_app_config_sections(overrides)
 
         # Legacy UI payload: { control: { mpc: ... }, sim: ... }
-        control = overrides.get("control")
+        control = overrides.get("control") if isinstance(overrides, dict) else None
         if isinstance(control, dict):
             legacy_mpc = control.get("mpc")
             if isinstance(legacy_mpc, dict):
@@ -234,32 +300,57 @@ class RunnerManager:
 
         return normalized
 
+    def _normalize_to_v2_envelope(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Convert accepted payload shapes into canonical app_config_v2 envelope."""
+        sections = self._normalize_overrides_to_sections(overrides)
+        app_config: dict[str, Any] = {}
+        for section in ("physics", "mpc", "simulation"):
+            value = sections.get(section)
+            if isinstance(value, dict):
+                app_config[section] = dict(value)
+        if "input_file_path" in sections:
+            app_config["input_file_path"] = sections.get("input_file_path")
+
+        if not app_config:
+            return {}
+
+        return {
+            "schema_version": APP_CONFIG_SCHEMA_VERSION,
+            "app_config": app_config,
+        }
+
     def get_config(self) -> dict:
         """Get the current configuration (default + overrides)."""
         from satellite_control.config.models import MPCParams
         from satellite_control.config.simulation_config import SimulationConfig
-        
+
         # Start with default
         config = SimulationConfig.create_default()
-        
+
         # Apply overrides if present
         if self._custom_config:
-            config = SimulationConfig.create_with_overrides(
-                self._custom_config, base_config=config
-            )
+            runtime_overrides = self._extract_runtime_overrides(self._custom_config)
+            if runtime_overrides:
+                config = SimulationConfig.create_with_overrides(
+                    runtime_overrides,
+                    base_config=config,
+                )
 
         # Preserve legacy UI shape while also exposing full AppConfig sections.
         ui_config = config.to_dict()
-        app_config = config.app_config.model_dump()
-        ui_config["physics"] = app_config.get("physics", {})
-        ui_config["mpc"] = app_config.get("mpc", {})
-        ui_config["simulation"] = app_config.get("simulation", {})
-        ui_config["input_file_path"] = app_config.get("input_file_path")
-        config_json = json.dumps(app_config, sort_keys=True, separators=(",", ":"))
+        app_config_payload = config.app_config.model_dump()
+        v2_payload = {
+            "schema_version": APP_CONFIG_SCHEMA_VERSION,
+            "app_config": app_config_payload,
+        }
+        ui_config.update(self._with_response_mirrors(v2_payload))
+        config_json = json.dumps(
+            app_config_payload, sort_keys=True, separators=(",", ":")
+        )
         config_hash = hashlib.sha256(config_json.encode("utf-8")).hexdigest()[:12]
         ui_config["config_meta"] = {
             "config_hash": config_hash,
-            "config_version": "app_config_v1",
+            "config_version": APP_CONFIG_SCHEMA_VERSION,
             "overrides_active": bool(self._custom_config),
             "active_preset_name": self._active_preset_name,
             "generated_at": datetime.now(UTC).isoformat(),
@@ -269,12 +360,13 @@ class RunnerManager:
 
     def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
-        normalized = self._normalize_overrides(overrides)
+        normalized = self._normalize_to_v2_envelope(overrides)
         self._custom_config = normalized if normalized else None
-        self._active_preset_name = active_preset_name if normalized else None
+        self._active_preset_name = active_preset_name if self._custom_config else None
+        sections = list(normalized.get("app_config", {}).keys()) if normalized else []
         logger.info(
             "Updated custom configuration overrides: sections=%s, preset=%s",
-            list(normalized.keys()),
+            sections,
             self._active_preset_name,
         )
 
@@ -286,13 +378,19 @@ class RunnerManager:
 
     def list_presets(self) -> dict[str, dict[str, Any]]:
         """List available named presets."""
-        return {
-            name: {
-                "config": data.get("config", {}),
+        listed: dict[str, dict[str, Any]] = {}
+        for name, data in sorted(self._presets.items()):
+            config_payload = data.get("config")
+            if not isinstance(config_payload, dict):
+                continue
+            envelope = self._normalize_to_v2_envelope(config_payload)
+            if not envelope:
+                continue
+            listed[name] = {
+                "config": self._with_response_mirrors(envelope),
                 "updated_at": data.get("updated_at"),
             }
-            for name, data in sorted(self._presets.items())
-        }
+        return listed
 
     def get_preset(self, name: str) -> dict[str, Any] | None:
         """Fetch a single preset by name."""
@@ -303,23 +401,29 @@ class RunnerManager:
         trimmed = name.strip()
         if not trimmed:
             raise ValueError("Preset name cannot be empty")
-        normalized = self._normalize_overrides(config)
+        normalized = self._normalize_to_v2_envelope(config)
         if not normalized:
             raise ValueError("Preset config is empty or invalid")
         try:
             from satellite_control.config.simulation_config import SimulationConfig
 
             base = SimulationConfig.create_default()
-            resolved = SimulationConfig.create_with_overrides(normalized, base_config=base)
+            runtime_overrides = self._extract_runtime_overrides(normalized)
+            resolved = SimulationConfig.create_with_overrides(
+                runtime_overrides,
+                base_config=base,
+            )
             resolved_config = resolved.app_config.model_dump()
-            normalized = {
+            app_config = {
                 section: resolved_config[section]
                 for section in ("physics", "mpc", "simulation")
                 if isinstance(resolved_config.get(section), dict)
             }
-            input_path = resolved_config.get("input_file_path")
-            if input_path:
-                normalized["input_file_path"] = input_path
+            app_config["input_file_path"] = resolved_config.get("input_file_path")
+            normalized = {
+                "schema_version": APP_CONFIG_SCHEMA_VERSION,
+                "app_config": app_config,
+            }
         except Exception as exc:
             raise ValueError(str(exc)) from exc
         item = {
@@ -328,7 +432,10 @@ class RunnerManager:
         }
         self._presets[trimmed] = item
         self._persist_presets()
-        return item
+        return {
+            "config": self._with_response_mirrors(normalized),
+            "updated_at": item["updated_at"],
+        }
 
     def delete_preset(self, name: str) -> bool:
         """Delete a named preset."""
@@ -423,11 +530,14 @@ class RunnerManager:
             import tempfile
             
             try:
+                runtime_overrides = self._extract_runtime_overrides(self._custom_config)
+                if not runtime_overrides:
+                    runtime_overrides = {}
                 # Create a temporary file to store the config overrides
                 # We use a named temporary file that persists until we delete it
                 # Note: On Windows, opening a temp file twice can be an issue, but we're passing path to subprocess
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
-                    json.dump(self._custom_config, tmp)
+                    json.dump(runtime_overrides, tmp)
                     config_path = tmp.name
                 
                 cmd_args.extend(["--config", config_path])

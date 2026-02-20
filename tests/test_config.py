@@ -8,7 +8,7 @@ Consolidates `test_config_validation.py` and `test_presets.py`.
 import pytest
 from pydantic import ValidationError
 from satellite_control.config import physics as physics_cfg
-from satellite_control.config.models import SatellitePhysicalParams
+from satellite_control.config.models import MPCParams, SatellitePhysicalParams
 from satellite_control.config.presets import list_presets, load_preset
 from satellite_control.config.simulation_config import SimulationConfig
 
@@ -92,3 +92,21 @@ class TestConfigValidation:
         assert legacy["enable_delta_u_coupling"] is False
         assert legacy["enable_gyro_jacobian"] is False
         assert legacy["enable_auto_state_bounds"] is False
+
+    def test_mpc_hysteresis_threshold_validation(self):
+        """Hysteresis on-threshold must exceed off-threshold."""
+        with pytest.raises(ValidationError):
+            MPCParams(thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01)
+        with pytest.raises(ValidationError):
+            MPCParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
+
+    def test_mpc_tracking_recovery_validation(self):
+        """Recovery scales must remain in (0, 1] and boost must be nonnegative."""
+        with pytest.raises(ValidationError):
+            MPCParams(tracking_recovery_progress_scale=0.0)
+        with pytest.raises(ValidationError):
+            MPCParams(tracking_recovery_progress_scale=1.2)
+        with pytest.raises(ValidationError):
+            MPCParams(tracking_recovery_attitude_scale=0.0)
+        with pytest.raises(ValidationError):
+            MPCParams(tracking_recovery_contour_boost=-0.1)

@@ -121,7 +121,19 @@ make package-app    # create distributable bundle in ./release
 make package-pyinstaller  # build native PyInstaller artifact for current OS
 make stop           # stop app processes on known ports
 .venv311/bin/python scripts/migrate_missions_v1_to_v2.py missions_unified --recursive --output-dir missions_v2_migrated
+.venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
+.venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
 ```
+
+## 6.1) Runner Config Schema (V5)
+
+- Canonical runner payload is now:
+  - `schema_version: "app_config_v2"`
+  - `app_config: { physics, mpc, simulation, input_file_path }`
+- `Runner` endpoints still dual-read legacy payloads:
+  - legacy `{ control: { mpc: ... }, sim: ... }`
+  - v1 flat `{ physics, mpc, simulation, input_file_path }`
+- New writes from UI/API persist v2 envelope while responses still mirror `physics/mpc/simulation` top-level fields for transition compatibility.
 
 ## 7) Troubleshooting
 

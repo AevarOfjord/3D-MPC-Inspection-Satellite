@@ -80,7 +80,20 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("Q_terminal_pos", &MPCParams::Q_terminal_pos)
         .def_readwrite("Q_terminal_s", &MPCParams::Q_terminal_s)
         .def_readwrite("progress_taper_distance", &MPCParams::progress_taper_distance)
-        .def_readwrite("progress_slowdown_distance", &MPCParams::progress_slowdown_distance);
+        .def_readwrite("progress_slowdown_distance", &MPCParams::progress_slowdown_distance)
+        .def_readwrite("tracking_recovery_error_m", &MPCParams::tracking_recovery_error_m)
+        .def_readwrite(
+            "tracking_recovery_contour_boost",
+            &MPCParams::tracking_recovery_contour_boost
+        )
+        .def_readwrite(
+            "tracking_recovery_progress_scale",
+            &MPCParams::tracking_recovery_progress_scale
+        )
+        .def_readwrite(
+            "tracking_recovery_attitude_scale",
+            &MPCParams::tracking_recovery_attitude_scale
+        );
 
     // Control Result
     py::class_<ControlResult>(m, "ControlResult")

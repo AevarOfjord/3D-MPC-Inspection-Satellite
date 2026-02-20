@@ -59,6 +59,56 @@ class MPCRunner:
         self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
+        cfg_mpc = getattr(self.config, "mpc", None) if self.config is not None else None
+        self.enable_thruster_hysteresis = bool(
+            getattr(
+                cfg_mpc,
+                "enable_thruster_hysteresis",
+                getattr(self.mpc, "enable_thruster_hysteresis", True),
+            )
+        )
+        self.thruster_hysteresis_on = float(
+            getattr(
+                cfg_mpc,
+                "thruster_hysteresis_on",
+                getattr(self.mpc, "thruster_hysteresis_on", 0.015),
+            )
+        )
+        self.thruster_hysteresis_off = float(
+            getattr(
+                cfg_mpc,
+                "thruster_hysteresis_off",
+                getattr(self.mpc, "thruster_hysteresis_off", 0.007),
+            )
+        )
+        if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
+            logger.warning(
+                "Invalid thruster hysteresis thresholds (on=%.6f, off=%.6f); disabling hysteresis.",
+                self.thruster_hysteresis_on,
+                self.thruster_hysteresis_off,
+            )
+            self.enable_thruster_hysteresis = False
+
+    def _apply_thruster_hysteresis(
+        self,
+        thruster_action: np.ndarray,
+        previous_thrusters: np.ndarray,
+    ) -> np.ndarray:
+        """Apply on/off hysteresis to reduce chatter in normalized thruster commands."""
+        if not self.enable_thruster_hysteresis:
+            return thruster_action
+
+        prev = np.array(previous_thrusters, dtype=np.float64, copy=False).reshape(-1)
+        if prev.size != self.thruster_count:
+            prev = self.previous_thrusters
+
+        prev_active = prev >= self.thruster_hysteresis_off
+        turn_on = (~prev_active) & (thruster_action >= self.thruster_hysteresis_on)
+        stay_on = prev_active & (thruster_action >= self.thruster_hysteresis_off)
+        active_mask = turn_on | stay_on
+
+        # Inactive channels are forced to exactly 0.0.
+        return np.where(active_mask, thruster_action, 0.0).astype(np.float64, copy=False)
 
     def compute_control_action(
         self,
@@ -133,6 +183,10 @@ class MPCRunner:
                 # Enforce bounds (in-place clip avoids extra allocation)
                 np.clip(thruster_action, 0.0, 1.0, out=thruster_action)
                 thruster_action = thruster_action.astype(np.float64, copy=False)
+                thruster_action = self._apply_thruster_hysteresis(
+                    thruster_action=thruster_action,
+                    previous_thrusters=previous_thrusters,
+                )
                 if self.rw_axes:
                     np.clip(rw_torque, -1.0, 1.0, out=rw_torque)
                     rw_torque = rw_torque.astype(np.float64, copy=False)
