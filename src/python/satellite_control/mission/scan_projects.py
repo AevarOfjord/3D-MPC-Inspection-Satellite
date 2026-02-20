@@ -44,6 +44,8 @@ def _repo_root() -> Path:
 
 
 SCAN_PROJECT_DIR = _repo_root() / "assets" / "scan_projects"
+PATH_DENSITY_MIN = 0.25
+PATH_DENSITY_MAX = 20.0
 
 
 def _ensure_dir() -> None:
@@ -54,6 +56,16 @@ def _safe_id(name: str) -> str:
     raw = name.strip() or "scan_project"
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("_")
     return safe or "scan_project"
+
+
+def _coerce_density_multiplier(value: Any, default: float = 1.0) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        parsed = float(default)
+    if not math.isfinite(parsed):
+        parsed = float(default)
+    return float(max(PATH_DENSITY_MIN, min(PATH_DENSITY_MAX, parsed)))
 
 
 def _project_path(project_id: str) -> Path:
@@ -138,6 +150,9 @@ def save_scan_project(data: dict[str, Any]) -> dict[str, Any]:
         "id": project_id,
         "name": name,
         "obj_path": str(data.get("obj_path") or ""),
+        "path_density_multiplier": _coerce_density_multiplier(
+            data.get("path_density_multiplier", 1.0)
+        ),
         "scans": scans,
         "connectors": connectors,
         "created_at": data.get("created_at") or now_iso,
@@ -153,7 +168,14 @@ def load_scan_project(project_id: str) -> dict[str, Any]:
     _ensure_dir()
     path = _project_path(project_id)
     if path.exists():
-        return json.loads(path.read_text())
+        loaded = json.loads(path.read_text())
+        if "path_density_multiplier" not in loaded:
+            loaded["path_density_multiplier"] = 1.0
+        else:
+            loaded["path_density_multiplier"] = _coerce_density_multiplier(
+                loaded.get("path_density_multiplier", 1.0)
+            )
+        return loaded
 
     # Fallback by id/name in file contents.
     for candidate in SCAN_PROJECT_DIR.rglob("*.json"):
@@ -162,6 +184,12 @@ def load_scan_project(project_id: str) -> dict[str, Any]:
         except Exception:
             continue
         if data.get("id") == project_id or data.get("name") == project_id:
+            if "path_density_multiplier" not in data:
+                data["path_density_multiplier"] = 1.0
+            else:
+                data["path_density_multiplier"] = _coerce_density_multiplier(
+                    data.get("path_density_multiplier", 1.0)
+                )
             return data
 
     raise FileNotFoundError(f"Scan project not found: {project_id}")
@@ -300,7 +328,7 @@ def _interpolate_key_level(levels: list[dict[str, Any]], t: float) -> dict[str, 
 def _generate_scan_path(
     scan: dict[str, Any],
     model_center: np.ndarray,
-    quality: str,
+    density_multiplier: float,
 ) -> tuple[list[list[float]], list[list[float]]]:
     axis = str(scan.get("axis", "Z")).upper().strip()
     normal, u_axis, v_axis = AXIS_TO_FRAME.get(axis, AXIS_TO_FRAME["Z"])
@@ -365,18 +393,8 @@ def _generate_scan_path(
         t = idx / float(max(1, coarse_points - 1))
         coarse_path.append(_point_at_t(t))
 
-    # Keep preview fidelity as-is for fast authoring, but make final output much denser.
-    # Current baseline behavior:
-    # - preview ~= base * 0.5
-    # - final   ~= base
-    # V4.2 tuning request:
-    # - preview unchanged
-    # - final   = 10x denser than previous final
     base_densify = max(1, int(scan.get("densify_multiplier", 8)))
-    if quality == "preview":
-        densify_multiplier = max(1, int(round(base_densify * 0.5)))
-    else:
-        densify_multiplier = max(1, base_densify * 10)
+    densify_multiplier = max(1, int(round(base_densify * density_multiplier)))
 
     dense_points = max(len(coarse_path), (len(coarse_path) - 1) * densify_multiplier + 1)
     dense_path: list[list[float]] = []
@@ -469,6 +487,9 @@ def compile_scan_project(
         raise ValueError("project.obj_path is required")
     if not scans:
         raise ValueError("project must include at least one scan")
+    density_multiplier = _coerce_density_multiplier(
+        project.get("path_density_multiplier", 1.0)
+    )
 
     vertices = load_obj_vertices(obj_path)
     _, _, model_center, _ = compute_mesh_bounds(vertices)
@@ -488,7 +509,11 @@ def compile_scan_project(
     compiled_scan_paths: dict[str, dict[str, Any]] = {}
     for scan in scans:
         sid = str(scan["id"])
-        coarse, dense = _generate_scan_path(scan, model_center, quality=quality)
+        coarse, dense = _generate_scan_path(
+            scan,
+            model_center,
+            density_multiplier=density_multiplier,
+        )
         min_clearance, collision_count, clearance = _collisions_for_path(
             dense, tree, threshold=collision_threshold_m
         )
@@ -648,12 +673,8 @@ def compile_scan_project(
             c1 = _to_vec3(control1, tuple(_auto_connector_controls(start, end)[0]))
             c2 = _to_vec3(control2, tuple(_auto_connector_controls(start, end)[1]))
 
-        # Preserve current preview connector density, but make final connectors 10x finer.
         base_samples = max(4, int(connector.get("samples", 24)))
-        if quality == "preview":
-            samples = max(6, base_samples // 2)
-        else:
-            samples = max(4, base_samples * 10)
+        samples = max(4, int(round(base_samples * density_multiplier)))
 
         connector_path = _sample_cubic_bezier(start, c1, c2, end, samples=samples)
         if combined_path and np.linalg.norm(

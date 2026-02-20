@@ -40,6 +40,7 @@ export interface ScanProject {
   id?: string | null;
   name: string;
   obj_path: string;
+  path_density_multiplier: number;
   scans: ScanDefinition[];
   connectors: ScanConnector[];
   created_at?: string | null;

@@ -11,6 +11,7 @@ import { OrbitTargetsPanel } from '../OrbitTargetsPanel';
 import { StateTimeline } from '../TrajectoryStudio/StateTimeline';
 import { InlineBanner } from '../ui-v4/InlineBanner';
 import { PlannerStepRailV4 } from '../planner-v4/PlannerStepRailV4';
+import { PathDensityPanelV4 } from '../planner-v4/PathDensityPanelV4';
 import { SegmentComposerCardV4 } from '../planner-v4/SegmentComposerCardV4';
 import { ValidationNavigatorCardV4 } from '../planner-v4/ValidationNavigatorCardV4';
 import { SaveLaunchCardV4 } from '../planner-v4/SaveLaunchCardV4';
@@ -141,7 +142,10 @@ export function PlannerModeViewV4({ viewMode, builder, onOpenRunner }: PlannerMo
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 min-h-0 p-3 flex gap-3 overflow-hidden">
         <aside className="w-[20rem] shrink-0 overflow-y-auto custom-scrollbar pr-1 relative z-30">
-          <PlannerStepRailV4 builder={builder} wizard={wizard} />
+          <div className="space-y-3">
+            <PlannerStepRailV4 builder={builder} wizard={wizard} />
+            <PathDensityPanelV4 builder={builder} />
+          </div>
         </aside>
 
         <section className="flex-1 min-w-0 relative rounded-[14px] border border-[color:var(--v4-border)] overflow-hidden bg-[color:var(--v4-surface-1)]">

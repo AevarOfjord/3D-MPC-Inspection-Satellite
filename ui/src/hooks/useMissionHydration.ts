@@ -8,7 +8,9 @@ import type {
 } from '../api/unifiedMission';
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { TransferTargetRef } from '../types/plannerUx';
+import type { ScanProject } from '../types/scanProject';
 import { computePathLength } from '../utils/pathMetrics';
+import { normalizePathDensityMultiplier } from '../utils/pathDensity';
 import { useToast } from '../feedback/feedbackContext';
 
 type OrbitPoseResolver = (
@@ -122,6 +124,7 @@ interface UseMissionHydrationArgs {
   setSelectedOrbitTargetId: Dispatch<SetStateAction<string | null>>;
   setTransferTargetRef: Dispatch<SetStateAction<TransferTargetRef>>;
   setValidationReport: Dispatch<SetStateAction<ValidationReportV2 | null>>;
+  setScanProject: Dispatch<SetStateAction<ScanProject>>;
 }
 
 export function useMissionHydration({
@@ -145,6 +148,7 @@ export function useMissionHydration({
   setSelectedOrbitTargetId,
   setTransferTargetRef,
   setValidationReport,
+  setScanProject,
 }: UseMissionHydrationArgs) {
   const { showToast } = useToast();
   const migrationToastByMissionRef = useRef<Set<string>>(new Set());
@@ -279,6 +283,13 @@ export function useMissionHydration({
     setSelectedOrbitTargetId(firstScan?.target_id ?? startTargetId ?? null);
     setTransferTargetRef(null);
     setValidationReport(null);
+    const missionDensity = normalizePathDensityMultiplier(
+      mission.overrides?.path_density_multiplier ?? 1.0
+    );
+    setScanProject((prev) => ({
+      ...prev,
+      path_density_multiplier: missionDensity,
+    }));
 
     if (migrated && !migrationToastByMissionRef.current.has(resolvedMissionId)) {
       migrationToastByMissionRef.current.add(resolvedMissionId);

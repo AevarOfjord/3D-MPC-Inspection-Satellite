@@ -4,6 +4,7 @@ import type {
   ScanKeyLevel,
   ScanProject,
 } from '../types/scanProject';
+import { normalizePathDensityMultiplier } from './pathDensity';
 
 let idCounter = 0;
 
@@ -74,6 +75,7 @@ export function createDefaultScanProject(objPath = ''): ScanProject {
     id: null,
     name: 'Scan Project 1',
     obj_path: objPath,
+    path_density_multiplier: 1.0,
     scans: [createDefaultScan(1, 'Z')],
     connectors: [],
   };
@@ -83,6 +85,13 @@ export function validateScanProject(project: ScanProject): string | null {
   if (!project.name.trim()) return 'Project name is required.';
   if (!project.obj_path.trim()) return 'Select an OBJ model first.';
   if (!project.scans.length) return 'At least one scan is required.';
+  if (!Number.isFinite(project.path_density_multiplier) || project.path_density_multiplier <= 0) {
+    return 'Path density multiplier must be > 0.';
+  }
+  const normalizedDensity = normalizePathDensityMultiplier(project.path_density_multiplier);
+  if (!Number.isFinite(normalizedDensity) || normalizedDensity <= 0) {
+    return 'Path density multiplier must be > 0.';
+  }
 
   const scanIds = new Set<string>();
   for (const scan of project.scans) {

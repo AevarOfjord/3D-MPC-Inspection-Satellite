@@ -23,6 +23,7 @@ def _default_scan_project(name: str) -> dict:
         'schema_version': 1,
         'name': name,
         'obj_path': 'assets/model_files/ISS/ISS.obj',
+        'path_density_multiplier': 1.0,
         'scans': [
             {
                 'id': 'scan_1',
@@ -347,3 +348,47 @@ def test_scan_project_preview_connector_respects_selected_endpoint_direction():
 
         assert _distance(connector_path[0], expected_start) < 1e-6
         assert _distance(connector_path[-1], expected_end) < 1e-6
+
+
+def test_scan_project_path_density_multiplier_scales_points():
+    with TestClient(app) as client:
+        project = _default_scan_project('TestScanProject_DensityScale')
+        project['path_density_multiplier'] = 0.5
+
+        low_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': project,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert low_resp.status_code == 200
+        low_payload = low_resp.json()
+
+        project['path_density_multiplier'] = 2.0
+        high_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': project,
+                'quality': 'preview',
+                'include_collision': False,
+            },
+        )
+        assert high_resp.status_code == 200
+        high_payload = high_resp.json()
+
+        # Same density policy for preview/final point generation.
+        final_resp = client.post(
+            '/scan_projects/compile',
+            json={
+                'project': project,
+                'quality': 'final',
+                'include_collision': False,
+            },
+        )
+        assert final_resp.status_code == 200
+        final_payload = final_resp.json()
+
+        assert high_payload['points'] > low_payload['points']
+        assert final_payload['points'] == high_payload['points']

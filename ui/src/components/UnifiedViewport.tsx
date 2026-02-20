@@ -1449,6 +1449,52 @@ export function UnifiedViewport({
                           ))
                       )}
 
+                    {mode !== 'scan' &&
+                      builderState.previewPath.length === 0 &&
+                      builderState.compilePreviewState?.scan_paths?.map((segment: any) => {
+                        const pts = (segment.path ?? []) as [number, number, number][];
+                        if (!pts || pts.length < 2) return null;
+                        const minClear = segment.min_clearance_m as number | null | undefined;
+                        const threshold =
+                          builderState.compilePreviewState?.diagnostics?.clearance_threshold_m ?? 0.05;
+                        const color =
+                          minClear != null && minClear < threshold ? '#ef4444' : '#22d3ee';
+                        return (
+                          <Line
+                            key={`mission-fallback-compiled-segment-${segment.id}`}
+                            points={pts.map(scaleToScene)}
+                            color={color}
+                            lineWidth={1.6}
+                            transparent
+                            opacity={0.85}
+                            depthTest={false}
+                          />
+                        );
+                      })}
+
+                    {mode !== 'scan' &&
+                      builderState.previewPath.length === 0 &&
+                      builderState.compilePreviewState?.connector_paths?.map((segment: any) => {
+                        const pts = (segment.path ?? []) as [number, number, number][];
+                        if (!pts || pts.length < 2) return null;
+                        const minClear = segment.min_clearance_m as number | null | undefined;
+                        const threshold =
+                          builderState.compilePreviewState?.diagnostics?.clearance_threshold_m ?? 0.05;
+                        const color =
+                          minClear != null && minClear < threshold ? '#ef4444' : '#f59e0b';
+                        return (
+                          <Line
+                            key={`mission-fallback-compiled-connector-${segment.id}`}
+                            points={pts.map(scaleToScene)}
+                            color={color}
+                            lineWidth={2.0}
+                            transparent
+                            opacity={0.9}
+                            depthTest={false}
+                          />
+                        );
+                      })}
+
                     {/* Advanced Path Builder */}
                     <EditableTrajectory
                         points={builderState.previewPath.map(scaleToScene)}

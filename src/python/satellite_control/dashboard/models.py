@@ -213,10 +213,18 @@ class ScanProjectModel(BaseModel):
     id: str | None = None
     name: str
     obj_path: str
+    path_density_multiplier: float = 1.0
     scans: list[ScanDefinitionModel] = Field(default_factory=list)
     connectors: list[ScanConnectorModel] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
+
+    @field_validator("path_density_multiplier")
+    @classmethod
+    def validate_path_density_multiplier(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("path_density_multiplier must be > 0")
+        return float(value)
 
     @model_validator(mode="after")
     def validate_references(self) -> "ScanProjectModel":
@@ -370,6 +378,7 @@ MissionSegmentModel = Annotated[
 class MissionOverridesModel(BaseModel):
     spline_controls: list[SplineControlModel] = Field(default_factory=list)
     manual_path: list[list[float]] = Field(default_factory=list)
+    path_density_multiplier: float = 1.0
 
     @field_validator("manual_path")
     @classmethod
@@ -378,6 +387,13 @@ class MissionOverridesModel(BaseModel):
             if len(point) != 3:
                 raise ValueError("manual_path points must have length 3")
         return value
+
+    @field_validator("path_density_multiplier")
+    @classmethod
+    def validate_path_density_multiplier(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("path_density_multiplier must be > 0")
+        return float(value)
 
 
 class UnifiedMissionModel(BaseModel):

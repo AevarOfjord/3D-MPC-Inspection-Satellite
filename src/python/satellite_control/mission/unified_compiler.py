@@ -72,6 +72,7 @@ def _build_scan_path(
     target_pos: np.ndarray,
     obj_path: Path | None,
     scan: Any,
+    density_multiplier: float = 1.0,
 ) -> list[tuple[float, float, float]]:
     """Generate a scan path around the target (spiral or circles)."""
     axis_letter, axis_sign = _parse_axis(scan.axis)
@@ -124,7 +125,7 @@ def _build_scan_path(
         total_scan_height = (num_levels - 1) * pitch
         z_start = -0.5 * total_scan_height
 
-        points_per_ring_int = max(360, int(points_per_ring))
+        points_per_ring_int = max(360, int(round(points_per_ring * density_multiplier)))
 
         for lvl in range(num_levels):
             z_rel = z_start + lvl * pitch
@@ -166,7 +167,7 @@ def _build_scan_path(
         total_height = pitch * revolutions
         z_start = -0.5 * total_height
 
-        points_per_rev = max(360, int(points_per_ring))
+        points_per_rev = max(360, int(round(points_per_ring * density_multiplier)))
         total_points = max(3, int(points_per_rev * revolutions))
 
         for i in range(total_points + 1):
@@ -219,6 +220,57 @@ def _build_asset_path(
             tuple(map(float, np.array(p, dtype=float) + offset)) for p in raw_path
         ], True
     return [tuple(map(float, p)) for p in raw_path], False
+
+
+def _resample_polyline_path(
+    path: Sequence[Sequence[float]],
+    density_multiplier: float,
+) -> list[tuple[float, float, float]]:
+    if not path:
+        return []
+    if len(path) < 2:
+        point = np.array(path[0], dtype=float)
+        return [(float(point[0]), float(point[1]), float(point[2]))]
+
+    try:
+        multiplier = float(density_multiplier)
+    except Exception:
+        multiplier = 1.0
+    if not math.isfinite(multiplier):
+        multiplier = 1.0
+    multiplier = max(0.25, min(20.0, multiplier))
+
+    target_count = max(2, int(round(len(path) * multiplier)))
+    if target_count == len(path):
+        return [tuple(map(float, p[:3])) for p in path]
+
+    points = np.array(path, dtype=float)
+    seg_lengths = np.linalg.norm(points[1:] - points[:-1], axis=1)
+    cumulative = np.concatenate(([0.0], np.cumsum(seg_lengths)))
+    total = float(cumulative[-1])
+    if total <= 1e-12:
+        first = points[0]
+        repeated = (float(first[0]), float(first[1]), float(first[2]))
+        return [repeated for _ in range(target_count)]
+
+    samples = np.linspace(0.0, total, num=target_count)
+    result: list[tuple[float, float, float]] = []
+    for distance in samples:
+        seg_idx = int(np.searchsorted(cumulative, distance, side="right") - 1)
+        if seg_idx >= len(seg_lengths):
+            p = points[-1]
+            result.append((float(p[0]), float(p[1]), float(p[2])))
+            continue
+        start = points[seg_idx]
+        end = points[seg_idx + 1]
+        seg_len = float(seg_lengths[seg_idx])
+        if seg_len <= 1e-12:
+            p = end
+        else:
+            t = (distance - float(cumulative[seg_idx])) / seg_len
+            p = start + (end - start) * t
+        result.append((float(p[0]), float(p[1]), float(p[2])))
+    return result
 
 
 def _quat_rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
@@ -329,6 +381,18 @@ def _convert_position(
     return pos
 
 
+def _resolve_path_density_multiplier(mission: MissionDefinition) -> float:
+    overrides = getattr(mission, "overrides", None)
+    raw = getattr(overrides, "path_density_multiplier", 1.0) if overrides else 1.0
+    try:
+        density = float(raw)
+    except Exception:
+        density = 1.0
+    if not math.isfinite(density):
+        density = 1.0
+    return float(min(20.0, max(0.25, density)))
+
+
 def _infer_manual_path_frame(
     manual_path: Sequence[Sequence[float]],
     origin: np.ndarray,
@@ -383,6 +447,7 @@ def compile_unified_mission_path(
         if output_frame is not None
         else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
     )
+    path_density_multiplier = _resolve_path_density_multiplier(mission)
     origin = _resolve_reference_origin(mission)
 
     manual_path = getattr(getattr(mission, "overrides", None), "manual_path", None) or []
@@ -454,9 +519,7 @@ def compile_unified_mission_path(
                 frame_mode,
                 origin,
             )
-            # Fixed 1m waypoint spacing for transfer segments.
-            # Point count scales with segment length (no dynamic thinning).
-            step_size = 1.0
+            step_size = max(0.05, min(4.0, 1.0 / path_density_multiplier))
 
             seg_path = _build_segment_path(
                 start=current,
@@ -501,11 +564,16 @@ def compile_unified_mission_path(
             asset_id = getattr(segment, "path_asset", None)
             if asset_id:
                 scan_path, apply_orientation = _build_asset_path(asset_id, target_pos)
+                if scan_path:
+                    scan_path = _resample_polyline_path(
+                        scan_path, path_density_multiplier
+                    )
             if not scan_path:
                 scan_path = _build_scan_path(
                     target_pos=target_pos,
                     obj_path=obj_path,
                     scan=scan,
+                    density_multiplier=path_density_multiplier,
                 )
                 apply_orientation = True
 
@@ -531,8 +599,7 @@ def compile_unified_mission_path(
                     scan_path = list(reversed(scan_path))
                 start_p = current
                 end_p = np.array(scan_path[0], dtype=float)
-                # Fixed 1m waypoint spacing for transfer-to-scan connector.
-                step_size_conn = 1.0
+                step_size_conn = max(0.05, min(4.0, 1.0 / path_density_multiplier))
 
                 connect = _build_segment_path(
                     start=start_p,
