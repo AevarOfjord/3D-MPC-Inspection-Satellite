@@ -152,8 +152,8 @@ class _ToleranceConstants:
 
     POSITION_TOLERANCE: float = 0.1
     ANGLE_TOLERANCE: float = float(np.deg2rad(2))
-    VELOCITY_TOLERANCE: float = 0.005
-    ANGULAR_VELOCITY_TOLERANCE: float = float(np.deg2rad(0.5))
+    VELOCITY_TOLERANCE: float = 0.05
+    ANGULAR_VELOCITY_TOLERANCE: float = float(np.deg2rad(2))
 
 
 ToleranceConstants = _ToleranceConstants()
@@ -198,17 +198,21 @@ class _MPCDefaults:
     Q_PROGRESS: float = 70.0
     PROGRESS_REWARD: float = 0.0
     Q_LAG_DEFAULT: float = 4000.0
-    Q_VELOCITY_ALIGN: float = 120.0
+    Q_VELOCITY_ALIGN: float = 160.0
+    Q_TERMINAL_POS: float = 0.0
+    Q_TERMINAL_S: float = 0.0
     Q_S_ANCHOR: float = 500.0
     PATH_SPEED_MIN: float = 0.0
     PATH_SPEED_MAX: float = 0.08
+    PROGRESS_TAPER_DISTANCE: float = 1.2
+    PROGRESS_SLOWDOWN_DISTANCE: float = 0.0
     Q_SMOOTH: float = 20.0
     Q_ATTITUDE: float = 3500.0
     Q_AXIS_ALIGN: float = 3000.0
     Q_ANGULAR_VELOCITY: float = 1200.0
     R_THRUST: float = 0.02
     R_RW_TORQUE: float = 0.003
-    THRUST_L1_WEIGHT: float = 0.02
+    THRUST_L1_WEIGHT: float = 0.0
     THRUST_PAIR_WEIGHT: float = 0.8
     COAST_POS_TOLERANCE: float = 0.0
     COAST_VEL_TOLERANCE: float = 0.0
@@ -331,9 +335,13 @@ class Constants:
     PROGRESS_REWARD = MPCDefaults.PROGRESS_REWARD
     Q_LAG_DEFAULT = MPCDefaults.Q_LAG_DEFAULT
     Q_VELOCITY_ALIGN = MPCDefaults.Q_VELOCITY_ALIGN
+    Q_TERMINAL_POS = MPCDefaults.Q_TERMINAL_POS
+    Q_TERMINAL_S = MPCDefaults.Q_TERMINAL_S
     Q_S_ANCHOR = MPCDefaults.Q_S_ANCHOR
     PATH_SPEED_MIN = MPCDefaults.PATH_SPEED_MIN
     PATH_SPEED_MAX = MPCDefaults.PATH_SPEED_MAX
+    PROGRESS_TAPER_DISTANCE = MPCDefaults.PROGRESS_TAPER_DISTANCE
+    PROGRESS_SLOWDOWN_DISTANCE = MPCDefaults.PROGRESS_SLOWDOWN_DISTANCE
     Q_SMOOTH = MPCDefaults.Q_SMOOTH
     Q_ATTITUDE = MPCDefaults.Q_ATTITUDE
     Q_AXIS_ALIGN = MPCDefaults.Q_AXIS_ALIGN

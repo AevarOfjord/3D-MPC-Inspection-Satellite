@@ -110,6 +110,41 @@ class MPCRunner:
         # Inactive channels are forced to exactly 0.0.
         return np.where(active_mask, thruster_action, 0.0).astype(np.float64, copy=False)
 
+    def _should_bypass_hysteresis_for_terminal_settling(
+        self,
+        mpc_info: dict[str, Any],
+    ) -> bool:
+        """Allow fine thrust corrections near endpoint to satisfy terminal hold tolerances."""
+        if not self.enable_thruster_hysteresis:
+            return False
+
+        endpoint_error = mpc_info.get("path_endpoint_error")
+        if endpoint_error is None:
+            return False
+
+        try:
+            endpoint_error_val = float(endpoint_error)
+        except (TypeError, ValueError):
+            return False
+
+        if not np.isfinite(endpoint_error_val) or endpoint_error_val < 0.0:
+            return False
+
+        pos_tol = 0.1
+        if self.state_validator is not None:
+            try:
+                pos_tol = float(
+                    getattr(self.state_validator, "position_tolerance", pos_tol)
+                )
+            except Exception:
+                pos_tol = 0.1
+
+        # Keep hysteresis for most of the trajectory, but disable it close to
+        # the endpoint where tiny commands are needed to satisfy strict
+        # position/velocity/omega completion thresholds.
+        terminal_settle_band = max(0.25, 3.0 * pos_tol)
+        return endpoint_error_val <= terminal_settle_band
+
     def compute_control_action(
         self,
         true_state: np.ndarray,
@@ -183,10 +218,11 @@ class MPCRunner:
                 # Enforce bounds (in-place clip avoids extra allocation)
                 np.clip(thruster_action, 0.0, 1.0, out=thruster_action)
                 thruster_action = thruster_action.astype(np.float64, copy=False)
-                thruster_action = self._apply_thruster_hysteresis(
-                    thruster_action=thruster_action,
-                    previous_thrusters=previous_thrusters,
-                )
+                if not self._should_bypass_hysteresis_for_terminal_settling(mpc_info):
+                    thruster_action = self._apply_thruster_hysteresis(
+                        thruster_action=thruster_action,
+                        previous_thrusters=previous_thrusters,
+                    )
                 if self.rw_axes:
                     np.clip(rw_torque, -1.0, 1.0, out=rw_torque)
                     rw_torque = rw_torque.astype(np.float64, copy=False)

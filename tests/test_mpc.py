@@ -116,12 +116,18 @@ class _DummyMPCController:
         self.num_thrusters = int(next_action.size)
         self.num_rw_axes = 0
         self._next_action = np.array(next_action, dtype=np.float64)
+        self._next_info = {"status": 1}
 
     def set_next_action(self, action: np.ndarray) -> None:
         self._next_action = np.array(action, dtype=np.float64)
 
+    def set_next_info(self, info: dict[str, object]) -> None:
+        payload = {"status": 1}
+        payload.update(info)
+        self._next_info = payload
+
     def get_control_action(self, x_current, previous_thrusters=None):
-        return self._next_action.copy(), {"status": 1}
+        return self._next_action.copy(), dict(self._next_info)
 
 
 class TestMPCRunnerHysteresis:
@@ -164,6 +170,34 @@ class TestMPCRunnerHysteresis:
         runner = MPCRunner(dummy, config=cfg)
         state = np.zeros(16, dtype=np.float64)
 
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.015, 0.0]))
+
+    def test_terminal_settling_bypasses_hysteresis(self):
+        cfg = SimulationConfig.create_with_overrides(
+            {
+                "mpc": {
+                    "enable_thruster_hysteresis": True,
+                    "thruster_hysteresis_on": 0.02,
+                    "thruster_hysteresis_off": 0.01,
+                }
+            }
+        ).app_config
+        dummy = _DummyMPCController(np.array([0.03, 0.0], dtype=np.float64))
+        runner = MPCRunner(dummy, config=cfg)
+        state = np.zeros(16, dtype=np.float64)
+
+        # First step turns channel on.
+        thrusters, _, _, _, _ = runner.compute_control_action(
+            state, runner.get_previous_thrusters()
+        )
+        assert np.allclose(thrusters, np.array([0.03, 0.0]))
+
+        # Near endpoint: allow small command below "on" threshold for fine settling.
+        dummy.set_next_action(np.array([0.015, 0.0], dtype=np.float64))
+        dummy.set_next_info({"path_endpoint_error": 0.05})
         thrusters, _, _, _, _ = runner.compute_control_action(
             state, runner.get_previous_thrusters()
         )

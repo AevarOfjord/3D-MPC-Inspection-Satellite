@@ -61,9 +61,13 @@ def check_path_complete(sim: Any) -> bool:
             logger.debug("State validator check failed", exc_info=True)
             state_ok = None
 
+    # Strict completion: when validator is available, require all configured
+    # terminal thresholds (position, angle, velocity, angular velocity) via
+    # state_validator.check_reference_reached(). If validator is unavailable,
+    # fall back to position tolerance only.
     if state_ok is None:
         state_ok = pos_ok
     else:
-        state_ok = bool(state_ok or pos_ok)
+        state_ok = bool(state_ok)
 
     return bool(progress_ok and state_ok)

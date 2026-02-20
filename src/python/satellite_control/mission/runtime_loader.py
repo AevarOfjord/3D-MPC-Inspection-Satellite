@@ -80,13 +80,14 @@ def compile_unified_mission_runtime(
     # This ensures high-precision visualization (no jitter) while avoiding physics singularities.
     sim_config.app_config.physics.use_two_body_gravity = False
 
-    sim_config.app_config.mpc.path_speed = float(path_speed)
+    runtime_path_speed = float(path_speed)
+    sim_config.app_config.mpc.path_speed = runtime_path_speed
     mission_state = sim_config.mission_state
     mission_state.obstacles = _to_runtime_obstacles(mission.obstacles)
     mission_state.obstacles_enabled = bool(mission_state.obstacles)
     mission_state.path_waypoints = path
     mission_state.path_length = float(path_length)
-    mission_state.path_speed = float(path_speed)
+    mission_state.path_speed = runtime_path_speed
     mission_state.frame_origin = origin
     mission_state.path_frame = resolved_output_frame
     (
@@ -106,7 +107,7 @@ def compile_unified_mission_runtime(
         simulation_config=sim_config,
         path=path,
         path_length=float(path_length),
-        path_speed=float(path_speed),
+        path_speed=runtime_path_speed,
         start_pos=start_pos,
         end_pos=end_pos,
     )

@@ -24,7 +24,7 @@ from typing import Any
 
 from . import timing
 
-DEFAULT_PATH_HOLD_END_S = 50.0
+DEFAULT_PATH_HOLD_END_S = 10.0
 
 
 @dataclass

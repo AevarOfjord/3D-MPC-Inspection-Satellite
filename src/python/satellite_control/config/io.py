@@ -274,6 +274,23 @@ class ConfigIO:
             PathFollowingState,
         )
 
+        def _pick_first_non_none(*values: Any) -> Any:
+            for value in values:
+                if value is not None:
+                    return value
+            return None
+
+        def _resolve_path_hold_end(trajectory_dict: dict[str, Any] | None = None) -> float:
+            trajectory_dict = trajectory_dict or {}
+            hold_raw = _pick_first_non_none(
+                mission_state_dict.get("path_hold_end"),
+                trajectory_dict.get("hold_end"),
+                mission_state_dict.get("trajectory_hold_end"),
+            )
+            if hold_raw is None:
+                return float(DEFAULT_PATH_HOLD_END_S)
+            return float(hold_raw)
+
         def _apply_path_tracking_fields(ms: MissionState) -> MissionState:
             path_tracking_keys = (
                 "path_tracking_center",
@@ -310,18 +327,7 @@ class ConfigIO:
                 obstacle_state=ObstacleState(
                     **mission_state_dict.get("obstacle_state", {})
                 ),
-                path_hold_end=float(
-                    mission_state_dict.get(
-                        "path_hold_end",
-                        trajectory_dict.get(
-                            "hold_end",
-                            mission_state_dict.get(
-                                "trajectory_hold_end", DEFAULT_PATH_HOLD_END_S
-                            ),
-                        ),
-                    )
-                    or DEFAULT_PATH_HOLD_END_S
-                ),
+                path_hold_end=_resolve_path_hold_end(trajectory_dict),
             )
             return _apply_path_tracking_fields(ms)
 
@@ -341,13 +347,7 @@ class ConfigIO:
         # Obstacles
         ms.obstacle_state.enabled = mission_state_dict.get("obstacles_enabled", False)
         ms.obstacle_state.obstacles = mission_state_dict.get("obstacles", [])
-        ms.path_hold_end = float(
-            mission_state_dict.get(
-                "path_hold_end",
-                mission_state_dict.get("trajectory_hold_end", DEFAULT_PATH_HOLD_END_S),
-            )
-            or DEFAULT_PATH_HOLD_END_S
-        )
+        ms.path_hold_end = _resolve_path_hold_end()
 
         return _apply_path_tracking_fields(ms)
 

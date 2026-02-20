@@ -63,12 +63,16 @@ def _create_fast_mpc() -> MPCParams:
         Q_smooth=1.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_terminal_pos=Constants.Q_TERMINAL_POS,
+        Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=100.0,
         r_thrust=0.01,
         thruster_type=Constants.THRUSTER_TYPE,
         path_speed=0.5,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.5,
+        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
+        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -94,6 +98,8 @@ def _create_balanced_mpc() -> MPCParams:
         Q_smooth=Constants.Q_SMOOTH,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_terminal_pos=Constants.Q_TERMINAL_POS,
+        Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=Constants.Q_ANGULAR_VELOCITY,
         r_thrust=Constants.R_THRUST,
         r_rw_torque=Constants.R_RW_TORQUE,
@@ -110,6 +116,8 @@ def _create_balanced_mpc() -> MPCParams:
         path_speed=Constants.PATH_SPEED_MAX,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=Constants.PATH_SPEED_MAX,
+        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
+        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -132,6 +140,8 @@ def _create_stable_mpc() -> MPCParams:
         Q_smooth=50.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_terminal_pos=Constants.Q_TERMINAL_POS,
+        Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=2000.0,
         r_thrust=1.0,
         r_rw_torque=2.0,
@@ -139,6 +149,8 @@ def _create_stable_mpc() -> MPCParams:
         path_speed=0.05,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.1,
+        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
+        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -161,6 +173,8 @@ def _create_precision_mpc() -> MPCParams:
         Q_smooth=100.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_terminal_pos=Constants.Q_TERMINAL_POS,
+        Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=5000.0,
         r_thrust=5.0,
         r_rw_torque=5.0,
@@ -168,6 +182,8 @@ def _create_precision_mpc() -> MPCParams:
         path_speed=0.02,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.05,
+        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
+        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
