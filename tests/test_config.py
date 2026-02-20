@@ -8,6 +8,8 @@ Consolidates `test_config_validation.py` and `test_presets.py`.
 import pytest
 from pydantic import ValidationError
 from satellite_control.config import physics as physics_cfg
+from satellite_control.config.io import ConfigIO
+from satellite_control.config.mission_state import DEFAULT_PATH_HOLD_END_S
 from satellite_control.config.models import MPCParams, SatellitePhysicalParams
 from satellite_control.config.presets import list_presets, load_preset
 from satellite_control.config.simulation_config import SimulationConfig
@@ -110,3 +112,23 @@ class TestConfigValidation:
             MPCParams(tracking_recovery_attitude_scale=0.0)
         with pytest.raises(ValidationError):
             MPCParams(tracking_recovery_contour_boost=-0.1)
+
+    def test_path_hold_end_defaults_when_missing(self):
+        """Missing hold fields should use the global mission hold default."""
+        mission_state = ConfigIO._dict_to_mission_state({})
+        assert mission_state.path_hold_end == pytest.approx(DEFAULT_PATH_HOLD_END_S)
+
+    def test_path_hold_end_preserves_explicit_zero(self):
+        """Explicit 0.0 hold should not be overwritten by defaults."""
+        mission_state = ConfigIO._dict_to_mission_state({"path_hold_end": 0.0})
+        assert mission_state.path_hold_end == pytest.approx(0.0)
+
+        mission_state_nested = ConfigIO._dict_to_mission_state(
+            {"trajectory": {"hold_end": 0.0}}
+        )
+        assert mission_state_nested.path_hold_end == pytest.approx(0.0)
+
+    def test_path_hold_end_preserves_explicit_nonzero(self):
+        """Explicit hold values in legacy fields should be preserved."""
+        mission_state = ConfigIO._dict_to_mission_state({"trajectory_hold_end": 5.0})
+        assert mission_state.path_hold_end == pytest.approx(5.0)

@@ -330,13 +330,13 @@ class MPCParams(BaseModel):
         description="Extra axis-alignment weight (adds to Q_attitude)",
     )
     Q_terminal_pos: float = Field(
-        0.0,
+        constants.Constants.Q_TERMINAL_POS,
         ge=0.0,
         le=1e6,
         description="Terminal position weight (0 = auto-scale from Q_contour)",
     )
     Q_terminal_s: float = Field(
-        0.0,
+        constants.Constants.Q_TERMINAL_S,
         ge=0.0,
         le=1e6,
         description="Terminal progress weight (0 = auto-scale from Q_progress/Q_contour)",
@@ -431,13 +431,13 @@ class MPCParams(BaseModel):
         description="Maximum path speed [m/s]",
     )
     progress_taper_distance: float = Field(
-        0.0,
+        constants.Constants.PROGRESS_TAPER_DISTANCE,
         ge=0.0,
         le=1e6,
         description="Distance before endpoint to taper v_ref (0 = auto)",
     )
     progress_slowdown_distance: float = Field(
-        0.0,
+        constants.Constants.PROGRESS_SLOWDOWN_DISTANCE,
         ge=0.0,
         le=1e6,
         description="Contour error threshold to slow progress (0 = auto)",

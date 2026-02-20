@@ -450,6 +450,22 @@ def compile_unified_mission_path(
     path_density_multiplier = _resolve_path_density_multiplier(mission)
     origin = _resolve_reference_origin(mission)
 
+    # Choose a conservative runtime speed from declared segment constraints.
+    default_path_speed = float(sim_config.app_config.mpc.path_speed)
+    speed_candidates = []
+    for segment in mission.segments:
+        if segment.type == SegmentType.HOLD:
+            continue
+        if segment.constraints and segment.constraints.speed_max:
+            speed_candidates.append(float(segment.constraints.speed_max))
+    path_speed = min(speed_candidates) if speed_candidates else default_path_speed
+    configured_speed_min = float(getattr(sim_config.app_config.mpc, "path_speed_min", 0.0) or 0.0)
+    configured_speed_max = float(getattr(sim_config.app_config.mpc, "path_speed_max", 0.0) or 0.0)
+    if configured_speed_max > 0.0:
+        path_speed = min(path_speed, configured_speed_max)
+    if configured_speed_min > 0.0:
+        path_speed = max(path_speed, configured_speed_min)
+
     manual_path = getattr(getattr(mission, "overrides", None), "manual_path", None) or []
     if manual_path:
         manual_path_source_frame = _infer_manual_path_frame(
@@ -474,7 +490,6 @@ def compile_unified_mission_path(
         ]
         if path:
             path_length = _compute_path_length(path)
-            path_speed = float(sim_config.app_config.mpc.path_speed)
             return path, path_length, path_speed, tuple(origin)
 
     if not mission.segments:
@@ -499,17 +514,6 @@ def compile_unified_mission_path(
     # must not alter generated transfer/connect geometry.
     obstacles: Sequence[MissionObstacle] = ()
     margin = float(sim_config.app_config.mpc.obstacle_margin)
-
-    # Choose a conservative path speed based on constraints
-    speed_candidates = []
-    for segment in mission.segments:
-        if segment.constraints and segment.constraints.speed_max:
-            speed_candidates.append(float(segment.constraints.speed_max))
-    path_speed = (
-        min(speed_candidates)
-        if speed_candidates
-        else float(sim_config.app_config.mpc.path_speed)
-    )
 
     for segment in mission.segments:
         if segment.type == SegmentType.TRANSFER:

@@ -93,6 +93,17 @@ Outputs:
   - `performance_metrics.json`
   - `mpc_step_stats.csv`
 
+### Terminal Completion Contract (V5)
+
+For path-following runs, terminal completion now requires all thresholds to be in-bounds at path end:
+
+- position error `<= 0.10 m`
+- angle error `<= 2 deg`
+- linear velocity error `<= 0.05 m/s`
+- angular velocity error `<= 2 deg/s`
+
+The condition must hold continuously for `10 s` by default (`mission_state.path_hold_end`).
+
 ### Mission Flow for Testing
 
 Tests unified mission compile/hydration and path tracking runtime behavior.

@@ -135,6 +135,16 @@ make stop           # stop app processes on known ports
   - v1 flat `{ physics, mpc, simulation, input_file_path }`
 - New writes from UI/API persist v2 envelope while responses still mirror `physics/mpc/simulation` top-level fields for transition compatibility.
 
+## 6.2) Path Termination Contract (V5)
+
+- Path-following completion is strict at the final waypoint and must satisfy all terminal thresholds:
+  - position error `<= 0.10 m`
+  - angle error `<= 2 deg`
+  - linear velocity error `<= 0.05 m/s`
+  - angular velocity error `<= 2 deg/s`
+- These thresholds must remain satisfied continuously for `10 s` before simulation auto-terminates by default.
+- Hold duration is overridable per mission/preset via `mission_state.path_hold_end`.
+
 ## 7) Troubleshooting
 
 - Missing `ui/dist/index.html`:

@@ -7,6 +7,7 @@ Trims down `test_simulation_state_validator.py`.
 
 import numpy as np
 import pytest
+from satellite_control.config.constants import Constants
 from satellite_control.utils.simulation_state_validator import (
     create_state_validator_from_config,
 )
@@ -82,3 +83,12 @@ class TestStateValidation:
         )
         assert valid_bad is False
         assert any("position jump" in e for e in err_bad)
+
+    def test_default_tolerance_contract_values(self, validator):
+        """Default validator tolerances should match the termination contract."""
+        assert validator.position_tolerance == pytest.approx(0.1)
+        assert validator.angle_tolerance == pytest.approx(Constants.ANGLE_TOLERANCE)
+        assert validator.velocity_tolerance == pytest.approx(0.05)
+        assert validator.angular_velocity_tolerance == pytest.approx(
+            Constants.ANGULAR_VELOCITY_TOLERANCE
+        )
