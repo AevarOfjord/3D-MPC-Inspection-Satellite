@@ -77,6 +77,7 @@ export type MissionSegment = TransferSegment | ScanSegment | HoldSegment;
 export interface MissionOverrides {
   spline_controls?: SplineControl[];
   manual_path?: [number, number, number][];
+  path_density_multiplier?: number;
 }
 
 export interface MissionObstacle {

@@ -4,6 +4,7 @@ import type {
   SplineControl,
   TransferSegment,
 } from '../api/unifiedMission';
+import { normalizePathDensityMultiplier } from '../utils/pathDensity';
 
 interface BuildUnifiedMissionArgs {
   includeManualPath?: boolean;
@@ -19,6 +20,7 @@ interface BuildUnifiedMissionArgs {
   previewPath: [number, number, number][];
   obstacles: { position: [number, number, number]; radius: number }[];
   draftRevision: number | null;
+  pathDensityMultiplier: number;
   nextSegmentId: (prefix: string) => string;
   resolveOrbitTargetPose: (targetId: string) =>
     | { frame: 'ECI'; position: [number, number, number]; orientation?: [number, number, number, number] }
@@ -39,6 +41,7 @@ export function buildUnifiedMissionPayload({
   previewPath,
   obstacles,
   draftRevision,
+  pathDensityMultiplier,
   nextSegmentId,
   resolveOrbitTargetPose,
 }: BuildUnifiedMissionArgs): UnifiedMission {
@@ -80,6 +83,8 @@ export function buildUnifiedMissionPayload({
       ] as [number, number, number];
     });
   }
+  const density = normalizePathDensityMultiplier(pathDensityMultiplier);
+  overrides.path_density_multiplier = density;
 
   return {
     schema_version: 2,

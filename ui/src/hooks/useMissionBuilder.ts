@@ -246,6 +246,7 @@ export function useMissionBuilder() {
   });
 
   const scanProjectEditor = useScanProjectEditor({
+    authoringStep,
     scanProject,
     setScanProject,
     configObjPath: config.obj_path,
@@ -310,6 +311,7 @@ export function useMissionBuilder() {
       saveScanProject,
       loadScanProjectById,
       saveBakedPathFromCompiled,
+      setPathDensityMultiplier,
     },
   } = scanProjectEditor;
 
@@ -368,6 +370,7 @@ export function useMissionBuilder() {
       previewPath,
       obstacles,
       draftRevision,
+      pathDensityMultiplier: scanProject.path_density_multiplier,
       nextSegmentId,
       resolveOrbitTargetPose,
     });
@@ -406,6 +409,7 @@ export function useMissionBuilder() {
     setSelectedOrbitTargetId,
     setTransferTargetRef,
     setValidationReport,
+    setScanProject,
   });
   const {
     actions: { applyLoadedMission },
@@ -657,6 +661,7 @@ export function useMissionBuilder() {
       saveScanProject,
       loadScanProjectById,
       saveBakedPathFromCompiled,
+      setPathDensityMultiplier,
       setSelectedScanId,
       setSelectedKeyLevelId,
       setSelectedConnectorId,

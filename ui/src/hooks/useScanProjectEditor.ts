@@ -17,6 +17,7 @@ import {
   makeId,
   validateScanProject,
 } from '../utils/scanProjectValidation';
+import { normalizePathDensityMultiplier } from '../utils/pathDensity';
 import { useToast } from '../feedback/feedbackContext';
 
 export type SelectedProjectPlaneHandle = { scanId: string; handle: 'a' | 'b' } | null;
@@ -70,6 +71,7 @@ export const buildAutoConnectorControls = (
 };
 
 interface UseScanProjectEditorArgs {
+  authoringStep: string;
   scanProject: ScanProject;
   setScanProject: Dispatch<SetStateAction<ScanProject>>;
   configObjPath: string;
@@ -109,6 +111,7 @@ interface UseScanProjectEditorArgs {
 }
 
 export function useScanProjectEditor({
+  authoringStep,
   scanProject,
   setScanProject,
   configObjPath,
@@ -158,6 +161,9 @@ export function useScanProjectEditor({
       const next = updater(prev);
       return {
         ...next,
+        path_density_multiplier: normalizePathDensityMultiplier(
+          next.path_density_multiplier ?? 1.0
+        ),
         scans: (next.scans ?? []).map((scan) => ({
           ...scan,
           key_levels: (scan.key_levels ?? []).map((level) => ({
@@ -762,23 +768,26 @@ export function useScanProjectEditor({
         collision_threshold_m: 0.05,
       });
       setCompilePreviewState(response);
-      const hasDisconnectedMultiScanPreview =
-        quality === 'preview' &&
-        scanProject.scans.length > 1 &&
-        scanProject.connectors.length === 0;
-      if (hasDisconnectedMultiScanPreview) {
-        setManualPath([]);
-      } else {
-        const compiled = response.combined_path.map(
-          (p) => [p[0], p[1], p[2]] as [number, number, number]
-        );
-        setManualPath(compiled);
+      const shouldHydrateManualPath = authoringStep === 'scan_definition';
+      if (shouldHydrateManualPath) {
+        const hasDisconnectedMultiScanPreview =
+          quality === 'preview' &&
+          scanProject.scans.length > 1 &&
+          scanProject.connectors.length === 0;
+        if (hasDisconnectedMultiScanPreview) {
+          setManualPath([]);
+        } else {
+          const compiled = response.combined_path.map(
+            (p) => [p[0], p[1], p[2]] as [number, number, number]
+          );
+          setManualPath(compiled);
+        }
+        setStats({
+          duration: response.estimated_duration,
+          length: response.path_length,
+          points: response.points,
+        });
       }
-      setStats({
-        duration: response.estimated_duration,
-        length: response.path_length,
-        points: response.points,
-      });
       // Mark signature as compiled only after successful compile.
       lastAutoPreviewSignatureRef.current = signature;
       return response;
@@ -857,6 +866,9 @@ export function useScanProjectEditor({
     const loaded = await scanProjectsApi.loadScanProject(projectId);
     const normalized: ScanProject = {
       ...loaded,
+      path_density_multiplier: normalizePathDensityMultiplier(
+        loaded.path_density_multiplier ?? 1.0
+      ),
       scans: (loaded.scans ?? []).map((scan) => ({
         ...scan,
         key_levels: (scan.key_levels ?? []).map((level) => ({
@@ -879,6 +891,19 @@ export function useScanProjectEditor({
       selectModelPath(normalized.obj_path);
     }
     return normalized;
+  };
+
+  const setPathDensityMultiplier = (multiplier: number) => {
+    const normalized = normalizePathDensityMultiplier(multiplier);
+    updateScanProject((prev) => {
+      if (Math.abs((prev.path_density_multiplier ?? 1.0) - normalized) <= 1e-9) {
+        return prev;
+      }
+      return {
+        ...prev,
+        path_density_multiplier: normalized,
+      };
+    });
   };
 
   const saveBakedPathFromCompiled = async (name: string) => {
@@ -1060,6 +1085,7 @@ export function useScanProjectEditor({
       saveScanProject,
       loadScanProjectById,
       saveBakedPathFromCompiled,
+      setPathDensityMultiplier,
     },
   };
 }
