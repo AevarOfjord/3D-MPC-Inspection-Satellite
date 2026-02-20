@@ -107,6 +107,13 @@ def create_default_app_config() -> AppConfig:
         path_speed_max=constants.Constants.PATH_SPEED_MAX,
         progress_taper_distance=0.0,
         progress_slowdown_distance=0.0,
+        tracking_recovery_error_m=constants.Constants.TRACKING_RECOVERY_ERROR_M,
+        tracking_recovery_contour_boost=constants.Constants.TRACKING_RECOVERY_CONTOUR_BOOST,
+        tracking_recovery_progress_scale=constants.Constants.TRACKING_RECOVERY_PROGRESS_SCALE,
+        tracking_recovery_attitude_scale=constants.Constants.TRACKING_RECOVERY_ATTITUDE_SCALE,
+        enable_thruster_hysteresis=constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
+        thruster_hysteresis_on=constants.Constants.THRUSTER_HYSTERESIS_ON,
+        thruster_hysteresis_off=constants.Constants.THRUSTER_HYSTERESIS_OFF,
     )
 
     # Simulation

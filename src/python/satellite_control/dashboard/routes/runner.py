@@ -410,11 +410,19 @@ def export_workspace_bundle(
     buffer = io.BytesIO()
 
     config_payload = manager.get_config()
-    config_sections: dict[str, Any] = {}
-    for section in ("physics", "mpc", "simulation", "input_file_path"):
-        value = config_payload.get(section)
-        if value is not None:
-            config_sections[section] = value
+    config_sections: dict[str, Any]
+    app_config = config_payload.get("app_config")
+    if isinstance(app_config, dict):
+        config_sections = {
+            "schema_version": "app_config_v2",
+            "app_config": app_config,
+        }
+    else:
+        config_sections = {}
+        for section in ("physics", "mpc", "simulation", "input_file_path"):
+            value = config_payload.get(section)
+            if value is not None:
+                config_sections[section] = value
 
     mission_files = _iter_mission_files()
     sim_runs = _iter_simulation_run_dirs() if include_simulation_data else []

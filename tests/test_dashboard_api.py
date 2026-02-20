@@ -91,7 +91,10 @@ class TestDashboardAPI:
         base_cfg = base_resp.json()
         base_horizon = base_cfg["mpc"]["prediction_horizon"]
         assert isinstance(base_horizon, int)
+        assert base_cfg.get("schema_version") == "app_config_v2"
+        assert isinstance(base_cfg.get("app_config"), dict)
         assert base_cfg.get("config_meta", {}).get("overrides_active") is False
+        assert base_cfg.get("config_meta", {}).get("config_version") == "app_config_v2"
 
         # Apply one override
         target_horizon = base_horizon + 7
@@ -112,6 +115,7 @@ class TestDashboardAPI:
         assert updated_cfg["mpc"]["prediction_horizon"] == target_horizon
         meta = updated_cfg.get("config_meta", {})
         assert meta.get("overrides_active") is True
+        assert meta.get("config_version") == "app_config_v2"
         assert isinstance(meta.get("config_hash"), str)
         assert len(meta["config_hash"]) == 12
 
@@ -121,6 +125,52 @@ class TestDashboardAPI:
         reset_cfg = reset_again.json().get("config", {})
         assert reset_cfg["mpc"]["prediction_horizon"] == base_horizon
         assert reset_cfg.get("config_meta", {}).get("overrides_active") is False
+        assert reset_cfg.get("config_meta", {}).get("config_version") == "app_config_v2"
+
+    def test_runner_config_dual_read_payload_shapes(self, client):
+        """Runner config should accept legacy, v1-flat, and v2 envelope payloads."""
+        reset_resp = client.post("/runner/config/reset")
+        assert reset_resp.status_code == 200
+
+        legacy_resp = client.post(
+            "/runner/config",
+            json={
+                "control": {"mpc": {"prediction_horizon": 42}},
+                "sim": {"duration": 90.0},
+            },
+        )
+        assert legacy_resp.status_code == 200
+        cfg = client.get("/runner/config").json()
+        assert cfg["mpc"]["prediction_horizon"] == 42
+        assert cfg["simulation"]["max_duration"] == 90.0
+
+        v1_resp = client.post(
+            "/runner/config",
+            json={
+                "mpc": {"prediction_horizon": 43},
+                "simulation": {"max_duration": 91.0},
+            },
+        )
+        assert v1_resp.status_code == 200
+        cfg = client.get("/runner/config").json()
+        assert cfg["mpc"]["prediction_horizon"] == 43
+        assert cfg["simulation"]["max_duration"] == 91.0
+
+        v2_resp = client.post(
+            "/runner/config",
+            json={
+                "schema_version": "app_config_v2",
+                "app_config": {
+                    "mpc": {"prediction_horizon": 44},
+                    "simulation": {"max_duration": 92.0},
+                },
+            },
+        )
+        assert v2_resp.status_code == 200
+        cfg = client.get("/runner/config").json()
+        assert cfg.get("schema_version") == "app_config_v2"
+        assert cfg["mpc"]["prediction_horizon"] == 44
+        assert cfg["simulation"]["max_duration"] == 92.0
 
     def test_runner_presets_crud_and_apply(self, client):
         """Runner presets should persist via API and be applicable."""
@@ -153,6 +203,7 @@ class TestDashboardAPI:
         assert list_resp.status_code == 200
         presets = list_resp.json().get("presets", {})
         assert "fast-test" in presets
+        assert presets["fast-test"]["config"].get("schema_version") == "app_config_v2"
         assert presets["fast-test"]["config"]["mpc"]["prediction_horizon"] == 33
 
         apply_resp = client.post("/runner/presets/apply", json={"name": "fast-test"})

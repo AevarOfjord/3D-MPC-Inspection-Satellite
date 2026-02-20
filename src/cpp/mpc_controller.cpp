@@ -330,6 +330,8 @@ void MPCControllerCpp::init_solver() {
     path_vel_P_indices_.resize(N_ + 1);
     path_pos_diag_indices_.resize(N_ + 1);
     path_pos_offdiag_indices_.resize(N_ + 1);
+    path_att_diag_indices_.resize(N_ + 1);
+    path_vs_diag_indices_.assign(static_cast<size_t>(N_), -1);
     int s_offset = 16;
     int v_offset = 7;
 
@@ -337,6 +339,7 @@ void MPCControllerCpp::init_solver() {
         path_P_indices_[k].resize(3);
         path_pos_diag_indices_[k].resize(3);
         path_pos_offdiag_indices_[k].resize(3);
+        path_att_diag_indices_[k].assign(4, -1);
         int base_idx = k * nx_;
 
         // P is symmetric, we added (row, col) with row < col.
@@ -436,6 +439,40 @@ void MPCControllerCpp::init_solver() {
                 }
             }
         }
+
+        // Find quaternion diagonal indices for attitude tracking updates.
+        for (int qi = 0; qi < 4; ++qi) {
+            int diag = base_idx + 3 + qi;
+            bool q_found = false;
+            for (int idx = P_.outerIndexPtr()[diag]; idx < P_.outerIndexPtr()[diag + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == diag) {
+                    path_att_diag_indices_[k][qi] = idx;
+                    q_found = true;
+                    break;
+                }
+            }
+            if (!q_found) {
+                std::cerr << "[MPC] Error: P-matrix attitude diagonal not found at k="
+                          << k << ", qi=" << qi << std::endl;
+            }
+        }
+
+        // Find progress control diagonal index for v_s at stage k.
+        if (k < N_) {
+            int vs_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
+            bool vs_found = false;
+            for (int idx = P_.outerIndexPtr()[vs_idx]; idx < P_.outerIndexPtr()[vs_idx + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == vs_idx) {
+                    path_vs_diag_indices_[static_cast<size_t>(k)] = idx;
+                    vs_found = true;
+                    break;
+                }
+            }
+            if (!vs_found) {
+                std::cerr << "[MPC] Error: P-matrix progress control diagonal not found at k="
+                          << k << std::endl;
+            }
+        }
     }
 
     // Cache indices for partial P updates (path-related entries only)
@@ -457,7 +494,13 @@ void MPCControllerCpp::init_solver() {
             for (int idx : path_vel_P_indices_[k]) {
                 add_index(idx);
             }
+            for (int idx : path_att_diag_indices_[k]) {
+                add_index(idx);
+            }
             add_index(path_s_diag_indices_[k]);
+            if (k < N_) {
+                add_index(path_vs_diag_indices_[static_cast<size_t>(k)]);
+            }
         }
 
         path_P_update_indices_.assign(unique.begin(), unique.end());
@@ -1297,10 +1340,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             Q_l = Q_c;
         }
     }
-    double Q_s_anchor = mpc_params_.Q_s_anchor;  // Anchor s to progress reference
-    if (Q_s_anchor < 0.0) {
-        Q_s_anchor = std::max(Q_p, 0.5 * Q_c);
-    }
+    double Q_s_anchor_cfg = mpc_params_.Q_s_anchor;  // Anchor s to progress reference
     double Q_att = mpc_params_.Q_attitude + mpc_params_.Q_axis_align; // Attitude + explicit axis-alignment
     // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
     double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
@@ -1344,18 +1384,59 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     double remaining = std::max(0.0, path_total_length_ - s_curr);
 
     double speed_scale = 1.0;
-    if (x_current.size() >= 3 && slowdown_dist > 1e-6) {
+    double contour_err_curr = 0.0;
+    if (x_current.size() >= 3) {
         Eigen::Vector3d p_curr = x_current.segment<3>(0);
         Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
-        double contour_err = (p_curr - p_ref_curr).norm();
-        speed_scale = std::max(0.0, std::min(1.0, 1.0 - contour_err / slowdown_dist));
+        contour_err_curr = (p_curr - p_ref_curr).norm();
+        if (slowdown_dist > 1e-6) {
+            speed_scale =
+                std::max(0.0, std::min(1.0, 1.0 - contour_err_curr / slowdown_dist));
+        }
     }
     double end_scale = 1.0;
     if (taper_dist > 1e-6) {
         end_scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
     }
+
+    double recovery_alpha = 0.0;
+    if (mpc_params_.tracking_recovery_error_m > 1e-9) {
+        recovery_alpha = std::clamp(
+            (contour_err_curr - mpc_params_.tracking_recovery_error_m) /
+                mpc_params_.tracking_recovery_error_m,
+            0.0,
+            1.0
+        );
+    }
+    const double contour_weight_scale = 1.0 + recovery_alpha *
+        std::max(0.0, mpc_params_.tracking_recovery_contour_boost);
+    const double recovery_progress_scale =
+        std::clamp(mpc_params_.tracking_recovery_progress_scale, 0.0, 1.0);
+    const double recovery_attitude_scale =
+        std::clamp(mpc_params_.tracking_recovery_attitude_scale, 0.0, 1.0);
+    const double progress_weight_scale = std::max(
+        0.25, 1.0 - recovery_alpha * (1.0 - recovery_progress_scale)
+    );
+    const double attitude_weight_scale = std::max(
+        0.20, 1.0 - recovery_alpha * (1.0 - recovery_attitude_scale)
+    );
+
+    const double Q_c_eff = Q_c * contour_weight_scale;
+    const double Q_l_eff = Q_l * contour_weight_scale;
+    const double Q_p_eff = Q_p * progress_weight_scale;
+    const double progress_reward_eff = progress_reward * progress_weight_scale;
+    const double Q_att_eff = Q_att * attitude_weight_scale;
+    const double Q_term_pos_eff = Q_term_pos * contour_weight_scale;
+    const double Q_term_s_eff = Q_term_s * progress_weight_scale;
+    double Q_s_anchor_eff = Q_s_anchor_cfg;
+    if (Q_s_anchor_eff < 0.0) {
+        Q_s_anchor_eff = std::max(Q_p_eff, 0.5 * Q_c_eff);
+    } else {
+        Q_s_anchor_eff *= progress_weight_scale;
+    }
+
     double v_ref_base = v_ref * speed_scale * end_scale;
-    bool auto_progress = progress_reward > 0.0;
+    bool auto_progress = progress_reward_eff > 0.0;
 
     // Coasting bias: if we're already on the path and moving along it,
     // match the reference speed to the current along-track speed to avoid braking.
@@ -1404,8 +1485,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     for (int k = 0; k <= N_; ++k) {
         double s_bar = s_guess_[k];
         double stage_scale = (k == N_) ? 10.0 : 1.0;
-        double Q_c_k = Q_c * stage_scale;
-        double Q_l_k = Q_l * stage_scale;
+        double Q_c_k = Q_c_eff * stage_scale;
+        double Q_l_k = Q_l_eff * stage_scale;
 
         // Clamp s_bar to valid range
         s_bar = std::max(0.0, std::min(s_bar, path_total_length_));
@@ -1434,13 +1515,25 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
         int x_idx = k * nx_;  // State index for this step
 
+        // Update quaternion diagonal entries for dynamic attitude weighting.
+        if (k < static_cast<int>(path_att_diag_indices_.size())) {
+            double q_att_diag = 2.0 * Q_att_eff * stage_scale;
+            auto &att_diag_indices = path_att_diag_indices_[k];
+            for (int i = 0; i < 4 && i < static_cast<int>(att_diag_indices.size()); ++i) {
+                int idx = att_diag_indices[i];
+                if (idx >= 0) {
+                    P_data_[idx] = q_att_diag;
+                }
+            }
+        }
+
         // 0. Update position diagonal entries (base + optional terminal boost)
-        double pos_diag_base = 2.0 * Q_c * stage_scale;
+        double pos_diag_base = 2.0 * Q_c_eff * stage_scale;
         for (int i = 0; i < 3; ++i) {
             double pos_diag = pos_diag_base;
             pos_diag += 2.0 * Q_l_k * t_ref(i) * t_ref(i);
             if (k == N_) {
-                pos_diag += 2.0 * Q_term_pos;
+                pos_diag += 2.0 * Q_term_pos_eff;
             }
             P_data_[path_pos_diag_indices_[k][i]] = pos_diag;
         }
@@ -1470,10 +1563,10 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         if (k < static_cast<int>(path_s_diag_indices_.size())) {
             double s_diag = 2.0 * Q_c_k * t_norm_sq;
             if (k == N_) {
-                s_diag += 2.0 * Q_term_s;
+                s_diag += 2.0 * Q_term_s_eff;
             }
-            if (Q_s_anchor > 0.0) {
-                s_diag += 2.0 * Q_s_anchor * stage_scale;
+            if (Q_s_anchor_eff > 0.0) {
+                s_diag += 2.0 * Q_s_anchor_eff * stage_scale;
             }
             P_data_[path_s_diag_indices_[k]] = s_diag;
         }
@@ -1490,18 +1583,18 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         if (k == N_) {
             // Terminal penalties: position and s to endpoint
             for (int i = 0; i < 3; ++i) {
-                q_(x_idx + i) += -2.0 * Q_term_pos * p_end(i);
+                q_(x_idx + i) += -2.0 * Q_term_pos_eff * p_end(i);
             }
-            q_(x_idx + 16) += -2.0 * Q_term_s * path_total_length_;
+            q_(x_idx + 16) += -2.0 * Q_term_s_eff * path_total_length_;
         }
-        if (Q_s_anchor > 0.0) {
-            q_(x_idx + 16) += -2.0 * Q_s_anchor * stage_scale * s_bar;
+        if (Q_s_anchor_eff > 0.0) {
+            q_(x_idx + 16) += -2.0 * Q_s_anchor_eff * stage_scale * s_bar;
         }
 
         // 2c. Attitude tracking:
         // Default mode: +X follows path tangent.
         // Scan mode: keep +X forward, +Y object-facing, and +Z aligned to scan axis.
-        bool build_attitude_ref = (Q_att > 0.0) || scan_attitude_enabled_;
+        bool build_attitude_ref = (Q_att_eff > 0.0) || scan_attitude_enabled_;
         if (build_attitude_ref) {
             Eigen::Vector4d q_ref = build_reference_quaternion(p_ref, t_ref, q_curr);
             if (has_q_prev_ref && q_prev_ref.dot(q_ref) < 0.0) {
@@ -1518,9 +1611,9 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                 scan_q_ref_valid_ = true;
             }
 
-            if (Q_att > 0.0) {
+            if (Q_att_eff > 0.0) {
                 for (int i = 0; i < 4; ++i) {
-                    q_(x_idx + 3 + i) = -2.0 * Q_att * q_ref(i);
+                    q_(x_idx + 3 + i) = -2.0 * Q_att_eff * stage_scale * q_ref(i);
                 }
             }
         }
@@ -1568,12 +1661,18 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                 double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
                 v_ref_k = v_ref_k * scale;
             }
+            if (static_cast<size_t>(k) < path_vs_diag_indices_.size()) {
+                int vs_diag_idx = path_vs_diag_indices_[static_cast<size_t>(k)];
+                if (vs_diag_idx >= 0) {
+                    P_data_[vs_diag_idx] = 2.0 * Q_p_eff;
+                }
+            }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
             if (auto_progress) {
-                double progress_scale = speed_scale * end_scale;
-                q_(u_idx) = -2.0 * progress_reward * progress_scale;
+                double progress_drive_scale = speed_scale * end_scale;
+                q_(u_idx) = -2.0 * progress_reward_eff * progress_drive_scale;
             } else {
-                q_(u_idx) = -2.0 * Q_p * v_ref_k;
+                q_(u_idx) = -2.0 * Q_p_eff * v_ref_k;
             }
 
             // Fuel bias: linear penalty on thruster usage to promote coasting.

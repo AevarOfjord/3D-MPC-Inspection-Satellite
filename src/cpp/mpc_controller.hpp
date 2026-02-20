@@ -74,6 +74,10 @@ struct MPCParams {
     double Q_terminal_s = 0.0;         ///< Terminal progress weight (0 = auto)
     double progress_taper_distance = 0.0; ///< Distance to taper v_ref near end (0 = auto)
     double progress_slowdown_distance = 0.0; ///< Slow down v_ref if contour error is high (0 = auto)
+    double tracking_recovery_error_m = 0.12; ///< Path error threshold before recovery mode engages [m]
+    double tracking_recovery_contour_boost = 2.2; ///< Extra contour/lag emphasis in recovery mode
+    double tracking_recovery_progress_scale = 0.65; ///< Progress weight scale in recovery mode
+    double tracking_recovery_attitude_scale = 0.5; ///< Attitude weight scale in recovery mode
 };
 
 /**
@@ -274,6 +278,10 @@ private:
     // Map [step][0..5] -> Index in P_data_ for velocity block upper triangle
     // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
     std::vector<std::vector<int>> path_vel_P_indices_;
+    // Map [step][0..3] -> Index in P_data_ for quaternion diagonals (qw,qx,qy,qz)
+    std::vector<std::vector<int>> path_att_diag_indices_;
+    // Map [step] -> Index in P_data_ for progress control (v_s, v_s) diagonal entry
+    std::vector<int> path_vs_diag_indices_;
     std::vector<c_int> path_P_update_indices_;
     std::vector<c_float> path_P_update_values_;
 

@@ -474,6 +474,46 @@ class MPCParams(BaseModel):
             "Auto-derive velocity state bounds when explicit limits are unset"
         ),
     )
+    tracking_recovery_error_m: float = Field(
+        constants.Constants.TRACKING_RECOVERY_ERROR_M,
+        gt=0.0,
+        le=10.0,
+        description="Path-error threshold that enables tracking-recovery scaling [m]",
+    )
+    tracking_recovery_contour_boost: float = Field(
+        constants.Constants.TRACKING_RECOVERY_CONTOUR_BOOST,
+        ge=0.0,
+        le=100.0,
+        description="Contour/lag weight multiplier boost during recovery mode",
+    )
+    tracking_recovery_progress_scale: float = Field(
+        constants.Constants.TRACKING_RECOVERY_PROGRESS_SCALE,
+        gt=0.0,
+        le=1.0,
+        description="Progress weight scale applied during recovery mode",
+    )
+    tracking_recovery_attitude_scale: float = Field(
+        constants.Constants.TRACKING_RECOVERY_ATTITUDE_SCALE,
+        gt=0.0,
+        le=1.0,
+        description="Attitude weight scale applied during recovery mode",
+    )
+    enable_thruster_hysteresis: bool = Field(
+        constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
+        description="Enable output hysteresis to reduce thruster chatter/switching",
+    )
+    thruster_hysteresis_on: float = Field(
+        constants.Constants.THRUSTER_HYSTERESIS_ON,
+        ge=0.0,
+        le=1.0,
+        description="Thruster activation threshold when hysteresis is enabled",
+    )
+    thruster_hysteresis_off: float = Field(
+        constants.Constants.THRUSTER_HYSTERESIS_OFF,
+        ge=0.0,
+        le=1.0,
+        description="Thruster deactivation threshold when hysteresis is enabled",
+    )
 
     BASIC_FIELDS: ClassVar[tuple[str, ...]] = (
         "prediction_horizon",
@@ -512,6 +552,13 @@ class MPCParams(BaseModel):
         "enable_delta_u_coupling",
         "enable_gyro_jacobian",
         "verbose_mpc",
+        "tracking_recovery_error_m",
+        "tracking_recovery_contour_boost",
+        "tracking_recovery_progress_scale",
+        "tracking_recovery_attitude_scale",
+        "enable_thruster_hysteresis",
+        "thruster_hysteresis_on",
+        "thruster_hysteresis_off",
     )
     EXPERT_FIELDS: ClassVar[tuple[str, ...]] = (
         "thrust_l1_weight",
@@ -580,6 +627,15 @@ class MPCParams(BaseModel):
             raise ValueError(
                 "All Q weights are zero but R_thrust is nonzero - "
                 "controller will only minimize thrust, not track references"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_hysteresis_thresholds(self) -> "MPCParams":
+        """Ensure hysteresis thresholds are ordered correctly."""
+        if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
+            raise ValueError(
+                "thruster_hysteresis_on must be greater than thruster_hysteresis_off"
             )
         return self
 

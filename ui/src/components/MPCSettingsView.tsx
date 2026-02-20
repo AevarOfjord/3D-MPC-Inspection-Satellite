@@ -45,6 +45,13 @@ interface MpcSettings {
   path_speed_max: number;
   progress_taper_distance: number;
   progress_slowdown_distance: number;
+  tracking_recovery_error_m: number;
+  tracking_recovery_contour_boost: number;
+  tracking_recovery_progress_scale: number;
+  tracking_recovery_attitude_scale: number;
+  enable_thruster_hysteresis: boolean;
+  thruster_hysteresis_on: number;
+  thruster_hysteresis_off: number;
   max_linear_velocity: number;
   max_angular_velocity: number;
   enable_delta_u_coupling: boolean;
@@ -63,6 +70,8 @@ interface SimulationSettings {
 interface SettingsConfig {
   mpc: MpcSettings;
   simulation: SimulationSettings;
+  physics?: Record<string, unknown>;
+  input_file_path?: string | null;
 }
 
 interface PresetPayload {
@@ -138,25 +147,25 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   prediction_horizon: 50,
   control_horizon: 40,
   dt: 0.05,
-  solver_time_limit: 0.025,
+  solver_time_limit: 0.035,
   solver_type: 'OSQP',
-  Q_contour: 100000.0,
-  Q_progress: 80.0,
+  Q_contour: 2400.0,
+  Q_progress: 70.0,
   progress_reward: 0.0,
   Q_lag: 0.0,
   Q_lag_default: 4000.0,
   Q_velocity_align: 120.0,
   Q_s_anchor: 500.0,
-  Q_smooth: 15.0,
-  Q_attitude: 5000.0,
-  Q_axis_align: 2500.0,
+  Q_smooth: 20.0,
+  Q_attitude: 3500.0,
+  Q_axis_align: 3000.0,
   Q_terminal_pos: 0.0,
   Q_terminal_s: 0.0,
   q_angular_velocity: 1200.0,
   r_thrust: 0.02,
   r_rw_torque: 0.003,
-  thrust_l1_weight: 0.0,
-  thrust_pair_weight: 0.5,
+  thrust_l1_weight: 0.02,
+  thrust_pair_weight: 0.8,
   coast_pos_tolerance: 0.0,
   coast_vel_tolerance: 0.0,
   coast_min_speed: 0.0,
@@ -169,6 +178,13 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   path_speed_max: 0.08,
   progress_taper_distance: 0.0,
   progress_slowdown_distance: 0.0,
+  tracking_recovery_error_m: 0.12,
+  tracking_recovery_contour_boost: 2.2,
+  tracking_recovery_progress_scale: 0.65,
+  tracking_recovery_attitude_scale: 0.5,
+  enable_thruster_hysteresis: true,
+  thruster_hysteresis_on: 0.015,
+  thruster_hysteresis_off: 0.007,
   max_linear_velocity: 0.0,
   max_angular_velocity: 0.0,
   enable_delta_u_coupling: false,
@@ -461,8 +477,16 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
   const root = asRecord(raw);
   if (!root) return null;
 
-  const mpc = asRecord(root.mpc);
-  const simulation = asRecord(root.simulation);
+  const appConfig =
+    root.schema_version === 'app_config_v2' ? asRecord(root.app_config) : null;
+  const source = appConfig ?? root;
+  const mpc = asRecord(source.mpc);
+  const simulation = asRecord(source.simulation);
+  const physics = asRecord(source.physics);
+  const inputFilePath =
+    typeof source.input_file_path === 'string' || source.input_file_path === null
+      ? source.input_file_path
+      : undefined;
 
   if (mpc && simulation) {
     const normalizedMpc = {
@@ -479,6 +503,8 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
     return {
       mpc: normalizedMpc,
       simulation: normalizedSimulation,
+      physics: physics ?? undefined,
+      input_file_path: inputFilePath,
     };
   }
 
@@ -534,6 +560,28 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
   return {
     mpc: normalizedMpc,
     simulation: normalizedSimulation,
+    physics: undefined,
+    input_file_path: undefined,
+  };
+}
+
+function buildV2Envelope(config: SettingsConfig): Record<string, unknown> {
+  const appConfig: Record<string, unknown> = {
+    mpc: config.mpc,
+    simulation: {
+      ...config.simulation,
+      control_dt: config.mpc.dt,
+    },
+  };
+  if (config.physics && typeof config.physics === 'object') {
+    appConfig.physics = config.physics;
+  }
+  if ('input_file_path' in config) {
+    appConfig.input_file_path = config.input_file_path ?? null;
+  }
+  return {
+    schema_version: 'app_config_v2',
+    app_config: appConfig,
   };
 }
 
@@ -603,6 +651,24 @@ function validateConfig(config: SettingsConfig): string[] {
   if (!isNonNegative(mpc.obstacle_margin)) issues.push('Obstacle margin must be >= 0.');
   if (mpc.Q_lag_default < -1) issues.push('Q_lag_default must be >= -1.');
   if (mpc.Q_s_anchor < -1) issues.push('Q_s_anchor must be >= -1.');
+  if (!(mpc.tracking_recovery_error_m > 0)) {
+    issues.push('Tracking recovery error threshold must be > 0.');
+  }
+  if (mpc.tracking_recovery_contour_boost < 0) {
+    issues.push('Tracking recovery contour boost must be >= 0.');
+  }
+  if (mpc.tracking_recovery_progress_scale <= 0 || mpc.tracking_recovery_progress_scale > 1) {
+    issues.push('Tracking recovery progress scale must be in (0, 1].');
+  }
+  if (mpc.tracking_recovery_attitude_scale <= 0 || mpc.tracking_recovery_attitude_scale > 1) {
+    issues.push('Tracking recovery attitude scale must be in (0, 1].');
+  }
+  if (mpc.thruster_hysteresis_off < 0 || mpc.thruster_hysteresis_on < 0) {
+    issues.push('Thruster hysteresis thresholds must be >= 0.');
+  }
+  if (mpc.thruster_hysteresis_on <= mpc.thruster_hysteresis_off) {
+    issues.push('Thruster hysteresis on-threshold must be greater than off-threshold.');
+  }
 
   const nonNegativeWeights: Array<[string, number]> = [
     ['Q_contour', mpc.Q_contour],
@@ -970,13 +1036,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     setError(null);
     setSuccessMsg(null);
     try {
-      const overrides = {
-        mpc: config.mpc,
-        simulation: {
-          ...config.simulation,
-          control_dt: config.mpc.dt,
-        },
-      };
+      const overrides = buildV2Envelope(config);
 
       const res = await fetch(`${RUNNER_API_URL}/config`, {
         method: 'POST',
@@ -1051,7 +1111,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
-          config: deepCloneConfig(config),
+          config: buildV2Envelope(deepCloneConfig(config)),
         }),
       });
       if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save preset'));
