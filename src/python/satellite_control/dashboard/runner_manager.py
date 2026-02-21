@@ -771,9 +771,8 @@ class RunnerManager:
                 f">>> Process started with PID: {self.process.pid}\n\n"
             )
 
-            # Background tasks for reading streams
-            asyncio.create_task(self._monitor_stream(self.process.stdout, "STDOUT"))
-            asyncio.create_task(self._monitor_stream(self.process.stderr, "STDERR"))
+            asyncio.create_task(self._monitor_stream(self.process.stdout))
+            asyncio.create_task(self._monitor_stream(self.process.stderr))
 
             # Background task to wait for completion
             asyncio.create_task(self._wait_for_completion())

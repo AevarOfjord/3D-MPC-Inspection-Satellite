@@ -72,7 +72,7 @@ def get_sim_manager() -> SimulationManager:
 
 # --- Lifespan (replaces deprecated on_event) ---
 @asynccontextmanager
-async def lifespan(application: FastAPI):
+async def lifespan(_: FastAPI):
     logger.info("Dashboard startup: Initializing services...")
     await sim_manager.start()
     yield
