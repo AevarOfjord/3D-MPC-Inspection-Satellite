@@ -9,8 +9,7 @@ from satellite_control.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 logger.info("System initialized")
-```
-
+```text
 ## Logging Levels
 
 The system uses standard Python logging levels:
@@ -32,8 +31,7 @@ logger = setup_logging(__name__)
 logger.info("Starting simulation")
 logger.warning("High solve time detected")
 logger.error("MPC solver failed")
-```
-
+```text
 ### Structured Logging
 
 For machine-readable logs (JSON format):
@@ -50,9 +48,9 @@ logger.info(
         "objective_value": 0.123
     }
 )
-```
-
+```text
 Output (JSON):
+
 ```json
 {
   "timestamp": "2026-01-07 10:30:45",
@@ -64,8 +62,7 @@ Output (JSON):
   "iterations": 15,
   "objective_value": 0.123
 }
-```
-
+```text
 ## Per-Module Log Levels
 
 Configure different log levels for different modules:
@@ -78,8 +75,7 @@ configure_module_log_levels({
     "satellite_control.core.mpc_controller": logging.DEBUG,
     "satellite_control.core.simulation": logging.INFO,
 })
-```
-
+```text
 ## Temporary Log Level Changes
 
 Use context manager for temporary debug logging:
@@ -93,8 +89,7 @@ with temporary_log_level("satellite_control.control.mpc_controller", logging.DEB
     result = mpc_controller.solve(state, target)
     # Debug messages will be shown here
 # Original log level restored
-```
-
+```text
 ## Log File Configuration
 
 ### Console and File Logging
@@ -105,8 +100,7 @@ logger = setup_logging(
     log_file="Data/simulation.log",
     console=True  # Also log to console
 )
-```
-
+```text
 ### File Only (Headless Mode)
 
 ```python
@@ -115,8 +109,7 @@ logger = setup_logging(
     log_file="Data/simulation.log",
     console=False  # Only log to file
 )
-```
-
+```text
 ### Simple Format (CSV-like)
 
 ```python
@@ -125,8 +118,7 @@ logger = setup_logging(
     log_file="Data/simulation.csv",
     simple_format=True  # Timestamp, message only
 )
-```
-
+```text
 ## Best Practices
 
 ### 1. Use Appropriate Log Levels
@@ -138,8 +130,7 @@ logger.info("MPC solve completed")  # Normal operation
 logger.warning(f"Solve time {time:.3f}s exceeds threshold")  # Potential issue
 logger.error(f"MPC solve failed: {error}")  # Error occurred
 logger.critical("Safety violation detected!")  # Critical failure
-```
-
+```text
 ### 2. Include Context
 
 ```python
@@ -151,8 +142,7 @@ logger.warning(
 
 # Less useful - no context
 logger.warning("MPC solve too slow")
-```
-
+```text
 ### 3. Use Structured Logging for Analysis
 
 ```python
@@ -167,8 +157,7 @@ logger.info(
         "active_thrusters": active_count
     }
 )
-```
-
+```text
 ### 4. Don't Log Sensitive Data
 
 ```python
@@ -177,8 +166,7 @@ logger.info(f"API key: {api_key}")
 
 # Good
 logger.info("API authentication successful")
-```
-
+```text
 ## Integration with Error Handling
 
 The error handling system automatically logs errors:
@@ -190,8 +178,7 @@ from satellite_control.core.error_handling import with_error_context
 def solve_mpc(self, state, target):
     # Errors are automatically logged with context
     return self.controller.solve(state, target)
-```
-
+```text
 ## Performance Considerations
 
 - **File logging**: Use buffered writes for high-frequency logging
@@ -203,16 +190,19 @@ def solve_mpc(self, state, target):
 ### Logs Not Appearing
 
 1. Check log level:
+
    ```python
    logger.setLevel(logging.DEBUG)
    ```
 
 2. Verify handlers:
+
    ```python
    print(logger.handlers)  # Should show handlers
    ```
 
 3. Check file permissions:
+
    ```python
    # Ensure log directory is writable
    Path("Data").mkdir(exist_ok=True)
@@ -226,8 +216,7 @@ Use per-module log levels to reduce noise:
 configure_module_log_levels({
     "noisy_module": logging.WARNING,  # Only warnings and errors
 })
-```
-
+```text
 ### Log File Too Large
 
 - Use log rotation (implement with `RotatingFileHandler`)
@@ -251,8 +240,7 @@ logger.info("Starting simulation")
 logger.info(f"Configuration: {config}")
 logger.warning("High solve time detected")
 logger.error("Simulation failed", exc_info=True)
-```
-
+```text
 ### Debug Session
 
 ```python
@@ -263,8 +251,7 @@ import logging
 with temporary_log_level("satellite_control.control.mpc_controller", logging.DEBUG):
     # Debug messages will appear
     result = mpc_controller.solve(state, target)
-```
-
+```text
 ### Structured Logging for Analysis
 
 ```python
@@ -281,4 +268,4 @@ logger.info(
         "error": error
     }
 )
-```
+```text

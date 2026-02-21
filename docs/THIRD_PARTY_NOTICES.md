@@ -58,8 +58,7 @@ Use this command to inspect exact resolved license entries locally:
 ```bash
 cd ui
 npx license-checker --summary
-```
-
+```text
 ## How To Refresh This File
 
 After dependency changes:

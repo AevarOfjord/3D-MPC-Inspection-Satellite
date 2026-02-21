@@ -91,8 +91,7 @@ Canonical API/runtime config envelope:
     "input_file_path": null
   }
 }
-```
-
+```text
 Current release behavior:
 
 - API dual-reads legacy/v1/v2 payloads for compatibility.

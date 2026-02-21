@@ -30,8 +30,7 @@ at different rates for optimal performance.
 make sim
 # Or
 .venv311/bin/python scripts/run_simulation.py run --auto
-```
-
+```text
 ---
 
 ## Mission Flow
@@ -91,8 +90,7 @@ flowchart TD
     UpdateVis --> Loop
     Loop -- No --> SaveData["Save Data & Generate Plots"]
     SaveData --> Finish([End])
-```
-
+```text
 ### Component Interactions
 
 **1. Path Reference** (`mission_state.py` + `mpc_controller.py`)
@@ -109,7 +107,7 @@ MPCC derives the reference state from the configured path:
 - `target_state` - Reference state aligned to path tangent
 - `path_s` / `path_v_s` - Progress metrics used for logging/visualization
 
-**2. Control Cycle (MPC)**
+*### 2. Control Cycle (MPC)*
 
 Runs at **16.67 Hz** (every 60ms):
 
@@ -195,15 +193,14 @@ The simulation uses a **two-rate loop structure** for optimal performance:
 
 ### Why Two Rates?
 
-```
+```text
 Physics: |-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----| (200 Hz)
 Control: |---------------------------|---------------------------| (16.67 Hz)
          ^                           ^
          MPC solve here             MPC solve here
 
 Between MPC solves, physics continues with previous commands
-```
-
+```text
 **Benefits:**
 
 - Physics captures fast dynamics
@@ -219,8 +216,7 @@ All timing parameters in `src/python/satellite_control/config/timing.py`:
 ```python
 CONTROL_DT = 0.06      # 16.67 Hz control loop
 SIMULATION_DT = 0.005  # 200 Hz physics integration
-```
-
+```text
 **Recommendation:** Keep physics rate ≥10× control rate for stability.
 
 ---
@@ -241,8 +237,7 @@ Quick launch without interactive menu:
 # Headless mode (no animation)
 .venv311/bin/python scripts/run_simulation.py run --no-anim
 
-```
-
+```text
 ### Timing Parameters
 
 **Waypoint Mission:**
@@ -318,8 +313,7 @@ All constants modifiable in `src/python/satellite_control/config/timing.py`.
 
 ```bash
 .venv311/bin/python scripts/run_simulation.py run
-```
-
+```text
 **Workflow:**
 
 1. Launch the simulation from terminal
@@ -330,7 +324,7 @@ All constants modifiable in `src/python/satellite_control/config/timing.py`.
 
 ### Execution Flow Example
 
-```
+```text
 t=0.000s: MPC Solve
   ├─ Read state: x=0.0, y=0.0, θ=0.0
   ├─ Target: x=1.0, y=0.0, θ=0.0
@@ -343,19 +337,17 @@ t=0.060s: MPC Solve (new state after 12 physics steps)
   ├─ Read state: x=0.012, y=0.0, θ=0.002
   ├─ Solve QP in 1.3ms
   └─ Output: u = [0.0, 0.0, 0.0, 0.0, 0.79, 0.74, 0.0, 0.0]
-```
-
+```text
 ### Output Location
 
-```
+```text
 Data/
 └── Simulation/
   └── DD-MM-YYYY_HH-MM-SS/
     ├── physics_data.csv
     ├── control_data.csv
     └── Simulation_3D_Render.mp4
-```
-
+```text
 ---
 
 ## Troubleshooting
@@ -395,8 +387,7 @@ Change loop rates in `src/python/satellite_control/config/timing.py`:
 ```python
 CONTROL_DT = 0.06      # Control frequency
 SIMULATION_DT = 0.005  # Physics frequency
-```
-
+```text
 ---
 
 ## Summary
@@ -415,5 +406,6 @@ This design mirrors real embedded control systems where controllers run at lower
 **Next Steps:**
 
 -- See [README.md](../README.md) for getting started
+
 - See [TESTING.md](TESTING.md) for validation and testing
 - See [VISUALIZATION.md](VISUALIZATION.md) for understanding output

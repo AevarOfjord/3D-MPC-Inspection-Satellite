@@ -25,7 +25,7 @@ This guide provides technical details for developers and engineers interested in
 
 ### Setup
 
-```bash
+````bash
 # Clone the repository (or your fork)
 git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel.git
 cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
@@ -36,8 +36,7 @@ source .venv311/bin/activate  # On Windows: .venv311\Scripts\activate
 
 # Install all dependencies
 pip install -r requirements.txt
-```
-
+```text
 ### Verify Everything Works
 
 ```bash
@@ -50,8 +49,7 @@ pip install -r requirements.txt
 # Check code quality
 python -m ruff check src tests
 python -m black --check src tests
-```
-
+```text
 ---
 
 ## Project Structure
@@ -94,7 +92,7 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
            ValueError: If x is negative
        """
        return x + y
-   ```
+````
 
 ---
 
@@ -104,14 +102,13 @@ For a complete project structure and design overview, see [ARCHITECTURE.md](ARCH
 
 We use `black` for formatting and `ruff` for linting/import checks.
 
-```bash
+````bash
 # Auto-format code
 black src/ tests/
 
 # Check style and imports
 ruff check src tests
-```
-
+```text
 ### Style Rules
 
 - **Line length**: 88 characters (configured in `pyproject.toml`)
@@ -125,8 +122,8 @@ ruff check src tests
 - **Imports**: Group in standard order (checked by `ruff`):
 
   1. Standard library (`import os`, `import sys`)
-    2. Third-party (`import numpy`, `import osqp`)
-    3. Local (`from satellite_control.config.simulation_config import SimulationConfig`)
+  2. Third-party (`import numpy`, `import osqp`)
+  3. Local (`from satellite_control.config.simulation_config import SimulationConfig`)
 
 - **Functions**: Keep < 50 lines when possible
 
@@ -143,7 +140,7 @@ ruff check src tests
   # Avoid
   # Linearize dynamics
   A_lin = self._linearize_dynamics(x_current)
-  ```
+````
 
 ---
 
@@ -170,7 +167,7 @@ For complete column definitions, see [VISUALIZATION.md](VISUALIZATION.md).
 
 The `DataLogger` class in `utils/data_logger.py` handles buffered CSV writing:
 
-```python
+````python
 from satellite_control.utils.data_logger import DataLogger
 
 # Create logger
@@ -199,8 +196,7 @@ logger.log_control_step({
 
 # Flush and save when done
 logger.close()
-```
-
+```text
 **Important**: The logger uses buffered writing for performance. Data is periodically flushed to disk, not immediately.
 
 ### Modifying CSV Format
@@ -240,8 +236,7 @@ To change the CSV format:
 
 # Run fast tests (skip slow E2E)
 .venv311/bin/python -m pytest -m "not slow"
-```
-
+```text
 ### Recommended Validation Commands
 
 ```bash
@@ -250,8 +245,7 @@ To change the CSV format:
 
 # Full suite
 .venv311/bin/python -m pytest
-```
-
+```text
 ### Writing Tests
 
 Create tests following existing patterns:
@@ -285,8 +279,7 @@ class TestMyFeature:
     def test_with_fixture(self, sample_config):
         """Test using fixture."""
         assert sample_config.physics.mass > 0
-```
-
+```text
 ### Testing Workflow
 
 ```bash
@@ -303,8 +296,7 @@ pytest
 # 4. Test in simulation
 .venv311/bin/python scripts/run_simulation.py run
 # Select mission and verify behavior
-```
-
+```text
 ---
 
 ## Adding New Features
@@ -345,8 +337,7 @@ def configure_figure8_mission(
         'center': center,
     }
     return mission
-```
-
+```text
 #### Step 2: Attach Path to MissionState
 
 Attach the generated path to the mission state so MPCC can follow it:
@@ -360,8 +351,7 @@ mission_state = simulation_config.mission_state
 path = [(float(px), float(py), 0.0) for px, py in zip(x, y)]
 mission_state.path_waypoints = path
 mission_state.path_speed = speed
-```
-
+```text
 #### Step 3: Wire into Mission Loading
 
 Integrate the mission into the saved-mission flow used by terminal simulation:
@@ -371,8 +361,7 @@ from satellite_control.mission.repository import list_mission_entries
 
 entries = list_mission_entries(source_priority=("unified", "dev"))
 # Add your mission JSON and select it when running `.venv311/bin/python scripts/run_simulation.py run`
-```
-
+```text
 #### Step 4: Add Configuration
 
 If needed, add parameters to `src/python/satellite_control/config/mission_state.py`:
@@ -381,8 +370,7 @@ If needed, add parameters to `src/python/satellite_control/config/mission_state.
 # Figure-8 mission defaults
 FIGURE8_DEFAULT_SIZE = 2.0  # meters
 FIGURE8_DEFAULT_SPEED = 0.5  # m/s
-```
-
+```text
 #### Step 5: Add Visualization Support
 
 Use the existing auto-generated plots/video pipeline (no mission-specific overlay required).
@@ -403,8 +391,7 @@ def test_figure8_mission_generation():
     assert mission['type'] == 'figure8'
     assert len(mission['path_points']) > 0
     assert mission['target_speed'] == 0.5
-```
-
+```text
 #### Step 7: Document
 
 Update [README.md](../README.md) with new mission type description.
@@ -419,8 +406,7 @@ Update [README.md](../README.md) with new mission type description.
 .venv311/bin/python scripts/run_simulation.py run
 # Select: Figure-8 Navigation
 # Verify trajectory follows expected path
-```
-
+```text
 ---
 
 ## Modifying Parameters
@@ -429,7 +415,7 @@ Update [README.md](../README.md) with new mission type description.
 
 All parameters are in `src/python/satellite_control/config/`:
 
-```
+```text
 config/
 ├── models.py             # Pydantic validation models
 ├── simulation_config.py  # Top-level configuration wrapper
@@ -441,8 +427,7 @@ config/
 ├── presets.py            # FAST/BALANCED/STABLE/PRECISION presets
 ├── thruster_config.py    # Thruster configuration
 └── reaction_wheel_config.py # Reaction wheel configuration
-```
-
+```text
 ### Guidelines
 
 1. **Never hardcode values** in implementation files
@@ -455,7 +440,7 @@ config/
 
    # Bad
    mass = 12.5  # Hardcoded!
-   ```
+````
 
 2. **Group related parameters**
 
@@ -524,14 +509,13 @@ config/
 
 ### Configuration Validation
 
-```bash
+````bash
 Configuration is validated at simulation startup. Use a short run to sanity check:
 
 ```bash
 .venv311/bin/python scripts/run_simulation.py run --auto --no-anim --duration 2
-```
-```
-
+```text
+```text
 ---
 
 ## Debugging
@@ -555,8 +539,7 @@ logger.debug(f"Current state: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
 logger.info("Starting MPC optimization")
 logger.warning(f"Solve time {solve_time:.3f}s exceeds limit {limit:.3f}s")
 logger.error(f"MPC solve failed: {error_msg}")
-```
-
+```text
 ### Interactive Debugging
 
 ```python
@@ -574,8 +557,7 @@ breakpoint()
 # l: list surrounding code
 # h: help
 # q: quit debugger
-```
-
+```text
 ### Testing with Debug Output
 
 ```bash
@@ -584,8 +566,7 @@ breakpoint()
 
 # -v: verbose test names
 # -s: show print statements and logs
-```
-
+```text
 ### Live Simulation Debugging
 
 The rich terminal dashboard shows real-time telemetry. To add custom debug info:
@@ -596,8 +577,7 @@ from rich.panel import Panel
 
 debug_text = f"Custom Debug Info:\n{my_variable}"
 console.print(Panel(debug_text, title="Debug"))
-```
-
+```text
 ---
 
 ## Git Workflow
@@ -634,20 +614,18 @@ Detailed explanation of changes:
 
 # Push to your fork
 git push -u origin feature/my-enhancement
-```
-
+```text
 ### Commit Message Guidelines
 
 Follow conventional commits format:
 
-```
+```text
 <type>: <brief description>
 
 <optional detailed explanation>
 
 <optional footer>
-```
-
+```text
 Types:
 
 - `feat`: New feature
@@ -661,7 +639,7 @@ Types:
 
 Examples:
 
-```
+```text
 feat: add figure-8 mission type
 
 Implements a new mission type that follows a figure-8 trajectory.
@@ -676,8 +654,7 @@ refactor: extract thruster management into separate module
 
 Moves thruster valve delay and PWM logic from simulation.py
 into new thruster_manager.py for better separation of concerns.
-```
-
+```text
 ### Before Committing
 
 ```bash
@@ -693,8 +670,7 @@ ruff check src/ tests/
 # If all pass, commit
 git add .
 git commit -m "your message"
-```
-
+```text
 ### Pre-commit Hooks (Optional)
 
 Install pre-commit hooks to automate checks:
@@ -707,8 +683,7 @@ pip install pre-commit
 pre-commit install
 
 # Now checks run automatically before each commit
-```
-
+```text
 The project includes a `.pre-commit-config.yaml` that runs:
 
 - `black` (formatting)
@@ -775,9 +750,8 @@ class TestMyClass:
         """Test with invalid input."""
         with pytest.raises(ValueError, match="must be positive"):
             instance.process(-1.0)
-```
-
-### Documentation
+```text
+### Documentation & Style
 
 When making significant changes:
 
@@ -819,8 +793,7 @@ If you discover bugs in the original project:
 # Run without animation (faster)
 .venv311/bin/python scripts/run_simulation.py run --no-anim
 
-```
-
+```text
 ### Generating Visualizations Only
 
 If you have existing simulation data:
@@ -833,8 +806,7 @@ viz = UnifiedVisualizationGenerator(
     data_directory="Data/Simulation",
     interactive=True  # Let user select which run
 )
-```
-
+```text
 ### Comparing Different Configurations
 
 ```bash
@@ -850,8 +822,7 @@ viz = UnifiedVisualizationGenerator(
 # Results saved to Data/Simulation/<timestamp-2>/
 
 # Compare results by examining mission_summary.txt in each folder
-```
-
+```text
 ---
 
 ## Troubleshooting Development
@@ -870,8 +841,7 @@ pip install -e .
 
 # Solution 3: Add to PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:/path/to/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel"
-```
-
+```text
 ### Test Discovery Issues
 
 ```bash
@@ -884,15 +854,13 @@ touch tests/__init__.py
 
 # Debug test discovery
 .venv311/bin/python -m pytest --collect-only -v
-```
-
+```text
 ### Linting Issues
 
 ```bash
 # Re-run ruff to see detailed output
 ruff check src/ tests/
-```
-
+```text
 ### C++ Extension Build Issues
 
 ```bash
@@ -901,8 +869,7 @@ pip install -e .
 
 # Verify installation
 python -c "from satellite_control.cpp import _cpp_sim; print('ok')"
-```
-
+```text
 ### OSQP Solver Issues
 
 ```bash
@@ -912,29 +879,28 @@ pip install osqp
 
 # Verify installation
 python -c "import osqp; print(osqp.__version__)"
-```
-
+```text
 ---
 
 ## Resources
 
-### Documentation
+### Documentation & Style
 
-- **OSQP**: https://osqp.org/docs/
-- **NumPy**: https://numpy.org/doc/
-- **Rich**: https://rich.readthedocs.io/ (for terminal UI)
-- **Questionary**: https://questionary.readthedocs.io/ (for interactive menus)
+- **OSQP**: <https://osqp.org/docs/>
+- **NumPy**: <https://numpy.org/doc/>
+- **Rich**: <https://rich.readthedocs.io/> (for terminal UI)
+- **Questionary**: <https://questionary.readthedocs.io/> (for interactive menus)
 
 ### Python Best Practices
 
-- **PEP 8**: https://www.python.org/dev/peps/pep-0008/
-- **Google Python Style Guide**: https://google.github.io/styleguide/pyguide.html
-- **Type Hints**: https://docs.python.org/3/library/typing.html
-- **Pytest Documentation**: https://docs.pytest.org/
+- **PEP 8**: <https://www.python.org/dev/peps/pep-0008/>
+- **Google Python Style Guide**: <https://google.github.io/styleguide/pyguide.html>
+- **Type Hints**: <https://docs.python.org/3/library/typing.html>
+- **Pytest Documentation**: <https://docs.pytest.org/>
 
 ### Control Theory
 
-- **MPC Introduction**: https://www.mpc.berkeley.edu/mpc-course-material
+- **MPC Introduction**: <https://www.mpc.berkeley.edu/mpc-course-material>
 - **Linearization**: Understanding system linearization for MPC
 - **Quadratic Programming**: OSQP is a QP solver
 
@@ -967,3 +933,4 @@ If you're stuck:
    - Your environment (OS, Python version, etc.)
 
 Happy developing! 🚀
+````

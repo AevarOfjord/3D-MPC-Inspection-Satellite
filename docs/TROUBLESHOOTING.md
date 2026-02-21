@@ -37,8 +37,7 @@ pyenv local 3.11.0
 # Using conda
 conda create -n satellite python=3.11
 conda activate satellite
-```
-
+```text
 ### Missing Dependencies
 
 **Problem**: `ModuleNotFoundError` for osqp, numpy, scipy, etc.
@@ -51,8 +50,7 @@ pip install --upgrade -r requirements.txt
 
 # If specific package fails, install individually
 pip install osqp numpy scipy matplotlib rich questionary
-```
-
+```text
 ### C++ Extension Build Issues
 
 **Problem**: Errors building or importing the C++ extension (`_cpp_sim`)
@@ -65,8 +63,7 @@ pip install -e .
 
 # Verify installation
 python -c "from satellite_control.cpp import _cpp_sim; print('ok')"
-```
-
+```text
 ### FFmpeg Not Found
 
 **Problem**: "ffmpeg not found" when generating animation videos
@@ -75,26 +72,23 @@ python -c "from satellite_control.cpp import _cpp_sim; print('ok')"
 
 ```bash
 brew install ffmpeg
-```
-
+```text
 **Linux (Ubuntu/Debian)**:
 
 ```bash
 sudo apt update
 sudo apt install ffmpeg
-```
-
+```text
 **Windows**:
 
-1. Download from: https://ffmpeg.org/download.html
+1. Download from: <https://ffmpeg.org/download.html>
 2. Extract and add `bin` folder to system PATH
 
 **Verify installation**:
 
 ```bash
 ffmpeg -version
-```
-
+```text
 ### Virtual Environment Issues
 
 **Problem**: Dependencies installed but imports still fail
@@ -112,8 +106,7 @@ pip install -r requirements.txt
 
 # Verify you're using venv Python
 which python  # Should show .venv311/bin/python
-```
-
+```text
 ---
 
 ## Runtime Errors
@@ -139,8 +132,7 @@ eps_rel = 1e-3  # Looser (was 1e-4)
 
 # Option 3: Increase time limit (last resort)
 MPC_SOLVER_TIME_LIMIT = 0.08  # Increase from 0.05s
-```
-
+```text
 **Check solve times**:
 
 ```bash
@@ -151,8 +143,7 @@ df = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 print(f'Avg: {df[\"mpc_solve_time\"].mean()*1000:.2f}ms')
 print(f'Max: {df[\"mpc_solve_time\"].max()*1000:.2f}ms')
 "
-```
-
+```text
 ### Simulation Unstable or Oscillating
 
 **Problem**: Satellite spinning, overshooting, or oscillating around target
@@ -162,8 +153,7 @@ print(f'Max: {df[\"mpc_solve_time\"].max()*1000:.2f}ms')
 ```bash
 # Check velocity cost weight
 grep q_angular_velocity src/python/satellite_control/config/models.py
-```
-
+```text
 **Solutions**:
 
 ```python
@@ -176,8 +166,7 @@ R_THRUST = 1.5  # Increase from 1.0 (penalize control more)
 
 # Lower position weight for smoother approach
 Q_POSITION = 500.0  # Decrease from 1000
-```
-
+```text
 ### Cannot Reach Target
 
 **Problem**: Satellite never converges to target, times out
@@ -201,8 +190,7 @@ MAX_VELOCITY = 0.5  # m/s (current default)
 # Relax convergence tolerances
 POSITION_TOLERANCE = 0.08  # meters (was 0.05)
 ANGLE_TOLERANCE = np.deg2rad(5)  # degrees (was 3)
-```
-
+```text
 ### Import Errors
 
 **Problem**: `ModuleNotFoundError: No module named 'satellite_control'`
@@ -222,8 +210,7 @@ pwd  # Should show project root
 
 # If needed, add to PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-```
-
+```text
 ### Thruster Commands Invalid
 
 **Problem**: "Thruster command out of range" errors
@@ -242,8 +229,7 @@ df = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 for i in range(1, 9):
     col = f'thruster_{i}'
     print(f"{col}: min={df[col].min()}, max={df[col].max()}")
-```
-
+```text
 ---
 
 ## Control Performance Issues
@@ -257,8 +243,7 @@ for i in range(1, 9):
 ```bash
 # Check final errors in physics_data.csv
 tail Data/Simulation/<timestamp>/physics_data.csv
-```
-
+```text
 **Solutions**:
 
 ```python
@@ -271,8 +256,7 @@ MPC_PREDICTION_HORIZON = 60  # Increase from 50
 
 # Ensure velocity damping is sufficient
 Q_VELOCITY = 12000.0  # Was 10000
-```
-
+```text
 ### Excessive Control Effort
 
 **Problem**: Too many thruster firings, wasting fuel
@@ -283,8 +267,7 @@ Q_VELOCITY = 12000.0  # Was 10000
 # Check thruster activity in visualization
 .venv311/bin/python -m satellite_control.visualization.unified_visualizer
 # Look at thruster_activity.png heatmap
-```
-
+```text
 **Solutions**:
 
 ```python
@@ -296,8 +279,7 @@ POSITION_TOLERANCE = 0.08  # Increase from 0.05
 
 # Add switching penalty (reduce chattering)
 R_SWITCH = 0.1  # Currently 0.0 (disabled)
-```
-
+```text
 ### Slow Convergence
 
 **Problem**: Takes too long to reach target
@@ -314,8 +296,7 @@ Q_VELOCITY = 8000.0    # Decrease from 10000
 
 # Increase max velocity
 MAX_VELOCITY = 0.6     # Increase from 0.5 m/s
-```
-
+```text
 ---
 
 ## Visualization Issues
@@ -338,8 +319,7 @@ ffmpeg -version
 
 # 4. Check disk space
 df -h  # Ensure sufficient free space
-```
-
+```text
 ### Plots Look Wrong
 
 **Problem**: Garbled plots, missing data, or incorrect scaling
@@ -357,8 +337,7 @@ control = pd.read_csv('Data/Simulation/<timestamp>/control_data.csv')
 
 print(physics.info())  # Check for NaN or inf values
 print(control.info())
-```
-
+```text
 ### Terminal Dashboard Not Displaying
 
 **Problem**: No colored terminal output during simulation
@@ -378,8 +357,7 @@ export TERM=dumb
 
 # Or run headless
 .venv311/bin/python scripts/run_simulation.py run --no-anim
-```
-
+```text
 ### Video Quality Poor
 
 **Problem**: Blurry or low-quality MP4 animation
@@ -392,8 +370,7 @@ export TERM=dumb
 self.dpi = 200      # Increase from 150
 self.bitrate = 8000  # Increase from 5000
 self.fps = 60       # Increase from 30 for smoother
-```
-
+```text
 ---
 
 ## Testing Issues
@@ -416,8 +393,7 @@ cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 touch tests/__init__.py
 touch tests/integration/__init__.py
 touch tests/e2e/__init__.py
-```
-
+```text
 ### Tests Timeout
 
 **Problem**: Tests hang or take forever
@@ -433,8 +409,7 @@ pytest -m "not slow"
 
 # Skip integration tests
 .venv311/bin/python -m pytest tests/integration/
-```
-
+```text
 ### Flaky Tests
 
 **Problem**: Tests pass sometimes, fail other times
@@ -453,8 +428,7 @@ def test_sometimes_fails():
 # Control randomness with seeds
 import numpy as np
 np.random.seed(42)
-```
-
+```text
 ---
 
 ## Data Analysis Issues
@@ -475,8 +449,7 @@ echo "Latest data: Data/Simulation/$DATA_DIR"
 
 # Check files exist
 ls -lh Data/Simulation/$DATA_DIR/
-```
-
+```text
 ### CSV Contains NaN Values
 
 **Problem**: NaN or inf values in data files
@@ -493,8 +466,7 @@ print(df.isna().sum())
 # Check for inf
 import numpy as np
 print(np.isinf(df.select_dtypes(include=[np.number])).sum())
-```
-
+```text
 **Solutions**:
 
 - May indicate MPC solver failures
@@ -515,8 +487,7 @@ print(np.isinf(df.select_dtypes(include=[np.number])).sum())
 
 # Check mission complete criteria
 # May need to adjust tolerances in config/models.py (MPCParams)
-```
-
+```text
 ---
 
 ## Getting Help
@@ -552,6 +523,7 @@ print(np.isinf(df.select_dtypes(include=[np.number])).sum())
    ```
 
 4. **Review simulation logs**:
+
    ```bash
    # Check terminal output or saved logs
    cat simulation.log
@@ -579,8 +551,7 @@ MAX_VELOCITY = 0.5 m/s
 # Timing (config/timing.py)
 CONTROL_DT = 0.06s                # 16.67 Hz
 SIMULATION_DT = 0.005s            # 200 Hz
-```
-
+```text
 ### Reporting Issues
 
 If you can't resolve the issue:
@@ -607,8 +578,7 @@ If you can't resolve the issue:
 
 # Verify dependencies
 pip install -r requirements.txt
-```
-
+```text
 ### Everything is slow
 
 ```bash
@@ -617,8 +587,7 @@ pip install -r requirements.txt
 
 # Reduce horizon
 # Edit config/models.py: prediction_horizon = 30
-```
-
+```text
 ### Can't see visualization
 
 ```bash
@@ -627,8 +596,7 @@ ffmpeg -version
 
 # Generate manually after run
 .venv311/bin/python -m satellite_control.visualization.unified_visualizer
-```
-
+```text
 ### Tests won't run
 
 ```bash
@@ -638,8 +606,7 @@ pip install pytest
 # Run from project root
 cd /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 .venv311/bin/python -m pytest
-```
-
+```text
 ---
 
 **For additional support, see [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) and [README.md](README.md)**
