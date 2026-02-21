@@ -129,6 +129,12 @@ Telemetry exports:
 
 ## 7. Reference Speed and Duration Policy
 
+Reference-state speed now follows MPC-owned progress semantics (no independent Python taper/coast heuristic):
+
+- `SETTLE/HOLD/COMPLETE`: `v_ref = 0`
+- Other modes: `v_ref = path_v_s` when available, fallback to configured `path_speed`
+- Apply clamps with `path_speed_min/path_speed_max` when configured
+
 Runtime path speed policy (scheduler/runtime compiler):
 
 ```text
@@ -171,6 +177,14 @@ Canonical payload schema:
 ```
 
 For one compatibility release, legacy/v1/v2 payloads are dual-read by API adapters; all new writes persist as `app_config_v3`.
+
+Removed canonical MPC knobs in V6 cleanup:
+
+- `coast_pos_tolerance`
+- `coast_vel_tolerance`
+- `coast_min_speed`
+- `progress_taper_distance`
+- `progress_slowdown_distance`
 
 ## 10. Pointing-Contract Reference Frame (V6)
 

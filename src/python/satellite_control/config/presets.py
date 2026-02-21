@@ -71,8 +71,6 @@ def _create_fast_mpc() -> MPCParams:
         path_speed=0.5,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.5,
-        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
-        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -112,8 +110,6 @@ def _create_balanced_mpc() -> MPCParams:
         path_speed=Constants.PATH_SPEED_MAX,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=Constants.PATH_SPEED_MAX,
-        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
-        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -145,8 +141,6 @@ def _create_stable_mpc() -> MPCParams:
         path_speed=0.05,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.1,
-        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
-        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -178,8 +172,6 @@ def _create_precision_mpc() -> MPCParams:
         path_speed=0.02,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.05,
-        progress_taper_distance=Constants.PROGRESS_TAPER_DISTANCE,
-        progress_slowdown_distance=Constants.PROGRESS_SLOWDOWN_DISTANCE,
         obstacle_margin=0.5,
     )
 
@@ -239,14 +231,9 @@ def load_preset(preset_name: str) -> dict[str, Any]:
             "r_rw_torque": mpc.r_rw_torque,
             "thrust_l1_weight": mpc.thrust_l1_weight,
             "thrust_pair_weight": mpc.thrust_pair_weight,
-            "coast_pos_tolerance": mpc.coast_pos_tolerance,
-            "coast_vel_tolerance": mpc.coast_vel_tolerance,
-            "coast_min_speed": mpc.coast_min_speed,
             "path_speed": mpc.path_speed,
             "path_speed_min": mpc.path_speed_min,
             "path_speed_max": mpc.path_speed_max,
-            "progress_taper_distance": mpc.progress_taper_distance,
-            "progress_slowdown_distance": mpc.progress_slowdown_distance,
             "enable_thruster_hysteresis": mpc.enable_thruster_hysteresis,
             "thruster_hysteresis_on": mpc.thruster_hysteresis_on,
             "thruster_hysteresis_off": mpc.thruster_hysteresis_off,

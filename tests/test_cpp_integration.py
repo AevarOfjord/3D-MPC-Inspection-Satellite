@@ -28,6 +28,11 @@ class TestCPPEngine:
         assert params.solver_fallback_hold_s == pytest.approx(0.4)
         assert params.solver_fallback_decay_s == pytest.approx(0.5)
         assert params.solver_fallback_zero_after_s == pytest.approx(1.1)
+        assert not hasattr(params, "coast_pos_tolerance")
+        assert not hasattr(params, "coast_vel_tolerance")
+        assert not hasattr(params, "coast_min_speed")
+        assert not hasattr(params, "progress_taper_distance")
+        assert not hasattr(params, "progress_slowdown_distance")
 
     def test_engine_initialization(self):
         """Test that C++ engine is initialized when configured."""
@@ -110,7 +115,9 @@ class TestReactionWheelControl:
             # Control
             u, info = controller.get_control_action(state)
             if u is None:
-                pytest.fail("Controller returned None control action during closed-loop run")
+                pytest.fail(
+                    "Controller returned None control action during closed-loop run"
+                )
 
             rw_cmds, thruster_cmds = controller.split_control(u)
             control_steps += 1

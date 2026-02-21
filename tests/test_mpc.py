@@ -118,6 +118,11 @@ class TestMPCController:
         assert hasattr(params, "recover_contour_scale")
         assert hasattr(params, "settle_progress_scale")
         assert hasattr(params, "hold_smoothness_scale")
+        assert not hasattr(params, "coast_pos_tolerance")
+        assert not hasattr(params, "coast_vel_tolerance")
+        assert not hasattr(params, "coast_min_speed")
+        assert not hasattr(params, "progress_taper_distance")
+        assert not hasattr(params, "progress_slowdown_distance")
         assert hasattr(_cpp_mpc.MPCControllerCpp, "set_runtime_mode")
 
     def test_v6_core_is_default_and_runtime_mode_is_settable(self):

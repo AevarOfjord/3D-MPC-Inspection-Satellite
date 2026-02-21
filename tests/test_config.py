@@ -5,6 +5,8 @@ Tests configuration validation, presets, and model integrity.
 Consolidates `test_config_validation.py` and `test_presets.py`.
 """
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 from satellite_control.config import physics as physics_cfg
@@ -107,6 +109,43 @@ class TestConfigValidation:
         with pytest.raises(ValidationError):
             MPCParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
 
+    def test_removed_mpc_dead_knobs_absent_from_schema(self):
+        """Removed V6 cleanup knobs should not exist in canonical MPC schema."""
+        removed = {
+            "coast_pos_tolerance",
+            "coast_vel_tolerance",
+            "coast_min_speed",
+            "progress_taper_distance",
+            "progress_slowdown_distance",
+        }
+        assert removed.isdisjoint(MPCParams.model_fields.keys())
+
+    def test_removed_mpc_dead_knobs_only_exist_in_runner_deprecation_filter(self):
+        """Runtime-critical sources should not reference removed MPC knobs."""
+        removed = (
+            "coast_pos_tolerance",
+            "coast_vel_tolerance",
+            "coast_min_speed",
+            "progress_taper_distance",
+            "progress_slowdown_distance",
+        )
+        repo_root = Path(__file__).resolve().parents[1]
+        allowed = {
+            repo_root / "src/python/satellite_control/dashboard/runner_manager.py"
+        }
+
+        for base in ("src/python/satellite_control", "src/cpp", "ui/src"):
+            for path in (repo_root / base).rglob("*"):
+                if not path.is_file():
+                    continue
+                if path.suffix not in {".py", ".cpp", ".hpp", ".ts", ".tsx"}:
+                    continue
+                if path in allowed:
+                    continue
+                text = path.read_text(encoding="utf-8")
+                for token in removed:
+                    assert token not in text, f"{token} still present in {path}"
+
     def test_v6_solver_fallback_contract_validation(self):
         """Fallback zero-after threshold must be >= fallback hold threshold."""
         with pytest.raises(ValidationError):
@@ -129,9 +168,13 @@ class TestConfigValidation:
     def test_v6_actuator_policy_validation(self):
         """V6 actuator-policy on-threshold must exceed off-threshold."""
         with pytest.raises(ValidationError):
-            ActuatorPolicyParams(thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01)
+            ActuatorPolicyParams(
+                thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01
+            )
         with pytest.raises(ValidationError):
-            ActuatorPolicyParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
+            ActuatorPolicyParams(
+                thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007
+            )
 
     def test_v6_controller_contract_validation(self):
         """V6 recover-exit threshold must remain <= recover-enter threshold."""

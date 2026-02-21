@@ -1,6 +1,7 @@
 """
 Manager for running background simulation processes and streaming logs.
 """
+
 import asyncio
 import hashlib
 import json
@@ -26,12 +27,21 @@ APP_CONFIG_SCHEMA_VERSION = "app_config_v3"
 APP_CONFIG_SCHEMA_VERSION_V2 = "app_config_v2"
 COMPATIBILITY_WINDOW = "v6.x"
 DISABLE_CONFIG_MIRRORS_ENV = "SATCTRL_DISABLE_CONFIG_MIRRORS"
+REMOVED_MPC_FIELDS = (
+    "coast_pos_tolerance",
+    "coast_vel_tolerance",
+    "coast_min_speed",
+    "progress_taper_distance",
+    "progress_slowdown_distance",
+)
+
 
 class RunnerManager:
     """
     Manages the execution of the simulation command and streams output
     to connected WebSocket clients.
     """
+
     def __init__(self):
         self.process: asyncio.subprocess.Process | None = None
         self.active_websockets: list[WebSocket] = []
@@ -43,6 +53,16 @@ class RunnerManager:
         self._current_run_dir: Path | None = None
         self._presets_path = PRESETS_FILE
         self._presets: dict[str, dict[str, Any]] = self._load_presets()
+        self._removed_mpc_fields_seen: set[str] = set()
+
+    def _track_removed_mpc_fields(self, payload: dict[str, Any] | None) -> None:
+        """Track and strip removed MPC fields from a section payload in-place."""
+        if not isinstance(payload, dict):
+            return
+        for field in REMOVED_MPC_FIELDS:
+            if field in payload:
+                payload.pop(field, None)
+                self._removed_mpc_fields_seen.add(field)
 
     def _load_presets(self) -> dict[str, dict[str, Any]]:
         """Load persisted presets from disk."""
@@ -69,7 +89,9 @@ class RunnerManager:
                 }
             return normalized
         except Exception as exc:
-            logger.warning("Failed to load presets from %s: %s", self._presets_path, exc)
+            logger.warning(
+                "Failed to load presets from %s: %s", self._presets_path, exc
+            )
             return {}
 
     def _persist_presets(self) -> None:
@@ -81,8 +103,7 @@ class RunnerManager:
         }
         self._presets_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    @staticmethod
-    def _map_legacy_mpc_overrides(legacy_mpc: dict[str, Any]) -> dict[str, Any]:
+    def _map_legacy_mpc_overrides(self, legacy_mpc: dict[str, Any]) -> dict[str, Any]:
         """Map legacy UI payload shape (control.mpc.*) to AppConfig.mpc fields."""
         mapped: dict[str, Any] = {}
 
@@ -110,17 +131,12 @@ class RunnerManager:
             "r_rw_torque",
             "thrust_l1_weight",
             "thrust_pair_weight",
-            "coast_pos_tolerance",
-            "coast_vel_tolerance",
-            "coast_min_speed",
             "thruster_type",
             "obstacle_margin",
             "enable_collision_avoidance",
             "path_speed",
             "path_speed_min",
             "path_speed_max",
-            "progress_taper_distance",
-            "progress_slowdown_distance",
             "max_linear_velocity",
             "max_angular_velocity",
             "enable_delta_u_coupling",
@@ -132,6 +148,9 @@ class RunnerManager:
         }
 
         for key, value in legacy_mpc.items():
+            if key in REMOVED_MPC_FIELDS:
+                self._removed_mpc_fields_seen.add(key)
+                continue
             if key in direct_fields:
                 mapped[key] = value
 
@@ -184,15 +203,13 @@ class RunnerManager:
                 "path_speed": "path_speed",
                 "path_speed_min": "path_speed_min",
                 "path_speed_max": "path_speed_max",
-                "progress_taper_distance": "progress_taper_distance",
-                "progress_slowdown_distance": "progress_slowdown_distance",
-                "coast_pos_tolerance": "coast_pos_tolerance",
-                "coast_vel_tolerance": "coast_vel_tolerance",
-                "coast_min_speed": "coast_min_speed",
                 "enable_thruster_hysteresis": "enable_thruster_hysteresis",
                 "thruster_hysteresis_on": "thruster_hysteresis_on",
                 "thruster_hysteresis_off": "thruster_hysteresis_off",
             }
+            for removed in REMOVED_MPC_FIELDS:
+                if removed in path_following:
+                    self._removed_mpc_fields_seen.add(removed)
             for src, dst in path_map.items():
                 if src in path_following:
                     mapped[dst] = path_following[src]
@@ -329,7 +346,9 @@ class RunnerManager:
         mirrored["input_file_path"] = app_cfg.get("input_file_path")
         return mirrored
 
-    def _normalize_overrides_to_sections(self, overrides: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_overrides_to_sections(
+        self, overrides: dict[str, Any]
+    ) -> dict[str, Any]:
         """Accept legacy, v1-flat, v2, and v3 payloads and return canonical sections."""
         normalized = self._extract_app_config_sections(overrides)
 
@@ -369,6 +388,8 @@ class RunnerManager:
                 simulation_section.setdefault("control_dt", mpc_core_section["dt"])
             else:
                 normalized["simulation"] = {"control_dt": mpc_core_section["dt"]}
+        if isinstance(mpc_core_section, dict):
+            self._track_removed_mpc_fields(mpc_core_section)
 
         if "actuator_policy" not in normalized and isinstance(mpc_core_section, dict):
             inferred_actuator = self._actuator_policy_from_mpc_core(mpc_core_section)
@@ -378,9 +399,17 @@ class RunnerManager:
         return normalized
 
     @staticmethod
-    def _build_v3_app_config_payload(app_config_payload: dict[str, Any]) -> dict[str, Any]:
+    def _build_v3_app_config_payload(
+        app_config_payload: dict[str, Any],
+    ) -> dict[str, Any]:
         app_config: dict[str, Any] = {}
-        for section in ("physics", "reference_scheduler", "actuator_policy", "controller_contracts", "simulation"):
+        for section in (
+            "physics",
+            "reference_scheduler",
+            "actuator_policy",
+            "controller_contracts",
+            "simulation",
+        ):
             value = app_config_payload.get(section)
             if isinstance(value, dict):
                 app_config[section] = dict(value)
@@ -482,6 +511,9 @@ class RunnerManager:
             "deprecations": {
                 "legacy_payload_dual_read": True,
                 "response_mirrors": True,
+                "removed_mpc_fields_seen": sorted(self._removed_mpc_fields_seen),
+                "removed_mpc_fields_policy": "warn_ignore",
+                "removed_mpc_fields_sunset": "next_major",
                 "sunset_note": (
                     "Legacy payload shapes and top-level mirrors are transitional and "
                     f"scheduled for removal after {COMPATIBILITY_WINDOW}."
@@ -595,21 +627,25 @@ class RunnerManager:
         """Accept a new WebSocket connection and send history."""
         await websocket.accept()
         self.active_websockets.append(websocket)
-        logger.info(f"WebSocket connected. Total clients: {len(self.active_websockets)}")
-        
+        logger.info(
+            f"WebSocket connected. Total clients: {len(self.active_websockets)}"
+        )
+
         # Send history upon connection
         if self._log_history:
-             try:
+            try:
                 history_text = "".join(self._log_history)
                 await websocket.send_text(history_text)
-             except Exception as e:
+            except Exception as e:
                 logger.error(f"Error sending history to websocket: {e}")
 
     def disconnect(self, websocket: WebSocket):
         """Remove a WebSocket connection."""
         if websocket in self.active_websockets:
             self.active_websockets.remove(websocket)
-            logger.info(f"WebSocket disconnected. Remaining clients: {len(self.active_websockets)}")
+            logger.info(
+                f"WebSocket disconnected. Remaining clients: {len(self.active_websockets)}"
+            )
 
     async def _broadcast(self, message: str):
         """Send a message to all connected clients."""
@@ -617,7 +653,7 @@ class RunnerManager:
         self._log_history.append(message)
         if len(self._log_history) > self.max_history_lines:
             self._log_history.pop(0)
-            
+
         to_remove = []
         for connection in self.active_websockets:
             try:
@@ -625,7 +661,7 @@ class RunnerManager:
             except Exception as e:
                 logger.warning(f"Error sending to websocket, removing client: {e}")
                 to_remove.append(connection)
-        
+
         for conn in to_remove:
             self.disconnect(conn)
 
@@ -637,7 +673,7 @@ class RunnerManager:
 
         self._log_history.clear()
         self._current_run_dir = None
-        
+
         cmd_args = [str(SIMULATION_SCRIPT)]
         resolved_mission_path: str | None = None
         if mission_name:
@@ -646,19 +682,24 @@ class RunnerManager:
                 from satellite_control.mission.repository import (
                     resolve_mission_file,
                 )
-                mission_path = resolve_mission_file(mission_name, source_priority=("local",))
+
+                mission_path = resolve_mission_file(
+                    mission_name, source_priority=("local",)
+                )
                 cmd_args.extend(["--mission", str(mission_path)])
                 resolved_mission_path = str(mission_path)
                 await self._broadcast(f">>> Selected mission: {mission_name}\n")
             except Exception as e:
-                await self._broadcast(f">>> Error resolving mission '{mission_name}': {e}\n")
+                await self._broadcast(
+                    f">>> Error resolving mission '{mission_name}': {e}\n"
+                )
                 return
 
         # Inject custom config if present
         if self._custom_config:
             import json
             import tempfile
-            
+
             try:
                 runtime_overrides = self._extract_runtime_overrides(self._custom_config)
                 if not runtime_overrides:
@@ -666,16 +707,20 @@ class RunnerManager:
                 # Create a temporary file to store the config overrides
                 # We use a named temporary file that persists until we delete it
                 # Note: On Windows, opening a temp file twice can be an issue, but we're passing path to subprocess
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                ) as tmp:
                     json.dump(runtime_overrides, tmp)
                     config_path = tmp.name
-                
+
                 cmd_args.extend(["--config", config_path])
-                self._temp_config_path = config_path # Store to clean up later
+                self._temp_config_path = config_path  # Store to clean up later
                 await self._broadcast(">>> Using custom configuration overrides\n")
             except Exception as e:
-                 logger.error(f"Failed to create config file: {e}")
-                 await self._broadcast(f">>> Warning: Failed to apply custom config: {e}\n")
+                logger.error(f"Failed to create config file: {e}")
+                await self._broadcast(
+                    f">>> Warning: Failed to apply custom config: {e}\n"
+                )
 
         await self._broadcast(f">>> Starting simulation: python {' '.join(cmd_args)}\n")
 
@@ -686,12 +731,16 @@ class RunnerManager:
             python_path = env.get("PYTHONPATH", "")
             src_python = str(PROJECT_ROOT / "src" / "python")
             if src_python not in python_path:
-                env["PYTHONPATH"] = f"{src_python}:{python_path}" if python_path else src_python
+                env["PYTHONPATH"] = (
+                    f"{src_python}:{python_path}" if python_path else src_python
+                )
             # Ensure terminal-color escape codes are disabled in streamed runner logs.
             env["NO_COLOR"] = "1"
             config_meta = self.get_config().get("config_meta", {})
             env["SATCTRL_RUNNER_CONFIG_HASH"] = str(config_meta.get("config_hash", ""))
-            env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(config_meta.get("config_version", ""))
+            env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(
+                config_meta.get("config_version", "")
+            )
             env["SATCTRL_RUNNER_OVERRIDES_ACTIVE"] = (
                 "1" if bool(config_meta.get("overrides_active")) else "0"
             )
@@ -707,23 +756,25 @@ class RunnerManager:
 
             # Use sys.executable to ensure we use the same virtualenv python
             cmd = [sys.executable] + cmd_args
-            
+
             # Start process
             self.process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                limit=10*1024*1024, # 10MB limit per chunk
+                limit=10 * 1024 * 1024,  # 10MB limit per chunk
                 env=env,
-                cwd=str(PROJECT_ROOT) # Run from project root
+                cwd=str(PROJECT_ROOT),  # Run from project root
             )
-            
-            await self._broadcast(f">>> Process started with PID: {self.process.pid}\n\n")
+
+            await self._broadcast(
+                f">>> Process started with PID: {self.process.pid}\n\n"
+            )
 
             # Background tasks for reading streams
             asyncio.create_task(self._monitor_stream(self.process.stdout, "STDOUT"))
             asyncio.create_task(self._monitor_stream(self.process.stderr, "STDERR"))
-            
+
             # Background task to wait for completion
             asyncio.create_task(self._wait_for_completion())
 
@@ -751,14 +802,14 @@ class RunnerManager:
                     logger.warning("Process did not terminate gracefully, killing it.")
                     self.process.kill()
                     await self.process.wait()
-                
+
                 await self._broadcast(">>> Simulation stopped by user.\n")
             except Exception as e:
                 logger.error(f"Error stopping process: {e}")
                 await self._broadcast(f">>> Error stopping process: {e}\n")
         else:
             await self._broadcast("\n>>> No simulation is running to stop.\n")
-            
+
         # Cleanup temp file if it exists
         if self._temp_config_path and os.path.exists(self._temp_config_path):
             try:
@@ -774,10 +825,10 @@ class RunnerManager:
             # readline() yields bytes ending in \n usually
             line = await stream.readline()
             if line:
-                decoded = line.decode('utf-8', errors='replace')
+                decoded = line.decode("utf-8", errors="replace")
                 clean = _ANSI_ESCAPE_RE.sub("", decoded)
                 self._maybe_capture_run_dir(clean)
-                # We broadcast the raw line including newline chars usually, 
+                # We broadcast the raw line including newline chars usually,
                 # but let's ensure it handles buffering correctly on frontend.
                 await self._broadcast(clean)
             else:
@@ -788,7 +839,9 @@ class RunnerManager:
         if self.process:
             return_code = await self.process.wait()
             self._finalize_run_status_from_process_exit(return_code)
-            await self._broadcast(f"\n>>> Simulation finished with return code {return_code}.\n")
+            await self._broadcast(
+                f"\n>>> Simulation finished with return code {return_code}.\n"
+            )
 
     def _maybe_capture_run_dir(self, line: str) -> None:
         """Extract run directory from process logs when available."""
@@ -851,21 +904,30 @@ class RunnerManager:
             status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             self._update_global_run_index_files(run_dir.parent, run_dir.name)
 
-    def _update_global_run_index_files(self, base_dir: Path, latest_run_id: str) -> None:
+    def _update_global_run_index_files(
+        self, base_dir: Path, latest_run_id: str
+    ) -> None:
         """Best-effort refresh of runs_index/latest_run pointers."""
         try:
-            (base_dir / "latest_run.txt").write_text(latest_run_id + "\n", encoding="utf-8")
+            (base_dir / "latest_run.txt").write_text(
+                latest_run_id + "\n", encoding="utf-8"
+            )
             runs: list[dict[str, Any]] = []
             for candidate in sorted(base_dir.iterdir(), reverse=True):
                 if not candidate.is_dir():
                     continue
                 status_path = candidate / "run_status.json"
-                if not status_path.exists() and not (candidate / "physics_data.csv").exists():
+                if (
+                    not status_path.exists()
+                    and not (candidate / "physics_data.csv").exists()
+                ):
                     continue
                 status_payload: dict[str, Any] = {}
                 try:
                     if status_path.exists():
-                        status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+                        status_payload = json.loads(
+                            status_path.read_text(encoding="utf-8")
+                        )
                 except Exception:
                     status_payload = {}
                 runs.append(
@@ -875,7 +937,9 @@ class RunnerManager:
                         "status": status_payload.get("status", "unknown"),
                         "mission_name": status_payload.get("mission", {}).get("name"),
                         "preset_name": status_payload.get("preset", {}).get("name"),
-                        "config_hash": status_payload.get("config", {}).get("config_hash"),
+                        "config_hash": status_payload.get("config", {}).get(
+                            "config_hash"
+                        ),
                     }
                 )
                 if len(runs) >= 500:

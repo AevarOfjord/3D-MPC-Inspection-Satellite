@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from satellite_control.core.simulation_reference import update_path_reference_state
 from satellite_control.core.v6_controller_runtime import (
     ActuatorPolicyV6,
     ControllerModeManagerV6,
@@ -203,6 +204,100 @@ def test_runtime_speed_policy_and_duration_estimator() -> None:
         margin_s=30.0,
     )
     assert duration == pytest.approx((12.0 / 0.08) + 10.0 + 30.0)
+
+
+def test_reference_velocity_prefers_mpc_progress_signal_and_clamps() -> None:
+    class _MPCCfg:
+        path_speed = 0.05
+        path_speed_min = 0.02
+        path_speed_max = 0.08
+
+    class _AppCfg:
+        mpc = _MPCCfg()
+
+    class _SimCfg:
+        app_config = _AppCfg()
+
+    class _Mpc:
+        _cpp_controller = type(
+            "_CppRef",
+            (),
+            {"get_reference_at_s": lambda self, s_query, q_current: None},
+        )()
+        _last_path_projection = {"path_v_s": 0.12}
+
+        @staticmethod
+        def get_path_reference_state(q_current=None):
+            return (
+                np.array([0.0, 0.0, 0.0], dtype=float),
+                np.array([1.0, 0.0, 0.0], dtype=float),
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+            )
+
+    class _Mode:
+        current_mode = "TRACK"
+
+    class _Sim:
+        mpc_controller = _Mpc()
+        simulation_config = _SimCfg()
+        v6_mode_state = _Mode()
+        reference_state = None
+
+    current_state = np.array(
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    sim = _Sim()
+    update_path_reference_state(sim, current_state)
+    assert sim.reference_state[7] == pytest.approx(0.08)
+    assert sim.reference_state[8] == pytest.approx(0.0)
+    assert sim.reference_state[9] == pytest.approx(0.0)
+
+
+def test_reference_velocity_forces_zero_in_settle_hold_complete() -> None:
+    class _MPCCfg:
+        path_speed = 0.05
+        path_speed_min = 0.0
+        path_speed_max = 0.08
+
+    class _AppCfg:
+        mpc = _MPCCfg()
+
+    class _SimCfg:
+        app_config = _AppCfg()
+
+    class _Mpc:
+        _cpp_controller = type(
+            "_CppRef",
+            (),
+            {"get_reference_at_s": lambda self, s_query, q_current: None},
+        )()
+        _last_path_projection = {"path_v_s": 0.06}
+
+        @staticmethod
+        def get_path_reference_state(q_current=None):
+            return (
+                np.array([0.0, 0.0, 0.0], dtype=float),
+                np.array([1.0, 0.0, 0.0], dtype=float),
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+            )
+
+    class _Mode:
+        current_mode = "SETTLE"
+
+    class _Sim:
+        mpc_controller = _Mpc()
+        simulation_config = _SimCfg()
+        v6_mode_state = _Mode()
+        reference_state = None
+
+    current_state = np.array(
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    sim = _Sim()
+    update_path_reference_state(sim, current_state)
+    assert np.allclose(sim.reference_state[7:10], np.array([0.0, 0.0, 0.0]))
 
 
 def test_actuator_policy_mode_behavior() -> None:

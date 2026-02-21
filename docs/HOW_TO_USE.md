@@ -214,6 +214,23 @@ Runner telemetry now includes:
 - `pointing_guardrail_breached`
 - `object_visible_side`
 
+## 6.6) MPC Dead-Knob Cleanup (V6)
+
+- These legacy MPC knobs were removed from canonical config/UI:
+  - `coast_pos_tolerance`
+  - `coast_vel_tolerance`
+  - `coast_min_speed`
+  - `progress_taper_distance`
+  - `progress_slowdown_distance`
+- Compatibility behavior (one release):
+  - incoming payloads that still include these fields are accepted
+  - fields are dropped (`warn_ignore` policy)
+  - dropped field names are reported in `/runner/config -> config_meta.deprecations.removed_mpc_fields_seen`
+- Reference velocity/ghost behavior now follows MPC-owned progress output:
+  - `SETTLE/HOLD/COMPLETE`: `v_ref = 0`
+  - other modes: use MPC `path_v_s` when available (fallback to `path_speed`)
+  - clamp with `path_speed_min/path_speed_max` when configured
+
 ## 7) Troubleshooting
 
 - Missing `ui/dist/index.html`:

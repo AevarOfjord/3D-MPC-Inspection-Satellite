@@ -7,6 +7,7 @@ The entire control loop runs in C++ for maximum performance.
 
 import logging
 import sys
+import time
 from typing import Any
 
 import numpy as np
@@ -120,102 +121,53 @@ class MPCController(Controller):
 
         mpc_params.Q_contour = self.Q_contour
         mpc_params.Q_progress = self.Q_progress
-        if hasattr(mpc_params, "progress_reward"):
-            mpc_params.progress_reward = float(self.progress_reward)
-        if hasattr(mpc_params, "Q_lag"):
-            mpc_params.Q_lag = self.Q_lag
-        if hasattr(mpc_params, "Q_lag_default"):
-            mpc_params.Q_lag_default = float(self.Q_lag_default)
-        if hasattr(mpc_params, "Q_velocity_align"):
-            mpc_params.Q_velocity_align = float(self.Q_velocity_align)
-        if hasattr(mpc_params, "Q_s_anchor"):
-            mpc_params.Q_s_anchor = float(self.Q_s_anchor)
+        mpc_params.progress_reward = float(self.progress_reward)
+        mpc_params.Q_lag = self.Q_lag
+        mpc_params.Q_lag_default = float(self.Q_lag_default)
+        mpc_params.Q_velocity_align = float(self.Q_velocity_align)
+        mpc_params.Q_s_anchor = float(self.Q_s_anchor)
         mpc_params.Q_smooth = self.Q_smooth
-        if hasattr(mpc_params, "Q_terminal_pos"):
-            mpc_params.Q_terminal_pos = self.Q_terminal_pos
-        if hasattr(mpc_params, "Q_terminal_s"):
-            mpc_params.Q_terminal_s = self.Q_terminal_s
+        mpc_params.Q_terminal_pos = self.Q_terminal_pos
+        mpc_params.Q_terminal_s = self.Q_terminal_s
         mpc_params.Q_angvel = self.Q_angvel
-        if hasattr(mpc_params, "Q_attitude"):
-            mpc_params.Q_attitude = self.Q_attitude
-        if hasattr(mpc_params, "Q_axis_align"):
-            mpc_params.Q_axis_align = float(self.Q_axis_align)
+        mpc_params.Q_attitude = self.Q_attitude
+        mpc_params.Q_axis_align = float(self.Q_axis_align)
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
-        if hasattr(mpc_params, "thrust_l1_weight"):
-            mpc_params.thrust_l1_weight = float(self.thrust_l1_weight)
-        if hasattr(mpc_params, "thrust_pair_weight"):
-            mpc_params.thrust_pair_weight = float(self.thrust_pair_weight)
-        if hasattr(mpc_params, "coast_pos_tolerance"):
-            mpc_params.coast_pos_tolerance = float(self.coast_pos_tolerance)
-        if hasattr(mpc_params, "coast_vel_tolerance"):
-            mpc_params.coast_vel_tolerance = float(self.coast_vel_tolerance)
-        if hasattr(mpc_params, "coast_min_speed"):
-            mpc_params.coast_min_speed = float(self.coast_min_speed)
-        if hasattr(mpc_params, "path_speed"):
-            mpc_params.path_speed = self.path_speed
-        if hasattr(mpc_params, "path_speed_min"):
-            mpc_params.path_speed_min = float(self.path_speed_min)
-        if hasattr(mpc_params, "path_speed_max"):
-            mpc_params.path_speed_max = float(self.path_speed_max)
-        if hasattr(mpc_params, "progress_taper_distance"):
-            mpc_params.progress_taper_distance = self.progress_taper_distance
-        if hasattr(mpc_params, "progress_slowdown_distance"):
-            mpc_params.progress_slowdown_distance = self.progress_slowdown_distance
-        if hasattr(mpc_params, "recover_contour_scale"):
-            mpc_params.recover_contour_scale = float(self.recover_contour_scale)
-        if hasattr(mpc_params, "recover_lag_scale"):
-            mpc_params.recover_lag_scale = float(self.recover_lag_scale)
-        if hasattr(mpc_params, "recover_progress_scale"):
-            mpc_params.recover_progress_scale = float(self.recover_progress_scale)
-        if hasattr(mpc_params, "recover_attitude_scale"):
-            mpc_params.recover_attitude_scale = float(self.recover_attitude_scale)
-        if hasattr(mpc_params, "settle_progress_scale"):
-            mpc_params.settle_progress_scale = float(self.settle_progress_scale)
-        if hasattr(mpc_params, "settle_terminal_pos_scale"):
-            mpc_params.settle_terminal_pos_scale = float(self.settle_terminal_pos_scale)
-        if hasattr(mpc_params, "settle_terminal_attitude_scale"):
-            mpc_params.settle_terminal_attitude_scale = float(
-                self.settle_terminal_attitude_scale
-            )
-        if hasattr(mpc_params, "settle_velocity_align_scale"):
-            mpc_params.settle_velocity_align_scale = float(
-                self.settle_velocity_align_scale
-            )
-        if hasattr(mpc_params, "settle_angular_velocity_scale"):
-            mpc_params.settle_angular_velocity_scale = float(
-                self.settle_angular_velocity_scale
-            )
-        if hasattr(mpc_params, "hold_smoothness_scale"):
-            mpc_params.hold_smoothness_scale = float(self.hold_smoothness_scale)
-        if hasattr(mpc_params, "hold_thruster_pair_scale"):
-            mpc_params.hold_thruster_pair_scale = float(self.hold_thruster_pair_scale)
-        if hasattr(mpc_params, "solver_fallback_hold_s"):
-            mpc_params.solver_fallback_hold_s = float(self.solver_fallback_hold_s)
-        if hasattr(mpc_params, "solver_fallback_decay_s"):
-            mpc_params.solver_fallback_decay_s = float(self.solver_fallback_decay_s)
-        if hasattr(mpc_params, "solver_fallback_zero_after_s"):
-            mpc_params.solver_fallback_zero_after_s = float(
-                self.solver_fallback_zero_after_s
-            )
-        if hasattr(mpc_params, "max_linear_velocity"):
-            mpc_params.max_linear_velocity = float(self.max_linear_velocity)
-        if hasattr(mpc_params, "max_angular_velocity"):
-            mpc_params.max_angular_velocity = float(self.max_angular_velocity)
-        if hasattr(mpc_params, "enable_delta_u_coupling"):
-            mpc_params.enable_delta_u_coupling = bool(self.enable_delta_u_coupling)
-        if hasattr(mpc_params, "enable_gyro_jacobian"):
-            mpc_params.enable_gyro_jacobian = bool(self.enable_gyro_jacobian)
-        if hasattr(mpc_params, "enable_auto_state_bounds"):
-            mpc_params.enable_auto_state_bounds = bool(self.enable_auto_state_bounds)
+        mpc_params.thrust_l1_weight = float(self.thrust_l1_weight)
+        mpc_params.thrust_pair_weight = float(self.thrust_pair_weight)
+        mpc_params.path_speed = self.path_speed
+        mpc_params.path_speed_min = float(self.path_speed_min)
+        mpc_params.path_speed_max = float(self.path_speed_max)
+        mpc_params.recover_contour_scale = float(self.recover_contour_scale)
+        mpc_params.recover_lag_scale = float(self.recover_lag_scale)
+        mpc_params.recover_progress_scale = float(self.recover_progress_scale)
+        mpc_params.recover_attitude_scale = float(self.recover_attitude_scale)
+        mpc_params.settle_progress_scale = float(self.settle_progress_scale)
+        mpc_params.settle_terminal_pos_scale = float(self.settle_terminal_pos_scale)
+        mpc_params.settle_terminal_attitude_scale = float(
+            self.settle_terminal_attitude_scale
+        )
+        mpc_params.settle_velocity_align_scale = float(self.settle_velocity_align_scale)
+        mpc_params.settle_angular_velocity_scale = float(
+            self.settle_angular_velocity_scale
+        )
+        mpc_params.hold_smoothness_scale = float(self.hold_smoothness_scale)
+        mpc_params.hold_thruster_pair_scale = float(self.hold_thruster_pair_scale)
+        mpc_params.solver_fallback_hold_s = float(self.solver_fallback_hold_s)
+        mpc_params.solver_fallback_decay_s = float(self.solver_fallback_decay_s)
+        mpc_params.solver_fallback_zero_after_s = float(
+            self.solver_fallback_zero_after_s
+        )
+        mpc_params.max_linear_velocity = float(self.max_linear_velocity)
+        mpc_params.max_angular_velocity = float(self.max_angular_velocity)
+        mpc_params.enable_delta_u_coupling = bool(self.enable_delta_u_coupling)
+        mpc_params.enable_gyro_jacobian = bool(self.enable_gyro_jacobian)
+        mpc_params.enable_auto_state_bounds = bool(self.enable_auto_state_bounds)
 
         # Collision Avoidance
-        if hasattr(mpc_params, "enable_collision_avoidance"):
-            mpc_params.enable_collision_avoidance = bool(
-                self.enable_collision_avoidance
-            )
-        if hasattr(mpc_params, "obstacle_margin"):
-            mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
+        mpc_params.enable_collision_avoidance = bool(self.enable_collision_avoidance)
+        mpc_params.obstacle_margin = cfg.mpc.obstacle_margin
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
@@ -230,6 +182,8 @@ class MPCController(Controller):
         self._last_path_projection: dict[str, Any] = {}
         self._scan_attitude_enabled = False
         self._runtime_mode = "TRACK"
+        self._fallback_log_interval_s = 5.0
+        self._last_fallback_log_at: dict[str, float] = {}
 
         # Dimensions (Fixed for MPCC)
         self.nx = 17
@@ -430,6 +384,15 @@ class MPCController(Controller):
             return f"solver_non_success_{solver_status}"
         return "solver_non_success"
 
+    def _debug_fallback_once(self, key: str, message: str) -> None:
+        """Emit fallback debug logs at a limited rate to avoid log spam."""
+        now = time.monotonic()
+        last = self._last_fallback_log_at.get(key, 0.0)
+        if now - last < self._fallback_log_interval_s:
+            return
+        self._last_fallback_log_at[key] = now
+        logger.debug(message, exc_info=True)
+
     def _project_onto_path(
         self, position: np.ndarray
     ) -> tuple[float, np.ndarray, float]:
@@ -453,8 +416,9 @@ class MPCController(Controller):
                 s_val, proj, dist, _ = self._cpp_controller.project_onto_path(pos)
                 return float(s_val), np.array(proj, dtype=float), float(dist)
             except Exception:
-                logger.debug(
-                    "C++ project_onto_path failed, using Python fallback", exc_info=True
+                self._debug_fallback_once(
+                    "project_onto_path",
+                    "C++ project_onto_path failed, using Python fallback",
                 )
 
         min_dist = float("inf")
@@ -533,9 +497,12 @@ class MPCController(Controller):
                     path_error = float(path_error)
                     endpoint_error = float(endpoint_error)
                 except Exception:
-                    logger.debug(
-                        "C++ project_onto_path failed in get_path_progress, using Python fallback",
-                        exc_info=True,
+                    self._debug_fallback_once(
+                        "get_path_progress_projection",
+                        (
+                            "C++ project_onto_path failed in get_path_progress, "
+                            "using Python fallback"
+                        ),
                     )
                     s_val, _, path_error = self._project_onto_path(position)
                     endpoint = np.array(self._path_data[-1][1:4], dtype=float)
@@ -610,9 +577,9 @@ class MPCController(Controller):
                     np.array(q_ref, dtype=float),
                 )
             except Exception:
-                logger.debug(
+                self._debug_fallback_once(
+                    "get_reference_at_s",
                     "C++ get_reference_at_s failed, using Python fallback",
-                    exc_info=True,
                 )
 
         # At exact path end, use the final non-degenerate segment direction
@@ -754,9 +721,6 @@ class MPCController(Controller):
         self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
         self.thrust_l1_weight = getattr(mpc, "thrust_l1_weight", 0.0)
         self.thrust_pair_weight = getattr(mpc, "thrust_pair_weight", 0.0)
-        self.coast_pos_tolerance = getattr(mpc, "coast_pos_tolerance", 0.0)
-        self.coast_vel_tolerance = getattr(mpc, "coast_vel_tolerance", 0.0)
-        self.coast_min_speed = getattr(mpc, "coast_min_speed", 0.0)
         self.max_linear_velocity = getattr(mpc, "max_linear_velocity", 0.0)
         self.max_angular_velocity = getattr(mpc, "max_angular_velocity", 0.0)
         self.enable_delta_u_coupling = bool(
@@ -785,10 +749,6 @@ class MPCController(Controller):
         self.path_speed = mpc.path_speed
         self.path_speed_min = getattr(mpc, "path_speed_min", 0.0)
         self.path_speed_max = getattr(mpc, "path_speed_max", 0.0)
-        self.progress_taper_distance = getattr(mpc, "progress_taper_distance", 0.0)
-        self.progress_slowdown_distance = getattr(
-            mpc, "progress_slowdown_distance", 0.0
-        )
         self.recover_contour_scale = float(
             getattr(mpc_core, "recover_contour_scale", 2.0)
         )
@@ -1004,6 +964,7 @@ class MPCController(Controller):
                 float(endpoint_error) if endpoint_error is not None else None
             ),
             "s_pred": path_s_pred,
+            "path_v_s": v_s,
         }
 
         # Strip virtual control from output so simulation gets only physical actuators

@@ -15,6 +15,7 @@ import numpy as np
 
 from satellite_control.config.physics import THRUSTER_COUNT
 from satellite_control.control.mpc_controller import MPCController
+from satellite_control.core.v6_controller_runtime import ActuatorPolicyV6
 
 if TYPE_CHECKING:
     from satellite_control.config.models import AppConfig
@@ -62,35 +63,57 @@ class MPCRunner:
         self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
-        cfg_mpc = getattr(self.config, "mpc", None) if self.config is not None else None
-        self.enable_thruster_hysteresis = bool(
-            getattr(
-                cfg_mpc,
-                "enable_thruster_hysteresis",
-                getattr(self.mpc, "enable_thruster_hysteresis", True),
+        if self.actuator_policy is None:
+            cfg_mpc = (
+                getattr(self.config, "mpc", None) if self.config is not None else None
             )
-        )
-        self.thruster_hysteresis_on = float(
-            getattr(
-                cfg_mpc,
-                "thruster_hysteresis_on",
-                getattr(self.mpc, "thruster_hysteresis_on", 0.015),
+            cfg_actuator = (
+                getattr(self.config, "actuator_policy", None)
+                if self.config is not None
+                else None
             )
-        )
-        self.thruster_hysteresis_off = float(
-            getattr(
-                cfg_mpc,
-                "thruster_hysteresis_off",
-                getattr(self.mpc, "thruster_hysteresis_off", 0.007),
+            self.actuator_policy = ActuatorPolicyV6(
+                enable_thruster_hysteresis=bool(
+                    getattr(
+                        cfg_mpc,
+                        "enable_thruster_hysteresis",
+                        getattr(
+                            cfg_actuator,
+                            "enable_thruster_hysteresis",
+                            getattr(self.mpc, "enable_thruster_hysteresis", True),
+                        ),
+                    )
+                ),
+                thruster_hysteresis_on=float(
+                    getattr(
+                        cfg_mpc,
+                        "thruster_hysteresis_on",
+                        getattr(
+                            cfg_actuator,
+                            "thruster_hysteresis_on",
+                            getattr(self.mpc, "thruster_hysteresis_on", 0.015),
+                        ),
+                    )
+                ),
+                thruster_hysteresis_off=float(
+                    getattr(
+                        cfg_mpc,
+                        "thruster_hysteresis_off",
+                        getattr(
+                            cfg_actuator,
+                            "thruster_hysteresis_off",
+                            getattr(self.mpc, "thruster_hysteresis_off", 0.007),
+                        ),
+                    )
+                ),
+                terminal_bypass_band_m=float(
+                    getattr(
+                        cfg_actuator,
+                        "terminal_bypass_band_m",
+                        0.20,
+                    )
+                ),
             )
-        )
-        if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
-            logger.warning(
-                "Invalid thruster hysteresis thresholds (on=%.6f, off=%.6f); disabling hysteresis.",
-                self.thruster_hysteresis_on,
-                self.thruster_hysteresis_off,
-            )
-            self.enable_thruster_hysteresis = False
 
     def set_mode_state(self, mode_state: Any | None) -> None:
         """Set current V6 mode state (TRACK/RECOVER/SETTLE/HOLD/COMPLETE)."""
@@ -101,62 +124,6 @@ class MPCRunner:
         if isinstance(mode, str) and mode:
             return mode
         return "TRACK"
-
-    def _apply_thruster_hysteresis(
-        self,
-        thruster_action: np.ndarray,
-        previous_thrusters: np.ndarray,
-    ) -> np.ndarray:
-        """Apply on/off hysteresis to reduce chatter in normalized thruster commands."""
-        if not self.enable_thruster_hysteresis:
-            return thruster_action
-
-        prev = np.array(previous_thrusters, dtype=np.float64, copy=False).reshape(-1)
-        if prev.size != self.thruster_count:
-            prev = self.previous_thrusters
-
-        prev_active = prev >= self.thruster_hysteresis_off
-        turn_on = (~prev_active) & (thruster_action >= self.thruster_hysteresis_on)
-        stay_on = prev_active & (thruster_action >= self.thruster_hysteresis_off)
-        active_mask = turn_on | stay_on
-
-        # Inactive channels are forced to exactly 0.0.
-        return np.where(active_mask, thruster_action, 0.0).astype(np.float64, copy=False)
-
-    def _should_bypass_hysteresis_for_terminal_settling(
-        self,
-        mpc_info: dict[str, Any],
-    ) -> bool:
-        """Allow fine thrust corrections near endpoint to satisfy terminal hold tolerances."""
-        if not self.enable_thruster_hysteresis:
-            return False
-
-        endpoint_error = mpc_info.get("path_endpoint_error")
-        if endpoint_error is None:
-            return False
-
-        try:
-            endpoint_error_val = float(endpoint_error)
-        except (TypeError, ValueError):
-            return False
-
-        if not np.isfinite(endpoint_error_val) or endpoint_error_val < 0.0:
-            return False
-
-        pos_tol = 0.1
-        if self.state_validator is not None:
-            try:
-                pos_tol = float(
-                    getattr(self.state_validator, "position_tolerance", pos_tol)
-                )
-            except Exception:
-                pos_tol = 0.1
-
-        # Keep hysteresis for most of the trajectory, but disable it close to
-        # the endpoint where tiny commands are needed to satisfy strict
-        # position/velocity/omega completion thresholds.
-        terminal_settle_band = max(0.25, 3.0 * pos_tol)
-        return endpoint_error_val <= terminal_settle_band
 
     def compute_control_action(
         self,
@@ -192,7 +159,9 @@ class MPCRunner:
             try:
                 self.mpc.set_runtime_mode(mode_name)
             except Exception:
-                logger.debug("Failed to forward runtime mode to MPC controller", exc_info=True)
+                logger.debug(
+                    "Failed to forward runtime mode to MPC controller", exc_info=True
+                )
 
         try:
             control_action, mpc_info = self.mpc.get_control_action(
@@ -205,7 +174,9 @@ class MPCRunner:
                 measured_state, previous_thrusters
             )
         except Exception:
-            logger.exception("Controller execution failed; applying zero-command fallback.")
+            logger.exception(
+                "Controller execution failed; applying zero-command fallback."
+            )
             control_action = np.zeros(
                 self.rw_axes + self.thruster_count,
                 dtype=np.float64,
@@ -260,34 +231,18 @@ class MPCRunner:
                 np.clip(thruster_action, 0.0, 1.0, out=thruster_action)
                 thruster_action = thruster_action.astype(np.float64, copy=False)
                 endpoint_error = mpc_info.get("path_endpoint_error")
-                if self.actuator_policy is not None:
-                    try:
-                        thruster_action = self.actuator_policy.apply(
-                            thruster_action,
-                            previous_thrusters,
-                            mode=mode_name,
-                            endpoint_error_m=endpoint_error,
-                        )
-                    except Exception:
-                        logger.debug(
-                            "ActuatorPolicyV6 apply failed, using legacy hysteresis",
-                            exc_info=True,
-                        )
-                        if not self._should_bypass_hysteresis_for_terminal_settling(
-                            mpc_info
-                        ):
-                            thruster_action = self._apply_thruster_hysteresis(
-                                thruster_action=thruster_action,
-                                previous_thrusters=previous_thrusters,
-                            )
-                else:
-                    if not self._should_bypass_hysteresis_for_terminal_settling(
-                        mpc_info
-                    ):
-                        thruster_action = self._apply_thruster_hysteresis(
-                            thruster_action=thruster_action,
-                            previous_thrusters=previous_thrusters,
-                        )
+                try:
+                    thruster_action = self.actuator_policy.apply(
+                        thruster_action,
+                        previous_thrusters,
+                        mode=mode_name,
+                        endpoint_error_m=endpoint_error,
+                    )
+                except Exception:
+                    logger.warning(
+                        "ActuatorPolicyV6 apply failed; using unclipped controller command.",
+                        exc_info=True,
+                    )
                 if self.rw_axes:
                     np.clip(rw_torque, -1.0, 1.0, out=rw_torque)
                     rw_torque = rw_torque.astype(np.float64, copy=False)
