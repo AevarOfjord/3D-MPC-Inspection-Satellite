@@ -8,14 +8,12 @@ Install documentation dependencies:
 
 ```bash
 pip install sphinx sphinx-rtd-theme myst-parser
-```
-
+```text
 Or install from `pyproject.toml`:
 
 ```bash
 pip install -e ".[dev,docs]"
-```
-
+```text
 ## Building Documentation
 
 ### Quick Build
@@ -23,8 +21,7 @@ pip install -e ".[dev,docs]"
 ```bash
 cd docs
 make html
-```
-
+```text
 The documentation will be built in `docs/_build/html/`. Open `docs/_build/html/index.html` in your browser.
 
 ### Clean Build
@@ -33,15 +30,14 @@ The documentation will be built in `docs/_build/html/`. Open `docs/_build/html/i
 cd docs
 make clean
 make html
-```
-
+```text
 ### View Documentation
 
 After building, open:
-```
-docs/_build/html/index.html
-```
 
+```text
+docs/_build/html/index.html
+```text
 ## Documentation Structure
 
 - **User Guide**: Architecture, development guide, testing guide
@@ -74,8 +70,7 @@ def solve_mpc(self, state: np.ndarray, target: np.ndarray) -> np.ndarray:
         OptimizationError: If solver fails
     """
     ...
-```
-
+```text
 ### Module Documentation
 
 Add module-level docstrings:
@@ -87,8 +82,7 @@ MPC Controller Module
 Provides Model Predictive Control for satellite thruster control.
 Uses OSQP solver for real-time optimization.
 """
-```
-
+```text
 ## CI Integration
 
 Documentation is automatically built in CI (`.github/workflows/ci.yml`) with warnings treated as errors.
@@ -98,6 +92,7 @@ Documentation is automatically built in CI (`.github/workflows/ci.yml`) with war
 ### Import Errors
 
 If you see import errors when building:
+
 - Check that all dependencies are installed
 - Verify `sys.path` in `docs/conf.py` includes the source directory
 - Some external dependencies (for example `osqp`) are mocked - this is normal
@@ -105,6 +100,7 @@ If you see import errors when building:
 ### Missing Documentation
 
 If a module doesn't appear in the API docs:
+
 - Check that it's listed in the appropriate `.rst` file in `docs/api/`
 - Verify the module path is correct
 - Ensure the module has docstrings
@@ -112,6 +108,7 @@ If a module doesn't appear in the API docs:
 ### Build Errors
 
 If the build fails:
+
 - Run `make clean` first
 - Check for syntax errors in `.rst` files
 - Verify Sphinx version compatibility

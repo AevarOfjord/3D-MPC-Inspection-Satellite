@@ -12,15 +12,13 @@ After each simulation run, the system automatically generates comprehensive visu
 
 ```bash
 .venv311/bin/python scripts/run_simulation.py run
-```
-
+```text
 After the simulation completes, find your results:
 
 ```bash
 ls Data/Simulation/  # Lists timestamped directories
 cd Data/Simulation/2026-01-06_10-30-45  # Navigate to latest run
-```
-
+```text
 ### What Gets Generated
 
 Every simulation automatically creates:
@@ -35,7 +33,7 @@ Every simulation automatically creates:
 
 After running a simulation, you'll find:
 
-```
+```text
 Data/
 └── Simulation/
    └── 06-01-2026_10-30-45/           # Timestamp: DD-MM-YYYY_HH-MM-SS
@@ -45,8 +43,7 @@ Data/
       ├── mission_metadata.json      # Planned path for UI
       ├── mission_summary.txt        # Run summary
       └── Plots/                     # Generated on demand
-```
-
+```text
 ---
 
 ## 1. CSV Data Files
@@ -73,16 +70,14 @@ See the CSV header for the full column list.
 ```csv
 Time,Current_X,Current_Y,Current_Z,Current_Roll,Current_Pitch,Current_Yaw,...,Thruster_1_Cmd,Thruster_1_Val
 12.3400,0.45200,-0.23100,0.00000,0.00010,-0.00020,0.12500,...,0.000,0.000
-```
-
+```text
 **Use Case:** Import into your own analysis tools, MATLAB, Python pandas, etc.
 
 ```python
 import pandas as pd
 df = pd.read_csv('Data/Simulation/06-01-2026_10-30-45/physics_data.csv')
 print(df.describe())
-```
-
+```text
 ---
 
 ### control_data.csv
@@ -103,8 +98,7 @@ See the CSV header for the full column list.
 ```csv
 Control_Time,Current_X,Current_Y,Current_Z,...,Command_Vector,Total_Active_Thrusters,MPC_Solve_Time,MPC_Status
 12.3400,0.45200,-0.23100,0.00000,...,"[0.000, 0.000, ...]",2,0.00142,solved
-```
-
+```text
 **Use Case:** Analyze control effort, MPC performance, thruster usage patterns
 
 ```python
@@ -117,8 +111,7 @@ print(f"Avg MPC solve time: {df['mpc_solve_time'].mean()*1000:.2f} ms")
 # Total control effort
 total_effort = df[[f'thruster_{i}' for i in range(1,9)]].sum().sum()
 print(f"Total thrust effort: {total_effort:.2f}")
-```
-
+```text
 ---
 
 ## 2. Animated Mission Playback (MP4)
@@ -162,8 +155,7 @@ xdg-open Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
 
 # Windows
 start Data/Simulation/06-01-2026_10-30-45/Simulation_3D_Render.mp4
-```
-
+```text
 ---
 
 ## 3. Performance Analysis Plots
@@ -172,8 +164,7 @@ Generate detailed static plots on demand:
 
 ```bash
 .venv311/bin/python -m satellite_control.visualization.unified_visualizer
-```
-
+```text
 This creates multiple PNG plots in the same `Data/Simulation/<timestamp>/Plots/` directory.
 
 ---
@@ -200,7 +191,7 @@ This creates multiple PNG plots in the same `Data/Simulation/<timestamp>/Plots/`
 
 **Example Interpretation:**
 
-```
+```text
 ┌─────────────────────────────────────┐
 │                                     │
 │     Start (0,0) ●────────→ ● Target│
@@ -211,8 +202,7 @@ This creates multiple PNG plots in the same `Data/Simulation/<timestamp>/Plots/`
 └─────────────────────────────────────┘
 
 Good: Smooth path with gentle curve
-```
-
+```text
 ---
 
 ### 3.2 Position vs Time
@@ -288,13 +278,12 @@ Good: Smooth path with gentle curve
 
 **Interpretation:**
 
-```
+```text
 Thruster 1: ████░░░░░░░░░░  (fired early, then idle)
 Thruster 2: ░░░░████████░░  (fired mid-mission)
 Thruster 3: ░░░░░░░░████░░  (fired for final correction)
 ...
-```
-
+```text
 ---
 
 ### 3.5 MPC Performance
@@ -368,8 +357,7 @@ PlotStyle.COLOR_TARGET = "#A23B72"
 
 # Export quality
 PlotStyle.DPI = 300
-```
-
+```text
 Plot implementations are split by concern:
 
 - `trajectory_plots.py` for trajectory and 3D path plots
@@ -400,16 +388,14 @@ viz.generate_performance_plots()
 
 # Generate animation artifact
 viz.generate_animation("output.mp4")
-```
-
+```text
 If you need one specific plot, call the corresponding method on
 `PlotGenerator` after loading data:
 
 ```python
 plot_gen = viz._get_plot_generator()
 plot_gen.generate_velocity_tracking_plot(viz.output_dir / "Plots")
-```
-
+```text
 ---
 
 ## Comparing Multiple Runs
@@ -433,8 +419,7 @@ plt.ylabel('Position Error (m)')
 plt.legend()
 plt.grid(True)
 plt.savefig('comparison.png')
-```
-
+```text
 ---
 
 ## Exporting for Presentations
@@ -458,8 +443,7 @@ subprocess.run([
    'Data/Simulation/<timestamp>/Plots/01_trajectory_2d.png',
     'trajectory_plot.pdf'
 ])
-```
-
+```text
 ### Embedding Animation in Slides
 
 1. **PowerPoint:** Insert → Video → From File
@@ -470,8 +454,7 @@ subprocess.run([
 
 ```bash
 ffmpeg -i Simulation_3D_Render.mp4 -vf "fps=15,scale=800:-1" output.gif
-```
-
+```text
 ---
 
 ## Troubleshooting
@@ -483,6 +466,7 @@ ffmpeg -i Simulation_3D_Render.mp4 -vf "fps=15,scale=800:-1" output.gif
 1. Simulation completed successfully
 2. CSV files exist in `Data/Simulation/<timestamp>/`
 3. Run the visualizer manually:
+
    ```bash
    .venv311/bin/python -m satellite_control.visualization.unified_visualizer
    ```
@@ -508,8 +492,7 @@ PlotStyle.DPI = 300
 
 # In video_renderer.py
 # Tune writer fps / bitrate settings for your output target.
-```
-
+```text
 ### Plots Look Cluttered
 
 **Simplify:**
@@ -523,8 +506,7 @@ plt.figure(figsize=(14, 10))
 
 # Use cleaner style
 plt.style.use('seaborn-v0_8-white')
-```
-
+```text
 ---
 
 ## Best Practices

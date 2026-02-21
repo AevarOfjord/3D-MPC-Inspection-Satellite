@@ -68,14 +68,12 @@ Use the converter script to migrate legacy mission JSON files:
 
 ```bash
 .venv311/bin/python scripts/migrate_missions_v1_to_v2.py missions_unified --recursive --output-dir missions_v2_migrated --report-json release/migration-report.json
-```
-
+```text
 In-place migration is supported when required:
 
 ```bash
 .venv311/bin/python scripts/migrate_missions_v1_to_v2.py missions_unified --recursive --in-place
-```
-
+```text
 ## Validation Workflow Recommendation
 
 1. Convert legacy missions using the CLI.

@@ -24,8 +24,7 @@ Comprehensive guide for testing the Satellite Control System, including unit tes
 
 ```bash
 pip install pytest pytest-cov
-```
-
+```text
 ### Run All Tests
 
 ```bash
@@ -34,14 +33,12 @@ pip install pytest pytest-cov
 
 # Run with coverage
 .venv311/bin/python -m pytest --cov=src/python/satellite_control --cov-report=html
-```
-
+```text
 ### Run Your First Simulation Test
 
 ```bash
 .venv311/bin/python scripts/run_simulation.py run
-```
-
+```text
 Select a saved unified mission from `missions/` to run a basic test.
 
 ---
@@ -52,8 +49,7 @@ Select a saved unified mission from `missions/` to run a basic test.
 
 ```bash
 .venv311/bin/python scripts/run_simulation.py run
-```
-
+```text
 **Use Cases:**
 
 - Manual verification of control behavior
@@ -71,8 +67,7 @@ Select a saved unified mission from `missions/` to run a basic test.
 
 # Headless (no visualization)
 .venv311/bin/python scripts/run_simulation.py run --no-anim --auto
-```
-
+```text
 ## MPC Quality Suite (V6)
 
 Run deterministic MPC quality contracts (tracking, timing, chatter) against pinned scenarios.
@@ -96,8 +91,7 @@ Run deterministic MPC quality contracts (tracking, timing, chatter) against pinn
   --suite-summary Data/Simulation/quality_full.json \
   --schema-migration-ok \
   --fail-on-not-ready
-```
-
+```text
 Outputs:
 
 - Per-run report: `Data/Simulation/<run>/contract_report_v6.json`
@@ -129,8 +123,7 @@ Recommended focused run:
 
 ```bash
 .venv311/bin/python -m pytest -q tests/test_v6_runtime.py tests/test_unified_compiler.py tests/test_mpc.py tests/test_cpp_integration.py tests/test_dashboard_api.py
-```
-
+```text
 Coverage expectations:
 
 - strict `+Z` lock and projected-forward `+X` reference math
@@ -154,8 +147,7 @@ Run this subset when validating dead-knob removal and compatibility behavior:
 ```bash
 .venv311/bin/python -m pytest -q tests/test_config.py tests/test_mpc.py tests/test_cpp_integration.py tests/test_v6_runtime.py tests/test_dashboard_api.py
 npm --prefix ui run test -- tests/unit/mpcSettingsSerialization.test.ts tests/unit/missionSerializer.test.ts
-```
-
+```text
 Checks include:
 
 - removed MPC knobs absent from canonical schema/bindings/UI payload serialization
@@ -180,7 +172,7 @@ Tests unified mission compile/hydration and path tracking runtime behavior.
 
 ### Test Structure
 
-```
+```text
 tests/
 ├── __init__.py
 ├── conftest.py              # Shared fixtures
@@ -189,8 +181,7 @@ tests/
 ├── integration/             # Integration tests
 ├── physics/                 # Physics unit tests
 ├── test_*.py                # Unit/component tests at repo root
-```
-
+```text
 ### Running Tests
 
 ```bash
@@ -218,8 +209,7 @@ tests/
 
 # Run tests matching pattern
 .venv311/bin/python -m pytest -k "mpc"
-```
-
+```text
 ### Test Markers
 
 ```bash
@@ -228,8 +218,7 @@ tests/
 
 # Run tests by custom marker
 .venv311/bin/python -m pytest -m "integration"
-```
-
+```text
 ### Understanding Test Results
 
 **Symbols:**
@@ -242,13 +231,12 @@ tests/
 
 **Example output:**
 
-```
+```text
 tests/test_config.py::test_mass_is_positive PASSED       [10%]
 tests/test_mpc.py::test_solve_time PASSED                [20%]
 ...
 ====== 47 passed in 1.23s ======
-```
-
+```text
 ---
 
 ## Writing Tests
@@ -275,8 +263,7 @@ class TestPhysics:
         """Test that zero mass raises error."""
         with pytest.raises(ZeroDivisionError):
             acceleration = 5.0 / 0.0
-```
-
+```text
 ### Naming Conventions
 
 ```python
@@ -295,8 +282,7 @@ def test_physics():  # Too vague
 
 def test_1():  # No meaning
     pass
-```
-
+```text
 ### Common Assertions
 
 ```python
@@ -322,8 +308,7 @@ with pytest.raises(ValueError):
 
 with pytest.raises(ValueError, match="error message"):
     function_that_raises_with_message()
-```
-
+```text
 ### Using Fixtures
 
 ```python
@@ -346,8 +331,7 @@ def mpc_config():
 # Use in test
 def test_with_fixture(satellite_params):
     assert satellite_params.total_mass > 0
-```
-
+```text
 ### Parametrized Tests
 
 ```python
@@ -360,8 +344,7 @@ def test_inertia_scales_with_mass(mass, expected_inertia):
     """Test that inertia scales correctly with mass."""
     calculated = mass * 0.045
     assert calculated == pytest.approx(expected_inertia, rel=0.01)
-```
-
+```text
 ---
 
 ## Simulation Testing & Validation
@@ -383,8 +366,7 @@ Q_VELOCITY = 10000.0             # Velocity damping
 Q_ANGLE = 1000.0                 # Orientation tracking
 Q_ANGULAR_VELOCITY = 1500.0      # Angular damping
 R_THRUST = 1.0                   # Control effort penalty
-```
-
+```text
 **Tuning Guidelines:**
 
 For **faster response**:
@@ -392,26 +374,23 @@ For **faster response**:
 ```python
 Q_POSITION = 1500.0    # Increase from 1000
 R_THRUST = 0.5         # Decrease from 1.0
-```
-
+```text
 For **smoother motion**:
 
 ```python
 Q_VELOCITY = 15000.0             # Increase from 10000
 Q_ANGULAR_VELOCITY = 2000.0      # Increase from 1500
-```
-
+```text
 ### Output & Analysis
 
 Every simulation creates:
 
-```
+```text
 Data/Simulation/DD-MM-YYYY_HH-MM-SS/
 ├── physics_data.csv           # State history (200 Hz)
 ├── control_data.csv           # MPC commands (16.67 Hz)
 └── Simulation_3D_Render.mp4   # Visual playback
-```
-
+```text
 **Analyze Results:**
 
 ```python
@@ -429,8 +408,7 @@ print(f"Final error: {pos_error.iloc[-1]:.4f} m")
 # MPC performance
 print(f"Avg solve time: {control['mpc_solve_time'].mean()*1000:.2f} ms")
 print(f"Solver failures: {(control['mpc_status'] != 'OPTIMAL').sum()}")
-```
-
+```text
 ### Batch Parameter Sweep
 
 ```python
@@ -448,8 +426,7 @@ for q_pos in q_positions:
             '--auto', '--no-anim', '--duration', '20'
         ])
         # Collect and analyze results
-```
-
+```text
 ---
 
 ## Performance Benchmarks
@@ -480,8 +457,7 @@ logger.debug(f"Current state: x={x:.3f}, y={y:.3f}")
 logger.info("Starting MPC optimization")
 logger.warning(f"Solve time {solve_time:.3f}s exceeds limit")
 logger.error(f"MPC solve failed: {error_msg}")
-```
-
+```text
 ### Interactive Debugging with pdb
 
 ```python
@@ -489,8 +465,7 @@ import pdb; pdb.set_trace()  # Debugger pauses here
 
 # Or use built-in breakpoint()
 breakpoint()
-```
-
+```text
 ### Testing with Debug Output
 
 ```bash
@@ -499,8 +474,7 @@ breakpoint()
 
 # -v: verbose test names
 # -s: show print statements
-```
-
+```text
 ### Live Simulation Debugging
 
 The rich terminal dashboard shows real-time telemetry. Check for:
@@ -519,11 +493,10 @@ The rich terminal dashboard shows real-time telemetry. Check for:
 ```bash
 pytest --cov=src/python/satellite_control --cov-report=html
 open htmlcov/index.html
-```
-
+```text
 ### Understanding Coverage
 
-```
+```text
 Name                  Stmts   Miss  Cover   Missing
 --------------------------------------------------
 config/__init__.py       45      2    96%   12-13
@@ -531,8 +504,7 @@ model.py               120     10    92%   45-48, 67
 mpc.py                 200      5    98%   150-151
 --------------------------------------------------
 TOTAL                  615     37    94%
-```
-
+```text
 ### Coverage Goals
 
 - **Overall:** Aim for >80% coverage
@@ -550,8 +522,7 @@ pytest --cov=. --cov-report=term-missing
 
 # XML report (for CI/CD)
 pytest --cov=. --cov-report=xml
-```
-
+```text
 ---
 
 ## Troubleshooting
@@ -573,9 +544,8 @@ eps_abs = 1e-3  # Looser (was 1e-4)
 
 # 3. Increase time limit
 SOLVER_TIME_LIMIT = 0.08  # Up from 0.05s
-```
-
-####Simulation Unstable
+```text
+#### Simulation Unstable
 
 **Symptoms:** Satellite spinning, oscillating, or diverging
 
@@ -585,8 +555,7 @@ SOLVER_TIME_LIMIT = 0.08  # Up from 0.05s
 # Increase damping
 Q_VELOCITY = 15000.0          # Increase from 10000
 Q_ANGULAR_VELOCITY = 2000.0   # Increase from 1500
-```
-
+```text
 #### Tests Fail to Run
 
 ```bash
@@ -599,8 +568,7 @@ pip install pytest pytest-cov
 
 # Run from project root
 .venv311/bin/python -m pytest
-```
-
+```text
 #### Tests Timeout
 
 ```bash
@@ -612,8 +580,7 @@ pip install pytest pytest-cov
 
 # Run integration tests only
 .venv311/bin/python -m pytest tests/integration/
-```
-
+```text
 ### Quick Reference
 
 ```bash
@@ -631,8 +598,7 @@ pip install pytest pytest-cov
 
 # Generate plots from existing data
 .venv311/bin/python -m satellite_control.visualization.unified_visualizer
-```
-
+```text
 ---
 
 ## Next Steps

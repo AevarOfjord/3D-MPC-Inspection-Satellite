@@ -9,8 +9,7 @@ git clone https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_R
 cd Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel
 make install
 make ui-build
-```
-
+```text
 ## Daily Commands
 
 ```bash
@@ -19,8 +18,7 @@ make run-app     # backend serves prebuilt UI
 make lint        # backend + frontend lint
 make test-cov    # tests + coverage gate
 make docs-build  # docs build with warnings as errors
-```
-
+```text
 ## Pull Request Checklist
 
 1. Keep changes focused and include rationale in the PR description.

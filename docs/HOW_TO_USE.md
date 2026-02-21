@@ -8,8 +8,7 @@ This guide is for running and operating the app day-to-day from the web interfac
 
 ```bash
 make run-app
-```
-
+```text
 Then open:
 
 - `http://localhost:8000`
@@ -124,8 +123,7 @@ make stop           # stop app processes on known ports
 .venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
 .venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
 .venv311/bin/python scripts/check_v6_cutover_readiness.py --suite-summary Data/Simulation/quality_fast.json --suite-summary Data/Simulation/quality_full.json --schema-migration-ok --fail-on-not-ready
-```
-
+```text
 ## 6.1) Runner Config Schema (V6)
 
 - Canonical runner payload is now:

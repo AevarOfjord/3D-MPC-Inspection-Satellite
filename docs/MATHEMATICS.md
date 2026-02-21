@@ -13,20 +13,17 @@ State vector:
 
 ```text
 x = [ p(3), q(4), v(3), w(3), s(1), rw_speed(3) ]
-```
-
+```text
 Control vector:
 
 ```text
 u = [ rw_torque(n_rw), thruster_cmd(n_thrusters), v_s(1) ]
-```
-
+```text
 Per MPC step, the linearized dynamics are:
 
 ```text
 x_{k+1} = A_k x_k + B_k u_k + c_k
-```
-
+```text
 where `A_k, B_k, c_k` are updated from the current state and reference geometry.
 
 ## 2. MPCC Objective
@@ -54,8 +51,7 @@ General form:
 ```text
 J = sum_{k=0..N-1} (||e_contour||^2 + ||e_lag||^2 + ||e_progress||^2 + ||e_att||^2 + ||e_w||^2 + ||u||^2 + ||Δu||^2)
     + terminal penalties
-```
-
+```text
 (Each term is weighted by its configured scalar weight.)
 
 ## 3. Mode-Profile Scaling (V6)
@@ -119,8 +115,7 @@ Let fallback age be `t_f`:
 scale(t_f) = 1.0                                  if t_f <= hold_s
 scale(t_f) = 1 - (t_f - hold_s) / decay_s         if hold_s < t_f < hold_s + decay_s
 scale(t_f) = 0.0                                  if t_f >= zero_after_s
-```
-
+```text
 Telemetry exports:
 
 - `fallback_active`
@@ -140,14 +135,12 @@ Runtime path speed policy (scheduler/runtime compiler):
 ```text
 speed_candidate = min(non-hold segment speed_max values)
 speed = clamp(speed_candidate, path_speed_min, path_speed_max)
-```
-
+```text
 Required duration estimator:
 
 ```text
 required_duration = path_length / max(speed, 1e-6) + hold_duration + margin
-```
-
+```text
 Default margin: `30 s`.
 
 ## 8. Constraints and Solver
@@ -174,8 +167,7 @@ Canonical payload schema:
     "input_file_path": null
   }
 }
-```
-
+```text
 For one compatibility release, legacy/v1/v2 payloads are dual-read by API adapters; all new writes persist as `app_config_v3`.
 
 Removed canonical MPC knobs in V6 cleanup:
@@ -205,27 +197,24 @@ Let `t` be the local path tangent and `z_ref` the locked axis.
 
 ```text
 x_proj = t - (t · z_ref) z_ref
-```
-
-2. Degenerate case (`||x_proj|| ~ 0`):
+```text
+1. Degenerate case (`||x_proj|| ~ 0`):
 
 - reuse previous projected `x_ref` for continuity if available;
 - otherwise use a deterministic seeded orthogonal basis vector.
 
-3. Normalize and enforce forward branch:
+1. Normalize and enforce forward branch:
 
 ```text
 x_ref = normalize(x_proj)
 if x_ref · t < 0 then x_ref = -x_ref
-```
-
-4. Complete right-handed frame:
+```text
+1. Complete right-handed frame:
 
 ```text
 y_ref = normalize(z_ref × x_ref)
 R_ref = [x_ref y_ref z_ref]
-```
-
+```text
 Quaternion sign continuity is enforced across horizon points to avoid frame flips.
 
 ### 10.3 Pointing Error Metrics
