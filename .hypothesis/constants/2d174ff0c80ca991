@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/models.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.001, 0.005, 0.015, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 20.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 100, 480, 640, 1000, 1600, 2160, 4096, 5000, 'AppConfig', 'CON', 'MPCParams', 'OSQP', 'PWM', 'ReactionWheelParams', '^(cpp)$', '^(sphere|cube)$', 'after', 'com_offset', 'control_horizon', 'cpp', 'dt', 'prediction_horizon', 'solver_time_limit', 'sphere', 'thruster_forces', 'thruster_positions', 'thruster_type']

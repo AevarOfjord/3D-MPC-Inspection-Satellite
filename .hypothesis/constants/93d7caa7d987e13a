@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/simulation_io.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.25, 0.3, 1.0, 1.5, 3.0, '%d-%m-%Y_%H-%M-%S', 'Current_Angular_Vel', 'Current_Pitch', 'Current_Roll', 'Current_VX', 'Current_VY', 'Current_VZ', 'Current_WX', 'Current_WY', 'Current_WZ', 'Current_X', 'Current_Y', 'Current_Yaw', 'Current_Z', 'Data', 'SIMULATION', 'Simulation', 'control_data.csv', 'cylinder', 'height', 'mesh', 'mesh_scan_obj_path', 'mission_state', 'mission_summary.txt', 'mission_type', 'obj_path', 'orientation', 'position', 'radius', 'scan', 'scan_object', 'simulation_config', 'starlink', 'starlink_orbit', 'trajectory_type', 'type', 'xyz']

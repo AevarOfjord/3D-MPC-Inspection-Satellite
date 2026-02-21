@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/thruster_manager.py
-# hypothesis_version: 6.151.4
-
-[-1000.0, -999.0, 0.0, 1e-09, 0.001, 0.01, 0.5, 0.999, 1.0, 'CON', 'PWM', 'set_thruster_level']

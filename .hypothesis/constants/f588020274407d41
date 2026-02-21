@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/config/mission_state.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.05, 0.1, 0.2, 0.5, 0.85, 2.0, 60.0, '\nPath Following:', '=', 'APPROACH', 'MISSION STATE', 'NONE', 'PATH_FOLLOWING', 'SCAN', 'TRAJECTORY', 'path', 'square']
