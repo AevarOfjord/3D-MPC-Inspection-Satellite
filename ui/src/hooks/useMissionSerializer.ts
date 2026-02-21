@@ -4,6 +4,7 @@ import type {
   SplineControl,
   TransferSegment,
 } from '../api/unifiedMission';
+import type { ScanDefinition } from '../types/scanProject';
 import { normalizePathDensityMultiplier } from '../utils/pathDensity';
 
 interface BuildUnifiedMissionArgs {
@@ -21,10 +22,63 @@ interface BuildUnifiedMissionArgs {
   obstacles: { position: [number, number, number]; radius: number }[];
   draftRevision: number | null;
   pathDensityMultiplier: number;
+  scanProjectScans?: ScanDefinition[];
+  selectedScanId?: string | null;
   nextSegmentId: (prefix: string) => string;
   resolveOrbitTargetPose: (targetId: string) =>
     | { frame: 'ECI'; position: [number, number, number]; orientation?: [number, number, number, number] }
     | undefined;
+}
+
+type PositiveSpiralAxis = '+X' | '+Y' | '+Z';
+
+function toPositiveSpiralAxis(axis: string | null | undefined): PositiveSpiralAxis | null {
+  const token = String(axis || '').trim().toUpperCase();
+  if (token === 'X') return '+X';
+  if (token === 'Y') return '+Y';
+  if (token === 'Z') return '+Z';
+  return null;
+}
+
+function resolveScanAxisOverrides(
+  scanSegmentCount: number,
+  scanProjectScans: ScanDefinition[] | undefined,
+  selectedScanId: string | null | undefined
+): Map<number, PositiveSpiralAxis> {
+  const overrides = new Map<number, PositiveSpiralAxis>();
+  const projectScans = Array.isArray(scanProjectScans) ? scanProjectScans : [];
+  if (scanSegmentCount <= 0 || projectScans.length <= 0) {
+    return overrides;
+  }
+
+  if (scanSegmentCount === projectScans.length) {
+    for (let idx = 0; idx < scanSegmentCount; idx += 1) {
+      const token = toPositiveSpiralAxis(projectScans[idx]?.axis);
+      if (token) {
+        overrides.set(idx, token);
+      }
+    }
+    return overrides;
+  }
+
+  if (scanSegmentCount === 1) {
+    const selectedScan =
+      projectScans.find((scan) => scan.id === selectedScanId) ?? projectScans[0];
+    const token = toPositiveSpiralAxis(selectedScan?.axis);
+    if (token) {
+      overrides.set(0, token);
+    }
+    return overrides;
+  }
+
+  const limit = Math.min(scanSegmentCount, projectScans.length);
+  for (let idx = 0; idx < limit; idx += 1) {
+    const token = toPositiveSpiralAxis(projectScans[idx]?.axis);
+    if (token) {
+      overrides.set(idx, token);
+    }
+  }
+  return overrides;
 }
 
 export function buildUnifiedMissionPayload({
@@ -42,6 +96,8 @@ export function buildUnifiedMissionPayload({
   obstacles,
   draftRevision,
   pathDensityMultiplier,
+  scanProjectScans,
+  selectedScanId,
   nextSegmentId,
   resolveOrbitTargetPose,
 }: BuildUnifiedMissionArgs): UnifiedMission {
@@ -85,6 +141,16 @@ export function buildUnifiedMissionPayload({
   }
   const density = normalizePathDensityMultiplier(pathDensityMultiplier);
   overrides.path_density_multiplier = density;
+  const scanSegmentCount = segments.reduce(
+    (count, seg) => (seg.type === 'scan' ? count + 1 : count),
+    0
+  );
+  const scanAxisOverrides = resolveScanAxisOverrides(
+    scanSegmentCount,
+    scanProjectScans,
+    selectedScanId
+  );
+  let scanSegmentIndex = 0;
 
   return {
     schema_version: 2,
@@ -121,35 +187,46 @@ export function buildUnifiedMissionPayload({
           },
         } as TransferSegment;
       }
-      if (seg.type === 'scan' && seg.target_id) {
-        const resolvedPose = resolveOrbitTargetPose(seg.target_id);
-        if (resolvedPose) {
-          return {
-            ...seg,
-            segment_id: segmentId,
-            title: seg.title ?? null,
-            notes: seg.notes ?? null,
-            scan: {
-              ...seg.scan,
-              frame: 'LVLH',
-            },
-            target_pose: resolvedPose,
-          } as ScanSegment;
+      if (seg.type === 'scan') {
+        const currentScanIndex = scanSegmentIndex;
+        scanSegmentIndex += 1;
+        const scanAxisOverride = scanAxisOverrides.get(currentScanIndex);
+
+        if (seg.target_id) {
+          const resolvedPose = resolveOrbitTargetPose(seg.target_id);
+          if (resolvedPose) {
+            return {
+              ...seg,
+              segment_id: segmentId,
+              title: seg.title ?? null,
+              notes: seg.notes ?? null,
+              scan: {
+                ...seg.scan,
+                frame: 'LVLH',
+                ...(scanAxisOverride ? { axis: scanAxisOverride } : {}),
+              },
+              target_pose: resolvedPose,
+            } as ScanSegment;
+          }
         }
+
+        return {
+          ...seg,
+          segment_id: segmentId,
+          title: seg.title ?? null,
+          notes: seg.notes ?? null,
+          scan: {
+            ...seg.scan,
+            frame: 'LVLH' as const,
+            ...(scanAxisOverride ? { axis: scanAxisOverride } : {}),
+          },
+        } as ScanSegment;
       }
       return {
         ...seg,
         segment_id: segmentId,
         title: seg.title ?? null,
         notes: seg.notes ?? null,
-        ...(seg.type === 'scan'
-          ? {
-              scan: {
-                ...seg.scan,
-                frame: 'LVLH' as const,
-              },
-            }
-          : {}),
       };
     }),
     obstacles: obstacles.map((o) => ({

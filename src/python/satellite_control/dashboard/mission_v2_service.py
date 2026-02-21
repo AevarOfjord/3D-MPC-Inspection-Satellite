@@ -40,6 +40,7 @@ from satellite_control.mission.repository import (
     with_json_extension,
 )
 from satellite_control.mission.runtime_loader import (
+    collect_scan_axis_asset_mismatches,
     compile_unified_mission_runtime,
     parse_unified_mission_payload,
 )
@@ -61,6 +62,8 @@ LEGACY_DEPRECATION_HEADERS: dict[str, str] = {
     "Sunset": LEGACY_SUNSET_HTTP,
     "Link": f'<{V2_DOC_LINK}>; rel="deprecation"',
 }
+SCAN_AXIS_ASSET_MISMATCH_CODE = "SCAN_AXIS_ASSET_MISMATCH"
+SCAN_AXIS_MIGRATION_NOTICE_TAG = "migration:scan_axis_asset_mismatch"
 
 
 def _now_iso() -> str:
@@ -95,7 +98,9 @@ def _strip_v2_segment_fields(segment: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def to_legacy_payload(mission: UnifiedMissionV2Model | dict[str, Any]) -> dict[str, Any]:
+def to_legacy_payload(
+    mission: UnifiedMissionV2Model | dict[str, Any],
+) -> dict[str, Any]:
     """
     Convert a v2 mission payload to legacy unified mission contract.
     """
@@ -136,14 +141,19 @@ def migrate_legacy_payload(
     segment_payloads: list[dict[str, Any]] = []
     for idx, segment in enumerate(legacy.get("segments", [])):
         segment_payload = {
-            "segment_id": str(segment.get("segment_id") or _default_segment_id(idx, segment.get("type", "segment"))),
+            "segment_id": str(
+                segment.get("segment_id")
+                or _default_segment_id(idx, segment.get("type", "segment"))
+            ),
             "title": segment.get("title"),
             "notes": segment.get("notes"),
             **segment,
         }
         segment_payloads.append(segment_payload)
 
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    metadata = (
+        payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    )
     migrated = {
         "schema_version": 2,
         "mission_id": mission_id,
@@ -187,7 +197,9 @@ def migrate_legacy_request_to_v2(
     return ensure_v2_payload(request.payload, name_hint=request.name_hint)
 
 
-def summarize_constraints(mission: UnifiedMissionV2Model) -> MissionConstraintSummaryV2Model:
+def summarize_constraints(
+    mission: UnifiedMissionV2Model,
+) -> MissionConstraintSummaryV2Model:
     speed_values: list[float] = []
     accel_values: list[float] = []
     angular_values: list[float] = []
@@ -208,8 +220,77 @@ def summarize_constraints(mission: UnifiedMissionV2Model) -> MissionConstraintSu
     )
 
 
+def _build_scan_axis_mismatch_map(
+    mission: UnifiedMissionV2Model,
+) -> dict[int, dict[str, Any]]:
+    try:
+        mission_def = parse_unified_mission_payload(to_legacy_payload(mission))
+    except Exception:
+        return {}
+    mismatches = collect_scan_axis_asset_mismatches(mission_def)
+    return {int(item["segment_index"]): item for item in mismatches}
+
+
+def _with_scan_axis_migration_notice(
+    mission: UnifiedMissionV2Model,
+) -> tuple[UnifiedMissionV2Model, list[str]]:
+    mismatch_map = _build_scan_axis_mismatch_map(mission)
+    existing_tags = list(mission.metadata.tags or [])
+    existing_tags_set = set(existing_tags)
+    notices: list[str] = []
+
+    if not mismatch_map:
+        if SCAN_AXIS_MIGRATION_NOTICE_TAG in existing_tags_set:
+            tags = [
+                tag for tag in existing_tags if tag != SCAN_AXIS_MIGRATION_NOTICE_TAG
+            ]
+            return (
+                mission.model_copy(
+                    update={
+                        "metadata": mission.metadata.model_copy(update={"tags": tags})
+                    }
+                ),
+                notices,
+            )
+        return mission, notices
+
+    updated_segments = []
+    for index, segment in enumerate(mission.segments):
+        mismatch = mismatch_map.get(index)
+        if segment.type != "scan" or mismatch is None:
+            updated_segments.append(segment)
+            continue
+        inferred_axis = str(mismatch.get("inferred_axis", "Z")).upper()
+        migrated_axis = f"+{inferred_axis}"
+        updated_segments.append(
+            segment.model_copy(
+                update={
+                    "scan": segment.scan.model_copy(update={"axis": migrated_axis}),
+                }
+            )
+        )
+        notices.append(
+            f"segments[{index}] scan.axis migrated "
+            f"{mismatch.get('declared_axis')} -> {migrated_axis} "
+            f"using path_asset '{mismatch.get('path_asset')}'"
+        )
+
+    tags = list(existing_tags)
+    if SCAN_AXIS_MIGRATION_NOTICE_TAG not in existing_tags_set:
+        tags.append(SCAN_AXIS_MIGRATION_NOTICE_TAG)
+
+    migrated = mission.model_copy(
+        update={
+            "segments": updated_segments,
+            "metadata": mission.metadata.model_copy(update={"tags": tags}),
+        }
+    )
+    return migrated, notices
+
+
 def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV2Model:
     issues: list[ValidationIssueV2Model] = []
+    axis_mismatch_map = _build_scan_axis_mismatch_map(mission)
 
     if not mission.name.strip():
         issues.append(
@@ -222,7 +303,10 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
             )
         )
 
-    if mission.start_pose.frame == "LVLH" and not (mission.start_target_id or "").strip():
+    if (
+        mission.start_pose.frame == "LVLH"
+        and not (mission.start_target_id or "").strip()
+    ):
         issues.append(
             ValidationIssueV2Model(
                 code="START_TARGET_REQUIRED",
@@ -278,6 +362,24 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
                         path=f"{seg_path}.path_asset",
                         message="Scan segment has no path asset.",
                         suggestion="Attach a path asset generated in Scan Planner.",
+                    )
+                )
+            mismatch = axis_mismatch_map.get(index)
+            if mismatch is not None:
+                inferred_axis = str(mismatch.get("inferred_axis", "Z")).upper()
+                issues.append(
+                    ValidationIssueV2Model(
+                        code=SCAN_AXIS_ASSET_MISMATCH_CODE,
+                        severity="warning",
+                        path=f"{seg_path}.scan.axis",
+                        message=(
+                            "scan.axis does not match dominant path_asset axis "
+                            f"({mismatch.get('declared_axis')} vs +{inferred_axis})."
+                        ),
+                        suggestion=(
+                            "Set pair axis in Planner Step 1 and save mission to sync "
+                            "scan.axis metadata."
+                        ),
                     )
                 )
 
@@ -455,11 +557,16 @@ def load_mission_v2(mission_id_or_name: str) -> UnifiedMissionV2Model:
             mission_file.stem,
             mission_file.name,
         }:
-            return mission
-    raise HTTPException(status_code=404, detail=f"Mission not found: {mission_id_or_name}")
+            migrated, _ = _with_scan_axis_migration_notice(mission)
+            return migrated
+    raise HTTPException(
+        status_code=404, detail=f"Mission not found: {mission_id_or_name}"
+    )
 
 
-def save_mission_v2(name: str, mission: UnifiedMissionV2Model) -> SaveMissionV2ResponseModel:
+def save_mission_v2(
+    name: str, mission: UnifiedMissionV2Model
+) -> SaveMissionV2ResponseModel:
     safe_name = sanitize_mission_name(name) or sanitize_mission_name(mission.name)
     if not safe_name:
         raise HTTPException(status_code=400, detail="Mission name is required.")
@@ -470,7 +577,9 @@ def save_mission_v2(name: str, mission: UnifiedMissionV2Model) -> SaveMissionV2R
     existing: UnifiedMissionV2Model | None = None
     if file_path.exists():
         try:
-            existing = ensure_v2_payload(_read_json(file_path), name_hint=file_path.stem)
+            existing = ensure_v2_payload(
+                _read_json(file_path), name_hint=file_path.stem
+            )
         except Exception:
             existing = None
 
@@ -515,15 +624,24 @@ def _draft_path(draft_id: str) -> Path:
     return DRAFTS_DIR / f"{safe}.json"
 
 
-def save_draft_v2(request: MissionDraftSaveRequestV2Model) -> MissionDraftResponseV2Model:
-    draft_id = request.draft_id.strip() if request.draft_id else f"draft_{uuid.uuid4().hex[:12]}"
+def save_draft_v2(
+    request: MissionDraftSaveRequestV2Model,
+) -> MissionDraftResponseV2Model:
+    draft_id = (
+        request.draft_id.strip()
+        if request.draft_id
+        else f"draft_{uuid.uuid4().hex[:12]}"
+    )
     path = _draft_path(draft_id)
 
     revision = 1
     if path.exists():
         existing = _read_json(path)
         existing_revision = int(existing.get("revision") or 0)
-        if request.base_revision is not None and request.base_revision != existing_revision:
+        if (
+            request.base_revision is not None
+            and request.base_revision != existing_revision
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={

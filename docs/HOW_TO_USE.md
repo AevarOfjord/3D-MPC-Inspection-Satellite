@@ -168,6 +168,52 @@ Each run now includes additional controller diagnostics artifacts:
   - `fallback_age_s`
   - `fallback_scale`
 
+## 6.5) Pointing-Stability Contract (V6)
+
+V6 now enforces an inspection-oriented pointing contract during travel:
+
+- Planner Step 1 pair axis is the canonical source for mission `segments[].scan.axis` when saving.
+- `+X` tracks path-forward direction.
+- `+Z` locks to planner pair axis (`scan.axis`) when available.
+- If no scan axis exists, `+Z` falls back to LVLH radial (`+R`).
+- `+Y/-Y` side is automatic; camera side can swap only as needed for continuity.
+
+Legacy mission safety:
+
+- On mission load, if a scan segment `scan.axis` metadata disagrees with the attached `path_asset` dominant axis, runtime auto-migrates it in-memory and raises a warning tag.
+- Validation reports warning code `SCAN_AXIS_ASSET_MISMATCH` for this mismatch (warning-level, not hard fail).
+
+Transfer behavior:
+
+- transfer segments inherit the next scan segment axis context while approaching scan work.
+- after the final scan, transfer/endpoint legs keep the last scan axis context.
+
+Default guardrails (enabled):
+
+- `z_axis_error_deg <= 4.0`
+- `x_axis_error_deg <= 6.0`
+- breach hold `0.30 s`
+- clear hold `0.80 s`
+
+Config location (`app_config_v3`):
+
+- `app_config.controller_contracts.enable_pointing_contract`
+- `app_config.controller_contracts.scan_axis_source` (`planner` default)
+- `app_config.controller_contracts.pointing_guardrails_enabled`
+- `app_config.controller_contracts.pointing_z_error_deg_max`
+- `app_config.controller_contracts.pointing_x_error_deg_max`
+- `app_config.controller_contracts.pointing_breach_hold_s`
+- `app_config.controller_contracts.pointing_clear_hold_s`
+
+Runner telemetry now includes:
+
+- `pointing_context_source`
+- `pointing_axis_world`
+- `z_axis_error_deg`
+- `x_axis_error_deg`
+- `pointing_guardrail_breached`
+- `object_visible_side`
+
 ## 7) Troubleshooting
 
 - Missing `ui/dist/index.html`:

@@ -166,7 +166,9 @@ def create_default_app_config() -> AppConfig:
 
     controller_contracts = ControllerContractsParams(
         position_error_m_max=constants.Constants.POSITION_TOLERANCE,
-        angle_error_deg_max=float(constants.Constants.ANGLE_TOLERANCE * 180.0 / 3.141592653589793),
+        angle_error_deg_max=float(
+            constants.Constants.ANGLE_TOLERANCE * 180.0 / 3.141592653589793
+        ),
         velocity_error_mps_max=constants.Constants.VELOCITY_TOLERANCE,
         angular_velocity_error_degps_max=float(
             constants.Constants.ANGULAR_VELOCITY_TOLERANCE * 180.0 / 3.141592653589793
@@ -180,6 +182,17 @@ def create_default_app_config() -> AppConfig:
         recover_exit_error_m=constants.Constants.V6_RECOVER_EXIT_ERROR_M,
         recover_exit_hold_s=constants.Constants.V6_RECOVER_EXIT_HOLD_S,
         allow_mission_override=True,
+        enable_pointing_contract=constants.Constants.V6_ENABLE_POINTING_CONTRACT,
+        pointing_scope=constants.Constants.V6_POINTING_SCOPE,
+        pointing_axis_priority=constants.Constants.V6_POINTING_AXIS_PRIORITY,
+        pointing_sensor_policy=constants.Constants.V6_POINTING_SENSOR_POLICY,
+        pointing_transfer_axis_policy=constants.Constants.V6_POINTING_TRANSFER_AXIS_POLICY,
+        scan_axis_source=constants.Constants.V6_SCAN_AXIS_SOURCE,
+        pointing_guardrails_enabled=constants.Constants.V6_POINTING_GUARDRAILS_ENABLED,
+        pointing_z_error_deg_max=constants.Constants.V6_POINTING_Z_ERROR_DEG_MAX,
+        pointing_x_error_deg_max=constants.Constants.V6_POINTING_X_ERROR_DEG_MAX,
+        pointing_breach_hold_s=constants.Constants.V6_POINTING_BREACH_HOLD_S,
+        pointing_clear_hold_s=constants.Constants.V6_POINTING_CLEAR_HOLD_S,
     )
 
     return AppConfig(

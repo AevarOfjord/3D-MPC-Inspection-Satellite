@@ -13,6 +13,8 @@ import { computePathLength } from '../utils/pathMetrics';
 import { normalizePathDensityMultiplier } from '../utils/pathDensity';
 import { useToast } from '../feedback/feedbackContext';
 
+const SCAN_AXIS_MIGRATION_NOTICE_TAG = 'migration:scan_axis_asset_mismatch';
+
 type OrbitPoseResolver = (
   targetId: string
 ) =>
@@ -152,6 +154,7 @@ export function useMissionHydration({
 }: UseMissionHydrationArgs) {
   const { showToast } = useToast();
   const migrationToastByMissionRef = useRef<Set<string>>(new Set());
+  const axisMigrationToastByMissionRef = useRef<Set<string>>(new Set());
 
   const applyLoadedMission = (mission: UnifiedMission, fallbackName?: string) => {
     const resolvedMissionId = mission.mission_id || nextMissionId();
@@ -297,6 +300,21 @@ export function useMissionHydration({
         tone: 'info',
         title: 'Mission migrated to LVLH',
         message: 'Legacy ECI fields were mapped to LVLH for planner editing.',
+      });
+    }
+
+    const tags = mission.metadata?.tags || [];
+    const hasAxisMigrationNotice = tags.includes(SCAN_AXIS_MIGRATION_NOTICE_TAG);
+    if (
+      hasAxisMigrationNotice &&
+      !axisMigrationToastByMissionRef.current.has(resolvedMissionId)
+    ) {
+      axisMigrationToastByMissionRef.current.add(resolvedMissionId);
+      showToast({
+        tone: 'warning',
+        title: 'Scan axis auto-migrated',
+        message:
+          'Legacy scan.axis metadata did not match the attached path asset and was adjusted from planner geometry.',
       });
     }
   };

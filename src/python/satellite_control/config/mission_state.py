@@ -85,6 +85,10 @@ class MissionState:
     scan_attitude_center: tuple[float, float, float] | None = None
     scan_attitude_axis: tuple[float, float, float] | None = None
     scan_attitude_direction: str = "CW"
+    # Runtime segment-wise pointing spans indexed by path arc-length.
+    pointing_path_spans: list[dict[str, Any]] = field(default_factory=list)
+    # In-memory migration notices populated during mission compile/load.
+    scan_axis_migration_notices: list[str] = field(default_factory=list)
 
     # --- Path Following ---
 
@@ -165,6 +169,8 @@ class MissionState:
         self.scan_attitude_center = None
         self.scan_attitude_axis = None
         self.scan_attitude_direction = "CW"
+        self.pointing_path_spans = []
+        self.scan_axis_migration_notices = []
 
     def get_current_mission_type(self) -> str:
         """

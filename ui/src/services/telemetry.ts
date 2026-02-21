@@ -59,6 +59,15 @@ export interface TelemetryData {
     last_fallback_reason?: string | null;
     fallback_reasons?: Record<string, number>;
   } | null;
+  pointing_status?: {
+    pointing_context_source?: string | null;
+    pointing_axis_world?: [number, number, number];
+    z_axis_error_deg?: number;
+    x_axis_error_deg?: number;
+    pointing_guardrail_breached?: boolean;
+    object_visible_side?: '+Y' | '-Y' | null;
+    pointing_guardrail_reason?: string | null;
+  } | null;
   controller_core?: string;
 }
 

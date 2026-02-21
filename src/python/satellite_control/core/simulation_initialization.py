@@ -29,6 +29,7 @@ from satellite_control.core.thruster_manager import ThrusterManager
 from satellite_control.core.v6_controller_runtime import (
     ActuatorPolicyV6,
     ControllerModeManagerV6,
+    PointingGuardrailV6,
     ReferenceSchedulerV6,
     SolverHealthV6,
     TerminalSupervisorV6,
@@ -153,7 +154,10 @@ class SimulationInitializer:
         if contracts_cfg is not None:
             configured_hold = float(getattr(contracts_cfg, "hold_duration_s", 10.0))
             current_hold = getattr(mission_state, "path_hold_end", None)
-            if current_hold is None or abs(float(current_hold) - DEFAULT_PATH_HOLD_END_S) <= 1e-9:
+            if (
+                current_hold is None
+                or abs(float(current_hold) - DEFAULT_PATH_HOLD_END_S) <= 1e-9
+            ):
                 mission_state.path_hold_end = configured_hold
 
         # Configure Path for Path-Following Mode (Always Active)
@@ -398,9 +402,7 @@ class SimulationInitializer:
             if scan_center is not None:
                 center_arr = np.array(scan_center, dtype=float).reshape(-1)
                 center = (
-                    center_arr[:3]
-                    if center_arr.size >= 3
-                    else np.zeros(3, dtype=float)
+                    center_arr[:3] if center_arr.size >= 3 else np.zeros(3, dtype=float)
                 )
             else:
                 center = np.zeros(3, dtype=float)
@@ -439,22 +441,12 @@ class SimulationInitializer:
                     return start_angle
                 x_axis = x_axis / x_norm
 
-            y_plus = np.cross(z_line, x_axis)
-            y_plus_norm = float(np.linalg.norm(y_plus))
-            if y_plus_norm > 1e-9:
-                y_plus = y_plus / y_plus_norm
-                z_axis = z_line if float(np.dot(y_plus, radial_dir)) >= 0.0 else -z_line
-            else:
-                z_axis = z_line
-
+            z_axis = z_line
             y_axis = np.cross(z_axis, x_axis)
             y_norm = float(np.linalg.norm(y_axis))
             if y_norm <= 1e-9:
                 return start_angle
             y_axis = y_axis / y_norm
-            if float(np.dot(y_axis, radial_dir)) < 0.0:
-                y_axis = -y_axis
-                z_axis = -z_axis
             x_axis = np.cross(y_axis, z_axis)
             x_norm = float(np.linalg.norm(x_axis))
             if x_norm <= 1e-9:
@@ -826,6 +818,26 @@ class SimulationInitializer:
         self.simulation.v6_reference_scheduler = ReferenceSchedulerV6()
         self.simulation.v6_reference_slice = None
         self.simulation.v6_solver_health = SolverHealthV6()
+        self.simulation.v6_pointing_guardrail = PointingGuardrailV6(
+            enabled=bool(getattr(contracts_cfg, "pointing_guardrails_enabled", True)),
+            z_error_deg_max=float(
+                getattr(contracts_cfg, "pointing_z_error_deg_max", 4.0)
+            ),
+            x_error_deg_max=float(
+                getattr(contracts_cfg, "pointing_x_error_deg_max", 6.0)
+            ),
+            breach_hold_s=float(getattr(contracts_cfg, "pointing_breach_hold_s", 0.30)),
+            clear_hold_s=float(getattr(contracts_cfg, "pointing_clear_hold_s", 0.80)),
+        )
+        self.simulation.v6_pointing_status = {
+            "pointing_context_source": "none",
+            "pointing_axis_world": [0.0, 0.0, 1.0],
+            "z_axis_error_deg": 0.0,
+            "x_axis_error_deg": 0.0,
+            "pointing_guardrail_breached": False,
+            "object_visible_side": None,
+            "pointing_guardrail_reason": None,
+        }
 
     def _initialize_io_helper(self) -> None:
         """Initialize IO helper for data export operations."""

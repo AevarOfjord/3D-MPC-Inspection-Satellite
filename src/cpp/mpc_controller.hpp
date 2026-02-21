@@ -369,12 +369,14 @@ private:
     bool path_data_valid_ = false;            // True if path data has been set
     bool scan_attitude_enabled_ = false;      // If true, keep object-facing side stable
     Eigen::Vector3d scan_center_ = Eigen::Vector3d::Zero();
+    bool scan_center_valid_ = false;
     Eigen::Vector3d scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     bool scan_direction_cw_ = true;
     bool scan_attitude_hard_constraint_ = false; // Soft-only by default (use Q_attitude cost)
     std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
     bool scan_q_ref_valid_ = false;
     mutable bool ref_frame_initialized_ = false;
+    mutable Eigen::Vector3d ref_prev_x_axis_ = Eigen::Vector3d::Zero();
     mutable Eigen::Vector3d ref_prev_y_axis_ = Eigen::Vector3d::Zero();
     mutable Eigen::Vector3d ref_prev_z_axis_ = Eigen::Vector3d::Zero();
     double s_runtime_ = 0.0;

@@ -335,7 +335,7 @@ def _normalize_frame(frame: Any) -> str:
 def _mission_uses_lvlh(mission: MissionDefinition) -> bool:
     if _normalize_frame(getattr(mission.start_pose, "frame", "ECI")) == "LVLH":
         return True
-    for segment in mission.segments:
+    for segment_index, segment in enumerate(mission.segments):
         if segment.type == SegmentType.TRANSFER:
             frame = getattr(segment.end_pose, "frame", "ECI")
             if _normalize_frame(frame) == "LVLH":
@@ -357,7 +357,7 @@ def _resolve_reference_origin(mission: MissionDefinition) -> np.ndarray:
                 and segment.target_pose
             ):
                 return np.array(segment.target_pose.position, dtype=float)
-    for segment in mission.segments:
+    for segment_index, segment in enumerate(mission.segments):
         if segment.type == SegmentType.SCAN and segment.target_pose:
             return np.array(segment.target_pose.position, dtype=float)
     return np.zeros(3, dtype=float)
@@ -379,6 +379,58 @@ def _convert_position(
     if src == "LVLH" and dst == "ECI":
         return pos + origin
     return pos
+
+
+def _axis_token_to_vector(axis_token: Any) -> np.ndarray:
+    axis_letter, axis_sign = _parse_axis(str(getattr(axis_token, "value", axis_token)))
+    if axis_letter == "X":
+        base = np.array([1.0, 0.0, 0.0], dtype=float)
+    elif axis_letter == "Y":
+        base = np.array([0.0, 1.0, 0.0], dtype=float)
+    else:
+        base = np.array([0.0, 0.0, 1.0], dtype=float)
+    return float(axis_sign) * base
+
+
+def _resolve_scan_pointing_context(
+    segment: Any,
+    *,
+    frame_mode: str,
+    origin: np.ndarray,
+) -> dict[str, Any]:
+    scan_cfg = getattr(segment, "scan", None)
+    scan_frame = _normalize_frame(getattr(scan_cfg, "frame", "ECI"))
+
+    if scan_frame == "ECI":
+        if getattr(segment, "target_pose", None):
+            center = _convert_position(
+                getattr(segment.target_pose, "position", (0.0, 0.0, 0.0)),
+                getattr(segment.target_pose, "frame", "ECI"),
+                frame_mode,
+                origin,
+            )
+        else:
+            center = np.zeros(3, dtype=float)
+    else:
+        center = np.zeros(3, dtype=float)
+
+    axis_vec = _axis_token_to_vector(getattr(scan_cfg, "axis", "+Z"))
+    axis_norm = float(np.linalg.norm(axis_vec))
+    if axis_norm > 1e-9:
+        axis_vec = axis_vec / axis_norm
+    else:
+        axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
+
+    direction_raw = str(getattr(scan_cfg, "direction", "CW"))
+    direction = direction_raw.strip().upper()
+    if direction not in {"CW", "CCW"}:
+        direction = "CW"
+
+    return {
+        "scan_center": [float(center[0]), float(center[1]), float(center[2])],
+        "scan_axis": [float(axis_vec[0]), float(axis_vec[1]), float(axis_vec[2])],
+        "scan_direction": direction,
+    }
 
 
 def _resolve_path_density_multiplier(mission: MissionDefinition) -> float:
@@ -424,83 +476,88 @@ def _infer_manual_path_frame(
             local_like += 1
 
     threshold = max(1, len(valid_points) // 2)
-    if target_frame == "LVLH" and absolute_like >= threshold and absolute_like > local_like:
+    if (
+        target_frame == "LVLH"
+        and absolute_like >= threshold
+        and absolute_like > local_like
+    ):
         return "ECI"
     if target_frame == "ECI" and local_like >= threshold and local_like > absolute_like:
         return "LVLH"
     return target_frame
 
 
-def compile_unified_mission_path(
+def _build_scan_contexts(
     mission: MissionDefinition,
-    sim_config: SimulationConfig,
-    output_frame: str | None = None,
-) -> tuple[list[tuple[float, float, float]], float, float, tuple[float, float, float]]:
-    """
-    Convert a unified mission into a single MPCC path.
-
-    Returns:
-        path, path_length, path_speed
-    """
-    frame_mode = (
-        output_frame.upper()
-        if output_frame is not None
-        else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
-    )
-    path_density_multiplier = _resolve_path_density_multiplier(mission)
-    origin = _resolve_reference_origin(mission)
-
-    # Choose a conservative runtime speed from declared segment constraints.
-    default_path_speed = float(sim_config.app_config.mpc.path_speed)
-    speed_candidates = []
-    for segment in mission.segments:
-        if segment.type == SegmentType.HOLD:
+    *,
+    frame_mode: str,
+    origin: np.ndarray,
+) -> dict[int, dict[str, Any]]:
+    scan_contexts: dict[int, dict[str, Any]] = {}
+    for seg_idx, seg in enumerate(mission.segments):
+        if seg.type != SegmentType.SCAN:
             continue
-        if segment.constraints and segment.constraints.speed_max:
-            speed_candidates.append(float(segment.constraints.speed_max))
-    path_speed = min(speed_candidates) if speed_candidates else default_path_speed
-    configured_speed_min = float(getattr(sim_config.app_config.mpc, "path_speed_min", 0.0) or 0.0)
-    configured_speed_max = float(getattr(sim_config.app_config.mpc, "path_speed_max", 0.0) or 0.0)
-    if configured_speed_max > 0.0:
-        path_speed = min(path_speed, configured_speed_max)
-    if configured_speed_min > 0.0:
-        path_speed = max(path_speed, configured_speed_min)
-
-    manual_path = getattr(getattr(mission, "overrides", None), "manual_path", None) or []
-    if manual_path:
-        manual_path_source_frame = _infer_manual_path_frame(
-            manual_path=manual_path,
-            origin=origin,
+        scan_contexts[seg_idx] = _resolve_scan_pointing_context(
+            seg,
             frame_mode=frame_mode,
+            origin=origin,
         )
-        path = [
-            tuple(
-                map(
-                    float,
-                    _convert_position(
-                        p,
-                        manual_path_source_frame,
-                        frame_mode,
-                        origin,
-                    ),
-                )
-            )
-            for p in manual_path
-            if len(p) == 3
-        ]
-        if path:
-            path_length = _compute_path_length(path)
-            return path, path_length, path_speed, tuple(origin)
+    return scan_contexts
 
-    if not mission.segments:
-        start = tuple(mission.start_pose.position)
-        return (
-            [start],
-            0.0,
-            float(sim_config.app_config.mpc.path_speed),
-            tuple(origin),
-        )
 
+def _append_pointing_span(
+    spans: list[dict[str, Any]],
+    *,
+    segment_type: str,
+    s_start: float,
+    s_end: float,
+    context: dict[str, Any] | None,
+    source_segment_index: int,
+    context_source: str,
+) -> None:
+    if s_end <= s_start:
+        return
+    spans.append(
+        {
+            "segment_type": str(segment_type),
+            "s_start": float(s_start),
+            "s_end": float(s_end),
+            "scan_center": (
+                list(context.get("scan_center"))
+                if isinstance(context, dict)
+                and isinstance(context.get("scan_center"), list)
+                else None
+            ),
+            "scan_axis": (
+                list(context.get("scan_axis"))
+                if isinstance(context, dict)
+                and isinstance(context.get("scan_axis"), list)
+                else None
+            ),
+            "scan_direction": (
+                str(context.get("scan_direction", "CW"))
+                if isinstance(context, dict)
+                else "CW"
+            ),
+            "source_segment_index": int(source_segment_index),
+            "context_source": str(context_source),
+        }
+    )
+
+
+def _build_compiled_path_and_spans(
+    mission: MissionDefinition,
+    *,
+    frame_mode: str,
+    origin: np.ndarray,
+    path_density_multiplier: float,
+    margin: float,
+    include_pointing_spans: bool,
+) -> tuple[
+    list[tuple[float, float, float]],
+    float,
+    list[dict[str, Any]],
+]:
     start_pos = _convert_position(
         mission.start_pose.position,
         getattr(mission.start_pose, "frame", "ECI"),
@@ -509,13 +566,22 @@ def compile_unified_mission_path(
     )
 
     path: list[tuple[float, float, float]] = [tuple(start_pos)]
-    current = np.array(path[-1], dtype=float)
-    # V4.2 planner policy: obstacles are visual diagnostics in authoring and
-    # must not alter generated transfer/connect geometry.
-    obstacles: Sequence[MissionObstacle] = ()
-    margin = float(sim_config.app_config.mpc.obstacle_margin)
+    if not mission.segments:
+        return path, 0.0, []
 
-    for segment in mission.segments:
+    current = np.array(path[-1], dtype=float)
+    # Planner policy: obstacles are diagnostics only and do not alter geometry.
+    obstacles: Sequence[MissionObstacle] = ()
+    cumulative_s = 0.0
+    pointing_spans: list[dict[str, Any]] = []
+    scan_contexts = _build_scan_contexts(
+        mission,
+        frame_mode=frame_mode,
+        origin=origin,
+    )
+    previous_scan_context: dict[str, Any] | None = None
+
+    for segment_index, segment in enumerate(mission.segments):
         if segment.type == SegmentType.TRANSFER:
             end = _convert_position(
                 segment.end_pose.position,
@@ -524,7 +590,6 @@ def compile_unified_mission_path(
                 origin,
             )
             step_size = max(0.05, min(4.0, 1.0 / path_density_multiplier))
-
             seg_path = _build_segment_path(
                 start=current,
                 end=end,
@@ -532,12 +597,42 @@ def compile_unified_mission_path(
                 step_size=step_size,
                 margin=margin,
             )
+            added_length = _compute_path_length(seg_path) if seg_path else 0.0
             if seg_path:
                 path.extend(seg_path[1:])
+            span_start = cumulative_s
+            cumulative_s += float(added_length)
+
+            if include_pointing_spans and added_length > 0.0:
+                next_scan_context = None
+                for candidate_idx in range(segment_index + 1, len(mission.segments)):
+                    if candidate_idx in scan_contexts:
+                        next_scan_context = scan_contexts[candidate_idx]
+                        break
+                transfer_context = next_scan_context or previous_scan_context
+                context_source = (
+                    "transfer_next_scan"
+                    if next_scan_context is not None
+                    else (
+                        "transfer_previous_scan"
+                        if transfer_context is not None
+                        else "transfer_none"
+                    )
+                )
+                _append_pointing_span(
+                    pointing_spans,
+                    segment_type="transfer",
+                    s_start=span_start,
+                    s_end=cumulative_s,
+                    context=transfer_context,
+                    source_segment_index=segment_index,
+                    context_source=context_source,
+                )
             current = end
 
         elif segment.type == SegmentType.SCAN:
             scan = segment.scan
+            scan_context = scan_contexts.get(segment_index)
             scan_frame = _normalize_frame(getattr(scan, "frame", "ECI"))
 
             target_pos = np.zeros(3, dtype=float)
@@ -550,7 +645,6 @@ def compile_unified_mission_path(
                 if frame_mode == "LVLH":
                     target_pos = target_pos - origin
             elif scan_frame == "LVLH":
-                # LVLH scan is defined around the local origin.
                 target_pos = np.zeros(3, dtype=float)
 
             target_orientation = None
@@ -561,8 +655,8 @@ def compile_unified_mission_path(
                 and segment.target_pose.orientation is not None
             ):
                 target_orientation = list(segment.target_pose.orientation)
-            obj_path = _resolve_target_obj_path(segment.target_id)
 
+            obj_path = _resolve_target_obj_path(segment.target_id)
             scan_path: list[tuple[float, float, float]] = []
             apply_orientation = False
             asset_id = getattr(segment, "path_asset", None)
@@ -570,7 +664,8 @@ def compile_unified_mission_path(
                 scan_path, apply_orientation = _build_asset_path(asset_id, target_pos)
                 if scan_path:
                     scan_path = _resample_polyline_path(
-                        scan_path, path_density_multiplier
+                        scan_path,
+                        path_density_multiplier,
                     )
             if not scan_path:
                 scan_path = _build_scan_path(
@@ -595,16 +690,15 @@ def compile_unified_mission_path(
                 ]
 
             if scan_path:
-                # Start scan traversal from the endpoint closest to the current position.
-                # This makes transfer-to-start vs transfer-to-end behavior deterministic.
                 first_p = np.array(scan_path[0], dtype=float)
                 last_p = np.array(scan_path[-1], dtype=float)
-                if np.linalg.norm(current - last_p) + 1e-9 < np.linalg.norm(current - first_p):
+                if np.linalg.norm(current - last_p) + 1e-9 < np.linalg.norm(
+                    current - first_p
+                ):
                     scan_path = list(reversed(scan_path))
                 start_p = current
                 end_p = np.array(scan_path[0], dtype=float)
                 step_size_conn = max(0.05, min(4.0, 1.0 / path_density_multiplier))
-
                 connect = _build_segment_path(
                     start=start_p,
                     end=end_p,
@@ -612,14 +706,201 @@ def compile_unified_mission_path(
                     step_size=step_size_conn,
                     margin=margin,
                 )
+                added_connect_length = _compute_path_length(connect) if connect else 0.0
                 if connect:
                     path.extend(connect[1:])
+                added_scan_length = _compute_path_length(scan_path)
                 path.extend(scan_path[1:])
                 current = np.array(scan_path[-1], dtype=float)
+                span_start = cumulative_s
+                cumulative_s += float(added_connect_length + added_scan_length)
+                previous_scan_context = scan_context
+                if (
+                    include_pointing_spans
+                    and (added_connect_length + added_scan_length) > 0.0
+                ):
+                    _append_pointing_span(
+                        pointing_spans,
+                        segment_type="scan",
+                        s_start=span_start,
+                        s_end=cumulative_s,
+                        context=(scan_context or {}),
+                        source_segment_index=segment_index,
+                        context_source="scan_segment",
+                    )
+
+            if scan_context is not None:
+                previous_scan_context = scan_context
 
         elif segment.type == SegmentType.HOLD:
-            # Hold by repeating current position
             path.append(tuple(current))
 
-    path_length = _compute_path_length(path)
+    return path, _compute_path_length(path), pointing_spans
+
+
+def _remap_pointing_spans_to_path_length(
+    spans: Sequence[dict[str, Any]],
+    *,
+    source_path_length: float,
+    target_path_length: float,
+) -> list[dict[str, Any]]:
+    if not spans or target_path_length <= 0.0:
+        return []
+
+    src_len = max(0.0, float(source_path_length))
+    dst_len = max(0.0, float(target_path_length))
+    ordered = sorted(
+        [dict(span) for span in spans if isinstance(span, dict)],
+        key=lambda span: (
+            float(span.get("s_start", 0.0)),
+            float(span.get("s_end", 0.0)),
+        ),
+    )
+    if not ordered:
+        return []
+
+    remapped: list[dict[str, Any]] = []
+    for span in ordered:
+        s_start = float(span.get("s_start", 0.0))
+        s_end = float(span.get("s_end", s_start))
+        if src_len > 1e-9:
+            start = (max(0.0, s_start) / src_len) * dst_len
+            end = (max(0.0, s_end) / src_len) * dst_len
+        else:
+            start = 0.0
+            end = dst_len
+        if end < start:
+            end = start
+        span["s_start"] = float(min(dst_len, max(0.0, start)))
+        span["s_end"] = float(min(dst_len, max(0.0, end)))
+        remapped.append(span)
+
+    if not remapped:
+        return []
+
+    remapped[0]["s_start"] = 0.0
+    prev_end = 0.0
+    for span in remapped:
+        start = float(span.get("s_start", 0.0))
+        end = float(span.get("s_end", start))
+        start = prev_end
+        end = max(start, min(dst_len, max(0.0, end)))
+        span["s_start"] = start
+        span["s_end"] = end
+        prev_end = end
+    remapped[-1]["s_end"] = dst_len
+    return remapped
+
+
+def compile_unified_mission_path(
+    mission: MissionDefinition,
+    sim_config: SimulationConfig,
+    output_frame: str | None = None,
+    include_pointing_spans: bool = False,
+) -> tuple[Any, ...]:
+    """
+    Convert a unified mission into a single MPCC path.
+
+    Returns:
+        path, path_length, path_speed
+    """
+    frame_mode = (
+        output_frame.upper()
+        if output_frame is not None
+        else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
+    )
+    path_density_multiplier = _resolve_path_density_multiplier(mission)
+    origin = _resolve_reference_origin(mission)
+
+    # Choose a conservative runtime speed from declared segment constraints.
+    default_path_speed = float(sim_config.app_config.mpc.path_speed)
+    speed_candidates = []
+    for segment_index, segment in enumerate(mission.segments):
+        if segment.type == SegmentType.HOLD:
+            continue
+        if segment.constraints and segment.constraints.speed_max:
+            speed_candidates.append(float(segment.constraints.speed_max))
+    path_speed = min(speed_candidates) if speed_candidates else default_path_speed
+    configured_speed_min = float(
+        getattr(sim_config.app_config.mpc, "path_speed_min", 0.0) or 0.0
+    )
+    configured_speed_max = float(
+        getattr(sim_config.app_config.mpc, "path_speed_max", 0.0) or 0.0
+    )
+    if configured_speed_max > 0.0:
+        path_speed = min(path_speed, configured_speed_max)
+    if configured_speed_min > 0.0:
+        path_speed = max(path_speed, configured_speed_min)
+
+    semantic_path: list[tuple[float, float, float]] | None = None
+    semantic_path_length: float | None = None
+    semantic_spans: list[dict[str, Any]] = []
+    if include_pointing_spans:
+        semantic_path, semantic_path_length, semantic_spans = (
+            _build_compiled_path_and_spans(
+                mission,
+                frame_mode=frame_mode,
+                origin=origin,
+                path_density_multiplier=path_density_multiplier,
+                margin=float(sim_config.app_config.mpc.obstacle_margin),
+                include_pointing_spans=True,
+            )
+        )
+
+    manual_path = (
+        getattr(getattr(mission, "overrides", None), "manual_path", None) or []
+    )
+    if manual_path:
+        manual_path_source_frame = _infer_manual_path_frame(
+            manual_path=manual_path,
+            origin=origin,
+            frame_mode=frame_mode,
+        )
+        path = [
+            tuple(
+                map(
+                    float,
+                    _convert_position(
+                        p,
+                        manual_path_source_frame,
+                        frame_mode,
+                        origin,
+                    ),
+                )
+            )
+            for p in manual_path
+            if len(p) == 3
+        ]
+        if path:
+            path_length = _compute_path_length(path)
+            if include_pointing_spans:
+                remapped_spans = _remap_pointing_spans_to_path_length(
+                    semantic_spans,
+                    source_path_length=float(semantic_path_length or 0.0),
+                    target_path_length=float(path_length),
+                )
+                return path, path_length, path_speed, tuple(origin), remapped_spans
+            return path, path_length, path_speed, tuple(origin)
+
+    if (
+        include_pointing_spans
+        and semantic_path is not None
+        and semantic_path_length is not None
+    ):
+        return (
+            semantic_path,
+            semantic_path_length,
+            path_speed,
+            tuple(origin),
+            semantic_spans,
+        )
+
+    path, path_length, _ = _build_compiled_path_and_spans(
+        mission,
+        frame_mode=frame_mode,
+        origin=origin,
+        path_density_multiplier=path_density_multiplier,
+        margin=float(sim_config.app_config.mpc.obstacle_margin),
+        include_pointing_spans=False,
+    )
     return path, path_length, path_speed, tuple(origin)

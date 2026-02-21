@@ -173,9 +173,7 @@ class MPCController(Controller):
         if hasattr(mpc_params, "settle_progress_scale"):
             mpc_params.settle_progress_scale = float(self.settle_progress_scale)
         if hasattr(mpc_params, "settle_terminal_pos_scale"):
-            mpc_params.settle_terminal_pos_scale = float(
-                self.settle_terminal_pos_scale
-            )
+            mpc_params.settle_terminal_pos_scale = float(self.settle_terminal_pos_scale)
         if hasattr(mpc_params, "settle_terminal_attitude_scale"):
             mpc_params.settle_terminal_attitude_scale = float(
                 self.settle_terminal_attitude_scale
@@ -191,9 +189,7 @@ class MPCController(Controller):
         if hasattr(mpc_params, "hold_smoothness_scale"):
             mpc_params.hold_smoothness_scale = float(self.hold_smoothness_scale)
         if hasattr(mpc_params, "hold_thruster_pair_scale"):
-            mpc_params.hold_thruster_pair_scale = float(
-                self.hold_thruster_pair_scale
-            )
+            mpc_params.hold_thruster_pair_scale = float(self.hold_thruster_pair_scale)
         if hasattr(mpc_params, "solver_fallback_hold_s"):
             mpc_params.solver_fallback_hold_s = float(self.solver_fallback_hold_s)
         if hasattr(mpc_params, "solver_fallback_decay_s"):
@@ -304,7 +300,9 @@ class MPCController(Controller):
             return
 
         if ObstacleSet is None or Obstacle is None or ObstacleType is None:
-            logger.warning("C++ obstacle bindings unavailable; skipping obstacle update")
+            logger.warning(
+                "C++ obstacle bindings unavailable; skipping obstacle update"
+            )
             return
 
         obstacle_set = ObstacleSet()
@@ -327,7 +325,7 @@ class MPCController(Controller):
         for item in obstacles:
             obs = Obstacle()
             try:
-                if isinstance(item, (list, tuple, np.ndarray)) and len(item) >= 4:
+                if isinstance(item, list | tuple | np.ndarray) and len(item) >= 4:
                     arr = np.array(item, dtype=float).reshape(-1)
                     obs.type = ObstacleType.SPHERE
                     obs.position = np.array(arr[:3], dtype=float)
@@ -389,14 +387,17 @@ class MPCController(Controller):
         direction: str = "CW",
     ) -> None:
         """Configure scan attitude context (+Z aligns with mission scan axis)."""
-        if center is None or axis is None:
+        if axis is None:
             if hasattr(self._cpp_controller, "clear_scan_attitude_context"):
                 self._cpp_controller.clear_scan_attitude_context()
             self._scan_attitude_enabled = False
             return
 
         if hasattr(self._cpp_controller, "set_scan_attitude_context"):
-            c = np.array(center, dtype=float)
+            if center is None:
+                c = np.array([np.nan, np.nan, np.nan], dtype=float)
+            else:
+                c = np.array(center, dtype=float)
             a = np.array(axis, dtype=float)
             self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
         self._scan_attitude_enabled = True
@@ -409,7 +410,9 @@ class MPCController(Controller):
             try:
                 self._cpp_controller.set_runtime_mode(mode_name)
             except Exception:
-                logger.debug("Failed to set runtime mode in C++ MPC core", exc_info=True)
+                logger.debug(
+                    "Failed to set runtime mode in C++ MPC core", exc_info=True
+                )
 
     @staticmethod
     def _classify_solver_fallback_reason(
@@ -564,7 +567,9 @@ class MPCController(Controller):
             Tuple of (position, unit_tangent). Falls back to zeros if path not set.
         """
         q_guess = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
-        pos_ref, tan_ref, _ = self.get_path_reference_state(s_query=s_query, q_current=q_guess)
+        pos_ref, tan_ref, _ = self.get_path_reference_state(
+            s_query=s_query, q_current=q_guess
+        )
         return pos_ref, tan_ref
 
     def get_path_reference_state(
@@ -596,14 +601,19 @@ class MPCController(Controller):
         )
         if hasattr(self._cpp_controller, "get_reference_at_s"):
             try:
-                pos, tangent, q_ref = self._cpp_controller.get_reference_at_s(s_val, q_curr)
+                pos, tangent, q_ref = self._cpp_controller.get_reference_at_s(
+                    s_val, q_curr
+                )
                 return (
                     np.array(pos, dtype=float),
                     np.array(tangent, dtype=float),
                     np.array(q_ref, dtype=float),
                 )
             except Exception:
-                logger.debug("C++ get_reference_at_s failed, using Python fallback", exc_info=True)
+                logger.debug(
+                    "C++ get_reference_at_s failed, using Python fallback",
+                    exc_info=True,
+                )
 
         # At exact path end, use the final non-degenerate segment direction
         # (second-last waypoint heading) because no forward segment exists.
@@ -625,11 +635,17 @@ class MPCController(Controller):
 
         # Find the segment that contains s_val
         idx = 0
-        while idx + 1 < len(self._path_data) and self._path_data[idx + 1][0] < s_val:
+        while idx + 1 < len(self._path_data) and self._path_data[idx + 1][0] <= s_val:
             idx += 1
 
+        # Use forward segment for heading (face next waypoint). At exact interior
+        # waypoints this chooses [idx -> idx+1]. At terminal s, keep second-last
+        # heading using [last-1 -> last].
+        if idx >= len(self._path_data) - 1:
+            idx = len(self._path_data) - 2
+
         s0, x0, y0, z0 = self._path_data[idx]
-        s1, x1, y1, z1 = self._path_data[min(idx + 1, len(self._path_data) - 1)]
+        s1, x1, y1, z1 = self._path_data[idx + 1]
 
         seg_len = s1 - s0
         if seg_len <= 1e-9:
@@ -971,7 +987,9 @@ class MPCController(Controller):
         if path_s_pred_raw is None:
             path_s_pred = path_s + v_s * self.dt
             if self._path_set and self._path_length > 0.0:
-                path_s_pred = max(0.0, min(float(path_s_pred), float(self._path_length)))
+                path_s_pred = max(
+                    0.0, min(float(path_s_pred), float(self._path_length))
+                )
         else:
             path_s_pred = float(path_s_pred_raw)
         # Use current-step path progress for external reference consumers

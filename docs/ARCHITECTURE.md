@@ -127,3 +127,46 @@ CI usage:
 
 - PR: fast quality contract.
 - Scheduled/manual: full quality suite + cutover readiness evaluation.
+
+## 9. Pointing-Stability Contract (V6)
+
+Pointing is now an explicit runtime contract owned by V6 runtime components.
+
+Contract goals:
+
+- `+X` axis follows path-forward travel direction.
+- `+Z` axis locks to planner pair axis when available.
+- If no scan/pair axis exists, `+Z` falls back to LVLH radial (`+R`).
+- `+Y/-Y` side is automatic; continuity is preferred (no forced camera side).
+
+Runtime flow:
+
+1. `MissionRuntimeCompilerV6` builds `pointing_path_spans` keyed by path `s`.
+2. Transfer spans inherit the next scan axis context when moving toward scan work.
+3. Transfers after the final scan inherit the last scan axis context.
+4. `resolve_pointing_context_v6(...)` selects active context by current `path_s`.
+5. `control_loop` pushes axis context into MPC each tick via `set_scan_attitude_context(...)`.
+6. C++ reference-frame math enforces strict `+Z` lock and projected `+X` forward branch.
+
+Guardrails:
+
+- Pointing error telemetry is computed each step:
+  - `z_axis_error_deg`
+  - `x_axis_error_deg`
+- Breach/clear hysteresis:
+  - breach hold: `0.30 s`
+  - clear hold: `0.80 s`
+- Continuous breach marks guardrail failure and biases runtime toward recovery behavior.
+
+## 10. Pointing Telemetry Surface
+
+Pointing fields are now available in runtime telemetry and run artifacts:
+
+- `pointing_context_source`
+- `pointing_axis_world`
+- `z_axis_error_deg`
+- `x_axis_error_deg`
+- `pointing_guardrail_breached`
+- `object_visible_side`
+
+These values are emitted through dashboard telemetry and persisted in controller diagnostics outputs.

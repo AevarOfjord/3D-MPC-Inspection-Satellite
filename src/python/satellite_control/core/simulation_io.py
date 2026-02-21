@@ -142,7 +142,9 @@ class SimulationIO:
             getattr(mission_state, "path_frame", "LVLH")
         ).upper()
         metadata["planned_path_frame"] = (
-            planned_path_frame_raw if planned_path_frame_raw in {"ECI", "LVLH"} else "LVLH"
+            planned_path_frame_raw
+            if planned_path_frame_raw in {"ECI", "LVLH"}
+            else "LVLH"
         )
         frame_origin = getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0))
         try:
@@ -172,7 +174,11 @@ class SimulationIO:
                 radius_raw = getattr(obs, "radius", None)
                 if position_raw is None or radius_raw is None:
                     continue
-                position = [float(position_raw[0]), float(position_raw[1]), float(position_raw[2])]
+                position = [
+                    float(position_raw[0]),
+                    float(position_raw[1]),
+                    float(position_raw[2]),
+                ]
                 radius = float(radius_raw)
                 serialized_obstacles.append({"position": position, "radius": radius})
             except Exception:
@@ -197,10 +203,16 @@ class SimulationIO:
 
         try:
             app_config_dict = app_config.model_dump()
-            config_json = json.dumps(app_config_dict, sort_keys=True, separators=(",", ":"))
-            computed_config_hash = hashlib.sha256(config_json.encode("utf-8")).hexdigest()[:12]
+            config_json = json.dumps(
+                app_config_dict, sort_keys=True, separators=(",", ":")
+            )
+            computed_config_hash = hashlib.sha256(
+                config_json.encode("utf-8")
+            ).hexdigest()[:12]
 
-            solver_type = str(app_config_dict.get("mpc", {}).get("solver_type", "unknown"))
+            solver_type = str(
+                app_config_dict.get("mpc", {}).get("solver_type", "unknown")
+            )
             manifest = {
                 "schema_version": "run_reproducibility_manifest_v1",
                 "generated_at": datetime.utcnow().isoformat() + "Z",
@@ -219,7 +231,10 @@ class SimulationIO:
                     "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH")
                     or computed_config_hash,
                     "computed_config_hash": computed_config_hash,
-                    "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
+                    "overrides_active": os.environ.get(
+                        "SATCTRL_RUNNER_OVERRIDES_ACTIVE"
+                    )
+                    == "1",
                     "app_config": app_config_dict,
                 },
                 "solver": {
@@ -351,7 +366,8 @@ class SimulationIO:
             "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH") or cfg_hash,
             "config_version": os.environ.get("SATCTRL_RUNNER_CONFIG_VERSION")
             or "app_config_v3",
-            "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
+            "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE")
+            == "1",
             "response_mirrors_enabled": os.environ.get(
                 "SATCTRL_RUNNER_RESPONSE_MIRRORS_ENABLED", "1"
             )
@@ -399,9 +415,7 @@ class SimulationIO:
             payload["success"] = bool(status == "completed")
             if kpi_summary:
                 payload["kpi_snapshot"] = {
-                    "final_position_error_m": kpi_summary.get(
-                        "final_position_error_m"
-                    ),
+                    "final_position_error_m": kpi_summary.get("final_position_error_m"),
                     "final_angle_error_deg": kpi_summary.get("final_angle_error_deg"),
                     "mpc_mean_solve_time_ms": kpi_summary.get("mpc_mean_solve_time_ms"),
                     "mpc_max_solve_time_ms": kpi_summary.get("mpc_max_solve_time_ms"),
@@ -491,16 +505,19 @@ class SimulationIO:
             "MPC_Iterations",
         ]
 
-        with control_csv.open("r", encoding="utf-8", newline="") as src, output_csv.open(
-            "w", encoding="utf-8", newline=""
-        ) as dst:
+        with (
+            control_csv.open("r", encoding="utf-8", newline="") as src,
+            output_csv.open("w", encoding="utf-8", newline="") as dst,
+        ):
             reader = csv.DictReader(src)
             writer = csv.DictWriter(dst, fieldnames=output_headers)
             writer.writeheader()
 
             for row in reader:
                 control_steps += 1
-                t = self._to_float(row.get("Control_Time"), self._to_float(row.get("Time")))
+                t = self._to_float(
+                    row.get("Control_Time"), self._to_float(row.get("Time"))
+                )
                 solve_time_s = self._to_float(
                     row.get("MPC_Solve_Time"), self._to_float(row.get("Solve_Time"))
                 )
@@ -570,14 +587,18 @@ class SimulationIO:
                 angular_velocity_error_degps = math.degrees(
                     angular_velocity_error_radps
                 )
-                active_thrusters = int(self._to_float(row.get("Total_Active_Thrusters")))
+                active_thrusters = int(
+                    self._to_float(row.get("Total_Active_Thrusters"))
+                )
                 thruster_switches = int(self._to_float(row.get("Thruster_Switches")))
                 path_s = self._to_float(row.get("Path_S"))
                 path_progress = self._to_float(row.get("Path_Progress"))
                 path_remaining = self._to_float(row.get("Path_Remaining"))
                 path_error = self._to_float(row.get("Path_Error"))
                 endpoint_error = self._to_float(row.get("Path_Endpoint_Error"))
-                timing_violation = str(row.get("Timing_Violation", "")).strip().upper() in {
+                timing_violation = str(
+                    row.get("Timing_Violation", "")
+                ).strip().upper() in {
                     "YES",
                     "TRUE",
                     "1",
@@ -973,7 +994,9 @@ class SimulationIO:
                     "type": "obstacle_margin_breach",
                     "count": obstacle_count,
                     "required_margin_m": obstacle_margin,
-                    "minimum_clearance_m": physics_stats.get("obstacle_min_clearance_m"),
+                    "minimum_clearance_m": physics_stats.get(
+                        "obstacle_min_clearance_m"
+                    ),
                     "sample_events": physics_stats.get("obstacle_breach_events", []),
                 }
             )
@@ -1178,6 +1201,7 @@ class SimulationIO:
         solver_health = getattr(self.sim, "v6_solver_health", None)
         mode_state = getattr(self.sim, "v6_mode_state", None)
         completion_gate = getattr(self.sim, "v6_completion_gate", None)
+        pointing_status = getattr(self.sim, "v6_pointing_status", None)
         mpc_controller = getattr(self.sim, "mpc_controller", None)
         payload = {
             "schema_version": "controller_health_v6",
@@ -1232,6 +1256,47 @@ class SimulationIO:
                     completion_gate, "last_breach_reason", None
                 ),
                 "complete": bool(getattr(completion_gate, "complete", False)),
+            },
+            "pointing_status": {
+                "pointing_context_source": (
+                    pointing_status.get("pointing_context_source")
+                    if isinstance(pointing_status, dict)
+                    else None
+                ),
+                "pointing_axis_world": (
+                    list(pointing_status.get("pointing_axis_world", [0.0, 0.0, 1.0]))
+                    if isinstance(pointing_status, dict)
+                    else [0.0, 0.0, 1.0]
+                ),
+                "z_axis_error_deg": float(
+                    self._to_float(
+                        pointing_status.get("z_axis_error_deg")
+                        if isinstance(pointing_status, dict)
+                        else 0.0
+                    )
+                ),
+                "x_axis_error_deg": float(
+                    self._to_float(
+                        pointing_status.get("x_axis_error_deg")
+                        if isinstance(pointing_status, dict)
+                        else 0.0
+                    )
+                ),
+                "pointing_guardrail_breached": bool(
+                    pointing_status.get("pointing_guardrail_breached", False)
+                    if isinstance(pointing_status, dict)
+                    else False
+                ),
+                "pointing_guardrail_reason": (
+                    pointing_status.get("pointing_guardrail_reason")
+                    if isinstance(pointing_status, dict)
+                    else None
+                ),
+                "object_visible_side": (
+                    pointing_status.get("object_visible_side")
+                    if isinstance(pointing_status, dict)
+                    else None
+                ),
             },
         }
         self._write_json(run_dir / "controller_health.json", payload)
@@ -1441,7 +1506,9 @@ class SimulationIO:
             rel = path.relative_to(run_dir)
             digest = self._sha256_file(path)
             lines.append(f"{digest}  {rel}")
-        checksum_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        checksum_path.write_text(
+            "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8"
+        )
 
     def _write_artifacts_manifest(self, run_dir: Path) -> None:
         """Write structured manifest for every generated file in run directory."""
@@ -1491,7 +1558,10 @@ class SimulationIO:
                 continue
             status_path = candidate / "run_status.json"
             kpi_path = candidate / "kpi_summary.json"
-            if not status_path.exists() and not (candidate / "physics_data.csv").exists():
+            if (
+                not status_path.exists()
+                and not (candidate / "physics_data.csv").exists()
+            ):
                 continue
 
             status_payload: dict[str, Any] = {}
@@ -1516,9 +1586,7 @@ class SimulationIO:
                     "preset_name": status_payload.get("preset", {}).get("name"),
                     "config_hash": status_payload.get("config", {}).get("config_hash"),
                     "final_time_s": kpi_payload.get("final_time_s"),
-                    "final_position_error_m": kpi_payload.get(
-                        "final_position_error_m"
-                    ),
+                    "final_position_error_m": kpi_payload.get("final_position_error_m"),
                     "final_angle_error_deg": kpi_payload.get("final_angle_error_deg"),
                     "path_completed": kpi_payload.get("path_completed"),
                 }
@@ -1598,7 +1666,7 @@ class SimulationIO:
                 elif isinstance(obs, dict):
                     pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
                     rad = float(obs.get("radius", 0.0))
-                elif isinstance(obs, (list, tuple)) and len(obs) >= 4:
+                elif isinstance(obs, list | tuple) and len(obs) >= 4:
                     pos = [float(obs[0]), float(obs[1]), float(obs[2])]
                     rad = float(obs[3])
                 else:

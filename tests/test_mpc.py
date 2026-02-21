@@ -128,6 +128,47 @@ class TestMPCController:
         controller.set_runtime_mode("RECOVER")
         assert controller._runtime_mode == "RECOVER"
 
+    def test_reference_quaternion_keeps_z_locked_to_scan_axis(self, controller):
+        """Scan context should lock +Z to configured axis while keeping +X path-forward."""
+        controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)])
+        controller.set_scan_attitude_context(
+            center=None,
+            axis=(0.0, 1.0, 0.0),
+            direction="CW",
+        )
+
+        _p_ref, t_ref, q_ref = controller.get_path_reference_state(
+            s_query=0.5,
+            q_current=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+        )
+
+        def _rotate(q_wxyz: np.ndarray, v: np.ndarray) -> np.ndarray:
+            w, x, y, z = q_wxyz
+            q_vec = np.array([x, y, z], dtype=float)
+            uv = np.cross(q_vec, v)
+            uuv = np.cross(q_vec, uv)
+            return v + 2.0 * (w * uv + uuv)
+
+        q_ref = np.array(q_ref, dtype=float)
+        q_ref /= np.linalg.norm(q_ref)
+        x_axis = _rotate(q_ref, np.array([1.0, 0.0, 0.0], dtype=float))
+        z_axis = _rotate(q_ref, np.array([0.0, 0.0, 1.0], dtype=float))
+
+        assert np.dot(z_axis, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.999
+        assert np.dot(x_axis, np.array(t_ref, dtype=float)) > 0.999
+
+    def test_tangent_uses_next_segment_at_interior_waypoint(self, controller):
+        """At exact interior waypoint, heading should face next waypoint segment."""
+        controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)])
+
+        _p_ref, t_ref, _q_ref = controller.get_path_reference_state(
+            s_query=1.0,
+            q_current=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+        )
+        t = np.array(t_ref, dtype=float)
+        t /= np.linalg.norm(t)
+        assert np.dot(t, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.999
+
 
 class _DummyMPCController:
     def __init__(self, next_action: np.ndarray):
