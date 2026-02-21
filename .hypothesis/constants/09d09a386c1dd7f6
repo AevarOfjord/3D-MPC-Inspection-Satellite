@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/performance_monitor.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.01, 5.0, 1000.0, 1000, '=', 'Control Loop:', 'MPC Performance:', 'PERFORMANCE SUMMARY', 'Physics Performance:', 'avg_ms', 'control_loop', 'control_loop_avg_ms', 'fps', 'loop_count', 'max_ms', 'mean_ms', 'mpc', 'mpc_max_ms', 'mpc_mean_ms', 'mpc_solves', 'p50_ms', 'p95_ms', 'p99_ms', 'peak_memory_mb', 'physics', 'physics_avg_ms', 'simulation', 'solve_count', 'step_count', 'timeout_count', 'timeout_rate', 'timing_violations', 'total_steps', 'total_time_s', 'violation_rate', 'w']

@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/mission/unified_mission.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.25, 0.5, 1.0, 10.0, 60.0, '+X', '+Y', '+Z', '-X', '-Y', '-Z', 'CCW', 'CW', 'Constraints', 'ECI', 'HoldSegment', 'LVLH', 'MissionDefinition', 'MissionObstacle', 'MissionOverrides', 'Pose', 'ScanConfig', 'ScanSegment', 'SplineControl', 'TransferSegment', 'accel_max', 'angular_rate_max', 'axis', 'constraints', 'custom', 'direction', 'duration', 'end_pose', 'epoch', 'fov_deg', 'frame', 'hold', 'obstacles', 'orientation', 'overlap', 'overrides', 'pattern', 'pitch', 'position', 'radius', 'revolutions', 'scan', 'segments', 'sensor_axis', 'speed_max', 'spiral', 'spline_controls', 'standoff', 'start_pose', 'target_id', 'target_pose', 'transfer', 'type', 'weight']

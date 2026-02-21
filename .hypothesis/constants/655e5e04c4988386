@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/control/mpc_controller.py
-# hypothesis_version: 6.151.4
-
-[0.0, 1e-09, 0.1, 0.5, 1.0, '_path_length', 'average_solve_time', 'box', 'cylinder', 'max_solve_time', 'mpc', 'path_s', 'path_speed', 'path_v_s', 'physics', 'r_rw_torque', 'reaction_wheels', 'solve_count', 'solve_time', 'solve_times', 'sphere', 'status']

@@ -1,4 +1,0 @@
-# file: /Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/satellite_control/core/cpp_satellite.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.001, '_current_rw_torques', 'dt', 'inertia', 'mpc', 'r_rw_torque', 'reaction_wheels', 'simulation']
