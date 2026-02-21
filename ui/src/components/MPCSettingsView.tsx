@@ -45,10 +45,6 @@ interface MpcSettings {
   path_speed_max: number;
   progress_taper_distance: number;
   progress_slowdown_distance: number;
-  tracking_recovery_error_m: number;
-  tracking_recovery_contour_boost: number;
-  tracking_recovery_progress_scale: number;
-  tracking_recovery_attitude_scale: number;
   enable_thruster_hysteresis: boolean;
   thruster_hysteresis_on: number;
   thruster_hysteresis_off: number;
@@ -71,6 +67,9 @@ interface SettingsConfig {
   mpc: MpcSettings;
   simulation: SimulationSettings;
   physics?: Record<string, unknown>;
+  reference_scheduler?: Record<string, unknown>;
+  actuator_policy?: Record<string, unknown>;
+  controller_contracts?: Record<string, unknown>;
   input_file_path?: string | null;
 }
 
@@ -178,10 +177,6 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   path_speed_max: 0.08,
   progress_taper_distance: 0.0,
   progress_slowdown_distance: 0.0,
-  tracking_recovery_error_m: 0.12,
-  tracking_recovery_contour_boost: 2.2,
-  tracking_recovery_progress_scale: 0.65,
-  tracking_recovery_attitude_scale: 0.5,
   enable_thruster_hysteresis: true,
   thruster_hysteresis_on: 0.015,
   thruster_hysteresis_off: 0.007,
@@ -477,12 +472,15 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
   const root = asRecord(raw);
   if (!root) return null;
 
-  const appConfig =
-    root.schema_version === 'app_config_v2' ? asRecord(root.app_config) : null;
+  const appConfig = asRecord(root.app_config);
   const source = appConfig ?? root;
-  const mpc = asRecord(source.mpc);
+  const mpcCore = asRecord(source.mpc_core);
+  const mpc = mpcCore ?? asRecord(source.mpc);
   const simulation = asRecord(source.simulation);
   const physics = asRecord(source.physics);
+  const referenceScheduler = asRecord(source.reference_scheduler);
+  const actuatorPolicy = asRecord(source.actuator_policy);
+  const controllerContracts = asRecord(source.controller_contracts);
   const inputFilePath =
     typeof source.input_file_path === 'string' || source.input_file_path === null
       ? source.input_file_path
@@ -500,10 +498,24 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
     if (typeof normalizedMpc.dt === 'number') {
       normalizedSimulation.control_dt = normalizedMpc.dt;
     }
+    if (actuatorPolicy) {
+      if (typeof actuatorPolicy.enable_thruster_hysteresis === 'boolean') {
+        normalizedMpc.enable_thruster_hysteresis = actuatorPolicy.enable_thruster_hysteresis;
+      }
+      if (typeof actuatorPolicy.thruster_hysteresis_on === 'number') {
+        normalizedMpc.thruster_hysteresis_on = actuatorPolicy.thruster_hysteresis_on;
+      }
+      if (typeof actuatorPolicy.thruster_hysteresis_off === 'number') {
+        normalizedMpc.thruster_hysteresis_off = actuatorPolicy.thruster_hysteresis_off;
+      }
+    }
     return {
       mpc: normalizedMpc,
       simulation: normalizedSimulation,
       physics: physics ?? undefined,
+      reference_scheduler: referenceScheduler ?? undefined,
+      actuator_policy: actuatorPolicy ?? undefined,
+      controller_contracts: controllerContracts ?? undefined,
       input_file_path: inputFilePath,
     };
   }
@@ -561,13 +573,26 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
     mpc: normalizedMpc,
     simulation: normalizedSimulation,
     physics: undefined,
+    reference_scheduler: undefined,
+    actuator_policy: undefined,
+    controller_contracts: undefined,
     input_file_path: undefined,
   };
 }
 
-function buildV2Envelope(config: SettingsConfig): Record<string, unknown> {
+function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
+  const actuatorPolicy =
+    asRecord(config.actuator_policy) ?? {};
+  const mergedActuatorPolicy: Record<string, unknown> = {
+    ...actuatorPolicy,
+    enable_thruster_hysteresis: config.mpc.enable_thruster_hysteresis,
+    thruster_hysteresis_on: config.mpc.thruster_hysteresis_on,
+    thruster_hysteresis_off: config.mpc.thruster_hysteresis_off,
+  };
+
   const appConfig: Record<string, unknown> = {
-    mpc: config.mpc,
+    mpc_core: config.mpc,
+    actuator_policy: mergedActuatorPolicy,
     simulation: {
       ...config.simulation,
       control_dt: config.mpc.dt,
@@ -576,11 +601,17 @@ function buildV2Envelope(config: SettingsConfig): Record<string, unknown> {
   if (config.physics && typeof config.physics === 'object') {
     appConfig.physics = config.physics;
   }
+  if (config.reference_scheduler && typeof config.reference_scheduler === 'object') {
+    appConfig.reference_scheduler = config.reference_scheduler;
+  }
+  if (config.controller_contracts && typeof config.controller_contracts === 'object') {
+    appConfig.controller_contracts = config.controller_contracts;
+  }
   if ('input_file_path' in config) {
     appConfig.input_file_path = config.input_file_path ?? null;
   }
   return {
-    schema_version: 'app_config_v2',
+    schema_version: 'app_config_v3',
     app_config: appConfig,
   };
 }
@@ -651,18 +682,6 @@ function validateConfig(config: SettingsConfig): string[] {
   if (!isNonNegative(mpc.obstacle_margin)) issues.push('Obstacle margin must be >= 0.');
   if (mpc.Q_lag_default < -1) issues.push('Q_lag_default must be >= -1.');
   if (mpc.Q_s_anchor < -1) issues.push('Q_s_anchor must be >= -1.');
-  if (!(mpc.tracking_recovery_error_m > 0)) {
-    issues.push('Tracking recovery error threshold must be > 0.');
-  }
-  if (mpc.tracking_recovery_contour_boost < 0) {
-    issues.push('Tracking recovery contour boost must be >= 0.');
-  }
-  if (mpc.tracking_recovery_progress_scale <= 0 || mpc.tracking_recovery_progress_scale > 1) {
-    issues.push('Tracking recovery progress scale must be in (0, 1].');
-  }
-  if (mpc.tracking_recovery_attitude_scale <= 0 || mpc.tracking_recovery_attitude_scale > 1) {
-    issues.push('Tracking recovery attitude scale must be in (0, 1].');
-  }
   if (mpc.thruster_hysteresis_off < 0 || mpc.thruster_hysteresis_on < 0) {
     issues.push('Thruster hysteresis thresholds must be >= 0.');
   }
@@ -1036,7 +1055,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     setError(null);
     setSuccessMsg(null);
     try {
-      const overrides = buildV2Envelope(config);
+      const overrides = buildV3Envelope(config);
 
       const res = await fetch(`${RUNNER_API_URL}/config`, {
         method: 'POST',
@@ -1111,7 +1130,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
-          config: buildV2Envelope(deepCloneConfig(config)),
+          config: buildV3Envelope(deepCloneConfig(config)),
         }),
       });
       if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save preset'));

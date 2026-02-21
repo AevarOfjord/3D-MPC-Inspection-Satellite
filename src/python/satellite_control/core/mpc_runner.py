@@ -35,6 +35,7 @@ class MPCRunner:
         mpc_controller: MPCController,
         config: Optional["AppConfig"] = None,
         state_validator=None,
+        actuator_policy: Any | None = None,
     ):
         """
         Initialize runner with configuration.
@@ -47,6 +48,8 @@ class MPCRunner:
         self.mpc: MPCController = mpc_controller
         self.config = config  # Stored for potential future use
         self.state_validator = state_validator
+        self.actuator_policy = actuator_policy
+        self.mode_state: Any | None = None
 
         # Internal state management
         default_thruster_count = THRUSTER_COUNT
@@ -88,6 +91,16 @@ class MPCRunner:
                 self.thruster_hysteresis_off,
             )
             self.enable_thruster_hysteresis = False
+
+    def set_mode_state(self, mode_state: Any | None) -> None:
+        """Set current V6 mode state (TRACK/RECOVER/SETTLE/HOLD/COMPLETE)."""
+        self.mode_state = mode_state
+
+    def _current_mode_name(self) -> str:
+        mode = getattr(self.mode_state, "current_mode", None)
+        if isinstance(mode, str) and mode:
+            return mode
+        return "TRACK"
 
     def _apply_thruster_hysteresis(
         self,
@@ -174,6 +187,12 @@ class MPCRunner:
         # 2. Run Controller
         start_compute_time = time.perf_counter()
         mpc_info: dict[str, Any] = {}
+        mode_name = self._current_mode_name()
+        if hasattr(self.mpc, "set_runtime_mode"):
+            try:
+                self.mpc.set_runtime_mode(mode_name)
+            except Exception:
+                logger.debug("Failed to forward runtime mode to MPC controller", exc_info=True)
 
         try:
             control_action, mpc_info = self.mpc.get_control_action(
@@ -185,6 +204,28 @@ class MPCRunner:
             control_action, mpc_info = self.mpc.get_control_action(
                 measured_state, previous_thrusters
             )
+        except Exception:
+            logger.exception("Controller execution failed; applying zero-command fallback.")
+            control_action = np.zeros(
+                self.rw_axes + self.thruster_count,
+                dtype=np.float64,
+            )
+            mpc_info = {
+                "status": -1,
+                "status_name": "FAILED",
+                "solver_fallback": True,
+                "solver_fallback_reason": "controller_exception",
+                "solver_success": False,
+                "solve_time": 0.0,
+                "iterations": None,
+                "objective_value": None,
+                "timeout": False,
+                "time_limit_exceeded": False,
+                "controller_core": str(getattr(self.mpc, "controller_core", "unknown")),
+                "solver_backend": str(getattr(self.mpc, "solver_backend", "OSQP")),
+                "solver_type": str(getattr(self.mpc, "solver_type", "OSQP")),
+                "solver_time_limit": float(getattr(self.mpc, "solver_time_limit", 0.0)),
+            }
 
         end_compute_time = time.perf_counter()
         mpc_computation_time = end_compute_time - start_compute_time
@@ -218,11 +259,35 @@ class MPCRunner:
                 # Enforce bounds (in-place clip avoids extra allocation)
                 np.clip(thruster_action, 0.0, 1.0, out=thruster_action)
                 thruster_action = thruster_action.astype(np.float64, copy=False)
-                if not self._should_bypass_hysteresis_for_terminal_settling(mpc_info):
-                    thruster_action = self._apply_thruster_hysteresis(
-                        thruster_action=thruster_action,
-                        previous_thrusters=previous_thrusters,
-                    )
+                endpoint_error = mpc_info.get("path_endpoint_error")
+                if self.actuator_policy is not None:
+                    try:
+                        thruster_action = self.actuator_policy.apply(
+                            thruster_action,
+                            previous_thrusters,
+                            mode=mode_name,
+                            endpoint_error_m=endpoint_error,
+                        )
+                    except Exception:
+                        logger.debug(
+                            "ActuatorPolicyV6 apply failed, using legacy hysteresis",
+                            exc_info=True,
+                        )
+                        if not self._should_bypass_hysteresis_for_terminal_settling(
+                            mpc_info
+                        ):
+                            thruster_action = self._apply_thruster_hysteresis(
+                                thruster_action=thruster_action,
+                                previous_thrusters=previous_thrusters,
+                            )
+                else:
+                    if not self._should_bypass_hysteresis_for_terminal_settling(
+                        mpc_info
+                    ):
+                        thruster_action = self._apply_thruster_hysteresis(
+                            thruster_action=thruster_action,
+                            previous_thrusters=previous_thrusters,
+                        )
                 if self.rw_axes:
                     np.clip(rw_torque, -1.0, 1.0, out=rw_torque)
                     rw_torque = rw_torque.astype(np.float64, copy=False)

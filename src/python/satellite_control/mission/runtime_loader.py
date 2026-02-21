@@ -4,6 +4,7 @@ Shared unified-mission loading pipeline for CLI and dashboard entry points.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +12,10 @@ from typing import Any
 import numpy as np
 
 from satellite_control.config.simulation_config import SimulationConfig
+from satellite_control.core.v6_controller_runtime import (
+    MissionRuntimePlanV6,
+    compile_mission_runtime_plan_v6,
+)
 from satellite_control.mission.mission_types import Obstacle
 from satellite_control.mission.path_assets import load_path_asset
 from satellite_control.mission.unified_compiler import compile_unified_mission_path
@@ -27,6 +32,7 @@ class UnifiedMissionRuntime:
     path_speed: float
     start_pos: tuple[float, float, float]
     end_pos: tuple[float, float, float]
+    runtime_plan_v6: MissionRuntimePlanV6 | None = None
 
 
 def parse_unified_mission_payload(payload: Mapping[str, Any]) -> MissionDefinition:
@@ -74,13 +80,25 @@ def compile_unified_mission_runtime(
         output_frame=resolved_output_frame,
     )
 
+    runtime_plan_v6 = compile_mission_runtime_plan_v6(
+        mission=mission,
+        path_length_m=float(path_length),
+        default_path_speed=float(sim_config.app_config.mpc.path_speed),
+        path_speed_min=float(getattr(sim_config.app_config.mpc, "path_speed_min", 0.0)),
+        path_speed_max=float(getattr(sim_config.app_config.mpc, "path_speed_max", 0.0)),
+        hold_duration_s=float(getattr(sim_config.mission_state, "path_hold_end", 10.0)),
+        margin_s=float(
+            getattr(sim_config.app_config.reference_scheduler, "duration_margin_s", 30.0)
+        ),
+    )
+
     # Disable Two-Body gravity (1/r^2) for runtime missions.
     # This allows simulation in relative frames (e.g., LVLH with coordinates ~10m)
     # without the physics engine interpreting them as being at the Earth's center (r=10m).
     # This ensures high-precision visualization (no jitter) while avoiding physics singularities.
     sim_config.app_config.physics.use_two_body_gravity = False
 
-    runtime_path_speed = float(path_speed)
+    runtime_path_speed = float(runtime_plan_v6.path_speed_mps)
     sim_config.app_config.mpc.path_speed = runtime_path_speed
     mission_state = sim_config.mission_state
     mission_state.obstacles = _to_runtime_obstacles(mission.obstacles)
@@ -88,6 +106,9 @@ def compile_unified_mission_runtime(
     mission_state.path_waypoints = path
     mission_state.path_length = float(path_length)
     mission_state.path_speed = runtime_path_speed
+    mission_state.path_tracking_estimated_duration = float(
+        runtime_plan_v6.required_duration_s
+    )
     mission_state.frame_origin = origin
     mission_state.path_frame = resolved_output_frame
     (
@@ -103,6 +124,34 @@ def compile_unified_mission_runtime(
     start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
     end_pos = tuple(path[-1]) if path else start_pos
 
+    sim_max_duration = float(sim_config.app_config.simulation.max_duration or 0.0)
+    required_duration = float(runtime_plan_v6.required_duration_s)
+    scheduler_cfg = sim_config.app_config.reference_scheduler
+    is_contract_run = os.environ.get("SATCTRL_CONTRACT_SCENARIO", "0").strip() in {
+        "1",
+        "true",
+        "TRUE",
+    }
+    enforce_contract_min_duration = bool(
+        getattr(scheduler_cfg, "enforce_contract_min_duration", True)
+    )
+    auto_extend_manual_duration = bool(
+        getattr(scheduler_cfg, "auto_extend_manual_duration", True)
+    )
+
+    if (
+        is_contract_run
+        and enforce_contract_min_duration
+        and (sim_max_duration <= 0.0 or sim_max_duration < required_duration)
+    ):
+        sim_config.app_config.simulation.max_duration = required_duration
+    elif (
+        auto_extend_manual_duration
+        and sim_max_duration > 0.0
+        and sim_max_duration < required_duration
+    ):
+        sim_config.app_config.simulation.max_duration = required_duration
+
     return UnifiedMissionRuntime(
         simulation_config=sim_config,
         path=path,
@@ -110,6 +159,7 @@ def compile_unified_mission_runtime(
         path_speed=runtime_path_speed,
         start_pos=start_pos,
         end_pos=end_pos,
+        runtime_plan_v6=runtime_plan_v6,
     )
 
 

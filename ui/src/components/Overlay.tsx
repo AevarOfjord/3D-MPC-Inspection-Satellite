@@ -48,11 +48,26 @@ export function Overlay() {
     ang_error = 0,
     angular_velocity = [0, 0, 0],
     reference_position = [0, 0, 0],
+    mode_state = null,
+    completion_gate = null,
+    solver_health = null,
+    controller_core = 'v6',
   } = data;
 
   const speed = Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2);
   const distance = Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2);
   const angErrorDeg = ang_error * (180 / Math.PI);
+  const modeLabel = mode_state?.current_mode ?? 'TRACK';
+  const modeTime = mode_state?.time_in_mode_s ?? 0;
+  const holdElapsed = completion_gate?.hold_elapsed_s ?? 0;
+  const holdRequired = completion_gate?.hold_required_s ?? 0;
+  const holdProgress = holdRequired > 0 ? Math.min(1, holdElapsed / holdRequired) : 0;
+  let solverStatusClass = 'text-red-400';
+  if (solver_health?.status === 'ok') {
+    solverStatusClass = 'text-green-400';
+  } else if (solver_health?.status === 'degraded') {
+    solverStatusClass = 'text-yellow-300';
+  }
   const delta = [
     reference_position[0] - position[0],
     reference_position[1] - position[1],
@@ -112,6 +127,19 @@ export function Overlay() {
                 <div className="h-px bg-slate-700/50" />
 
                 <div className="flex justify-between">
+                   <span className="text-slate-400 font-bold text-[10px]">MODE</span>
+                   <span className="text-indigo-300">{modeLabel}</span>
+                </div>
+                <div className="flex justify-between">
+                   <span className="text-slate-400 font-bold text-[10px]">CORE</span>
+                   <span className="text-indigo-300">{String(controller_core).toUpperCase()}</span>
+                </div>
+                <div className="flex justify-between">
+                   <span className="text-slate-400 font-bold text-[10px]">MODE TIME</span>
+                   <span className="text-slate-200">{modeTime.toFixed(1)} s</span>
+                </div>
+
+                <div className="flex justify-between">
                    <span className="text-slate-400 font-bold text-[10px]">POS ERROR</span>
                    <span className={pos_error < 0.1 ? 'text-green-400' : 'text-slate-200'}>{pos_error.toFixed(3)} m</span>
                 </div>
@@ -119,6 +147,66 @@ export function Overlay() {
                    <span className="text-slate-400 font-bold text-[10px]">ANG ERROR</span>
                    <span className={angErrorDeg < 1.0 ? 'text-green-400' : 'text-slate-200'}>{angErrorDeg.toFixed(1)}°</span>
                 </div>
+
+                {completion_gate && (
+                  <>
+                    <div className="h-px bg-slate-700/50" />
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">HOLD</span>
+                      <span className={holdProgress >= 1 ? 'text-green-400' : 'text-slate-200'}>
+                        {holdElapsed.toFixed(1)} / {holdRequired.toFixed(1)} s
+                      </span>
+                    </div>
+                    <div className="w-full h-1 rounded bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-100"
+                        style={{ width: `${(holdProgress * 100).toFixed(1)}%` }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                      <GateFlag label="POS" ok={completion_gate.position_ok} />
+                      <GateFlag label="ANG" ok={completion_gate.angle_ok} />
+                      <GateFlag label="VEL" ok={completion_gate.velocity_ok} />
+                      <GateFlag label="OMEGA" ok={completion_gate.angular_velocity_ok} />
+                    </div>
+                    {completion_gate.last_breach_reason && (
+                      <div className="text-[10px] text-amber-300">
+                        Last breach: {completion_gate.last_breach_reason}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {solver_health && (
+                  <>
+                    <div className="h-px bg-slate-700/50" />
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">SOLVER</span>
+                      <span className={solverStatusClass}>
+                        {solver_health.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">FALLBACKS</span>
+                      <span className="text-slate-200">{solver_health.fallback_count}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">HARD BREACHES</span>
+                      <span className="text-slate-200">{solver_health.hard_limit_breaches}</span>
+                    </div>
+                    {solver_health.fallback_active && (
+                      <div className="text-[10px] text-amber-300">
+                        Active fallback: age {Number(solver_health.fallback_age_s ?? 0).toFixed(2)} s, scale{' '}
+                        {Number(solver_health.fallback_scale ?? 0).toFixed(2)}
+                      </div>
+                    )}
+                    {solver_health.last_fallback_reason && (
+                      <div className="text-[10px] text-amber-300">
+                        Last fallback: {solver_health.last_fallback_reason}
+                      </div>
+                    )}
+                  </>
+                )}
              </div>
         </HudPanel>
         
@@ -149,6 +237,15 @@ export function Overlay() {
 
     </div>
   );
+}
+
+function GateFlag({ label, ok }: { label: string; ok: boolean }) {
+    return (
+        <div className="flex items-center justify-between bg-slate-900/40 rounded px-1 py-0.5">
+            <span className="text-slate-400 font-bold">{label}</span>
+            <span className={ok ? 'text-green-400' : 'text-red-400'}>{ok ? 'OK' : 'NO'}</span>
+        </div>
+    );
 }
 
 // --- Subcomponents ---

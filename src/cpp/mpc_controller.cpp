@@ -23,6 +23,10 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     N_ = mpc_params_.prediction_horizon;
     dt_ = mpc_params_.dt;
     control_horizon_ = std::max(1, std::min(mpc_params_.control_horizon, N_));
+    base_q_smooth_ = std::max(0.0, mpc_params_.Q_smooth);
+    base_thrust_pair_weight_ = std::max(0.0, mpc_params_.thrust_pair_weight);
+    active_smoothness_scale_ = 1.0;
+    active_thruster_pair_scale_ = 1.0;
 
     // Control: RW + Thrusters + 1 virtual path velocity v_s
     nu_ = sat_params_.num_rw + sat_params_.num_thrusters + 1;
@@ -331,6 +335,7 @@ void MPCControllerCpp::init_solver() {
     path_pos_diag_indices_.resize(N_ + 1);
     path_pos_offdiag_indices_.resize(N_ + 1);
     path_att_diag_indices_.resize(N_ + 1);
+    path_angvel_diag_indices_.resize(N_ + 1);
     path_vs_diag_indices_.assign(static_cast<size_t>(N_), -1);
     int s_offset = 16;
     int v_offset = 7;
@@ -340,6 +345,7 @@ void MPCControllerCpp::init_solver() {
         path_pos_diag_indices_[k].resize(3);
         path_pos_offdiag_indices_[k].resize(3);
         path_att_diag_indices_[k].assign(4, -1);
+        path_angvel_diag_indices_[k].assign(3, -1);
         int base_idx = k * nx_;
 
         // P is symmetric, we added (row, col) with row < col.
@@ -457,6 +463,23 @@ void MPCControllerCpp::init_solver() {
             }
         }
 
+        // Find angular-velocity diagonal indices for mode-dependent damping updates.
+        for (int wi = 0; wi < 3; ++wi) {
+            int diag = base_idx + 10 + wi;
+            bool w_found = false;
+            for (int idx = P_.outerIndexPtr()[diag]; idx < P_.outerIndexPtr()[diag + 1]; ++idx) {
+                if (P_.innerIndexPtr()[idx] == diag) {
+                    path_angvel_diag_indices_[k][wi] = idx;
+                    w_found = true;
+                    break;
+                }
+            }
+            if (!w_found) {
+                std::cerr << "[MPC] Error: P-matrix angular velocity diagonal not found at k="
+                          << k << ", wi=" << wi << std::endl;
+            }
+        }
+
         // Find progress control diagonal index for v_s at stage k.
         if (k < N_) {
             int vs_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
@@ -495,6 +518,9 @@ void MPCControllerCpp::init_solver() {
                 add_index(idx);
             }
             for (int idx : path_att_diag_indices_[k]) {
+                add_index(idx);
+            }
+            for (int idx : path_angvel_diag_indices_[k]) {
                 add_index(idx);
             }
             add_index(path_s_diag_indices_[k]);
@@ -996,7 +1022,7 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
 // ----------------------------------------------------------------------------
 
 ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
 
     ControlResult result;
     result.status = -1;
@@ -1149,7 +1175,7 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 
     osqp_solve(work_);
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     result.solve_time = std::chrono::duration<double>(end - start).count();
 
     int solver_status = 0;
@@ -1166,12 +1192,59 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     const bool solved = (solver_status == OSQP_SOLVED ||
                          solver_status == OSQP_SOLVED_INACCURATE);
     if (!solved) {
+        const double hold_s = std::max(0.0, mpc_params_.solver_fallback_hold_s);
+        const double decay_s = std::max(0.0, mpc_params_.solver_fallback_decay_s);
+        const double zero_after_s = std::max(
+            hold_s,
+            mpc_params_.solver_fallback_zero_after_s
+        );
+
         if (has_last_feasible_control_ && last_feasible_control_.size() == nu_) {
-            result.u = last_feasible_control_;
+            if (!fallback_active_) {
+                fallback_active_ = true;
+                fallback_started_at_ = end;
+            }
+            const double fallback_age_s = std::max(
+                0.0,
+                std::chrono::duration<double>(end - fallback_started_at_).count()
+            );
+            double fallback_scale = 1.0;
+            if (fallback_age_s > hold_s) {
+                if (decay_s <= 1e-9) {
+                    fallback_scale = 0.0;
+                } else {
+                    fallback_scale = std::max(
+                        0.0,
+                        1.0 - ((fallback_age_s - hold_s) / decay_s)
+                    );
+                }
+            }
+            if (fallback_age_s >= zero_after_s) {
+                fallback_scale = 0.0;
+            }
+            fallback_scale = std::clamp(fallback_scale, 0.0, 1.0);
+
+            result.u = last_feasible_control_ * fallback_scale;
+            result.fallback_active = fallback_scale > 0.0;
+            result.fallback_age_s = fallback_age_s;
+            result.fallback_scale = fallback_scale;
+        } else {
+            fallback_active_ = false;
+            result.fallback_active = false;
+            result.fallback_age_s = 0.0;
+            result.fallback_scale = 0.0;
         }
-        result.path_s_pred = s_runtime_;
+        if (result.u.size() == nu_) {
+            double s_pred = s_runtime_ + result.u(nu_ - 1) * dt_;
+            result.path_s_pred = clamp_path_s(s_pred);
+        }
         return result;
     }
+
+    fallback_active_ = false;
+    result.fallback_active = false;
+    result.fallback_age_s = 0.0;
+    result.fallback_scale = 0.0;
 
     // Extract predicted s trajectory for next step (optional, for better linearization)
     for (int k = 0; k <= N_; ++k) {
@@ -1277,6 +1350,61 @@ void MPCControllerCpp::clear_scan_attitude_context() {
     scan_q_ref_traj_.clear();
 }
 
+MPCControllerCpp::RuntimeMode MPCControllerCpp::parse_runtime_mode(
+    const std::string& mode
+) const {
+    std::string normalized = mode;
+    std::transform(
+        normalized.begin(),
+        normalized.end(),
+        normalized.begin(),
+        [](unsigned char c) { return static_cast<char>(std::toupper(c)); }
+    );
+
+    if (normalized == "RECOVER") {
+        return RuntimeMode::RECOVER;
+    }
+    if (normalized == "SETTLE") {
+        return RuntimeMode::SETTLE;
+    }
+    if (normalized == "HOLD") {
+        return RuntimeMode::HOLD;
+    }
+    if (normalized == "COMPLETE") {
+        return RuntimeMode::COMPLETE;
+    }
+    return RuntimeMode::TRACK;
+}
+
+void MPCControllerCpp::update_mode_dependent_regularizers() {
+    double smooth_scale = 1.0;
+    double pair_scale = 1.0;
+    if (runtime_mode_ == RuntimeMode::HOLD) {
+        smooth_scale = std::max(0.0, mpc_params_.hold_smoothness_scale);
+        pair_scale = std::max(0.0, mpc_params_.hold_thruster_pair_scale);
+    }
+
+    const bool smooth_changed =
+        std::abs(smooth_scale - active_smoothness_scale_) > 1e-9;
+    const bool pair_changed =
+        std::abs(pair_scale - active_thruster_pair_scale_) > 1e-9;
+    if (!smooth_changed && !pair_changed) {
+        return;
+    }
+
+    active_smoothness_scale_ = smooth_scale;
+    active_thruster_pair_scale_ = pair_scale;
+    mpc_params_.Q_smooth = base_q_smooth_ * active_smoothness_scale_;
+    mpc_params_.thrust_pair_weight =
+        base_thrust_pair_weight_ * active_thruster_pair_scale_;
+    rebuild_solver();
+}
+
+void MPCControllerCpp::set_runtime_mode(const std::string& mode) {
+    runtime_mode_ = parse_runtime_mode(mode);
+    update_mode_dependent_regularizers();
+}
+
 double MPCControllerCpp::compute_dynamic_vs_min(double s_curr) const {
     double base_min = control_lower_(nu_ - 1);
     if (!path_data_valid_ || path_total_length_ <= 0.0) {
@@ -1350,7 +1478,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     if (mpc_params_.path_speed_min > 0.0) {
         v_ref = std::max(v_ref, mpc_params_.path_speed_min);
     }
-    double slowdown_dist = mpc_params_.progress_slowdown_distance;
     double Q_term_pos = mpc_params_.Q_terminal_pos;
     double Q_term_s = mpc_params_.Q_terminal_s;
     if (Q_term_pos <= 0.0) {
@@ -1359,18 +1486,10 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     if (Q_term_s <= 0.0) {
         Q_term_s = std::max(Q_c, 10.0 * Q_p);
     }
-    double taper_dist = mpc_params_.progress_taper_distance;
-    if (taper_dist <= 0.0) {
-        taper_dist = std::max(1e-3, v_ref * dt_ * static_cast<double>(N_));
-    }
     Eigen::Vector3d p_end = path_points_.back();
     Eigen::Vector4d q_curr = Eigen::Vector4d::Zero();
     if (x_current.size() >= 7) {
         q_curr = x_current.segment<4>(3);
-    }
-
-    if (slowdown_dist <= 0.0) {
-        slowdown_dist = std::max(0.5, 0.5 * v_ref * dt_ * static_cast<double>(N_));
     }
 
     double s_curr = 0.0;
@@ -1381,52 +1500,46 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     }
     s_curr = std::max(0.0, std::min(s_curr, path_total_length_));
 
-    double remaining = std::max(0.0, path_total_length_ - s_curr);
+    double mode_contour_scale = 1.0;
+    double mode_lag_scale = 1.0;
+    double mode_progress_scale = 1.0;
+    double mode_attitude_scale = 1.0;
+    double mode_terminal_pos_scale = 1.0;
+    double mode_terminal_attitude_scale = 1.0;
+    double mode_velocity_align_scale = 1.0;
+    double mode_angular_velocity_scale = 1.0;
+    if (runtime_mode_ == RuntimeMode::RECOVER) {
+        mode_contour_scale = std::max(0.0, mpc_params_.recover_contour_scale);
+        mode_lag_scale = std::max(0.0, mpc_params_.recover_lag_scale);
+        mode_progress_scale = std::max(0.0, mpc_params_.recover_progress_scale);
+        mode_attitude_scale = std::max(0.0, mpc_params_.recover_attitude_scale);
+    } else if (runtime_mode_ == RuntimeMode::SETTLE ||
+               runtime_mode_ == RuntimeMode::HOLD ||
+               runtime_mode_ == RuntimeMode::COMPLETE) {
+        mode_progress_scale = std::max(0.0, mpc_params_.settle_progress_scale);
+        mode_terminal_pos_scale =
+            std::max(0.0, mpc_params_.settle_terminal_pos_scale);
+        mode_terminal_attitude_scale =
+            std::max(0.0, mpc_params_.settle_terminal_attitude_scale);
+        mode_velocity_align_scale =
+            std::max(0.0, mpc_params_.settle_velocity_align_scale);
+        mode_angular_velocity_scale =
+            std::max(0.0, mpc_params_.settle_angular_velocity_scale);
+    }
 
-    double speed_scale = 1.0;
-    double contour_err_curr = 0.0;
-    if (x_current.size() >= 3) {
-        Eigen::Vector3d p_curr = x_current.segment<3>(0);
-        Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
-        contour_err_curr = (p_curr - p_ref_curr).norm();
-        if (slowdown_dist > 1e-6) {
-            speed_scale =
-                std::max(0.0, std::min(1.0, 1.0 - contour_err_curr / slowdown_dist));
-        }
-    }
-    double end_scale = 1.0;
-    if (taper_dist > 1e-6) {
-        end_scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
-    }
-
-    double recovery_alpha = 0.0;
-    if (mpc_params_.tracking_recovery_error_m > 1e-9) {
-        recovery_alpha = std::clamp(
-            (contour_err_curr - mpc_params_.tracking_recovery_error_m) /
-                mpc_params_.tracking_recovery_error_m,
-            0.0,
-            1.0
-        );
-    }
-    const double contour_weight_scale = 1.0 + recovery_alpha *
-        std::max(0.0, mpc_params_.tracking_recovery_contour_boost);
-    const double recovery_progress_scale =
-        std::clamp(mpc_params_.tracking_recovery_progress_scale, 0.0, 1.0);
-    const double recovery_attitude_scale =
-        std::clamp(mpc_params_.tracking_recovery_attitude_scale, 0.0, 1.0);
-    const double progress_weight_scale = std::max(
-        0.25, 1.0 - recovery_alpha * (1.0 - recovery_progress_scale)
-    );
-    const double attitude_weight_scale = std::max(
-        0.20, 1.0 - recovery_alpha * (1.0 - recovery_attitude_scale)
-    );
+    const double contour_weight_scale = mode_contour_scale;
+    const double progress_weight_scale = mode_progress_scale;
+    const double attitude_weight_scale = mode_attitude_scale;
 
     const double Q_c_eff = Q_c * contour_weight_scale;
-    const double Q_l_eff = Q_l * contour_weight_scale;
+    const double Q_l_eff = Q_l * mode_lag_scale;
     const double Q_p_eff = Q_p * progress_weight_scale;
     const double progress_reward_eff = progress_reward * progress_weight_scale;
     const double Q_att_eff = Q_att * attitude_weight_scale;
-    const double Q_term_pos_eff = Q_term_pos * contour_weight_scale;
+    const double Q_v_eff = Q_v * mode_velocity_align_scale;
+    const double Q_w_eff = mpc_params_.Q_angvel * mode_angular_velocity_scale;
+    const double Q_term_pos_eff =
+        Q_term_pos * contour_weight_scale * mode_terminal_pos_scale;
     const double Q_term_s_eff = Q_term_s * progress_weight_scale;
     double Q_s_anchor_eff = Q_s_anchor_cfg;
     if (Q_s_anchor_eff < 0.0) {
@@ -1435,31 +1548,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         Q_s_anchor_eff *= progress_weight_scale;
     }
 
-    double v_ref_base = v_ref * speed_scale * end_scale;
+    double v_ref_base = v_ref;
     bool auto_progress = progress_reward_eff > 0.0;
-
-    // Coasting bias: if we're already on the path and moving along it,
-    // match the reference speed to the current along-track speed to avoid braking.
-    if (mpc_params_.coast_pos_tolerance > 0.0 &&
-        mpc_params_.coast_vel_tolerance >= 0.0 &&
-        x_current.size() >= 10 &&
-        remaining > taper_dist) {
-        Eigen::Vector3d p_curr = x_current.segment<3>(0);
-        Eigen::Vector3d p_ref_curr = get_path_point(s_curr);
-        Eigen::Vector3d t_curr = get_path_tangent(s_curr);
-        Eigen::Vector3d v_curr = x_current.segment<3>(7);
-        double contour_err = (p_curr - p_ref_curr).norm();
-        double v_along = v_curr.dot(t_curr);
-        Eigen::Vector3d v_perp = v_curr - v_along * t_curr;
-        double v_perp_norm = v_perp.norm();
-
-        if (contour_err <= mpc_params_.coast_pos_tolerance &&
-            v_perp_norm <= mpc_params_.coast_vel_tolerance &&
-            v_along >= 0.0) {
-            double v_coast = std::max(mpc_params_.coast_min_speed, v_along);
-            v_ref_base = v_coast;
-        }
-    }
 
     // Initialize s_guess if needed
     if (s_guess_.size() != static_cast<size_t>(N_ + 1)) {
@@ -1467,10 +1557,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         double s0 = (nx_ == 17 && x_current.size() >= 17) ? x_current(16) : s_curr;
         for (int k = 0; k <= N_; ++k) {
             s_guess_[k] = std::min(s0 + k * v_ref_base * dt_, path_total_length_);
-        }
-    } else if (speed_scale < 1.0) {
-        for (int k = 0; k <= N_; ++k) {
-            s_guess_[k] = std::min(s_curr + k * v_ref_base * dt_, path_total_length_);
         }
     }
     if (scan_attitude_enabled_) {
@@ -1485,6 +1571,10 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     for (int k = 0; k <= N_; ++k) {
         double s_bar = s_guess_[k];
         double stage_scale = (k == N_) ? 10.0 : 1.0;
+        double att_stage_scale = stage_scale;
+        if (k == N_) {
+            att_stage_scale *= mode_terminal_attitude_scale;
+        }
         double Q_c_k = Q_c_eff * stage_scale;
         double Q_l_k = Q_l_eff * stage_scale;
 
@@ -1517,12 +1607,24 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
         // Update quaternion diagonal entries for dynamic attitude weighting.
         if (k < static_cast<int>(path_att_diag_indices_.size())) {
-            double q_att_diag = 2.0 * Q_att_eff * stage_scale;
+            double q_att_diag = 2.0 * Q_att_eff * att_stage_scale;
             auto &att_diag_indices = path_att_diag_indices_[k];
             for (int i = 0; i < 4 && i < static_cast<int>(att_diag_indices.size()); ++i) {
                 int idx = att_diag_indices[i];
                 if (idx >= 0) {
                     P_data_[idx] = q_att_diag;
+                }
+            }
+        }
+
+        // Update angular-velocity diagonal entries for mode-dependent damping.
+        if (k < static_cast<int>(path_angvel_diag_indices_.size())) {
+            double q_w_diag = Q_w_eff * stage_scale;
+            auto &w_diag_indices = path_angvel_diag_indices_[k];
+            for (int i = 0; i < 3 && i < static_cast<int>(w_diag_indices.size()); ++i) {
+                int idx = w_diag_indices[i];
+                if (idx >= 0) {
+                    P_data_[idx] = q_w_diag;
                 }
             }
         }
@@ -1613,27 +1715,21 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
             if (Q_att_eff > 0.0) {
                 for (int i = 0; i < 4; ++i) {
-                    q_(x_idx + 3 + i) = -2.0 * Q_att_eff * stage_scale * q_ref(i);
+                    q_(x_idx + 3 + i) = -2.0 * Q_att_eff * att_stage_scale * q_ref(i);
                 }
             }
         }
 
         // 2b. Velocity alignment cost: track v along path tangent
         if (k < static_cast<int>(path_vel_P_indices_.size())) {
-            // Use same tapering as progress to slow near the endpoint.
             double v_ref_k = v_ref_base;
             if (auto_progress) {
                 v_ref_k = 0.0;
             }
-            double remaining = path_total_length_ - s_bar;
-            if (taper_dist > 1e-9) {
-                double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
-                v_ref_k = v_ref_k * scale;
-            }
 
             // Update velocity quadratic terms (diagonal only)
             // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
-            double vel_weight = 2.0 * Q_v * stage_scale;
+            double vel_weight = 2.0 * Q_v_eff * stage_scale;
             auto &vel_indices = path_vel_P_indices_[k];
             if (vel_indices.size() == 6) {
                 P_data_[vel_indices[0]] = vel_weight;
@@ -1646,7 +1742,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
             // Linear term encourages velocity along tangent
             for (int i = 0; i < 3; ++i) {
-                q_(x_idx + 7 + i) += -2.0 * Q_v * v_ref_k * t_ref(i) * stage_scale;
+                q_(x_idx + 7 + i) += -2.0 * Q_v_eff * v_ref_k * t_ref(i) * stage_scale;
             }
         }
 
@@ -1656,11 +1752,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         // Linear term: -2 * Q_p * v_ref
         if (k < N_) {
             double v_ref_k = v_ref_base;
-            double remaining = path_total_length_ - s_bar;
-            if (taper_dist > 1e-9) {
-                double scale = std::max(0.0, std::min(1.0, remaining / taper_dist));
-                v_ref_k = v_ref_k * scale;
-            }
             if (static_cast<size_t>(k) < path_vs_diag_indices_.size()) {
                 int vs_diag_idx = path_vs_diag_indices_[static_cast<size_t>(k)];
                 if (vs_diag_idx >= 0) {
@@ -1669,8 +1760,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
             if (auto_progress) {
-                double progress_drive_scale = speed_scale * end_scale;
-                q_(u_idx) = -2.0 * progress_reward_eff * progress_drive_scale;
+                q_(u_idx) = -2.0 * progress_reward_eff;
             } else {
                 q_(u_idx) = -2.0 * Q_p_eff * v_ref_k;
             }

@@ -81,18 +81,34 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("Q_terminal_s", &MPCParams::Q_terminal_s)
         .def_readwrite("progress_taper_distance", &MPCParams::progress_taper_distance)
         .def_readwrite("progress_slowdown_distance", &MPCParams::progress_slowdown_distance)
-        .def_readwrite("tracking_recovery_error_m", &MPCParams::tracking_recovery_error_m)
+        .def_readwrite("recover_contour_scale", &MPCParams::recover_contour_scale)
+        .def_readwrite("recover_lag_scale", &MPCParams::recover_lag_scale)
+        .def_readwrite("recover_progress_scale", &MPCParams::recover_progress_scale)
+        .def_readwrite("recover_attitude_scale", &MPCParams::recover_attitude_scale)
+        .def_readwrite("settle_progress_scale", &MPCParams::settle_progress_scale)
+        .def_readwrite("settle_terminal_pos_scale", &MPCParams::settle_terminal_pos_scale)
         .def_readwrite(
-            "tracking_recovery_contour_boost",
-            &MPCParams::tracking_recovery_contour_boost
+            "settle_terminal_attitude_scale",
+            &MPCParams::settle_terminal_attitude_scale
         )
         .def_readwrite(
-            "tracking_recovery_progress_scale",
-            &MPCParams::tracking_recovery_progress_scale
+            "settle_velocity_align_scale",
+            &MPCParams::settle_velocity_align_scale
         )
         .def_readwrite(
-            "tracking_recovery_attitude_scale",
-            &MPCParams::tracking_recovery_attitude_scale
+            "settle_angular_velocity_scale",
+            &MPCParams::settle_angular_velocity_scale
+        )
+        .def_readwrite("hold_smoothness_scale", &MPCParams::hold_smoothness_scale)
+        .def_readwrite(
+            "hold_thruster_pair_scale",
+            &MPCParams::hold_thruster_pair_scale
+        )
+        .def_readwrite("solver_fallback_hold_s", &MPCParams::solver_fallback_hold_s)
+        .def_readwrite("solver_fallback_decay_s", &MPCParams::solver_fallback_decay_s)
+        .def_readwrite(
+            "solver_fallback_zero_after_s",
+            &MPCParams::solver_fallback_zero_after_s
         );
 
     // Control Result
@@ -109,7 +125,10 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("path_s_proj", &ControlResult::path_s_proj)
         .def_readwrite("path_s_pred", &ControlResult::path_s_pred)
         .def_readwrite("path_error", &ControlResult::path_error)
-        .def_readwrite("path_endpoint_error", &ControlResult::path_endpoint_error);
+        .def_readwrite("path_endpoint_error", &ControlResult::path_endpoint_error)
+        .def_readwrite("fallback_active", &ControlResult::fallback_active)
+        .def_readwrite("fallback_age_s", &ControlResult::fallback_age_s)
+        .def_readwrite("fallback_scale", &ControlResult::fallback_scale);
 
     // Obstacle Types
     py::enum_<ObstacleType>(m, "ObstacleType")
@@ -152,6 +171,9 @@ PYBIND11_MODULE(_cpp_mpc, m) {
              "Set scan attitude context (center, axis, optional direction hint).")
         .def("clear_scan_attitude_context", &MPCControllerCpp::clear_scan_attitude_context,
              "Disable scan attitude context.")
+        .def("set_runtime_mode", &MPCControllerCpp::set_runtime_mode,
+             py::arg("mode"),
+             "Set runtime controller mode (TRACK/RECOVER/SETTLE/HOLD/COMPLETE).")
         .def("project_onto_path", &MPCControllerCpp::project_onto_path,
              py::arg("position"),
              "Project a position onto the current path. Returns (s, point, distance, endpoint_error).")

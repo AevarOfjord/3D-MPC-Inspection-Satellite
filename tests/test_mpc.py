@@ -110,6 +110,24 @@ class TestMPCController:
         controller = MPCController(cfg.app_config)
         assert controller.enable_collision_avoidance is True
 
+    def test_cpp_binding_exposes_v6_mode_profile_fields(self):
+        """C++ binding should expose V6 mode profile params and runtime mode setter."""
+        from satellite_control.cpp import _cpp_mpc
+
+        params = _cpp_mpc.MPCParams()
+        assert hasattr(params, "recover_contour_scale")
+        assert hasattr(params, "settle_progress_scale")
+        assert hasattr(params, "hold_smoothness_scale")
+        assert hasattr(_cpp_mpc.MPCControllerCpp, "set_runtime_mode")
+
+    def test_v6_core_is_default_and_runtime_mode_is_settable(self):
+        """V6 core should be active and runtime mode updates should be accepted."""
+        cfg = SimulationConfig.create_with_overrides({})
+        controller = MPCController(cfg.app_config)
+        assert controller.controller_core == "v6"
+        controller.set_runtime_mode("RECOVER")
+        assert controller._runtime_mode == "RECOVER"
+
 
 class _DummyMPCController:
     def __init__(self, next_action: np.ndarray):
@@ -117,6 +135,7 @@ class _DummyMPCController:
         self.num_rw_axes = 0
         self._next_action = np.array(next_action, dtype=np.float64)
         self._next_info = {"status": 1}
+        self.runtime_modes: list[str] = []
 
     def set_next_action(self, action: np.ndarray) -> None:
         self._next_action = np.array(action, dtype=np.float64)
@@ -125,6 +144,9 @@ class _DummyMPCController:
         payload = {"status": 1}
         payload.update(info)
         self._next_info = payload
+
+    def set_runtime_mode(self, mode: str) -> None:
+        self.runtime_modes.append(str(mode))
 
     def get_control_action(self, x_current, previous_thrusters=None):
         return self._next_action.copy(), dict(self._next_info)
@@ -202,3 +224,17 @@ class TestMPCRunnerHysteresis:
             state, runner.get_previous_thrusters()
         )
         assert np.allclose(thrusters, np.array([0.015, 0.0]))
+
+    def test_runtime_mode_forwarded_to_controller(self):
+        cfg = SimulationConfig.create_with_overrides({}).app_config
+        dummy = _DummyMPCController(np.array([0.02], dtype=np.float64))
+        runner = MPCRunner(dummy, config=cfg)
+        state = np.zeros(16, dtype=np.float64)
+
+        class _ModeState:
+            current_mode = "RECOVER"
+
+        runner.set_mode_state(_ModeState())
+        runner.compute_control_action(state, runner.get_previous_thrusters())
+        assert dummy.runtime_modes
+        assert dummy.runtime_modes[-1] == "RECOVER"

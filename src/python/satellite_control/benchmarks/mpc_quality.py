@@ -1,4 +1,4 @@
-"""MPC quality harness for V5 contract validation."""
+"""MPC quality harness for V6 contract validation."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from satellite_control.core.v6_controller_runtime import QualityContractReportV6
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DATA_SIM_DIR = PROJECT_ROOT / "Data" / "Simulation"
@@ -30,6 +32,7 @@ class ScenarioSpec:
     use_auto: bool = False
     mission_path: Path | None = None
     generate_manual_scurve: bool = False
+    contract_run: bool = True
 
 
 @dataclass
@@ -151,6 +154,10 @@ def _extract_metrics(run_dir: Path) -> dict[str, Any]:
         "path_completed": bool(kpi.get("path_completed", False)),
         "final_position_error_m": _to_float(kpi.get("final_position_error_m")),
         "final_angle_error_deg": _to_float(kpi.get("final_angle_error_deg")),
+        "final_velocity_error_mps": _to_float(kpi.get("final_velocity_error_mps")),
+        "final_angular_velocity_error_degps": _to_float(
+            kpi.get("final_angular_velocity_error_degps")
+        ),
         "mean_solve_ms": _to_float(kpi.get("mpc_mean_solve_time_ms")),
         "max_solve_ms": _to_float(kpi.get("mpc_max_solve_time_ms")),
         "mpc_control_steps": mpc_steps,
@@ -196,6 +203,43 @@ def _evaluate_contracts(
     return results, breaches, not breaches
 
 
+class QualityContractEngineV6:
+    """Deterministic contract evaluator and report builder for V6 quality runs."""
+
+    @staticmethod
+    def evaluate(
+        metrics: dict[str, Any],
+        contracts: dict[str, tuple[str, float | int | bool]],
+    ) -> tuple[dict[str, dict[str, Any]], list[str], bool]:
+        return _evaluate_contracts(metrics, contracts)
+
+    @staticmethod
+    def build_report(
+        *,
+        scenario: str,
+        run_dir: Path,
+        command: list[str],
+        return_code: int,
+        metrics: dict[str, Any],
+        contracts: dict[str, dict[str, Any]],
+        passed: bool,
+        breaches: list[str],
+    ) -> QualityContractReportV6:
+        return QualityContractReportV6(
+            schema_version="contract_report_v6",
+            generated_at=_now_iso(),
+            scenario=scenario,
+            run_id=run_dir.name,
+            run_dir=str(run_dir),
+            command=command,
+            return_code=int(return_code),
+            metrics=metrics,
+            contracts=contracts,
+            passed=bool(passed),
+            breaches=list(breaches),
+        )
+
+
 def _default_scenarios(full: bool) -> list[ScenarioSpec]:
     auto_contracts = {
         "path_completed": ("==", True),
@@ -209,6 +253,16 @@ def _default_scenarios(full: bool) -> list[ScenarioSpec]:
         "path_error_p95_m": ("<=", 0.20),
         "mean_active_thrusters": ("<=", 3.0),
         "switches_per_step": ("<=", 0.30),
+        "mean_solve_ms": ("<=", 5.0),
+        "max_solve_ms": ("<=", 35.0),
+        "hard_limit_breaches": ("==", 0),
+    }
+    long_completion_contracts = {
+        "path_completed": ("==", True),
+        "final_position_error_m": ("<=", 0.10),
+        "final_angle_error_deg": ("<=", 2.0),
+        "final_velocity_error_mps": ("<=", 0.05),
+        "final_angular_velocity_error_degps": ("<=", 2.0),
         "mean_solve_ms": ("<=", 5.0),
         "max_solve_ms": ("<=", 35.0),
         "hard_limit_breaches": ("==", 0),
@@ -243,6 +297,12 @@ def _default_scenarios(full: bool) -> list[ScenarioSpec]:
                     duration_s=35.0,
                     generate_manual_scurve=True,
                     contracts=auto_contracts,
+                ),
+                ScenarioSpec(
+                    name="long_completion_tier",
+                    duration_s=180.0,
+                    mission_path=MISSION_PLANNER_M4,
+                    contracts=long_completion_contracts,
                 ),
             ]
         )
@@ -315,6 +375,7 @@ def _run_scenario(
     before_run_id = _read_latest_run_id()
     env = os.environ.copy()
     env["SATELLITE_HEADLESS"] = "1"
+    env["SATCTRL_CONTRACT_SCENARIO"] = "1" if scenario.contract_run else "0"
 
     completed = subprocess.run(
         command,
@@ -328,6 +389,7 @@ def _run_scenario(
     combined_output = f"{completed.stdout}\n{completed.stderr}"
     run_dir = _resolve_run_dir(before_run_id, combined_output)
 
+    engine = QualityContractEngineV6()
     metrics: dict[str, Any] = {}
     contract_results: dict[str, dict[str, Any]] = {}
     breaches: list[str] = []
@@ -342,28 +404,30 @@ def _run_scenario(
         passed = False
     else:
         metrics = _extract_metrics(run_dir)
-        contract_results, contract_breaches, contracts_pass = _evaluate_contracts(
+        contract_results, contract_breaches, contracts_pass = engine.evaluate(
             metrics,
             scenario.contracts,
         )
         breaches.extend(contract_breaches)
         passed = passed and contracts_pass
 
-        report = {
-            "schema_version": "mpc_quality_report_v1",
-            "generated_at": _now_iso(),
-            "scenario": scenario.name,
-            "run_id": run_dir.name,
-            "run_dir": str(run_dir),
-            "command": command,
-            "return_code": completed.returncode,
-            "metrics": metrics,
-            "contracts": contract_results,
-            "passed": passed,
-            "breaches": breaches,
-        }
+        report = engine.build_report(
+            scenario=scenario.name,
+            run_dir=run_dir,
+            command=command,
+            return_code=completed.returncode,
+            metrics=metrics,
+            contracts=contract_results,
+            passed=passed,
+            breaches=breaches,
+        )
+        (run_dir / "contract_report_v6.json").write_text(
+            json.dumps(report.to_dict(), indent=2),
+            encoding="utf-8",
+        )
+        # Compatibility mirror for older tooling.
         (run_dir / "mpc_quality_report.json").write_text(
-            json.dumps(report, indent=2),
+            json.dumps(report.to_dict(), indent=2),
             encoding="utf-8",
         )
 
@@ -406,7 +470,7 @@ def run_mpc_quality_suite(
 
     passed = all(item.passed for item in results)
     suite = QualitySuiteResult(
-        schema_version="mpc_quality_suite_v1",
+        schema_version="mpc_quality_suite_v6",
         generated_at=_now_iso(),
         full=full,
         scenarios=results,
