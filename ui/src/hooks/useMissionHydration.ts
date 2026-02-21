@@ -311,7 +311,7 @@ export function useMissionHydration({
     ) {
       axisMigrationToastByMissionRef.current.add(resolvedMissionId);
       showToast({
-        tone: 'warning',
+        tone: 'error',
         title: 'Scan axis auto-migrated',
         message:
           'Legacy scan.axis metadata did not match the attached path asset and was adjusted from planner geometry.',

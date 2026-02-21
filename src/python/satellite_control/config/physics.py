@@ -47,8 +47,7 @@ class PhysicsConfig:
         moment_of_inertia: Rotational inertia in kg·m²
         satellite_size: Characteristic dimension in meters
         com_offset: Center of mass offset [x, y, z] in meters
-        thruster_positions: Dict[int, Tuple[float, float, float]]
-        # Dict mapping thruster ID (1-6) to (x, y, z) position in meters
+        thruster_positions: Dict mapping thruster ID (1-6) to (x, y, z) position in meters
         thruster_directions: Dict mapping thruster ID to unit direction vector
         thruster_forces: Dict mapping thruster ID to force magnitude in Newtons
         use_realistic_physics: Enable realistic physics modeling

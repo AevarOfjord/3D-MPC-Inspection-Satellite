@@ -57,7 +57,7 @@ make run-app
 # Dev mode (hot reload): make run
 
 # 3) Run the CLI directly (optional)
-.venv311/bin/python scripts/run_simulation.py run --auto --no-anim
+.venv311/bin/satellite-control run --auto --no-anim
 ```
 
 ## 📘 Usage Guide

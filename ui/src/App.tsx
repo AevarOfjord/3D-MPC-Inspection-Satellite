@@ -382,23 +382,25 @@ function App() {
       <TelemetryBridge />
 
       {/* Header */}
-      <header className="flex-none bg-slate-900 border-b border-slate-800 select-none z-50">
-        <div className="h-12 px-4 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Rocket className="text-blue-500" size={20} />
-              <span className="font-bold tracking-wide text-blue-100">MISSION CONTROL</span>
+      <header className="flex-none glass-panel border-b border-white/10 select-none z-50 shadow-lg">
+        <div className="h-14 px-6 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-fuchsia-600 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+                <Rocket className="text-white" size={18} />
+              </div>
+              <span className="font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-100 to-white">ORBITAL INSPECTOR</span>
             </div>
 
-            <div className="flex bg-slate-800 rounded-md p-1 gap-1">
+            <div className="flex bg-slate-950/60 rounded-lg p-1 gap-1 border border-white/5 shadow-inner">
               <button
                 onClick={switchToViewer}
                 onMouseEnter={preload3DModules}
                 onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'viewer'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                    ? 'bg-cyan-600/90 text-white shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Monitor size={14} />
@@ -408,10 +410,10 @@ function App() {
                 onClick={switchToPlanner}
                 onMouseEnter={preload3DModules}
                 onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'planner'
-                    ? 'bg-teal-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                    ? 'bg-fuchsia-600/90 text-white shadow-[0_0_10px_rgba(217,70,239,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <FileText size={14} />
@@ -419,10 +421,10 @@ function App() {
               </button>
               <button
                 onClick={switchToRunner}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'runner'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                    ? 'bg-indigo-600/90 text-white shadow-[0_0_10px_rgba(79,70,229,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Terminal size={14} />
@@ -430,10 +432,10 @@ function App() {
               </button>
               <button
                 onClick={switchToDataView}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'data'
-                    ? 'bg-orange-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                    ? 'bg-orange-600/90 text-white shadow-[0_0_10px_rgba(234,88,12,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Database size={14} />
@@ -441,10 +443,10 @@ function App() {
               </button>
               <button
                 onClick={switchToSettings}
-                className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'settings'
-                    ? 'bg-slate-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                    ? 'bg-slate-600/90 text-white shadow-[0_0_10px_rgba(71,85,105,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Settings size={14} />

@@ -89,12 +89,20 @@ class RunsEventsService {
     }
     this.reconnectAttempt = 0;
     if (this.socket) {
+      const socketToClose = this.socket;
       this.socket.onclose = null;
-      this.socket.close();
       this.socket = null;
+
+      if (socketToClose.readyState === WebSocket.CONNECTING) {
+        // Defer closing until the connection is either established or failed
+        // to avoid the noisy browser "WebSocket is closed before the connection is established" error.
+        socketToClose.onopen = () => socketToClose.close();
+        socketToClose.onerror = () => socketToClose.close();
+      } else {
+        socketToClose.close();
+      }
     }
   }
 }
 
 export const runEvents = new RunsEventsService();
-
