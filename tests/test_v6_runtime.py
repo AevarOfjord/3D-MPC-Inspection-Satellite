@@ -5,9 +5,12 @@ import pytest
 from satellite_control.core.v6_controller_runtime import (
     ActuatorPolicyV6,
     ControllerModeManagerV6,
+    PointingGuardrailV6,
     TerminalSupervisorV6,
+    compute_pointing_errors_deg,
     compute_runtime_path_speed,
     estimate_required_duration_s,
+    resolve_pointing_context_v6,
 )
 
 
@@ -257,3 +260,143 @@ def test_mode_profile_uses_configured_multipliers() -> None:
     assert hold.angular_velocity_scale == pytest.approx(1.9)
     assert hold.smoothness_scale == pytest.approx(1.7)
     assert hold.thruster_pair_scale == pytest.approx(1.25)
+
+
+def test_pointing_context_falls_back_to_lvlh_radial_axis() -> None:
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (100.0, 0.0, 0.0)
+        pointing_path_spans: list[dict] = []
+
+    class _SimConfig:
+        mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    context = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.5)
+    assert context.source == "lvlh_radial_fallback"
+    assert np.allclose(context.axis_world, np.array([1.0, 0.0, 0.0]), atol=1e-6)
+
+
+def test_pointing_context_switches_across_span_boundaries() -> None:
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (0.0, 0.0, 0.0)
+        pointing_path_spans = [
+            {
+                "s_start": 0.0,
+                "s_end": 1.0,
+                "scan_axis": [0.0, 0.0, 1.0],
+                "scan_direction": "CW",
+                "source_segment_index": 0,
+                "context_source": "transfer_next_scan",
+            },
+            {
+                "s_start": 1.0,
+                "s_end": 2.0,
+                "scan_axis": [0.0, 1.0, 0.0],
+                "scan_direction": "CCW",
+                "source_segment_index": 1,
+                "context_source": "transfer_previous_scan",
+            },
+        ]
+
+    class _SimConfig:
+        mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+
+    first = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.25)
+    second = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=1.75)
+
+    assert first.source == "transfer_next_scan"
+    assert np.allclose(first.axis_world, np.array([0.0, 0.0, 1.0]), atol=1e-6)
+    assert first.direction_cw is True
+
+    assert second.source == "transfer_previous_scan"
+    assert np.allclose(second.axis_world, np.array([0.0, 1.0, 0.0]), atol=1e-6)
+    assert second.direction_cw is False
+
+
+def test_pointing_context_uses_nearest_valid_scan_axis_before_radial_fallback() -> None:
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (100.0, 0.0, 0.0)
+        scan_attitude_axis = (0.0, 0.0, 1.0)
+        pointing_path_spans = [
+            {
+                "s_start": 0.0,
+                "s_end": 1.0,
+                "scan_axis": None,
+                "scan_direction": "CW",
+                "source_segment_index": 0,
+                "context_source": "transfer_none",
+            },
+            {
+                "s_start": 1.0,
+                "s_end": 2.0,
+                "scan_axis": [0.0, 1.0, 0.0],
+                "scan_direction": "CW",
+                "source_segment_index": 1,
+                "context_source": "scan_segment",
+            },
+        ]
+
+    class _SimConfig:
+        mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    context = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.25)
+
+    assert context.source != "lvlh_radial_fallback"
+    assert np.allclose(context.axis_world, np.array([0.0, 1.0, 0.0]), atol=1e-6)
+
+
+def test_pointing_guardrail_latch_and_clear() -> None:
+    guardrail = PointingGuardrailV6(
+        enabled=True,
+        z_error_deg_max=4.0,
+        x_error_deg_max=6.0,
+        breach_hold_s=0.3,
+        clear_hold_s=0.8,
+    )
+    status = guardrail.update(sim_time_s=0.0, x_error_deg=7.0, z_error_deg=1.0)
+    assert status.breached is False
+    status = guardrail.update(sim_time_s=0.35, x_error_deg=7.0, z_error_deg=1.0)
+    assert status.breached is True
+    status = guardrail.update(sim_time_s=0.6, x_error_deg=1.0, z_error_deg=1.0)
+    assert status.breached is True
+    status = guardrail.update(sim_time_s=1.45, x_error_deg=1.0, z_error_deg=1.0)
+    assert status.breached is False
+
+
+def test_compute_pointing_errors_decomposes_x_and_z_axes() -> None:
+    # 90 deg yaw: x-axis rotates to +Y while z-axis stays +Z.
+    q_ref = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+    q_curr = np.array(
+        [np.cos(np.pi / 4.0), 0.0, 0.0, np.sin(np.pi / 4.0)],
+        dtype=float,
+    )
+    x_err, z_err = compute_pointing_errors_deg(
+        current_quat_wxyz=q_curr,
+        reference_quat_wxyz=q_ref,
+    )
+    assert x_err == pytest.approx(90.0, abs=1e-3)
+    assert z_err == pytest.approx(0.0, abs=1e-3)

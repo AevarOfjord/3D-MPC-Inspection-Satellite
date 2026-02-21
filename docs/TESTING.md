@@ -121,6 +121,32 @@ For path-following runs, terminal completion now requires all thresholds to be i
 
 The condition must hold continuously for `10 s` by default (`mission_state.path_hold_end`).
 
+### Pointing-Contract Validation (V6)
+
+Pointing-contract behavior is validated at unit and integration levels.
+
+Recommended focused run:
+
+```bash
+.venv311/bin/python -m pytest -q tests/test_v6_runtime.py tests/test_unified_compiler.py tests/test_mpc.py tests/test_cpp_integration.py tests/test_dashboard_api.py
+```
+
+Coverage expectations:
+
+- strict `+Z` lock and projected-forward `+X` reference math
+- degenerate tangent continuity behavior (no random axis flips)
+- segment-aware context selection by path `s` spans
+- transfer segment policy (`next_scan` context)
+- post-final-scan transfer policy (retain last scan axis to endpoint)
+- guardrail breach/clear hysteresis timing (`0.30s` / `0.80s`)
+- telemetry/API presence for pointing fields:
+  - `pointing_context_source`
+  - `pointing_axis_world`
+  - `z_axis_error_deg`
+  - `x_axis_error_deg`
+  - `pointing_guardrail_breached`
+  - `object_visible_side`
+
 ### Mission Flow for Testing
 
 Tests unified mission compile/hydration and path tracking runtime behavior.

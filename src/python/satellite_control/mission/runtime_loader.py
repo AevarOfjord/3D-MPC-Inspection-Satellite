@@ -35,6 +35,107 @@ class UnifiedMissionRuntime:
     runtime_plan_v6: MissionRuntimePlanV6 | None = None
 
 
+def _axis_token_to_letter(axis_token: Any) -> str | None:
+    token = str(getattr(axis_token, "value", axis_token)).strip().upper()
+    if token.endswith("X"):
+        return "X"
+    if token.endswith("Y"):
+        return "Y"
+    if token.endswith("Z"):
+        return "Z"
+    return None
+
+
+def infer_path_asset_dominant_axis_letter(asset_id: str) -> str | None:
+    if not str(asset_id or "").strip():
+        return None
+    try:
+        asset = load_path_asset(str(asset_id))
+    except Exception:
+        return None
+    raw_path = asset.get("path") or []
+    try:
+        points = np.array(raw_path, dtype=float)
+    except Exception:
+        return None
+    inferred_axis = _infer_axis_from_points(points)
+    if inferred_axis is None:
+        return None
+    idx = int(np.argmax(np.abs(inferred_axis)))
+    return ("X", "Y", "Z")[idx]
+
+
+def collect_scan_axis_asset_mismatches(
+    mission: MissionDefinition,
+) -> list[dict[str, Any]]:
+    mismatches: list[dict[str, Any]] = []
+    for segment_index, segment in enumerate(mission.segments):
+        if segment.type != SegmentType.SCAN:
+            continue
+        asset_id = str(getattr(segment, "path_asset", "") or "").strip()
+        if not asset_id:
+            continue
+        inferred_axis = infer_path_asset_dominant_axis_letter(asset_id)
+        if inferred_axis is None:
+            continue
+        scan_cfg = getattr(segment, "scan", None)
+        declared_token = str(
+            getattr(
+                getattr(scan_cfg, "axis", "+Z"),
+                "value",
+                getattr(scan_cfg, "axis", "+Z"),
+            )
+        ).upper()
+        declared_axis = _axis_token_to_letter(declared_token)
+        if declared_axis == inferred_axis:
+            continue
+        mismatches.append(
+            {
+                "segment_index": int(segment_index),
+                "path_asset": asset_id,
+                "declared_axis": declared_token,
+                "inferred_axis": inferred_axis,
+            }
+        )
+    return mismatches
+
+
+def apply_scan_axis_asset_migration(
+    mission: MissionDefinition,
+) -> list[str]:
+    notices: list[str] = []
+    for mismatch in collect_scan_axis_asset_mismatches(mission):
+        seg_idx = int(mismatch["segment_index"])
+        if seg_idx < 0 or seg_idx >= len(mission.segments):
+            continue
+        segment = mission.segments[seg_idx]
+        if segment.type != SegmentType.SCAN:
+            continue
+        scan_cfg = getattr(segment, "scan", None)
+        if scan_cfg is None:
+            continue
+        inferred_axis = str(mismatch["inferred_axis"]).upper()
+        migrated_token = f"+{inferred_axis}"
+        current_axis_value = getattr(scan_cfg, "axis", "+Z")
+        axis_type = type(current_axis_value)
+        try:
+            if hasattr(axis_type, "__members__"):
+                setattr(scan_cfg, "axis", axis_type(migrated_token))
+            else:
+                setattr(scan_cfg, "axis", migrated_token)
+        except Exception:
+            setattr(scan_cfg, "axis", migrated_token)
+        notices.append(
+            "segment[{idx}] scan.axis migrated {old_axis} -> {new_axis} using path_asset '{asset}'".format(
+                idx=seg_idx,
+                old_axis=str(mismatch["declared_axis"]),
+                new_axis=migrated_token,
+                asset=str(mismatch["path_asset"]),
+            )
+        )
+    return notices
+
+
 def parse_unified_mission_payload(payload: Mapping[str, Any]) -> MissionDefinition:
     """
     Parse a unified mission payload.
@@ -67,6 +168,7 @@ def compile_unified_mission_runtime(
 
     # Create mutable working copy to avoid frozen dataclass violations
     sim_config = base_config.clone()
+    scan_axis_migration_notices = apply_scan_axis_asset_migration(mission)
 
     resolved_output_frame = (
         output_frame.upper()
@@ -74,10 +176,13 @@ def compile_unified_mission_runtime(
         else ("LVLH" if _mission_uses_lvlh(mission) else "ECI")
     )
 
-    path, path_length, path_speed, origin = compile_unified_mission_path(
-        mission=mission,
-        sim_config=sim_config,
-        output_frame=resolved_output_frame,
+    path, path_length, path_speed, origin, pointing_spans = (
+        compile_unified_mission_path(
+            mission=mission,
+            sim_config=sim_config,
+            output_frame=resolved_output_frame,
+            include_pointing_spans=True,
+        )
     )
 
     runtime_plan_v6 = compile_mission_runtime_plan_v6(
@@ -88,7 +193,9 @@ def compile_unified_mission_runtime(
         path_speed_max=float(getattr(sim_config.app_config.mpc, "path_speed_max", 0.0)),
         hold_duration_s=float(getattr(sim_config.mission_state, "path_hold_end", 10.0)),
         margin_s=float(
-            getattr(sim_config.app_config.reference_scheduler, "duration_margin_s", 30.0)
+            getattr(
+                sim_config.app_config.reference_scheduler, "duration_margin_s", 30.0
+            )
         ),
     )
 
@@ -111,6 +218,15 @@ def compile_unified_mission_runtime(
     )
     mission_state.frame_origin = origin
     mission_state.path_frame = resolved_output_frame
+    mission_state.pointing_path_spans = list(pointing_spans or [])
+    mission_state.scan_axis_migration_notices = list(scan_axis_migration_notices)
+    scan_axis_source = str(
+        getattr(
+            getattr(sim_config.app_config, "controller_contracts", None),
+            "scan_axis_source",
+            "planner",
+        )
+    )
     (
         mission_state.scan_attitude_center,
         mission_state.scan_attitude_axis,
@@ -119,6 +235,7 @@ def compile_unified_mission_runtime(
         mission=mission,
         origin=np.array(origin, dtype=float),
         output_frame=resolved_output_frame,
+        scan_axis_source=scan_axis_source,
     )
 
     start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
@@ -291,6 +408,7 @@ def _resolve_scan_attitude_context(
     mission: MissionDefinition,
     origin: np.ndarray,
     output_frame: str | None,
+    scan_axis_source: str = "planner",
 ) -> tuple[
     tuple[float, float, float] | None,
     tuple[float, float, float] | None,
@@ -314,7 +432,10 @@ def _resolve_scan_attitude_context(
         direction = str(getattr(direction, "value", direction))
 
         target_pose = getattr(segment, "target_pose", None)
-        if target_pose is not None and getattr(target_pose, "position", None) is not None:
+        if (
+            target_pose is not None
+            and getattr(target_pose, "position", None) is not None
+        ):
             center_raw = np.array(target_pose.position, dtype=float)
             center_frame = _normalize_frame(getattr(target_pose, "frame", scan_frame))
         else:
@@ -324,8 +445,9 @@ def _resolve_scan_attitude_context(
 
         axis_vec = _axis_to_vector(getattr(scan_cfg, "axis", "+Z"))
 
+        axis_source = str(scan_axis_source).strip().lower()
         asset_id = getattr(segment, "path_asset", None)
-        if asset_id:
+        if axis_source == "asset_infer" and asset_id:
             try:
                 asset = load_path_asset(str(asset_id))
                 asset_path = np.array(asset.get("path") or [], dtype=float)

@@ -171,3 +171,68 @@ Canonical payload schema:
 ```
 
 For one compatibility release, legacy/v1/v2 payloads are dual-read by API adapters; all new writes persist as `app_config_v3`.
+
+## 10. Pointing-Contract Reference Frame (V6)
+
+V6 enforces a strict geometric pointing contract for reference attitude generation.
+
+### 10.1 Axis Sources
+
+- Preferred `z_ref`: planner scan/pair axis (mission `scan.axis`) when available.
+- Transfer policy: use next scan axis while moving toward a scan; after final scan, keep the last scan axis.
+- Fallback `z_ref`: LVLH radial (`+R`) when scan axis context is unavailable.
+- `z_ref` sign is treated as fixed contract direction (no runtime sign flips).
+
+### 10.2 Path-Forward +X Construction
+
+Let `t` be the local path tangent and `z_ref` the locked axis.
+
+1. Project tangent onto plane orthogonal to `z_ref`:
+
+```text
+x_proj = t - (t · z_ref) z_ref
+```
+
+2. Degenerate case (`||x_proj|| ~ 0`):
+
+- reuse previous projected `x_ref` for continuity if available;
+- otherwise use a deterministic seeded orthogonal basis vector.
+
+3. Normalize and enforce forward branch:
+
+```text
+x_ref = normalize(x_proj)
+if x_ref · t < 0 then x_ref = -x_ref
+```
+
+4. Complete right-handed frame:
+
+```text
+y_ref = normalize(z_ref × x_ref)
+R_ref = [x_ref y_ref z_ref]
+```
+
+Quaternion sign continuity is enforced across horizon points to avoid frame flips.
+
+### 10.3 Pointing Error Metrics
+
+Pointing diagnostics compare body axes to contract-reference axes:
+
+- `x_axis_error_deg = angle(x_body, x_ref)`
+- `z_axis_error_deg = angle(z_body, z_ref)`
+
+These are reported per step in telemetry/log artifacts.
+
+### 10.4 Pointing Guardrail Hysteresis
+
+With guardrails enabled, breach is latched by timed threshold exceedance:
+
+- breach if pointing error thresholds are exceeded continuously for `pointing_breach_hold_s` (default `0.30 s`)
+- clear only after continuous in-bounds duration `pointing_clear_hold_s` (default `0.80 s`)
+
+Default thresholds:
+
+- `z_axis_error_deg <= 4.0`
+- `x_axis_error_deg <= 6.0`
+
+Guardrail breach feeds runtime recovery signaling while solver fallback policy remains independent.

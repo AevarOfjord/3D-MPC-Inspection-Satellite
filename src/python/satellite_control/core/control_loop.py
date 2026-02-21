@@ -7,6 +7,77 @@ from typing import Any
 
 import numpy as np
 
+from satellite_control.core.v6_controller_runtime import (
+    compute_pointing_errors_deg,
+    resolve_object_visible_side,
+    resolve_pointing_context_v6,
+)
+
+
+def _set_runtime_pointing_context(
+    sim: Any,
+    *,
+    current_state: np.ndarray,
+    path_s: float,
+) -> tuple[Any, float | None, float | None, str | None]:
+    """Resolve and forward current pointing context to MPC core."""
+    context = resolve_pointing_context_v6(
+        sim=sim,
+        current_state=current_state,
+        path_s=float(path_s),
+    )
+    center_payload = (
+        None
+        if context.center_world is None
+        else (
+            float(context.center_world[0]),
+            float(context.center_world[1]),
+            float(context.center_world[2]),
+        )
+    )
+    axis_payload = (
+        float(context.axis_world[0]),
+        float(context.axis_world[1]),
+        float(context.axis_world[2]),
+    )
+    direction = "CW" if context.direction_cw else "CCW"
+
+    if hasattr(sim, "mpc_controller") and hasattr(
+        sim.mpc_controller, "set_scan_attitude_context"
+    ):
+        sim.mpc_controller.set_scan_attitude_context(
+            center_payload,
+            axis_payload,
+            direction,
+        )
+
+    x_error_deg = None
+    z_error_deg = None
+    try:
+        if hasattr(sim.mpc_controller, "get_path_reference_state"):
+            q_curr = (
+                np.array(current_state[3:7], dtype=float)
+                if current_state.size >= 7
+                else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+            )
+            _, _, q_ref = sim.mpc_controller.get_path_reference_state(
+                s_query=float(path_s),
+                q_current=q_curr,
+            )
+            if q_ref is not None:
+                x_error_deg, z_error_deg = compute_pointing_errors_deg(
+                    current_quat_wxyz=q_curr,
+                    reference_quat_wxyz=np.array(q_ref, dtype=float),
+                )
+    except Exception:
+        x_error_deg = None
+        z_error_deg = None
+
+    visible_side = resolve_object_visible_side(
+        current_state=current_state, context=context
+    )
+    return context, x_error_deg, z_error_deg, visible_side
+
 
 def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
     """Refresh V6 controller mode state from latest path/gate metrics."""
@@ -46,6 +117,87 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
     if not solver_fallback_reason:
         solver_fallback_reason = None
 
+    contracts_cfg = getattr(
+        getattr(getattr(sim, "simulation_config", None), "app_config", None),
+        "controller_contracts",
+        None,
+    )
+    pointing_scope = (
+        str(getattr(contracts_cfg, "pointing_scope", "all_missions")).strip().lower()
+    )
+    pointing_enabled = bool(getattr(contracts_cfg, "enable_pointing_contract", True))
+    apply_pointing = pointing_enabled and pointing_scope in {
+        "all_missions",
+        "config_toggle",
+    }
+    if pointing_scope == "scan_only":
+        mission_state = getattr(
+            getattr(sim, "simulation_config", None), "mission_state", None
+        )
+        spans = list(getattr(mission_state, "pointing_path_spans", []) or [])
+        initial_axis = np.array(
+            getattr(mission_state, "scan_attitude_axis", (0.0, 0.0, 0.0)),
+            dtype=float,
+        )
+        has_initial_axis = bool(
+            initial_axis.size >= 3
+            and np.all(np.isfinite(initial_axis[:3]))
+            and float(np.linalg.norm(initial_axis[:3])) > 1e-9
+        )
+        apply_pointing = pointing_enabled and (len(spans) > 0 or has_initial_axis)
+
+    context_source = None
+    context = None
+    x_error_deg = None
+    z_error_deg = None
+    visible_side = None
+    if apply_pointing:
+        context, x_error_deg, z_error_deg, visible_side = _set_runtime_pointing_context(
+            sim,
+            current_state=current_state,
+            path_s=path_s,
+        )
+        context_source = getattr(context, "source", None)
+    elif hasattr(sim, "mpc_controller") and hasattr(
+        sim.mpc_controller, "set_scan_attitude_context"
+    ):
+        sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
+
+    pointing_guardrail = getattr(sim, "v6_pointing_guardrail", None)
+    pointing_guardrail_status = None
+    if pointing_guardrail is not None and apply_pointing:
+        pointing_guardrail_status = pointing_guardrail.update(
+            sim_time_s=float(sim.simulation_time),
+            x_error_deg=x_error_deg,
+            z_error_deg=z_error_deg,
+        )
+
+    pointing_guardrail_breached = bool(
+        getattr(pointing_guardrail_status, "breached", False)
+    )
+    pointing_reason = getattr(pointing_guardrail_status, "last_reason", None)
+    if pointing_guardrail_breached and not solver_fallback_reason:
+        solver_fallback_reason = (
+            str(pointing_reason)
+            if isinstance(pointing_reason, str) and pointing_reason
+            else "pointing_guardrail"
+        )
+    solver_degraded_for_mode = solver_degraded or pointing_guardrail_breached
+
+    sim.v6_pointing_status = {
+        "pointing_context_source": context_source,
+        "pointing_axis_world": (
+            list(getattr(context, "axis_world", [0.0, 0.0, 1.0]))
+            if apply_pointing
+            else [0.0, 0.0, 1.0]
+        ),
+        "z_axis_error_deg": float(z_error_deg) if z_error_deg is not None else 0.0,
+        "x_axis_error_deg": float(x_error_deg) if x_error_deg is not None else 0.0,
+        "pointing_guardrail_breached": pointing_guardrail_breached,
+        "object_visible_side": visible_side,
+        "pointing_guardrail_reason": pointing_reason,
+    }
+
     sim.v6_mode_state = mode_manager.update(
         sim_time_s=float(sim.simulation_time),
         contour_error_m=contour_error,
@@ -54,7 +206,7 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
         position_tolerance_m=pos_tol,
         completion_gate_state_ok=completion_gate_state_ok,
         completion_reached=completion_reached,
-        solver_degraded=solver_degraded,
+        solver_degraded=solver_degraded_for_mode,
         solver_fallback_reason=solver_fallback_reason,
     )
     sim.v6_mode_profile = mode_manager.profile_for_mode(sim.v6_mode_state.current_mode)
@@ -69,10 +221,15 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
                 "path_s": float(path_s),
                 "path_error_m": float(contour_error),
                 "endpoint_error_m": (
-                    float(endpoint_error)
-                    if endpoint_error is not None
-                    else None
+                    float(endpoint_error) if endpoint_error is not None else None
                 ),
+                "x_axis_error_deg": (
+                    float(x_error_deg) if x_error_deg is not None else None
+                ),
+                "z_axis_error_deg": (
+                    float(z_error_deg) if z_error_deg is not None else None
+                ),
+                "pointing_guardrail_breached": bool(pointing_guardrail_breached),
             },
         )
 
@@ -97,7 +254,9 @@ def update_mpc_control_step(sim: Any) -> None:
                 sim=sim,
                 current_state=current_state,
                 mode=str(
-                    getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
+                    getattr(
+                        getattr(sim, "v6_mode_state", None), "current_mode", "TRACK"
+                    )
                 ),
                 horizon=max(1, horizon),
                 dt=float(sim.control_update_interval),
@@ -164,6 +323,25 @@ def update_mpc_control_step(sim: Any) -> None:
         mpc_info["completion_gate_last_breach_reason"] = getattr(
             gate, "last_breach_reason", None
         )
+    pointing_status = getattr(sim, "v6_pointing_status", None)
+    if isinstance(pointing_status, dict):
+        mpc_info["pointing_context_source"] = pointing_status.get(
+            "pointing_context_source"
+        )
+        mpc_info["pointing_axis_world"] = pointing_status.get("pointing_axis_world")
+        mpc_info["z_axis_error_deg"] = float(
+            pointing_status.get("z_axis_error_deg", 0.0) or 0.0
+        )
+        mpc_info["x_axis_error_deg"] = float(
+            pointing_status.get("x_axis_error_deg", 0.0) or 0.0
+        )
+        mpc_info["pointing_guardrail_breached"] = bool(
+            pointing_status.get("pointing_guardrail_breached", False)
+        )
+        mpc_info["pointing_guardrail_reason"] = pointing_status.get(
+            "pointing_guardrail_reason"
+        )
+        mpc_info["object_visible_side"] = pointing_status.get("object_visible_side")
 
     solver_health = getattr(sim, "v6_solver_health", None)
     if solver_health is not None:
@@ -190,9 +368,7 @@ def update_mpc_control_step(sim: Any) -> None:
             solver_health.status = "ok"
         mpc_info["solver_health_status"] = solver_health.status
         mpc_info["solver_fallback_count"] = int(solver_health.fallback_count)
-        mpc_info["solver_hard_limit_breaches"] = int(
-            solver_health.hard_limit_breaches
-        )
+        mpc_info["solver_hard_limit_breaches"] = int(solver_health.hard_limit_breaches)
         mpc_info["solver_last_fallback_reason"] = getattr(
             solver_health, "last_fallback_reason", None
         )

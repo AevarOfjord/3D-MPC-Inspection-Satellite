@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from satellite_control.dashboard import mission_v2_service
 from satellite_control.dashboard.app import app
+from satellite_control.mission import path_assets
 from satellite_control.mission import repository as mission_repo
 
 
@@ -35,13 +36,74 @@ def _sample_mission_payload(*, mission_id: str = "mission_test") -> dict[str, An
     }
 
 
+def _scan_mission_payload(
+    *,
+    mission_id: str = "mission_scan",
+    axis: str = "+Z",
+    path_asset: str = "asset_y_axis",
+) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "mission_id": mission_id,
+        "name": "Mission Scan",
+        "epoch": "2026-01-01T00:00:00Z",
+        "start_pose": {
+            "frame": "LVLH",
+            "position": [0.0, 0.0, 0.0],
+        },
+        "start_target_id": "STARLINK-1008",
+        "segments": [
+            {
+                "type": "scan",
+                "segment_id": "seg_scan_001",
+                "target_id": "STARLINK-1008",
+                "path_asset": path_asset,
+                "scan": {
+                    "frame": "LVLH",
+                    "axis": axis,
+                    "standoff": 10.0,
+                    "overlap": 0.25,
+                    "fov_deg": 60.0,
+                    "revolutions": 4,
+                    "direction": "CW",
+                    "sensor_axis": "+Y",
+                },
+            }
+        ],
+        "metadata": {
+            "version": 1,
+            "tags": ["test"],
+        },
+    }
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     missions_dir = tmp_path / "missions"
     drafts_dir = tmp_path / "mission_drafts_v2"
+    path_assets_dir = tmp_path / "assets" / "paths"
+    path_assets_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(mission_v2_service, "MISSIONS_DIR", missions_dir)
     monkeypatch.setattr(mission_v2_service, "DRAFTS_DIR", drafts_dir)
     monkeypatch.setitem(mission_repo.SOURCE_DIRS, "local", missions_dir)
+    monkeypatch.setattr(path_assets, "PATH_ASSET_DIR", path_assets_dir)
+
+    path_assets.save_path_asset(
+        {
+            "id": "asset_y_axis",
+            "name": "asset_y_axis",
+            "obj_path": "assets/model_files/Starlink/starlink.obj",
+            "open": True,
+            "relative_to_obj": True,
+            "path": [
+                [0.0, -2.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 2.0, 0.0],
+            ],
+        }
+    )
     with TestClient(app) as test_client:
         yield test_client
 
@@ -62,7 +124,9 @@ def test_v2_validate_detects_missing_segments(client: TestClient):
     assert response.status_code == 200
     payload = response.json()
     assert payload["valid"] is False
-    assert any(issue["code"] == "MISSION_SEGMENTS_REQUIRED" for issue in payload["issues"])
+    assert any(
+        issue["code"] == "MISSION_SEGMENTS_REQUIRED" for issue in payload["issues"]
+    )
 
 
 def test_v2_save_list_and_load_roundtrip(client: TestClient):
@@ -175,3 +239,36 @@ def test_legacy_save_adapter_persists_v2_payload(client: TestClient):
     assert payload["schema_version"] == 2
     assert payload["name"] == "Legacy Adapter Mission"
     assert payload["segments"][0]["segment_id"]
+
+
+def test_v2_validate_warns_scan_axis_asset_mismatch(client: TestClient):
+    response = client.post(
+        "/api/v2/missions/validate",
+        json=_scan_mission_payload(mission_id="mission_scan_validate", axis="+Z"),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is True
+    assert any(
+        issue["code"] == "SCAN_AXIS_ASSET_MISMATCH" for issue in payload["issues"]
+    )
+
+
+def test_v2_load_auto_migrates_scan_axis_and_sets_notice_tag(client: TestClient):
+    mission = _scan_mission_payload(mission_id="mission_scan_load", axis="+Z")
+    save = client.post(
+        "/api/v2/missions",
+        json={
+            "name": "Mission Scan Load",
+            "mission": mission,
+        },
+    )
+    assert save.status_code == 200
+
+    load = client.get("/api/v2/missions/mission_scan_load")
+    assert load.status_code == 200
+    loaded = load.json()
+    assert loaded["segments"][0]["scan"]["axis"] == "+Y"
+    assert "migration:scan_axis_asset_mismatch" in (
+        loaded["metadata"].get("tags") or []
+    )

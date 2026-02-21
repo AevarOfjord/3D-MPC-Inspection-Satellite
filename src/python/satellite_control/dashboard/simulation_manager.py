@@ -222,14 +222,13 @@ class SimulationManager:
         mode_state_obj = getattr(self.sim_instance, "v6_mode_state", None)
         completion_gate_obj = getattr(self.sim_instance, "v6_completion_gate", None)
         solver_health_obj = getattr(self.sim_instance, "v6_solver_health", None)
+        pointing_status_obj = getattr(self.sim_instance, "v6_pointing_status", None)
 
         mode_state = None
         if mode_state_obj is not None:
             mode_state = {
                 "current_mode": str(getattr(mode_state_obj, "current_mode", "TRACK")),
-                "time_in_mode_s": float(
-                    getattr(mode_state_obj, "time_in_mode_s", 0.0)
-                ),
+                "time_in_mode_s": float(getattr(mode_state_obj, "time_in_mode_s", 0.0)),
             }
 
         completion_gate = None
@@ -256,9 +255,7 @@ class SimulationManager:
         if solver_health_obj is not None:
             solver_health = {
                 "status": str(getattr(solver_health_obj, "status", "ok")),
-                "fallback_count": int(
-                    getattr(solver_health_obj, "fallback_count", 0)
-                ),
+                "fallback_count": int(getattr(solver_health_obj, "fallback_count", 0)),
                 "hard_limit_breaches": int(
                     getattr(solver_health_obj, "hard_limit_breaches", 0)
                 ),
@@ -276,6 +273,31 @@ class SimulationManager:
                 ),
                 "fallback_reasons": dict(
                     getattr(solver_health_obj, "fallback_reasons", {}) or {}
+                ),
+            }
+
+        pointing_status = None
+        if isinstance(pointing_status_obj, dict):
+            pointing_status = {
+                "pointing_context_source": pointing_status_obj.get(
+                    "pointing_context_source"
+                ),
+                "pointing_axis_world": list(
+                    pointing_status_obj.get("pointing_axis_world", [0.0, 0.0, 1.0])
+                    or [0.0, 0.0, 1.0]
+                ),
+                "z_axis_error_deg": float(
+                    pointing_status_obj.get("z_axis_error_deg", 0.0) or 0.0
+                ),
+                "x_axis_error_deg": float(
+                    pointing_status_obj.get("x_axis_error_deg", 0.0) or 0.0
+                ),
+                "pointing_guardrail_breached": bool(
+                    pointing_status_obj.get("pointing_guardrail_breached", False)
+                ),
+                "object_visible_side": pointing_status_obj.get("object_visible_side"),
+                "pointing_guardrail_reason": pointing_status_obj.get(
+                    "pointing_guardrail_reason"
                 ),
             }
 
@@ -313,6 +335,7 @@ class SimulationManager:
             "mode_state": mode_state,
             "completion_gate": completion_gate,
             "solver_health": solver_health,
+            "pointing_status": pointing_status,
         }
 
     async def _run_loop(self):

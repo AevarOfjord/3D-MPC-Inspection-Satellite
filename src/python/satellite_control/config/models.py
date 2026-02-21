@@ -750,6 +750,7 @@ class ReferenceSchedulerParams(BaseModel):
 
 class MPCCoreParams(BaseModel):
     """V6 MPC core mode-profile and backend policy."""
+
     solver_backend: str = Field(
         "OSQP",
         pattern="^(OSQP)$",
@@ -937,6 +938,58 @@ class ControllerContractsParams(BaseModel):
         True,
         description="Allow mission-level contract override fields with audit.",
     )
+    enable_pointing_contract: bool = Field(
+        constants.Constants.V6_ENABLE_POINTING_CONTRACT,
+        description="Enable V6 pointing contract (+X path-forward, +Z axis-lock).",
+    )
+    pointing_scope: str = Field(
+        constants.Constants.V6_POINTING_SCOPE,
+        description='Pointing contract scope ("all_missions", "scan_only", "config_toggle").',
+    )
+    pointing_axis_priority: str = Field(
+        constants.Constants.V6_POINTING_AXIS_PRIORITY,
+        description='Pointing axis priority policy ("strict_z_lock", "exact_x_tangent", "weighted_compromise").',
+    )
+    pointing_sensor_policy: str = Field(
+        constants.Constants.V6_POINTING_SENSOR_POLICY,
+        description='Sensor-side policy ("auto_both", "force_plus_y", "force_minus_y").',
+    )
+    pointing_transfer_axis_policy: str = Field(
+        constants.Constants.V6_POINTING_TRANSFER_AXIS_POLICY,
+        description='Transfer axis policy ("next_scan", "previous_scan", "blend").',
+    )
+    scan_axis_source: str = Field(
+        constants.Constants.V6_SCAN_AXIS_SOURCE,
+        description='Scan axis source policy ("planner", "asset_infer").',
+    )
+    pointing_guardrails_enabled: bool = Field(
+        constants.Constants.V6_POINTING_GUARDRAILS_ENABLED,
+        description="Enable pointing guardrail breach monitoring and RECOVER trigger.",
+    )
+    pointing_z_error_deg_max: float = Field(
+        constants.Constants.V6_POINTING_Z_ERROR_DEG_MAX,
+        gt=0.0,
+        le=180.0,
+        description="Max allowed +Z axis error before pointing guardrail breach [deg].",
+    )
+    pointing_x_error_deg_max: float = Field(
+        constants.Constants.V6_POINTING_X_ERROR_DEG_MAX,
+        gt=0.0,
+        le=180.0,
+        description="Max allowed +X axis error before pointing guardrail breach [deg].",
+    )
+    pointing_breach_hold_s: float = Field(
+        constants.Constants.V6_POINTING_BREACH_HOLD_S,
+        ge=0.0,
+        le=60.0,
+        description="Continuous breach duration required to latch pointing guardrail [s].",
+    )
+    pointing_clear_hold_s: float = Field(
+        constants.Constants.V6_POINTING_CLEAR_HOLD_S,
+        ge=0.0,
+        le=60.0,
+        description="Continuous clear duration required to clear latched guardrail [s].",
+    )
 
     @model_validator(mode="after")
     def validate_recovery_thresholds(self) -> "ControllerContractsParams":
@@ -948,6 +1001,36 @@ class ControllerContractsParams(BaseModel):
             raise ValueError(
                 "solver_fallback_zero_after_s must be >= solver_fallback_hold_s"
             )
+        if self.pointing_scope not in {"all_missions", "scan_only", "config_toggle"}:
+            raise ValueError(
+                "pointing_scope must be one of: all_missions, scan_only, config_toggle"
+            )
+        if self.pointing_axis_priority not in {
+            "strict_z_lock",
+            "exact_x_tangent",
+            "weighted_compromise",
+        }:
+            raise ValueError(
+                "pointing_axis_priority must be one of: strict_z_lock, exact_x_tangent, weighted_compromise"
+            )
+        if self.pointing_sensor_policy not in {
+            "auto_both",
+            "force_plus_y",
+            "force_minus_y",
+        }:
+            raise ValueError(
+                "pointing_sensor_policy must be one of: auto_both, force_plus_y, force_minus_y"
+            )
+        if self.pointing_transfer_axis_policy not in {
+            "next_scan",
+            "previous_scan",
+            "blend",
+        }:
+            raise ValueError(
+                "pointing_transfer_axis_policy must be one of: next_scan, previous_scan, blend"
+            )
+        if self.scan_axis_source not in {"planner", "asset_infer"}:
+            raise ValueError("scan_axis_source must be one of: planner, asset_infer")
         return self
 
 
@@ -964,9 +1047,7 @@ class AppConfig(BaseModel):
         default_factory=ReferenceSchedulerParams
     )
     mpc_core: MPCCoreParams = Field(default_factory=MPCCoreParams)
-    actuator_policy: ActuatorPolicyParams = Field(
-        default_factory=ActuatorPolicyParams
-    )
+    actuator_policy: ActuatorPolicyParams = Field(default_factory=ActuatorPolicyParams)
     controller_contracts: ControllerContractsParams = Field(
         default_factory=ControllerContractsParams
     )

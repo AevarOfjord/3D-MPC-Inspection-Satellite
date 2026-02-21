@@ -88,9 +88,7 @@ class SimulationLogger:
         if step_number == 0:
             self._prev_curr_euler_control = None
             self._prev_ref_euler_control = None
-        curr_euler = self._unwrap_to_previous(
-            curr_euler, self._prev_curr_euler_control
-        )
+        curr_euler = self._unwrap_to_previous(curr_euler, self._prev_curr_euler_control)
         self._prev_curr_euler_control = curr_euler.copy()
         curr_roll, curr_pitch, curr_yaw = curr_euler
 
@@ -179,7 +177,9 @@ class SimulationLogger:
         completion_gate_last_breach_reason = (
             mpc_info.get("completion_gate_last_breach_reason") if mpc_info else None
         )
-        solver_health_status = mpc_info.get("solver_health_status") if mpc_info else None
+        solver_health_status = (
+            mpc_info.get("solver_health_status") if mpc_info else None
+        )
         solver_fallback_count = (
             mpc_info.get("solver_fallback_count") if mpc_info else None
         )
@@ -198,6 +198,23 @@ class SimulationLogger:
         solver_fallback_scale = (
             mpc_info.get("solver_fallback_scale") if mpc_info else None
         )
+        pointing_context_source = (
+            mpc_info.get("pointing_context_source") if mpc_info else None
+        )
+        pointing_axis_world = mpc_info.get("pointing_axis_world") if mpc_info else None
+        pointing_z_axis_error_deg = (
+            mpc_info.get("z_axis_error_deg") if mpc_info else None
+        )
+        pointing_x_axis_error_deg = (
+            mpc_info.get("x_axis_error_deg") if mpc_info else None
+        )
+        pointing_guardrail_breached = (
+            mpc_info.get("pointing_guardrail_breached") if mpc_info else None
+        )
+        pointing_guardrail_reason = (
+            mpc_info.get("pointing_guardrail_reason") if mpc_info else None
+        )
+        object_visible_side = mpc_info.get("object_visible_side") if mpc_info else None
 
         # Velocity errors
         error_vx = ref_vx - curr_vx
@@ -311,6 +328,30 @@ class SimulationLogger:
             "Solver_Fallback_Active": solver_fallback_active,
             "Solver_Fallback_Age_s": solver_fallback_age_s,
             "Solver_Fallback_Scale": solver_fallback_scale,
+            "Pointing_Context_Source": pointing_context_source,
+            "Pointing_Axis_X": (
+                float(pointing_axis_world[0])
+                if isinstance(pointing_axis_world, list | tuple)
+                and len(pointing_axis_world) > 0
+                else None
+            ),
+            "Pointing_Axis_Y": (
+                float(pointing_axis_world[1])
+                if isinstance(pointing_axis_world, list | tuple)
+                and len(pointing_axis_world) > 1
+                else None
+            ),
+            "Pointing_Axis_Z": (
+                float(pointing_axis_world[2])
+                if isinstance(pointing_axis_world, list | tuple)
+                and len(pointing_axis_world) > 2
+                else None
+            ),
+            "Pointing_Z_Axis_Error_Deg": pointing_z_axis_error_deg,
+            "Pointing_X_Axis_Error_Deg": pointing_x_axis_error_deg,
+            "Pointing_Guardrail_Breached": pointing_guardrail_breached,
+            "Pointing_Guardrail_Reason": pointing_guardrail_reason,
+            "Object_Visible_Side": object_visible_side,
             "Command_Vector": command_vector_str,
             "Command_Hex": command_hex,
             "Command_Sent_Time": command_sent_time,

@@ -49,7 +49,7 @@ export function useMissionBuilder() {
 
   const pathHistory = useHistory<[number, number, number][]>([]);
   const previewPath = pathHistory.state;
-  
+
   const sceneState = useMissionSceneState();
   const {
     state: {
@@ -371,6 +371,8 @@ export function useMissionBuilder() {
       obstacles,
       draftRevision,
       pathDensityMultiplier: scanProject.path_density_multiplier,
+      scanProjectScans: scanProject.scans,
+      selectedScanId,
       nextSegmentId,
       resolveOrbitTargetPose,
     });

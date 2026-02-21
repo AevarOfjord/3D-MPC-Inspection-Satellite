@@ -51,6 +51,7 @@ export function Overlay() {
     mode_state = null,
     completion_gate = null,
     solver_health = null,
+    pointing_status = null,
     controller_core = 'v6',
   } = data;
 
@@ -76,7 +77,7 @@ export function Overlay() {
 
   return (
     <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between items-start z-10">
-      
+
       {/* Top Left: Telemetry Panel */}
       <div className="pointer-events-auto flex flex-col gap-2">
         <HudPanel title="TELEMETRY" className="min-w-[240px]">
@@ -123,7 +124,7 @@ export function Overlay() {
                      {(solve_time * 1000).toFixed(1)} ms
                    </span>
                 </div>
-                
+
                 <div className="h-px bg-slate-700/50" />
 
                 <div className="flex justify-between">
@@ -147,6 +148,32 @@ export function Overlay() {
                    <span className="text-slate-400 font-bold text-[10px]">ANG ERROR</span>
                    <span className={angErrorDeg < 1.0 ? 'text-green-400' : 'text-slate-200'}>{angErrorDeg.toFixed(1)}°</span>
                 </div>
+                {pointing_status && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">X AXIS ERR</span>
+                      <span className={(Number(pointing_status.x_axis_error_deg ?? 0) <= 6.0) ? 'text-green-400' : 'text-amber-300'}>
+                        {Number(pointing_status.x_axis_error_deg ?? 0).toFixed(2)}°
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">Z AXIS ERR</span>
+                      <span className={(Number(pointing_status.z_axis_error_deg ?? 0) <= 4.0) ? 'text-green-400' : 'text-amber-300'}>
+                        {Number(pointing_status.z_axis_error_deg ?? 0).toFixed(2)}°
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">POINTING</span>
+                      <span className={pointing_status.pointing_guardrail_breached ? 'text-amber-300' : 'text-emerald-300'}>
+                        {pointing_status.pointing_guardrail_breached ? 'BREACH' : 'OK'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold text-[10px]">VISIBLE SIDE</span>
+                      <span className="text-slate-200">{pointing_status.object_visible_side ?? '--'}</span>
+                    </div>
+                  </>
+                )}
 
                 {completion_gate && (
                   <>
@@ -209,7 +236,7 @@ export function Overlay() {
                 )}
              </div>
         </HudPanel>
-        
+
         <HudPanel title="ACTUATORS" className="min-w-[240px]">
              <div className="flex gap-4 justify-between">
                  {/* Thrusters */}
@@ -268,7 +295,7 @@ function ThrusterBar({ value, label }: { value: number, label: string }) {
     return (
         <div className="flex flex-col items-center gap-1 group">
              <div className="relative w-2 h-8 bg-slate-800 rounded-sm overflow-hidden">
-                 <div 
+                 <div
                     className={`absolute bottom-0 left-0 right-0 transition-all duration-100 ${active ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : 'bg-slate-700'}`}
                     style={{ height: `${Math.min(value * 100, 100)}%` }}
                  />
@@ -282,13 +309,13 @@ function ReactionWheelBar({ value, label }: { value: number, label: string }) {
     const active = Math.abs(value) > 0.00001;
     // Logarithmic-like scaling for better visibility of small values
     // Ensure at least 15% height if active so it's visible even for small values
-    const heightPct = active 
+    const heightPct = active
         ? Math.min(Math.max((Math.log10(Math.abs(value) * 1000 + 1) / 3) * 100, 15), 100)
         : 0;
     return (
         <div className="flex flex-col items-center gap-1">
              <div className="relative w-2 h-8 bg-slate-800 rounded-sm overflow-hidden">
-                 <div 
+                 <div
                     className={`absolute bottom-0 left-0 right-0 transition-all duration-100 ${active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : 'bg-slate-700'}`}
                     style={{ height: `${heightPct}%` }}
                  />

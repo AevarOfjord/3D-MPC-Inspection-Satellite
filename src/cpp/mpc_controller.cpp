@@ -1322,6 +1322,7 @@ void MPCControllerCpp::set_scan_attitude_context(
     const std::string& direction
 ) {
     scan_center_ = center;
+    scan_center_valid_ = center.allFinite();
     double axis_norm = axis.norm();
     if (axis_norm > 1e-9) {
         scan_axis_ = axis / axis_norm;
@@ -1344,6 +1345,7 @@ void MPCControllerCpp::set_scan_attitude_context(
 void MPCControllerCpp::clear_scan_attitude_context() {
     scan_attitude_enabled_ = false;
     scan_center_ = Eigen::Vector3d::Zero();
+    scan_center_valid_ = false;
     scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     scan_direction_cw_ = true;
     scan_q_ref_valid_ = false;
@@ -1898,6 +1900,9 @@ void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& p
     s_runtime_ = 0.0;
     s_runtime_initialized_ = false;
     ref_frame_initialized_ = false;
+    ref_prev_x_axis_ = Eigen::Vector3d::Zero();
+    ref_prev_y_axis_ = Eigen::Vector3d::Zero();
+    ref_prev_z_axis_ = Eigen::Vector3d::Zero();
 
     // Update s bounds with actual path length (if solver initialized)
     if (work_ != nullptr) {
@@ -1964,14 +1969,21 @@ Eigen::Vector3d MPCControllerCpp::get_path_tangent(double s) const {
         }
     }
 
-    // Binary search for segment
-    auto it = std::lower_bound(path_s_.begin(), path_s_.end(), s_clamped);
-    int idx = std::distance(path_s_.begin(), it);
-    if (idx == 0) idx = 1;
-    if (idx >= static_cast<int>(path_s_.size())) idx = path_s_.size() - 1;
+    // Select the forward segment so +X faces the next waypoint.
+    // For exact waypoint hits, this chooses [i -> i+1] (except at terminal s,
+    // handled above), not [i-1 -> i].
+    auto it = std::upper_bound(path_s_.begin(), path_s_.end(), s_clamped);
+    int idx_next = std::distance(path_s_.begin(), it);
+    if (idx_next <= 0) {
+        idx_next = 1;
+    }
+    if (idx_next >= static_cast<int>(path_s_.size())) {
+        idx_next = static_cast<int>(path_s_.size()) - 1;
+    }
+    int idx_prev = idx_next - 1;
 
-    // Tangent is direction between adjacent points
-    Eigen::Vector3d diff = path_points_[idx] - path_points_[idx - 1];
+    // Tangent is direction from current sample to next sample.
+    Eigen::Vector3d diff = path_points_[idx_next] - path_points_[idx_prev];
     double len = diff.norm();
     if (len < 1e-12) {
         return Eigen::Vector3d(1.0, 0.0, 0.0);  // Degenerate case
@@ -2012,9 +2024,13 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
             z_line = Eigen::Vector3d::UnitZ();
         }
 
-        // 2) Build object-facing radial direction in the scan plane (+Y target).
-        Eigen::Vector3d radial_in = scan_center_ - p_ref;
-        radial_in -= radial_in.dot(z_line) * z_line;
+        // 2) Build object-facing radial direction in the scan plane (+Y target)
+        // when scan center is available; otherwise preserve continuity from current attitude.
+        Eigen::Vector3d radial_in = Eigen::Vector3d::Zero();
+        if (scan_center_valid_) {
+            radial_in = scan_center_ - p_ref;
+            radial_in -= radial_in.dot(z_line) * z_line;
+        }
         double radial_norm = radial_in.norm();
         Eigen::Vector3d radial_dir = Eigen::Vector3d::UnitY();
         bool has_radial = false;
@@ -2055,12 +2071,24 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
             z_axis = z_line;
             y_axis = z_axis.cross(x_axis);
         } else {
-            // Degenerate tangent (parallel to scan axis): keep +Y object-facing and
-            // choose +X from direction preference.
             z_axis = z_line;
-            y_axis = radial_dir;
-            x_axis = scan_direction_cw_ ? z_axis.cross(y_axis)
-                                        : y_axis.cross(z_axis);
+            // Degenerate tangent (parallel to scan axis): preserve previous projected
+            // +X when possible for deterministic continuity, then fallback.
+            bool have_continuity_x = false;
+            if (ref_frame_initialized_) {
+                Eigen::Vector3d x_prev = ref_prev_x_axis_;
+                x_prev -= x_prev.dot(z_axis) * z_axis;
+                double x_prev_norm = x_prev.norm();
+                if (x_prev_norm > 1e-9) {
+                    x_axis = x_prev / x_prev_norm;
+                    have_continuity_x = true;
+                }
+            }
+            if (!have_continuity_x) {
+                y_axis = radial_dir;
+                x_axis = scan_direction_cw_ ? z_axis.cross(y_axis)
+                                            : y_axis.cross(z_axis);
+            }
         }
 
         // Re-orthonormalize and keep +Y object-facing without sacrificing +X.
@@ -2151,10 +2179,12 @@ Eigen::Vector4d MPCControllerCpp::build_reference_quaternion(
             y_axis = -y_axis;
             z_axis = -z_axis;
         }
-        ref_prev_y_axis_ = y_axis;
-        ref_prev_z_axis_ = z_axis;
-        ref_frame_initialized_ = true;
     }
+
+    ref_prev_x_axis_ = x_axis;
+    ref_prev_y_axis_ = y_axis;
+    ref_prev_z_axis_ = z_axis;
+    ref_frame_initialized_ = true;
 
     Eigen::Matrix3d R;
     R.col(0) = x_axis;
