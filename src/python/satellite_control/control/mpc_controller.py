@@ -162,21 +162,45 @@ class MPCController(Controller):
             mpc_params.progress_taper_distance = self.progress_taper_distance
         if hasattr(mpc_params, "progress_slowdown_distance"):
             mpc_params.progress_slowdown_distance = self.progress_slowdown_distance
-        if hasattr(mpc_params, "tracking_recovery_error_m"):
-            mpc_params.tracking_recovery_error_m = float(
-                self.tracking_recovery_error_m
+        if hasattr(mpc_params, "recover_contour_scale"):
+            mpc_params.recover_contour_scale = float(self.recover_contour_scale)
+        if hasattr(mpc_params, "recover_lag_scale"):
+            mpc_params.recover_lag_scale = float(self.recover_lag_scale)
+        if hasattr(mpc_params, "recover_progress_scale"):
+            mpc_params.recover_progress_scale = float(self.recover_progress_scale)
+        if hasattr(mpc_params, "recover_attitude_scale"):
+            mpc_params.recover_attitude_scale = float(self.recover_attitude_scale)
+        if hasattr(mpc_params, "settle_progress_scale"):
+            mpc_params.settle_progress_scale = float(self.settle_progress_scale)
+        if hasattr(mpc_params, "settle_terminal_pos_scale"):
+            mpc_params.settle_terminal_pos_scale = float(
+                self.settle_terminal_pos_scale
             )
-        if hasattr(mpc_params, "tracking_recovery_contour_boost"):
-            mpc_params.tracking_recovery_contour_boost = float(
-                self.tracking_recovery_contour_boost
+        if hasattr(mpc_params, "settle_terminal_attitude_scale"):
+            mpc_params.settle_terminal_attitude_scale = float(
+                self.settle_terminal_attitude_scale
             )
-        if hasattr(mpc_params, "tracking_recovery_progress_scale"):
-            mpc_params.tracking_recovery_progress_scale = float(
-                self.tracking_recovery_progress_scale
+        if hasattr(mpc_params, "settle_velocity_align_scale"):
+            mpc_params.settle_velocity_align_scale = float(
+                self.settle_velocity_align_scale
             )
-        if hasattr(mpc_params, "tracking_recovery_attitude_scale"):
-            mpc_params.tracking_recovery_attitude_scale = float(
-                self.tracking_recovery_attitude_scale
+        if hasattr(mpc_params, "settle_angular_velocity_scale"):
+            mpc_params.settle_angular_velocity_scale = float(
+                self.settle_angular_velocity_scale
+            )
+        if hasattr(mpc_params, "hold_smoothness_scale"):
+            mpc_params.hold_smoothness_scale = float(self.hold_smoothness_scale)
+        if hasattr(mpc_params, "hold_thruster_pair_scale"):
+            mpc_params.hold_thruster_pair_scale = float(
+                self.hold_thruster_pair_scale
+            )
+        if hasattr(mpc_params, "solver_fallback_hold_s"):
+            mpc_params.solver_fallback_hold_s = float(self.solver_fallback_hold_s)
+        if hasattr(mpc_params, "solver_fallback_decay_s"):
+            mpc_params.solver_fallback_decay_s = float(self.solver_fallback_decay_s)
+        if hasattr(mpc_params, "solver_fallback_zero_after_s"):
+            mpc_params.solver_fallback_zero_after_s = float(
+                self.solver_fallback_zero_after_s
             )
         if hasattr(mpc_params, "max_linear_velocity"):
             mpc_params.max_linear_velocity = float(self.max_linear_velocity)
@@ -209,13 +233,18 @@ class MPCController(Controller):
         self._path_length = 0.0
         self._last_path_projection: dict[str, Any] = {}
         self._scan_attitude_enabled = False
+        self._runtime_mode = "TRACK"
 
         # Dimensions (Fixed for MPCC)
         self.nx = 17
         self.nu = self.num_rw_axes + self.num_thrusters
 
         logger.info(
-            f"MPC Controller initialized (C++ backend). Thrusters: {self.num_thrusters}, RW: {self.num_rw_axes}"
+            "MPC Controller initialized (C++ backend, core=%s, solver=%s). Thrusters: %d, RW: %d",
+            self.controller_core,
+            self.solver_backend,
+            self.num_thrusters,
+            self.num_rw_axes,
         )
         logger.info("MPC Path Following Mode (MPCC) Enabled.")
 
@@ -371,6 +400,32 @@ class MPCController(Controller):
             a = np.array(axis, dtype=float)
             self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
         self._scan_attitude_enabled = True
+
+    def set_runtime_mode(self, mode: str | None) -> None:
+        """Set runtime V6 mode in the C++ controller core."""
+        mode_name = str(mode or "TRACK").upper()
+        self._runtime_mode = mode_name
+        if hasattr(self._cpp_controller, "set_runtime_mode"):
+            try:
+                self._cpp_controller.set_runtime_mode(mode_name)
+            except Exception:
+                logger.debug("Failed to set runtime mode in C++ MPC core", exc_info=True)
+
+    @staticmethod
+    def _classify_solver_fallback_reason(
+        *,
+        status: int,
+        solver_status: Any,
+        timeout: bool,
+        time_limit_exceeded: bool,
+    ) -> str | None:
+        if int(status) == 1:
+            return None
+        if bool(timeout) or bool(time_limit_exceeded):
+            return "solver_timeout"
+        if solver_status is not None:
+            return f"solver_non_success_{solver_status}"
+        return "solver_non_success"
 
     def _project_onto_path(
         self, position: np.ndarray
@@ -650,12 +705,30 @@ class MPCController(Controller):
             1,
             min(int(getattr(mpc, "control_horizon", self.N)), int(self.N)),
         )
+        mpc_core = getattr(cfg, "mpc_core", None)
+        controller_contracts = getattr(cfg, "controller_contracts", None)
+        self.controller_core = "v6"
+        self.solver_backend = str(getattr(mpc_core, "solver_backend", "OSQP")).upper()
+        if self.solver_backend != "OSQP":
+            logger.warning(
+                "mpc_core.solver_backend '%s' is unsupported; using OSQP.",
+                self.solver_backend,
+            )
+            self.solver_backend = "OSQP"
+
         self.solver_type = str(getattr(mpc, "solver_type", "OSQP"))
         if self.solver_type.upper() != "OSQP":
             logger.warning(
                 "MPC solver_type '%s' not supported, using OSQP.", self.solver_type
             )
             self.solver_type = "OSQP"
+        if self.solver_type.upper() != self.solver_backend:
+            logger.info(
+                "Aligning solver_type '%s' to mpc_core backend '%s'.",
+                self.solver_type,
+                self.solver_backend,
+            )
+            self.solver_type = self.solver_backend
         self.verbose_mpc = getattr(mpc, "verbose_mpc", False)
 
         self.Q_angvel = mpc.q_angular_velocity
@@ -700,17 +773,45 @@ class MPCController(Controller):
         self.progress_slowdown_distance = getattr(
             mpc, "progress_slowdown_distance", 0.0
         )
-        self.tracking_recovery_error_m = getattr(
-            mpc, "tracking_recovery_error_m", 0.12
+        self.recover_contour_scale = float(
+            getattr(mpc_core, "recover_contour_scale", 2.0)
         )
-        self.tracking_recovery_contour_boost = getattr(
-            mpc, "tracking_recovery_contour_boost", 2.2
+        self.recover_lag_scale = float(getattr(mpc_core, "recover_lag_scale", 2.0))
+        self.recover_progress_scale = float(
+            getattr(mpc_core, "recover_progress_scale", 0.6)
         )
-        self.tracking_recovery_progress_scale = getattr(
-            mpc, "tracking_recovery_progress_scale", 0.65
+        self.recover_attitude_scale = float(
+            getattr(mpc_core, "recover_attitude_scale", 0.8)
         )
-        self.tracking_recovery_attitude_scale = getattr(
-            mpc, "tracking_recovery_attitude_scale", 0.5
+        self.settle_progress_scale = float(
+            getattr(mpc_core, "settle_progress_scale", 0.0)
+        )
+        self.settle_terminal_pos_scale = float(
+            getattr(mpc_core, "settle_terminal_pos_scale", 2.0)
+        )
+        self.settle_terminal_attitude_scale = float(
+            getattr(mpc_core, "settle_terminal_attitude_scale", 1.5)
+        )
+        self.settle_velocity_align_scale = float(
+            getattr(mpc_core, "settle_velocity_align_scale", 1.5)
+        )
+        self.settle_angular_velocity_scale = float(
+            getattr(mpc_core, "settle_angular_velocity_scale", 2.0)
+        )
+        self.hold_smoothness_scale = float(
+            getattr(mpc_core, "hold_smoothness_scale", 1.5)
+        )
+        self.hold_thruster_pair_scale = float(
+            getattr(mpc_core, "hold_thruster_pair_scale", 1.2)
+        )
+        self.solver_fallback_hold_s = float(
+            getattr(controller_contracts, "solver_fallback_hold_s", 0.30)
+        )
+        self.solver_fallback_decay_s = float(
+            getattr(controller_contracts, "solver_fallback_decay_s", 0.70)
+        )
+        self.solver_fallback_zero_after_s = float(
+            getattr(controller_contracts, "solver_fallback_zero_after_s", 1.00)
         )
         self.enable_thruster_hysteresis = bool(
             getattr(mpc, "enable_thruster_hysteresis", True)
@@ -893,21 +994,44 @@ class MPCController(Controller):
         path_len = float(self._path_length) if self._path_length > 0 else 0.0
         progress = float(path_s / path_len) if path_len > 1e-9 else 0.0
         remaining = float(path_len - path_s) if path_len > 0 else 0.0
+        status_code = int(getattr(result, "status", -1))
+        solver_status = getattr(result, "solver_status", None)
+        timeout = bool(getattr(result, "timeout", False))
+        solve_time = float(getattr(result, "solve_time", 0.0))
+        time_limit_exceeded = bool(timeout) or (
+            solve_time > float(self.solver_time_limit)
+        )
+        solver_fallback = bool(status_code != 1)
+        fallback_active = bool(getattr(result, "fallback_active", False))
+        fallback_age_s = float(getattr(result, "fallback_age_s", 0.0))
+        fallback_scale = float(getattr(result, "fallback_scale", 0.0))
+        fallback_reason = self._classify_solver_fallback_reason(
+            status=status_code,
+            solver_status=solver_status,
+            timeout=timeout,
+            time_limit_exceeded=time_limit_exceeded,
+        )
 
         extras = {
-            "status": result.status,
-            "status_name": "SUCCESS" if int(getattr(result, "status", -1)) == 1 else "FAILED",
-            "solver_status": getattr(result, "solver_status", None),
-            "timeout": bool(getattr(result, "timeout", False)),
-            "solve_time": result.solve_time,
+            "status": status_code,
+            "status_name": "SUCCESS" if status_code == 1 else "FAILED",
+            "solver_status": solver_status,
+            "timeout": timeout,
+            "solve_time": solve_time,
             "iterations": getattr(result, "iterations", None),
             "objective_value": getattr(result, "objective", None),
             "optimality_gap": None,
             "solver_type": self.solver_type,
+            "solver_backend": self.solver_backend,
             "solver_time_limit": self.solver_time_limit,
-            "solver_fallback": bool(int(getattr(result, "status", -1)) != 1),
-            "time_limit_exceeded": bool(getattr(result, "timeout", False))
-            or (float(result.solve_time) > float(self.solver_time_limit)),
+            "solver_fallback": solver_fallback,
+            "solver_fallback_reason": fallback_reason,
+            "solver_success": not solver_fallback,
+            "time_limit_exceeded": time_limit_exceeded,
+            "fallback_active": fallback_active,
+            "fallback_age_s": fallback_age_s,
+            "fallback_scale": fallback_scale,
+            "controller_core": self.controller_core,
             "path_s": path_s,
             "path_s_proj": float(path_s_proj) if path_s_proj is not None else None,
             "path_v_s": v_s,

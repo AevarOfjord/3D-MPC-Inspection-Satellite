@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <limits>
+#include <chrono>
 #include "osqp.h"
 #include "linearizer.hpp"
 #include "obstacle.hpp"
@@ -74,10 +75,20 @@ struct MPCParams {
     double Q_terminal_s = 0.0;         ///< Terminal progress weight (0 = auto)
     double progress_taper_distance = 0.0; ///< Distance to taper v_ref near end (0 = auto)
     double progress_slowdown_distance = 0.0; ///< Slow down v_ref if contour error is high (0 = auto)
-    double tracking_recovery_error_m = 0.12; ///< Path error threshold before recovery mode engages [m]
-    double tracking_recovery_contour_boost = 2.2; ///< Extra contour/lag emphasis in recovery mode
-    double tracking_recovery_progress_scale = 0.65; ///< Progress weight scale in recovery mode
-    double tracking_recovery_attitude_scale = 0.5; ///< Attitude weight scale in recovery mode
+    double recover_contour_scale = 2.0; ///< RECOVER contour multiplier
+    double recover_lag_scale = 2.0; ///< RECOVER lag multiplier
+    double recover_progress_scale = 0.6; ///< RECOVER progress multiplier
+    double recover_attitude_scale = 0.8; ///< RECOVER attitude multiplier
+    double settle_progress_scale = 0.0; ///< SETTLE progress multiplier
+    double settle_terminal_pos_scale = 2.0; ///< SETTLE/HOLD terminal position multiplier
+    double settle_terminal_attitude_scale = 1.5; ///< SETTLE/HOLD terminal attitude multiplier
+    double settle_velocity_align_scale = 1.5; ///< SETTLE/HOLD velocity alignment multiplier
+    double settle_angular_velocity_scale = 2.0; ///< SETTLE/HOLD angular velocity multiplier
+    double hold_smoothness_scale = 1.5; ///< HOLD smoothness multiplier
+    double hold_thruster_pair_scale = 1.2; ///< HOLD opposing-thruster penalty multiplier
+    double solver_fallback_hold_s = 0.30; ///< Hold last-feasible command for this duration [s]
+    double solver_fallback_decay_s = 0.70; ///< Linearly decay fallback command after hold [s]
+    double solver_fallback_zero_after_s = 1.00; ///< Hard-zero fallback command after this age [s]
 };
 
 /**
@@ -96,6 +107,9 @@ struct ControlResult {
     double path_s_pred = 0.0;   ///< Predicted next progress (s + v_s*dt)
     double path_error = std::numeric_limits<double>::infinity(); ///< Distance to path
     double path_endpoint_error = std::numeric_limits<double>::infinity(); ///< Distance to path endpoint
+    bool fallback_active = false; ///< Whether fallback command scaling is active this step
+    double fallback_age_s = 0.0;  ///< Age of active fallback command [s]
+    double fallback_scale = 0.0;  ///< Multiplicative scale applied to fallback command [0..1]
 };
 
 /**
@@ -180,7 +194,22 @@ public:
      */
     void clear_scan_attitude_context();
 
+    /**
+     * @brief Set runtime controller mode (TRACK/RECOVER/SETTLE/HOLD/COMPLETE).
+     *
+     * Unknown values default to TRACK.
+     */
+    void set_runtime_mode(const std::string& mode);
+
 private:
+    enum class RuntimeMode {
+        TRACK,
+        RECOVER,
+        SETTLE,
+        HOLD,
+        COMPLETE
+    };
+
     // Dimensions
     int nx_ = 17;  // State dimension (13 base + 3 wheel speeds + 1 path s)
     int nu_;       // Control dimension (RW + thrusters)
@@ -280,6 +309,8 @@ private:
     std::vector<std::vector<int>> path_vel_P_indices_;
     // Map [step][0..3] -> Index in P_data_ for quaternion diagonals (qw,qx,qy,qz)
     std::vector<std::vector<int>> path_att_diag_indices_;
+    // Map [step][0..2] -> Index in P_data_ for angular velocity diagonals (wx,wy,wz)
+    std::vector<std::vector<int>> path_angvel_diag_indices_;
     // Map [step] -> Index in P_data_ for progress control (v_s, v_s) diagonal entry
     std::vector<int> path_vs_diag_indices_;
     std::vector<c_int> path_P_update_indices_;
@@ -321,6 +352,13 @@ private:
 
     // Path following internal state
     std::vector<double> s_guess_; // Guess for path parameter s over horizon
+    RuntimeMode runtime_mode_ = RuntimeMode::TRACK;
+    double base_q_smooth_ = 0.0;
+    double base_thrust_pair_weight_ = 0.0;
+    double active_smoothness_scale_ = 1.0;
+    double active_thruster_pair_scale_ = 1.0;
+    bool fallback_active_ = false;
+    std::chrono::steady_clock::time_point fallback_started_at_{};
 
     // -- General Path Data (V4.0.1) --
     // Path is defined as a list of (s, x, y, z) samples
@@ -351,6 +389,8 @@ private:
         const Eigen::Vector3d& t_ref,
         const Eigen::Vector4d& q_curr
     ) const;
+    RuntimeMode parse_runtime_mode(const std::string& mode) const;
+    void update_mode_dependent_regularizers();
 
 public:
     // Set path data for general path following

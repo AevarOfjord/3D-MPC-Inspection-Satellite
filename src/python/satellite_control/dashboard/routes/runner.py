@@ -414,12 +414,21 @@ def export_workspace_bundle(
     app_config = config_payload.get("app_config")
     if isinstance(app_config, dict):
         config_sections = {
-            "schema_version": "app_config_v2",
+            "schema_version": "app_config_v3",
             "app_config": app_config,
         }
     else:
         config_sections = {}
-        for section in ("physics", "mpc", "simulation", "input_file_path"):
+        for section in (
+            "physics",
+            "reference_scheduler",
+            "mpc_core",
+            "actuator_policy",
+            "controller_contracts",
+            "simulation",
+            "input_file_path",
+            "mpc",
+        ):
             value = config_payload.get(section)
             if value is not None:
                 config_sections[section] = value

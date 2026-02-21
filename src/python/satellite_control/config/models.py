@@ -6,11 +6,13 @@ and descriptive error messages.
 """
 
 import logging
+import math
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import constants, physics, timing
+from .mission_state import DEFAULT_PATH_HOLD_END_S
 from .reaction_wheel_config import ReactionWheelParams as RWConfigParams
 
 _RW_DEFAULT = RWConfigParams()
@@ -474,30 +476,6 @@ class MPCParams(BaseModel):
             "Auto-derive velocity state bounds when explicit limits are unset"
         ),
     )
-    tracking_recovery_error_m: float = Field(
-        constants.Constants.TRACKING_RECOVERY_ERROR_M,
-        gt=0.0,
-        le=10.0,
-        description="Path-error threshold that enables tracking-recovery scaling [m]",
-    )
-    tracking_recovery_contour_boost: float = Field(
-        constants.Constants.TRACKING_RECOVERY_CONTOUR_BOOST,
-        ge=0.0,
-        le=100.0,
-        description="Contour/lag weight multiplier boost during recovery mode",
-    )
-    tracking_recovery_progress_scale: float = Field(
-        constants.Constants.TRACKING_RECOVERY_PROGRESS_SCALE,
-        gt=0.0,
-        le=1.0,
-        description="Progress weight scale applied during recovery mode",
-    )
-    tracking_recovery_attitude_scale: float = Field(
-        constants.Constants.TRACKING_RECOVERY_ATTITUDE_SCALE,
-        gt=0.0,
-        le=1.0,
-        description="Attitude weight scale applied during recovery mode",
-    )
     enable_thruster_hysteresis: bool = Field(
         constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
         description="Enable output hysteresis to reduce thruster chatter/switching",
@@ -552,10 +530,6 @@ class MPCParams(BaseModel):
         "enable_delta_u_coupling",
         "enable_gyro_jacobian",
         "verbose_mpc",
-        "tracking_recovery_error_m",
-        "tracking_recovery_contour_boost",
-        "tracking_recovery_progress_scale",
-        "tracking_recovery_attitude_scale",
         "enable_thruster_hysteresis",
         "thruster_hysteresis_on",
         "thruster_hysteresis_off",
@@ -748,6 +722,235 @@ class SimulationParams(BaseModel):
         return self
 
 
+class ReferenceSchedulerParams(BaseModel):
+    """V6 reference scheduler policy and duration feasibility settings."""
+
+    speed_policy: str = Field(
+        "min_non_hold_segment_speed",
+        description=(
+            "Global speed policy for runtime missions "
+            "(min non-hold segment speed, then MPC clamp)."
+        ),
+    )
+    duration_margin_s: float = Field(
+        constants.Constants.V6_DURATION_MARGIN_S,
+        ge=0.0,
+        le=3600.0,
+        description="Extra duration margin added on top of ETA + hold contract.",
+    )
+    auto_extend_manual_duration: bool = Field(
+        True,
+        description="Auto-extend manual runs when configured duration is infeasible.",
+    )
+    enforce_contract_min_duration: bool = Field(
+        True,
+        description="Enforce required minimum duration for contract scenarios.",
+    )
+
+
+class MPCCoreParams(BaseModel):
+    """V6 MPC core mode-profile and backend policy."""
+    solver_backend: str = Field(
+        "OSQP",
+        pattern="^(OSQP)$",
+        description="Certified V6 solver backend.",
+    )
+    recover_contour_scale: float = Field(
+        constants.Constants.V6_RECOVER_CONTOUR_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="RECOVER mode contour weight multiplier.",
+    )
+    recover_lag_scale: float = Field(
+        constants.Constants.V6_RECOVER_LAG_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="RECOVER mode lag weight multiplier.",
+    )
+    recover_progress_scale: float = Field(
+        constants.Constants.V6_RECOVER_PROGRESS_SCALE,
+        ge=0.0,
+        le=1.0,
+        description="RECOVER mode progress weight multiplier.",
+    )
+    recover_attitude_scale: float = Field(
+        constants.Constants.V6_RECOVER_ATTITUDE_SCALE,
+        ge=0.0,
+        le=10.0,
+        description="RECOVER mode attitude weight multiplier.",
+    )
+    settle_progress_scale: float = Field(
+        constants.Constants.V6_SETTLE_PROGRESS_SCALE,
+        ge=0.0,
+        le=1.0,
+        description="SETTLE mode progress weight multiplier.",
+    )
+    settle_terminal_pos_scale: float = Field(
+        constants.Constants.V6_SETTLE_TERMINAL_POS_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="SETTLE mode terminal position multiplier.",
+    )
+    settle_terminal_attitude_scale: float = Field(
+        constants.Constants.V6_SETTLE_TERMINAL_ATTITUDE_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="SETTLE mode terminal attitude multiplier.",
+    )
+    settle_velocity_align_scale: float = Field(
+        constants.Constants.V6_SETTLE_VELOCITY_ALIGN_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="SETTLE mode velocity alignment multiplier.",
+    )
+    settle_angular_velocity_scale: float = Field(
+        constants.Constants.V6_SETTLE_ANGULAR_VELOCITY_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="SETTLE mode angular-rate damping multiplier.",
+    )
+    hold_smoothness_scale: float = Field(
+        constants.Constants.V6_HOLD_SMOOTHNESS_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="HOLD mode smoothness multiplier.",
+    )
+    hold_thruster_pair_scale: float = Field(
+        constants.Constants.V6_HOLD_THRUSTER_PAIR_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="HOLD mode opposing-thruster penalty multiplier.",
+    )
+
+
+class ActuatorPolicyParams(BaseModel):
+    """V6 actuator shaping policy."""
+
+    enable_thruster_hysteresis: bool = Field(
+        constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
+        description="Enable actuator hysteresis policy.",
+    )
+    thruster_hysteresis_on: float = Field(
+        constants.Constants.THRUSTER_HYSTERESIS_ON,
+        ge=0.0,
+        le=1.0,
+        description="Thruster on-threshold for hysteresis policy.",
+    )
+    thruster_hysteresis_off: float = Field(
+        constants.Constants.THRUSTER_HYSTERESIS_OFF,
+        ge=0.0,
+        le=1.0,
+        description="Thruster off-threshold for hysteresis policy.",
+    )
+    terminal_bypass_band_m: float = Field(
+        constants.Constants.V6_TERMINAL_BYPASS_BAND_M,
+        ge=0.0,
+        le=5.0,
+        description="Endpoint-error band where SETTLE/HOLD bypass hysteresis.",
+    )
+
+    @model_validator(mode="after")
+    def validate_hysteresis_thresholds(self) -> "ActuatorPolicyParams":
+        if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
+            raise ValueError(
+                "thruster_hysteresis_on must be greater than thruster_hysteresis_off"
+            )
+        return self
+
+
+class ControllerContractsParams(BaseModel):
+    """V6 completion and mode-transition contracts."""
+
+    position_error_m_max: float = Field(
+        constants.Constants.POSITION_TOLERANCE,
+        gt=0.0,
+        le=5.0,
+        description="Terminal position error threshold [m].",
+    )
+    angle_error_deg_max: float = Field(
+        math.degrees(constants.Constants.ANGLE_TOLERANCE),
+        gt=0.0,
+        le=180.0,
+        description="Terminal attitude error threshold [deg].",
+    )
+    velocity_error_mps_max: float = Field(
+        constants.Constants.VELOCITY_TOLERANCE,
+        gt=0.0,
+        le=10.0,
+        description="Terminal linear velocity error threshold [m/s].",
+    )
+    angular_velocity_error_degps_max: float = Field(
+        math.degrees(constants.Constants.ANGULAR_VELOCITY_TOLERANCE),
+        gt=0.0,
+        le=360.0,
+        description="Terminal angular velocity error threshold [deg/s].",
+    )
+    hold_duration_s: float = Field(
+        DEFAULT_PATH_HOLD_END_S,
+        ge=0.0,
+        le=3600.0,
+        description="Continuous in-threshold hold duration before completion.",
+    )
+    solver_fallback_hold_s: float = Field(
+        constants.Constants.V6_SOLVER_FALLBACK_HOLD_S,
+        ge=0.0,
+        le=30.0,
+        description="Hold last-feasible command this long after solver non-success.",
+    )
+    solver_fallback_decay_s: float = Field(
+        constants.Constants.V6_SOLVER_FALLBACK_DECAY_S,
+        ge=0.0,
+        le=30.0,
+        description="Linear decay duration for fallback command after hold.",
+    )
+    solver_fallback_zero_after_s: float = Field(
+        constants.Constants.V6_SOLVER_FALLBACK_ZERO_AFTER_S,
+        ge=0.0,
+        le=60.0,
+        description="Fallback command is forced to zero at/after this age.",
+    )
+    recover_enter_error_m: float = Field(
+        constants.Constants.V6_RECOVER_ENTER_ERROR_M,
+        gt=0.0,
+        le=10.0,
+        description="TRACK->RECOVER contour-error threshold [m].",
+    )
+    recover_enter_hold_s: float = Field(
+        constants.Constants.V6_RECOVER_ENTER_HOLD_S,
+        ge=0.0,
+        le=60.0,
+        description="TRACK->RECOVER threshold hold time [s].",
+    )
+    recover_exit_error_m: float = Field(
+        constants.Constants.V6_RECOVER_EXIT_ERROR_M,
+        gt=0.0,
+        le=10.0,
+        description="RECOVER->TRACK contour-error threshold [m].",
+    )
+    recover_exit_hold_s: float = Field(
+        constants.Constants.V6_RECOVER_EXIT_HOLD_S,
+        ge=0.0,
+        le=60.0,
+        description="RECOVER->TRACK threshold hold time [s].",
+    )
+    allow_mission_override: bool = Field(
+        True,
+        description="Allow mission-level contract override fields with audit.",
+    )
+
+    @model_validator(mode="after")
+    def validate_recovery_thresholds(self) -> "ControllerContractsParams":
+        if self.recover_exit_error_m > self.recover_enter_error_m:
+            raise ValueError(
+                "recover_exit_error_m should be <= recover_enter_error_m for hysteresis"
+            )
+        if self.solver_fallback_zero_after_s < self.solver_fallback_hold_s:
+            raise ValueError(
+                "solver_fallback_zero_after_s must be >= solver_fallback_hold_s"
+            )
+        return self
+
+
 class AppConfig(BaseModel):
     """
     Root configuration container.
@@ -757,6 +960,16 @@ class AppConfig(BaseModel):
 
     physics: SatellitePhysicalParams
     mpc: MPCParams
+    reference_scheduler: ReferenceSchedulerParams = Field(
+        default_factory=ReferenceSchedulerParams
+    )
+    mpc_core: MPCCoreParams = Field(default_factory=MPCCoreParams)
+    actuator_policy: ActuatorPolicyParams = Field(
+        default_factory=ActuatorPolicyParams
+    )
+    controller_contracts: ControllerContractsParams = Field(
+        default_factory=ControllerContractsParams
+    )
     simulation: SimulationParams
 
     input_file_path: str | None = Field(

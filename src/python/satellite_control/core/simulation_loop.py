@@ -422,30 +422,60 @@ class SimulationLoop:
 
     def _check_path_following_completion(self) -> bool:
         """Terminate when path progress reaches the end of the path."""
-        mission_state = self._get_mission_state()
-        if not self.simulation.check_path_complete():
-            self.simulation.trajectory_endpoint_reached_time = None
-            return False
+        from satellite_control.core.path_completion import get_path_completion_status
+        from satellite_control.core.v6_controller_runtime import TerminalSupervisorV6
 
-        if self.simulation.trajectory_endpoint_reached_time is None:
-            self.simulation.trajectory_endpoint_reached_time = (
-                self.simulation.simulation_time
+        mission_state = self._get_mission_state()
+        terminal_supervisor = getattr(self.simulation, "v6_terminal_supervisor", None)
+        if terminal_supervisor is None:
+            hold_required = float(getattr(mission_state, "path_hold_end", 10.0) or 10.0)
+            terminal_supervisor = TerminalSupervisorV6(hold_required_s=hold_required)
+            self.simulation.v6_terminal_supervisor = terminal_supervisor
+
+        status = get_path_completion_status(self.simulation)
+        hold_required = float(getattr(mission_state, "path_hold_end", 10.0) or 10.0)
+        terminal_supervisor.hold_required_s = max(0.0, hold_required)
+        gate = terminal_supervisor.evaluate(
+            sim_time_s=float(self.simulation.simulation_time),
+            progress_ok=bool(status.get("progress_ok", False)),
+            position_ok=bool(status.get("position_ok", False)),
+            angle_ok=bool(status.get("angle_ok", False)),
+            velocity_ok=bool(status.get("velocity_ok", False)),
+            angular_velocity_ok=bool(status.get("angular_velocity_ok", False)),
+        )
+        self.simulation.v6_completion_gate = gate
+        self.simulation.v6_completion_reached = bool(gate.complete)
+        self.simulation.trajectory_endpoint_reached_time = (
+            terminal_supervisor.hold_started_at_s
+            if terminal_supervisor.hold_started_at_s is not None
+            else None
+        )
+
+        if hasattr(self.simulation, "v6_completion_gate_trace"):
+            self.simulation._append_capped_history(
+                self.simulation.v6_completion_gate_trace,
+                {
+                    "time_s": float(self.simulation.simulation_time),
+                    "progress_ok": bool(gate.progress_ok),
+                    "position_ok": bool(gate.position_ok),
+                    "angle_ok": bool(gate.angle_ok),
+                    "velocity_ok": bool(gate.velocity_ok),
+                    "angular_velocity_ok": bool(gate.angular_velocity_ok),
+                    "hold_elapsed_s": float(gate.hold_elapsed_s),
+                    "hold_required_s": float(gate.hold_required_s),
+                    "gate_ok": bool(gate.gate_ok),
+                    "complete": bool(gate.complete),
+                    "last_breach_reason": gate.last_breach_reason,
+                    "path_s": float(status.get("path_s", 0.0)),
+                    "path_length": float(status.get("path_length", 0.0)),
+                    "path_error": float(status.get("path_error", 0.0)),
+                },
             )
 
-        hold_time_required = float(getattr(mission_state, "path_hold_end", 0.0) or 0.0)
-        if hold_time_required <= 0.0:
-            self.simulation.is_running = False
-            self.simulation.print_performance_summary()
-            return True
-
-        hold_time = (
-            self.simulation.simulation_time
-            - self.simulation.trajectory_endpoint_reached_time
-        )
-        if hold_time >= hold_time_required:
+        if gate.complete:
             logger.info(
                 "PATH FOLLOWING COMPLETE! Held for %.1f seconds.",
-                hold_time_required,
+                gate.hold_required_s,
             )
             self.simulation.is_running = False
             self.simulation.print_performance_summary()

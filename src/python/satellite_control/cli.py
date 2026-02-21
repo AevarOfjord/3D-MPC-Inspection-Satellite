@@ -7,6 +7,7 @@ Runs the MPC simulation with interactive mission selection.
 """
 
 import math
+import os
 from typing import Any
 
 import typer
@@ -111,6 +112,7 @@ def run(
     sim_start_angle: tuple[float, float, float] | None = None
     sim_end_angle: tuple[float, float, float] | None = None
     config_overrides: dict[str, dict[str, Any]] | None = None
+    required_duration_hint: float | None = None
 
     # Load config file if provided
     if config_file:
@@ -211,6 +213,10 @@ def run(
             simulation_config=simulation_config,
         )
         simulation_config = mission_runtime.simulation_config
+        if mission_runtime.runtime_plan_v6 is not None:
+            required_duration_hint = float(
+                mission_runtime.runtime_plan_v6.required_duration_s
+            )
         sim_start_pos = mission_runtime.start_pos
         sim_end_pos = mission_runtime.end_pos
 
@@ -218,6 +224,13 @@ def run(
             f"[green]Unified mission path: {len(mission_runtime.path)} points, "
             f"{mission_runtime.path_length:.2f}m[/green]"
         )
+        if mission_runtime.runtime_plan_v6 is not None:
+            console.print(
+                "[cyan]V6 runtime plan: speed="
+                f"{mission_runtime.runtime_plan_v6.path_speed_mps:.3f} m/s, "
+                f"ETA={mission_runtime.runtime_plan_v6.estimated_eta_s:.1f}s, "
+                f"required_duration={mission_runtime.runtime_plan_v6.required_duration_s:.1f}s[/cyan]"
+            )
 
     else:
         console.print("[red]Mission file is required unless running with --auto.[/red]")
@@ -241,6 +254,22 @@ def run(
             config_overrides["simulation"] = {}
         config_overrides["simulation"]["max_duration"] = duration
         console.print(f"  Override: Duration = {duration}s")
+        if required_duration_hint is not None and duration < required_duration_hint:
+            is_contract_run = str(
+                os.environ.get("SATCTRL_CONTRACT_SCENARIO", "0")
+            ).strip() in {"1", "true", "TRUE"}
+            if is_contract_run:
+                config_overrides["simulation"]["max_duration"] = required_duration_hint
+                duration = required_duration_hint
+                console.print(
+                    "[yellow]Duration override was below contract minimum; "
+                    f"enforcing {required_duration_hint:.1f}s.[/yellow]"
+                )
+            else:
+                console.print(
+                    "[yellow]Warning: provided duration is below estimated required "
+                    f"duration ({required_duration_hint:.1f}s).[/yellow]"
+                )
 
     # Create default config if not set by mission
     if simulation_config is None:

@@ -7,9 +7,13 @@ This centralizes all default values for the Pydantic config models.
 
 from satellite_control.config import constants, physics, timing
 from satellite_control.config.models import (
+    ActuatorPolicyParams,
     AppConfig,
+    ControllerContractsParams,
+    MPCCoreParams,
     MPCParams,
     ReactionWheelParams,
+    ReferenceSchedulerParams,
     SatellitePhysicalParams,
     SimulationParams,
 )
@@ -107,10 +111,6 @@ def create_default_app_config() -> AppConfig:
         path_speed_max=constants.Constants.PATH_SPEED_MAX,
         progress_taper_distance=constants.Constants.PROGRESS_TAPER_DISTANCE,
         progress_slowdown_distance=constants.Constants.PROGRESS_SLOWDOWN_DISTANCE,
-        tracking_recovery_error_m=constants.Constants.TRACKING_RECOVERY_ERROR_M,
-        tracking_recovery_contour_boost=constants.Constants.TRACKING_RECOVERY_CONTOUR_BOOST,
-        tracking_recovery_progress_scale=constants.Constants.TRACKING_RECOVERY_PROGRESS_SCALE,
-        tracking_recovery_attitude_scale=constants.Constants.TRACKING_RECOVERY_ATTITUDE_SCALE,
         enable_thruster_hysteresis=constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
         thruster_hysteresis_on=constants.Constants.THRUSTER_HYSTERESIS_ON,
         thruster_hysteresis_off=constants.Constants.THRUSTER_HYSTERESIS_OFF,
@@ -135,4 +135,60 @@ def create_default_app_config() -> AppConfig:
         enforce_mpc_timing_contract=constants.Constants.ENFORCE_TIMING_CONTRACT,
     )
 
-    return AppConfig(physics=phys, mpc=mpc, simulation=sim, input_file_path=None)
+    reference_scheduler = ReferenceSchedulerParams(
+        speed_policy="min_non_hold_segment_speed",
+        duration_margin_s=constants.Constants.V6_DURATION_MARGIN_S,
+        auto_extend_manual_duration=True,
+        enforce_contract_min_duration=True,
+    )
+
+    mpc_core = MPCCoreParams(
+        solver_backend="OSQP",
+        recover_contour_scale=constants.Constants.V6_RECOVER_CONTOUR_SCALE,
+        recover_lag_scale=constants.Constants.V6_RECOVER_LAG_SCALE,
+        recover_progress_scale=constants.Constants.V6_RECOVER_PROGRESS_SCALE,
+        recover_attitude_scale=constants.Constants.V6_RECOVER_ATTITUDE_SCALE,
+        settle_progress_scale=constants.Constants.V6_SETTLE_PROGRESS_SCALE,
+        settle_terminal_pos_scale=constants.Constants.V6_SETTLE_TERMINAL_POS_SCALE,
+        settle_terminal_attitude_scale=constants.Constants.V6_SETTLE_TERMINAL_ATTITUDE_SCALE,
+        settle_velocity_align_scale=constants.Constants.V6_SETTLE_VELOCITY_ALIGN_SCALE,
+        settle_angular_velocity_scale=constants.Constants.V6_SETTLE_ANGULAR_VELOCITY_SCALE,
+        hold_smoothness_scale=constants.Constants.V6_HOLD_SMOOTHNESS_SCALE,
+        hold_thruster_pair_scale=constants.Constants.V6_HOLD_THRUSTER_PAIR_SCALE,
+    )
+
+    actuator_policy = ActuatorPolicyParams(
+        enable_thruster_hysteresis=constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
+        thruster_hysteresis_on=constants.Constants.THRUSTER_HYSTERESIS_ON,
+        thruster_hysteresis_off=constants.Constants.THRUSTER_HYSTERESIS_OFF,
+        terminal_bypass_band_m=constants.Constants.V6_TERMINAL_BYPASS_BAND_M,
+    )
+
+    controller_contracts = ControllerContractsParams(
+        position_error_m_max=constants.Constants.POSITION_TOLERANCE,
+        angle_error_deg_max=float(constants.Constants.ANGLE_TOLERANCE * 180.0 / 3.141592653589793),
+        velocity_error_mps_max=constants.Constants.VELOCITY_TOLERANCE,
+        angular_velocity_error_degps_max=float(
+            constants.Constants.ANGULAR_VELOCITY_TOLERANCE * 180.0 / 3.141592653589793
+        ),
+        hold_duration_s=10.0,
+        solver_fallback_hold_s=constants.Constants.V6_SOLVER_FALLBACK_HOLD_S,
+        solver_fallback_decay_s=constants.Constants.V6_SOLVER_FALLBACK_DECAY_S,
+        solver_fallback_zero_after_s=constants.Constants.V6_SOLVER_FALLBACK_ZERO_AFTER_S,
+        recover_enter_error_m=constants.Constants.V6_RECOVER_ENTER_ERROR_M,
+        recover_enter_hold_s=constants.Constants.V6_RECOVER_ENTER_HOLD_S,
+        recover_exit_error_m=constants.Constants.V6_RECOVER_EXIT_ERROR_M,
+        recover_exit_hold_s=constants.Constants.V6_RECOVER_EXIT_HOLD_S,
+        allow_mission_override=True,
+    )
+
+    return AppConfig(
+        physics=phys,
+        mpc=mpc,
+        reference_scheduler=reference_scheduler,
+        mpc_core=mpc_core,
+        actuator_policy=actuator_policy,
+        controller_contracts=controller_contracts,
+        simulation=sim,
+        input_file_path=None,
+    )

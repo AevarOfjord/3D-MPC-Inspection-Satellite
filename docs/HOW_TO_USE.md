@@ -123,19 +123,22 @@ make stop           # stop app processes on known ports
 .venv311/bin/python scripts/migrate_missions_v1_to_v2.py missions_unified --recursive --output-dir missions_v2_migrated
 .venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
 .venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
+.venv311/bin/python scripts/check_v6_cutover_readiness.py --suite-summary Data/Simulation/quality_fast.json --suite-summary Data/Simulation/quality_full.json --schema-migration-ok --fail-on-not-ready
 ```
 
-## 6.1) Runner Config Schema (V5)
+## 6.1) Runner Config Schema (V6)
 
 - Canonical runner payload is now:
-  - `schema_version: "app_config_v2"`
-  - `app_config: { physics, mpc, simulation, input_file_path }`
+  - `schema_version: "app_config_v3"`
+  - `app_config: { physics, reference_scheduler, mpc_core, actuator_policy, controller_contracts, simulation, input_file_path }`
 - `Runner` endpoints still dual-read legacy payloads:
   - legacy `{ control: { mpc: ... }, sim: ... }`
   - v1 flat `{ physics, mpc, simulation, input_file_path }`
-- New writes from UI/API persist v2 envelope while responses still mirror `physics/mpc/simulation` top-level fields for transition compatibility.
+  - v2 envelope `{ schema_version: "app_config_v2", app_config: { ... } }`
+- New writes from UI/API persist v3 envelope while responses still mirror `physics/mpc/simulation` top-level fields for transition compatibility.
+- `config_meta.deprecations` in `/runner/config` indicates the active one-release compatibility sunset window.
 
-## 6.2) Path Termination Contract (V5)
+## 6.2) Path Termination Contract (V6)
 
 - Path-following completion is strict at the final waypoint and must satisfy all terminal thresholds:
   - position error `<= 0.10 m`
@@ -144,6 +147,26 @@ make stop           # stop app processes on known ports
   - angular velocity error `<= 2 deg/s`
 - These thresholds must remain satisfied continuously for `10 s` before simulation auto-terminates by default.
 - Hold duration is overridable per mission/preset via `mission_state.path_hold_end`.
+
+## 6.3) V6 Diagnostics Artifacts
+
+Each run now includes additional controller diagnostics artifacts:
+
+- `mode_timeline.csv`
+- `completion_gate_trace.csv`
+- `controller_health.json`
+- `contract_report_v6.json` (from quality-suite scenarios)
+
+## 6.4) Solver Fallback Policy (V6)
+
+- On solver non-success, fallback is bounded and time-decayed (not indefinite):
+  - hold full last-feasible command for `0.30s`
+  - linear decay for `0.70s`
+  - force zero at/after `1.00s`
+- Runtime telemetry exposes:
+  - `fallback_active`
+  - `fallback_age_s`
+  - `fallback_scale`
 
 ## 7) Troubleshooting
 
@@ -160,3 +183,6 @@ make stop           # stop app processes on known ports
 ## 8) Release Ops
 
 - V4 release and tagging checklist: `docs/RELEASE_V4.md`
+- V6 default-cutover readiness gate:
+  - Collect quality-suite summaries with `scripts/run_mpc_quality_suite.py --output ...`.
+  - Run `scripts/check_v6_cutover_readiness.py` with those summaries and `--schema-migration-ok`.

@@ -60,7 +60,7 @@ class SimulationConfig:
     @classmethod
     def create_with_overrides(
         cls,
-        overrides: dict[str, dict[str, Any]],
+        overrides: dict[str, Any],
         base_config: Optional["SimulationConfig"] = None,
     ) -> "SimulationConfig":
         """
@@ -81,8 +81,13 @@ class SimulationConfig:
 
         # Apply overrides
         for section, section_overrides in overrides.items():
-            if section in app_config_dict:
-                app_config_dict[section].update(section_overrides)
+            if section not in app_config_dict:
+                continue
+            base_value = app_config_dict[section]
+            if isinstance(base_value, dict) and isinstance(section_overrides, dict):
+                base_value.update(section_overrides)
+            else:
+                app_config_dict[section] = section_overrides
 
         # Create new AppConfig from updated dict
         new_app_config = AppConfig(**app_config_dict)
@@ -143,10 +148,6 @@ class SimulationConfig:
             "path_speed_max": self.app_config.mpc.path_speed_max,
             "progress_taper_distance": self.app_config.mpc.progress_taper_distance,
             "progress_slowdown_distance": self.app_config.mpc.progress_slowdown_distance,
-            "tracking_recovery_error_m": self.app_config.mpc.tracking_recovery_error_m,
-            "tracking_recovery_contour_boost": self.app_config.mpc.tracking_recovery_contour_boost,
-            "tracking_recovery_progress_scale": self.app_config.mpc.tracking_recovery_progress_scale,
-            "tracking_recovery_attitude_scale": self.app_config.mpc.tracking_recovery_attitude_scale,
             "enable_thruster_hysteresis": self.app_config.mpc.enable_thruster_hysteresis,
             "thruster_hysteresis_on": self.app_config.mpc.thruster_hysteresis_on,
             "thruster_hysteresis_off": self.app_config.mpc.thruster_hysteresis_off,

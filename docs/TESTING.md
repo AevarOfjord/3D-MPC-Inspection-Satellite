@@ -12,7 +12,7 @@ Comprehensive guide for testing the Satellite Control System, including unit tes
 - [Writing Tests](#writing-tests)
 - [Simulation Testing & Validation](#simulation-testing--validation)
 - [Performance Benchmarks](#performance-benchmarks)
-- [MPC Quality Suite (V5)](#mpc-quality-suite-v5)
+- [MPC Quality Suite (V6)](#mpc-quality-suite-v6)
 - [Debugging](#debugging)
 - [Troubleshooting](#troubleshooting)
 
@@ -73,7 +73,7 @@ Select a saved unified mission from `missions/` to run a basic test.
 .venv311/bin/python scripts/run_simulation.py run --no-anim --auto
 ```
 
-## MPC Quality Suite (V5)
+## MPC Quality Suite (V6)
 
 Run deterministic MPC quality contracts (tracking, timing, chatter) against pinned scenarios.
 
@@ -81,19 +81,36 @@ Run deterministic MPC quality contracts (tracking, timing, chatter) against pinn
 # Fast PR contract (auto_short)
 .venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
 
-# Full suite (planner + stress scenarios)
+# Fast contract + persist summary JSON
+.venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach --output Data/Simulation/quality_fast.json
+
+# Full suite (planner + stress + long completion tier)
 .venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
+
+# Full suite + persist summary JSON
+.venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach --output Data/Simulation/quality_full.json
+
+# Optional cutover-readiness evaluation (requires suite --output JSON files)
+.venv311/bin/python scripts/check_v6_cutover_readiness.py \
+  --suite-summary Data/Simulation/quality_fast.json \
+  --suite-summary Data/Simulation/quality_full.json \
+  --schema-migration-ok \
+  --fail-on-not-ready
 ```
 
 Outputs:
 
-- Per-run report: `Data/Simulation/<run>/mpc_quality_report.json`
+- Per-run report: `Data/Simulation/<run>/contract_report_v6.json`
 - Source metrics consumed:
   - `kpi_summary.json`
   - `performance_metrics.json`
   - `mpc_step_stats.csv`
+  - `mode_timeline.csv`
+  - `completion_gate_trace.csv`
+- `controller_health.json`
+- includes solver fallback telemetry (`fallback_active`, `fallback_age_s`, `fallback_scale`)
 
-### Terminal Completion Contract (V5)
+### Terminal Completion Contract (V6)
 
 For path-following runs, terminal completion now requires all thresholds to be in-bounds at path end:
 

@@ -219,6 +219,66 @@ class SimulationManager:
         elif frame != "LVLH":
             frame_origin = None
 
+        mode_state_obj = getattr(self.sim_instance, "v6_mode_state", None)
+        completion_gate_obj = getattr(self.sim_instance, "v6_completion_gate", None)
+        solver_health_obj = getattr(self.sim_instance, "v6_solver_health", None)
+
+        mode_state = None
+        if mode_state_obj is not None:
+            mode_state = {
+                "current_mode": str(getattr(mode_state_obj, "current_mode", "TRACK")),
+                "time_in_mode_s": float(
+                    getattr(mode_state_obj, "time_in_mode_s", 0.0)
+                ),
+            }
+
+        completion_gate = None
+        if completion_gate_obj is not None:
+            completion_gate = {
+                "position_ok": bool(getattr(completion_gate_obj, "position_ok", False)),
+                "angle_ok": bool(getattr(completion_gate_obj, "angle_ok", False)),
+                "velocity_ok": bool(getattr(completion_gate_obj, "velocity_ok", False)),
+                "angular_velocity_ok": bool(
+                    getattr(completion_gate_obj, "angular_velocity_ok", False)
+                ),
+                "hold_elapsed_s": float(
+                    getattr(completion_gate_obj, "hold_elapsed_s", 0.0)
+                ),
+                "hold_required_s": float(
+                    getattr(completion_gate_obj, "hold_required_s", 0.0)
+                ),
+                "last_breach_reason": getattr(
+                    completion_gate_obj, "last_breach_reason", None
+                ),
+            }
+
+        solver_health = None
+        if solver_health_obj is not None:
+            solver_health = {
+                "status": str(getattr(solver_health_obj, "status", "ok")),
+                "fallback_count": int(
+                    getattr(solver_health_obj, "fallback_count", 0)
+                ),
+                "hard_limit_breaches": int(
+                    getattr(solver_health_obj, "hard_limit_breaches", 0)
+                ),
+                "fallback_active": bool(
+                    getattr(solver_health_obj, "fallback_active", False)
+                ),
+                "fallback_age_s": float(
+                    getattr(solver_health_obj, "fallback_age_s", 0.0)
+                ),
+                "fallback_scale": float(
+                    getattr(solver_health_obj, "fallback_scale", 0.0)
+                ),
+                "last_fallback_reason": (
+                    getattr(solver_health_obj, "last_fallback_reason", None)
+                ),
+                "fallback_reasons": dict(
+                    getattr(solver_health_obj, "fallback_reasons", {}) or {}
+                ),
+            }
+
         return {
             "time": self.sim_instance.simulation_time,
             "position": state[0:3],
@@ -237,8 +297,22 @@ class SimulationManager:
             "solve_time": getattr(self.sim_instance, "last_solve_time", 0.0),
             "pos_error": getattr(self.sim_instance, "last_pos_error", 0.0),
             "ang_error": getattr(self.sim_instance, "last_ang_error", 0.0),
+            "controller_core": str(
+                getattr(
+                    self.sim_instance,
+                    "controller_core_mode",
+                    getattr(
+                        getattr(self.sim_instance, "mpc_controller", None),
+                        "controller_core",
+                        "v6",
+                    ),
+                )
+            ),
             "frame": frame,
             "frame_origin": frame_origin,
+            "mode_state": mode_state,
+            "completion_gate": completion_gate,
+            "solver_health": solver_health,
         }
 
     async def _run_loop(self):

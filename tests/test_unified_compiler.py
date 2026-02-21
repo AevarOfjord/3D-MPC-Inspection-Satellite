@@ -7,9 +7,9 @@ from satellite_control.mission.unified_mission import (
     MissionObstacle,
     MissionOverrides,
     Pose,
+    ScanConfig,
     ScanSegment,
     SegmentType,
-    ScanConfig,
     TransferSegment,
 )
 

@@ -5,7 +5,6 @@ Termination contract tests for strict last-waypoint completion behavior.
 from types import SimpleNamespace
 
 import numpy as np
-
 from satellite_control.core.path_completion import check_path_complete
 from satellite_control.core.simulation_loop import SimulationLoop
 
@@ -73,12 +72,44 @@ class _FakeLoopSimulation:
         self.is_running = True
         self._path_complete = False
         self.summary_calls = 0
-
-    def check_path_complete(self) -> bool:
-        return bool(self._path_complete)
+        self.position_tolerance = 0.1
+        self.reference_state = np.zeros(13, dtype=float)
+        self._path_len = 2.0
+        self.satellite = SimpleNamespace(position=np.array([2.0, 0.0, 0.0]))
+        self.mpc_controller = _FakeMPCController(s_val=2.0, endpoint_error=0.05)
+        self.state_validator = _ToggleValidator(self)
 
     def print_performance_summary(self) -> None:
         self.summary_calls += 1
+
+    def _get_mission_path_length(self, compute_if_missing: bool = True) -> float:
+        _ = compute_if_missing
+        return float(self._path_len)
+
+    def _get_mission_path_waypoints(self) -> list[tuple[float, float, float]]:
+        return [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+
+    def get_current_state(self) -> np.ndarray:
+        state = np.zeros(13, dtype=float)
+        state[0:3] = np.array([2.0, 0.0, 0.0], dtype=float)
+        state[3] = 1.0  # Identity quaternion [w, x, y, z]
+        return state
+
+
+class _ToggleValidator:
+    def __init__(self, sim: _FakeLoopSimulation):
+        self._sim = sim
+
+    def check_within_tolerances(
+        self, _current_state: np.ndarray, _reference_state: np.ndarray
+    ) -> dict[str, bool]:
+        ok = bool(self._sim._path_complete)
+        return {
+            "position": ok,
+            "angle": ok,
+            "velocity": ok,
+            "angular_velocity": ok,
+        }
 
 
 def test_strict_completion_rejects_position_only_pass():

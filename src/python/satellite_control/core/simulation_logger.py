@@ -156,6 +156,48 @@ class SimulationLogger:
         path_error = mpc_info.get("path_error") if mpc_info else None
         endpoint_error = mpc_info.get("path_endpoint_error") if mpc_info else None
         path_s_pred = mpc_info.get("path_s_pred") if mpc_info else None
+        mode_state = mpc_info.get("mode_state") if mpc_info else None
+        mode_time_in_mode_s = mpc_info.get("mode_time_in_mode_s") if mpc_info else None
+        completion_gate_position_ok = (
+            mpc_info.get("completion_gate_position_ok") if mpc_info else None
+        )
+        completion_gate_angle_ok = (
+            mpc_info.get("completion_gate_angle_ok") if mpc_info else None
+        )
+        completion_gate_velocity_ok = (
+            mpc_info.get("completion_gate_velocity_ok") if mpc_info else None
+        )
+        completion_gate_angular_velocity_ok = (
+            mpc_info.get("completion_gate_angular_velocity_ok") if mpc_info else None
+        )
+        completion_gate_hold_elapsed_s = (
+            mpc_info.get("completion_gate_hold_elapsed_s") if mpc_info else None
+        )
+        completion_gate_hold_required_s = (
+            mpc_info.get("completion_gate_hold_required_s") if mpc_info else None
+        )
+        completion_gate_last_breach_reason = (
+            mpc_info.get("completion_gate_last_breach_reason") if mpc_info else None
+        )
+        solver_health_status = mpc_info.get("solver_health_status") if mpc_info else None
+        solver_fallback_count = (
+            mpc_info.get("solver_fallback_count") if mpc_info else None
+        )
+        solver_hard_limit_breaches = (
+            mpc_info.get("solver_hard_limit_breaches") if mpc_info else None
+        )
+        solver_last_fallback_reason = (
+            mpc_info.get("solver_last_fallback_reason") if mpc_info else None
+        )
+        solver_fallback_active = (
+            mpc_info.get("solver_fallback_active") if mpc_info else None
+        )
+        solver_fallback_age_s = (
+            mpc_info.get("solver_fallback_age_s") if mpc_info else None
+        )
+        solver_fallback_scale = (
+            mpc_info.get("solver_fallback_scale") if mpc_info else None
+        )
 
         # Velocity errors
         error_vx = ref_vx - curr_vx
@@ -253,6 +295,22 @@ class SimulationLogger:
             "Path_Remaining": path_remaining,
             "Path_Error": path_error,
             "Path_Endpoint_Error": endpoint_error,
+            "Mode_State": mode_state,
+            "Mode_Time_In_Mode_s": mode_time_in_mode_s,
+            "Completion_Gate_Position_OK": completion_gate_position_ok,
+            "Completion_Gate_Angle_OK": completion_gate_angle_ok,
+            "Completion_Gate_Velocity_OK": completion_gate_velocity_ok,
+            "Completion_Gate_Angular_Velocity_OK": completion_gate_angular_velocity_ok,
+            "Completion_Gate_Hold_Elapsed_s": completion_gate_hold_elapsed_s,
+            "Completion_Gate_Hold_Required_s": completion_gate_hold_required_s,
+            "Completion_Gate_Last_Breach_Reason": completion_gate_last_breach_reason,
+            "Solver_Health_Status": solver_health_status,
+            "Solver_Fallback_Count": solver_fallback_count,
+            "Solver_Hard_Limit_Breaches": solver_hard_limit_breaches,
+            "Solver_Last_Fallback_Reason": solver_last_fallback_reason,
+            "Solver_Fallback_Active": solver_fallback_active,
+            "Solver_Fallback_Age_s": solver_fallback_age_s,
+            "Solver_Fallback_Scale": solver_fallback_scale,
             "Command_Vector": command_vector_str,
             "Command_Hex": command_hex,
             "Command_Sent_Time": command_sent_time,

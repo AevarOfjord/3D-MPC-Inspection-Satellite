@@ -36,6 +36,30 @@ export interface TelemetryData {
   sim_speed?: number;
   frame?: 'ECI' | 'LVLH';
   frame_origin?: [number, number, number] | null;
+  mode_state?: {
+    current_mode: string;
+    time_in_mode_s: number;
+  } | null;
+  completion_gate?: {
+    position_ok: boolean;
+    angle_ok: boolean;
+    velocity_ok: boolean;
+    angular_velocity_ok: boolean;
+    hold_elapsed_s: number;
+    hold_required_s: number;
+    last_breach_reason?: string | null;
+  } | null;
+  solver_health?: {
+    status: string;
+    fallback_count: number;
+    hard_limit_breaches: number;
+    fallback_active?: boolean;
+    fallback_age_s?: number;
+    fallback_scale?: number;
+    last_fallback_reason?: string | null;
+    fallback_reasons?: Record<string, number>;
+  } | null;
+  controller_core?: string;
 }
 
 type TelemetryCallback = (data: TelemetryData) => void;
@@ -76,19 +100,53 @@ class TelemetryService {
     const origin = data.frame_origin;
     const distance = (a: [number, number, number], b: [number, number, number]) =>
       Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const norm = (p: [number, number, number]) => Math.hypot(p[0], p[1], p[2]);
 
-    // Compatibility guard for older runs that were tagged LVLH in metadata
-    // even though points were already absolute near the frame origin.
-    const shouldTreatAsAbsolute = (p?: [number, number, number]) =>
+    // Decide frame interpretation once per payload to avoid mixing absolute and
+    // relative points in a single planned path.
+    const originNorm = norm(origin);
+    const isAbsoluteLike = (p?: [number, number, number]) =>
       Boolean(
         p &&
-          Math.hypot(origin[0], origin[1], origin[2]) > 1e5 &&
+          originNorm > 1e5 &&
+          norm(p) > 1e5 &&
           distance(p, origin) < 1e5
       );
 
+    const candidates: [number, number, number][] = [];
+    const pushCandidate = (p?: [number, number, number]) => {
+      if (p) candidates.push(p);
+    };
+    const pushPathSamples = (path?: [number, number, number][]) => {
+      if (!path || path.length === 0) return;
+      pushCandidate(path[0]);
+      pushCandidate(path[Math.floor(path.length / 2)]);
+      pushCandidate(path[path.length - 1]);
+    };
+    pushCandidate(data.position);
+    pushCandidate(data.reference_position);
+    pushCandidate(data.target_position);
+    pushPathSamples(data.planned_path);
+    pushCandidate(data.scan_object?.position);
+    if (data.obstacles.length > 0) {
+      pushCandidate(data.obstacles[0].position);
+      pushCandidate(data.obstacles[data.obstacles.length - 1].position);
+    }
+
+    let absoluteLike = 0;
+    let localLike = 0;
+    for (const p of candidates) {
+      if (isAbsoluteLike(p)) {
+        absoluteLike += 1;
+      } else if (norm(p) < 1e5) {
+        localLike += 1;
+      }
+    }
+    const payloadIsAbsolute = absoluteLike > 0 && absoluteLike >= localLike;
+
     const add = (p?: [number, number, number]) => {
       if (!p) return p;
-      if (shouldTreatAsAbsolute(p)) return p;
+      if (payloadIsAbsolute) return p;
       return [p[0] + origin[0], p[1] + origin[1], p[2] + origin[2]] as [number, number, number];
     };
 
@@ -120,6 +178,7 @@ class TelemetryService {
       ...data,
       position: add(data.position) as [number, number, number],
       reference_position: add(data.reference_position) as [number, number, number],
+      target_position: add(data.target_position) as [number, number, number] | undefined,
       planned_path: addPath(data.planned_path),
       obstacles: addObstacles(data.obstacles) ?? [],
       scan_object,

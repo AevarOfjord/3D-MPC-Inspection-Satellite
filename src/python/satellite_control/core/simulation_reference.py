@@ -361,6 +361,9 @@ def update_path_reference_state(
     coast_pos_tol = sim._ref_coast_pos_tol
     coast_vel_tol = sim._ref_coast_vel_tol
     coast_min_speed = sim._ref_coast_min_speed
+    current_mode = str(
+        getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
+    ).upper()
 
     # --- Taper speed near path end ---
     speed_scale = 1.0
@@ -399,6 +402,9 @@ def update_path_reference_state(
             v_ref = max(coast_min_speed, v_along)
     if at_path_end:
         # Force a full stop at the end of the path.
+        v_ref = 0.0
+    if current_mode in {"SETTLE", "HOLD", "COMPLETE"}:
+        # V6 explicit endpoint behavior: SETTLE/HOLD use zero velocity targets.
         v_ref = 0.0
 
     reference_state[7:10] = tangent * v_ref

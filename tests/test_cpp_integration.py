@@ -16,20 +16,18 @@ from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
 class TestCPPEngine:
     """Tests for the C++ simulation engine."""
 
-    def test_cpp_mpc_params_tracking_recovery_fields(self):
-        """C++ MPCParams binding should expose V5 tracking-recovery fields."""
+    def test_cpp_mpc_params_v6_fallback_fields(self):
+        """C++ MPCParams binding should expose V6 bounded fallback policy fields."""
         cpp_mpc = pytest.importorskip("satellite_control.cpp._cpp_mpc")
         params = cpp_mpc.MPCParams()
 
-        params.tracking_recovery_error_m = 0.2
-        params.tracking_recovery_contour_boost = 1.5
-        params.tracking_recovery_progress_scale = 0.7
-        params.tracking_recovery_attitude_scale = 0.6
+        params.solver_fallback_hold_s = 0.4
+        params.solver_fallback_decay_s = 0.5
+        params.solver_fallback_zero_after_s = 1.1
 
-        assert params.tracking_recovery_error_m == pytest.approx(0.2)
-        assert params.tracking_recovery_contour_boost == pytest.approx(1.5)
-        assert params.tracking_recovery_progress_scale == pytest.approx(0.7)
-        assert params.tracking_recovery_attitude_scale == pytest.approx(0.6)
+        assert params.solver_fallback_hold_s == pytest.approx(0.4)
+        assert params.solver_fallback_decay_s == pytest.approx(0.5)
+        assert params.solver_fallback_zero_after_s == pytest.approx(1.1)
 
     def test_engine_initialization(self):
         """Test that C++ engine is initialized when configured."""

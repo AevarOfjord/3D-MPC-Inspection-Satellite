@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run V5 MPC quality contract scenarios."""
+"""Run V6 MPC quality contract scenarios."""
 
 from __future__ import annotations
 

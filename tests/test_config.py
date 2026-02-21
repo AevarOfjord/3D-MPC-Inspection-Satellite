@@ -10,7 +10,12 @@ from pydantic import ValidationError
 from satellite_control.config import physics as physics_cfg
 from satellite_control.config.io import ConfigIO
 from satellite_control.config.mission_state import DEFAULT_PATH_HOLD_END_S
-from satellite_control.config.models import MPCParams, SatellitePhysicalParams
+from satellite_control.config.models import (
+    ActuatorPolicyParams,
+    ControllerContractsParams,
+    MPCParams,
+    SatellitePhysicalParams,
+)
 from satellite_control.config.presets import list_presets, load_preset
 from satellite_control.config.simulation_config import SimulationConfig
 
@@ -102,16 +107,39 @@ class TestConfigValidation:
         with pytest.raises(ValidationError):
             MPCParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
 
-    def test_mpc_tracking_recovery_validation(self):
-        """Recovery scales must remain in (0, 1] and boost must be nonnegative."""
+    def test_v6_solver_fallback_contract_validation(self):
+        """Fallback zero-after threshold must be >= fallback hold threshold."""
         with pytest.raises(ValidationError):
-            MPCParams(tracking_recovery_progress_scale=0.0)
+            ControllerContractsParams(
+                solver_fallback_hold_s=1.0,
+                solver_fallback_zero_after_s=0.5,
+            )
+
+    def test_v6_sections_present_in_default_config(self):
+        """Default AppConfig should include V6 section models for app_config_v3."""
+        config = SimulationConfig.create_default()
+        app_cfg = config.app_config
+        assert app_cfg.reference_scheduler.speed_policy == "min_non_hold_segment_speed"
+        assert app_cfg.mpc_core.solver_backend == "OSQP"
+        assert app_cfg.actuator_policy.enable_thruster_hysteresis is True
+        assert app_cfg.controller_contracts.hold_duration_s == pytest.approx(
+            DEFAULT_PATH_HOLD_END_S
+        )
+
+    def test_v6_actuator_policy_validation(self):
+        """V6 actuator-policy on-threshold must exceed off-threshold."""
         with pytest.raises(ValidationError):
-            MPCParams(tracking_recovery_progress_scale=1.2)
+            ActuatorPolicyParams(thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01)
         with pytest.raises(ValidationError):
-            MPCParams(tracking_recovery_attitude_scale=0.0)
+            ActuatorPolicyParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
+
+    def test_v6_controller_contract_validation(self):
+        """V6 recover-exit threshold must remain <= recover-enter threshold."""
         with pytest.raises(ValidationError):
-            MPCParams(tracking_recovery_contour_boost=-0.1)
+            ControllerContractsParams(
+                recover_enter_error_m=0.10,
+                recover_exit_error_m=0.20,
+            )
 
     def test_path_hold_end_defaults_when_missing(self):
         """Missing hold fields should use the global mission hold default."""

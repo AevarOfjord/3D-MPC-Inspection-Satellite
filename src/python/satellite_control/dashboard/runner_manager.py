@@ -22,7 +22,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
 PRESETS_FILE = PROJECT_ROOT / "Data" / "Dashboard" / "runner_presets.json"
-APP_CONFIG_SCHEMA_VERSION = "app_config_v2"
+APP_CONFIG_SCHEMA_VERSION = "app_config_v3"
+APP_CONFIG_SCHEMA_VERSION_V2 = "app_config_v2"
+COMPATIBILITY_WINDOW = "v6.x"
+DISABLE_CONFIG_MIRRORS_ENV = "SATCTRL_DISABLE_CONFIG_MIRRORS"
 
 class RunnerManager:
     """
@@ -57,7 +60,7 @@ class RunnerManager:
                 config = item.get("config")
                 if not isinstance(config, dict):
                     continue
-                envelope = self._normalize_to_v2_envelope(config)
+                envelope = self._normalize_to_v3_envelope(config)
                 if not envelope:
                     continue
                 normalized[name] = {
@@ -73,7 +76,7 @@ class RunnerManager:
         """Persist in-memory presets to disk."""
         self._presets_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "version": 2,
+            "version": 3,
             "presets": self._presets,
         }
         self._presets_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -123,10 +126,6 @@ class RunnerManager:
             "enable_delta_u_coupling",
             "enable_gyro_jacobian",
             "enable_auto_state_bounds",
-            "tracking_recovery_error_m",
-            "tracking_recovery_contour_boost",
-            "tracking_recovery_progress_scale",
-            "tracking_recovery_attitude_scale",
             "enable_thruster_hysteresis",
             "thruster_hysteresis_on",
             "thruster_hysteresis_off",
@@ -190,10 +189,6 @@ class RunnerManager:
                 "coast_pos_tolerance": "coast_pos_tolerance",
                 "coast_vel_tolerance": "coast_vel_tolerance",
                 "coast_min_speed": "coast_min_speed",
-                "tracking_recovery_error_m": "tracking_recovery_error_m",
-                "tracking_recovery_contour_boost": "tracking_recovery_contour_boost",
-                "tracking_recovery_progress_scale": "tracking_recovery_progress_scale",
-                "tracking_recovery_attitude_scale": "tracking_recovery_attitude_scale",
                 "enable_thruster_hysteresis": "enable_thruster_hysteresis",
                 "thruster_hysteresis_on": "thruster_hysteresis_on",
                 "thruster_hysteresis_off": "thruster_hysteresis_off",
@@ -212,7 +207,13 @@ class RunnerManager:
 
     @staticmethod
     def _extract_app_config_sections(payload: dict[str, Any] | None) -> dict[str, Any]:
-        """Extract physics/mpc/simulation/input_file_path from legacy/v1/v2 payloads."""
+        """
+        Extract canonical app_config_v3 sections from legacy/v1/v2/v3 payloads.
+
+        Canonical sections:
+            physics, reference_scheduler, mpc_core, actuator_policy,
+            controller_contracts, simulation, input_file_path
+        """
         if not isinstance(payload, dict):
             return {}
 
@@ -222,42 +223,114 @@ class RunnerManager:
             source = app_config_candidate
 
         sections: dict[str, Any] = {}
-        for section in ("physics", "mpc", "simulation"):
+        for section in (
+            "physics",
+            "reference_scheduler",
+            "mpc_core",
+            "actuator_policy",
+            "controller_contracts",
+            "simulation",
+        ):
             section_payload = RunnerManager._clone_section(source.get(section))
             if section_payload is not None:
                 sections[section] = section_payload
+
+        # v1/v2 compatibility: map `mpc` to canonical `mpc_core`.
+        if "mpc_core" not in sections:
+            mpc_payload = RunnerManager._clone_section(source.get("mpc"))
+            if mpc_payload is not None:
+                sections["mpc_core"] = mpc_payload
 
         if "input_file_path" in source:
             sections["input_file_path"] = source.get("input_file_path")
         return sections
 
     @staticmethod
+    def _actuator_policy_from_mpc_core(mpc_core: dict[str, Any]) -> dict[str, Any]:
+        actuator: dict[str, Any] = {}
+        for key in (
+            "enable_thruster_hysteresis",
+            "thruster_hysteresis_on",
+            "thruster_hysteresis_off",
+            "terminal_bypass_band_m",
+        ):
+            if key in mpc_core:
+                actuator[key] = mpc_core[key]
+        return actuator
+
+    @staticmethod
+    def _merge_dict(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(target)
+        merged.update(source)
+        return merged
+
+    @staticmethod
     def _extract_runtime_overrides(
         payload: dict[str, Any] | None,
-    ) -> dict[str, dict[str, Any]]:
-        """Extract only the section dicts supported by SimulationConfig.create_with_overrides."""
+    ) -> dict[str, Any]:
+        """
+        Extract section dicts supported by SimulationConfig.create_with_overrides.
+
+        Runtime keeps `mpc` as execution config while preserving V6 metadata sections.
+        """
         sections = RunnerManager._extract_app_config_sections(payload)
-        runtime: dict[str, dict[str, Any]] = {}
-        for section in ("physics", "mpc", "simulation"):
+        runtime: dict[str, Any] = {}
+        for section in (
+            "physics",
+            "reference_scheduler",
+            "mpc_core",
+            "actuator_policy",
+            "controller_contracts",
+            "simulation",
+        ):
             value = sections.get(section)
             if isinstance(value, dict):
                 runtime[section] = value
+
+        mpc_core = sections.get("mpc_core")
+        if isinstance(mpc_core, dict):
+            runtime["mpc"] = dict(mpc_core)
+
+        actuator_policy = sections.get("actuator_policy")
+        if isinstance(actuator_policy, dict):
+            runtime.setdefault("mpc", {}).update(
+                {
+                    key: actuator_policy[key]
+                    for key in (
+                        "enable_thruster_hysteresis",
+                        "thruster_hysteresis_on",
+                        "thruster_hysteresis_off",
+                    )
+                    if key in actuator_policy
+                }
+            )
+
+        if "input_file_path" in sections:
+            runtime["input_file_path"] = sections.get("input_file_path")
         return runtime
 
     @staticmethod
     def _with_response_mirrors(payload: dict[str, Any]) -> dict[str, Any]:
-        """Mirror v2 app_config sections at top-level for transitional compatibility."""
+        """Mirror canonical app_config_v3 sections at top-level for compatibility."""
+        mirrors_disabled = str(
+            os.environ.get(DISABLE_CONFIG_MIRRORS_ENV, "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if mirrors_disabled:
+            return dict(payload)
         mirrored = dict(payload)
         app_config = payload.get("app_config")
         app_cfg = app_config if isinstance(app_config, dict) else {}
+        mpc_core = app_cfg.get("mpc_core")
+        if not isinstance(mpc_core, dict):
+            mpc_core = app_cfg.get("mpc", {})
         mirrored["physics"] = app_cfg.get("physics", {})
-        mirrored["mpc"] = app_cfg.get("mpc", {})
+        mirrored["mpc"] = mpc_core
         mirrored["simulation"] = app_cfg.get("simulation", {})
         mirrored["input_file_path"] = app_cfg.get("input_file_path")
         return mirrored
 
     def _normalize_overrides_to_sections(self, overrides: dict[str, Any]) -> dict[str, Any]:
-        """Accept legacy, v1-flat, and v2-envelope payloads and return section overrides."""
+        """Accept legacy, v1-flat, v2, and v3 payloads and return canonical sections."""
         normalized = self._extract_app_config_sections(overrides)
 
         # Legacy UI payload: { control: { mpc: ... }, sim: ... }
@@ -267,11 +340,11 @@ class RunnerManager:
             if isinstance(legacy_mpc, dict):
                 mapped_mpc = self._map_legacy_mpc_overrides(legacy_mpc)
                 if mapped_mpc:
-                    existing_mpc = normalized.get("mpc")
-                    if isinstance(existing_mpc, dict):
-                        existing_mpc.update(mapped_mpc)
+                    existing_mpc_core = normalized.get("mpc_core")
+                    if isinstance(existing_mpc_core, dict):
+                        existing_mpc_core.update(mapped_mpc)
                     else:
-                        normalized["mpc"] = mapped_mpc
+                        normalized["mpc_core"] = mapped_mpc
 
         legacy_sim = overrides.get("sim")
         if isinstance(legacy_sim, dict):
@@ -289,22 +362,68 @@ class RunnerManager:
                 else:
                     normalized["simulation"] = sim_updates
 
-        # Keep control_dt aligned with MPC dt when dt is explicitly overridden.
-        mpc_section = normalized.get("mpc")
-        if isinstance(mpc_section, dict) and "dt" in mpc_section:
+        mpc_core_section = normalized.get("mpc_core")
+        if isinstance(mpc_core_section, dict) and "dt" in mpc_core_section:
             simulation_section = normalized.get("simulation")
             if isinstance(simulation_section, dict):
-                simulation_section.setdefault("control_dt", mpc_section["dt"])
+                simulation_section.setdefault("control_dt", mpc_core_section["dt"])
             else:
-                normalized["simulation"] = {"control_dt": mpc_section["dt"]}
+                normalized["simulation"] = {"control_dt": mpc_core_section["dt"]}
+
+        if "actuator_policy" not in normalized and isinstance(mpc_core_section, dict):
+            inferred_actuator = self._actuator_policy_from_mpc_core(mpc_core_section)
+            if inferred_actuator:
+                normalized["actuator_policy"] = inferred_actuator
 
         return normalized
 
-    def _normalize_to_v2_envelope(self, overrides: dict[str, Any]) -> dict[str, Any]:
-        """Convert accepted payload shapes into canonical app_config_v2 envelope."""
+    @staticmethod
+    def _build_v3_app_config_payload(app_config_payload: dict[str, Any]) -> dict[str, Any]:
+        app_config: dict[str, Any] = {}
+        for section in ("physics", "reference_scheduler", "actuator_policy", "controller_contracts", "simulation"):
+            value = app_config_payload.get(section)
+            if isinstance(value, dict):
+                app_config[section] = dict(value)
+
+        # Canonical v3 mpc_core payload is derived from runtime `mpc` so legacy and
+        # current UI consumers receive a complete MPC editable section.
+        mpc_runtime = app_config_payload.get("mpc")
+        mpc_core_profile = app_config_payload.get("mpc_core")
+        mpc_core_payload: dict[str, Any] = {}
+        if isinstance(mpc_runtime, dict):
+            mpc_core_payload.update(dict(mpc_runtime))
+        if isinstance(mpc_core_profile, dict):
+            for key, value in mpc_core_profile.items():
+                if key not in mpc_core_payload:
+                    mpc_core_payload[key] = value
+        if mpc_core_payload:
+            app_config["mpc_core"] = mpc_core_payload
+
+        if "actuator_policy" not in app_config and isinstance(
+            app_config.get("mpc_core"), dict
+        ):
+            inferred = RunnerManager._actuator_policy_from_mpc_core(
+                app_config["mpc_core"]
+            )
+            if inferred:
+                app_config["actuator_policy"] = inferred
+
+        if "input_file_path" in app_config_payload:
+            app_config["input_file_path"] = app_config_payload.get("input_file_path")
+        return app_config
+
+    def _normalize_to_v3_envelope(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Convert accepted payload shapes into canonical app_config_v3 envelope."""
         sections = self._normalize_overrides_to_sections(overrides)
         app_config: dict[str, Any] = {}
-        for section in ("physics", "mpc", "simulation"):
+        for section in (
+            "physics",
+            "reference_scheduler",
+            "mpc_core",
+            "actuator_policy",
+            "controller_contracts",
+            "simulation",
+        ):
             value = sections.get(section)
             if isinstance(value, dict):
                 app_config[section] = dict(value)
@@ -338,7 +457,9 @@ class RunnerManager:
 
         # Preserve legacy UI shape while also exposing full AppConfig sections.
         ui_config = config.to_dict()
-        app_config_payload = config.app_config.model_dump()
+        app_config_payload = self._build_v3_app_config_payload(
+            config.app_config.model_dump()
+        )
         v2_payload = {
             "schema_version": APP_CONFIG_SCHEMA_VERSION,
             "app_config": app_config_payload,
@@ -353,6 +474,19 @@ class RunnerManager:
             "config_version": APP_CONFIG_SCHEMA_VERSION,
             "overrides_active": bool(self._custom_config),
             "active_preset_name": self._active_preset_name,
+            "response_mirrors_enabled": (
+                str(os.environ.get(DISABLE_CONFIG_MIRRORS_ENV, "")).strip().lower()
+                not in {"1", "true", "yes", "on"}
+            ),
+            "compatibility_window": COMPATIBILITY_WINDOW,
+            "deprecations": {
+                "legacy_payload_dual_read": True,
+                "response_mirrors": True,
+                "sunset_note": (
+                    "Legacy payload shapes and top-level mirrors are transitional and "
+                    f"scheduled for removal after {COMPATIBILITY_WINDOW}."
+                ),
+            },
             "generated_at": datetime.now(UTC).isoformat(),
         }
         ui_config["mpc_parameter_groups"] = MPCParams.parameter_groups()
@@ -360,7 +494,7 @@ class RunnerManager:
 
     def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
-        normalized = self._normalize_to_v2_envelope(overrides)
+        normalized = self._normalize_to_v3_envelope(overrides)
         self._custom_config = normalized if normalized else None
         self._active_preset_name = active_preset_name if self._custom_config else None
         sections = list(normalized.get("app_config", {}).keys()) if normalized else []
@@ -383,7 +517,7 @@ class RunnerManager:
             config_payload = data.get("config")
             if not isinstance(config_payload, dict):
                 continue
-            envelope = self._normalize_to_v2_envelope(config_payload)
+            envelope = self._normalize_to_v3_envelope(config_payload)
             if not envelope:
                 continue
             listed[name] = {
@@ -401,7 +535,7 @@ class RunnerManager:
         trimmed = name.strip()
         if not trimmed:
             raise ValueError("Preset name cannot be empty")
-        normalized = self._normalize_to_v2_envelope(config)
+        normalized = self._normalize_to_v3_envelope(config)
         if not normalized:
             raise ValueError("Preset config is empty or invalid")
         try:
@@ -413,16 +547,12 @@ class RunnerManager:
                 runtime_overrides,
                 base_config=base,
             )
-            resolved_config = resolved.app_config.model_dump()
-            app_config = {
-                section: resolved_config[section]
-                for section in ("physics", "mpc", "simulation")
-                if isinstance(resolved_config.get(section), dict)
-            }
-            app_config["input_file_path"] = resolved_config.get("input_file_path")
+            resolved_config = self._build_v3_app_config_payload(
+                resolved.app_config.model_dump()
+            )
             normalized = {
                 "schema_version": APP_CONFIG_SCHEMA_VERSION,
-                "app_config": app_config,
+                "app_config": resolved_config,
             }
         except Exception as exc:
             raise ValueError(str(exc)) from exc
@@ -564,6 +694,9 @@ class RunnerManager:
             env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(config_meta.get("config_version", ""))
             env["SATCTRL_RUNNER_OVERRIDES_ACTIVE"] = (
                 "1" if bool(config_meta.get("overrides_active")) else "0"
+            )
+            env["SATCTRL_RUNNER_RESPONSE_MIRRORS_ENABLED"] = (
+                "1" if bool(config_meta.get("response_mirrors_enabled", True)) else "0"
             )
             if self._active_preset_name:
                 env["SATCTRL_RUNNER_PRESET_NAME"] = self._active_preset_name

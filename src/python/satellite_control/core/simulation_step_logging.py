@@ -137,12 +137,18 @@ def log_simulation_step(
 
     # Determine status message (path-only).
     mission_phase = "PATH_FOLLOWING"
-    status_msg = f"Following Path (t={sim.simulation_time:.1f}s)"
+    mode_label = str(
+        getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
+    )
+    status_msg = f"Following Path [{mode_label}] (t={sim.simulation_time:.1f}s)"
 
     path_s = getattr(sim.mpc_controller, "s", None)
     path_len = sim._get_mission_path_length(compute_if_missing=True)
     if path_s is not None and path_len:
-        status_msg = f"Following Path (s={path_s:.2f}/{path_len:.2f}m, t={sim.simulation_time:.1f}s)"
+        status_msg = (
+            f"Following Path [{mode_label}] "
+            f"(s={path_s:.2f}/{path_len:.2f}m, t={sim.simulation_time:.1f}s)"
+        )
 
     # Prepare display variables and update command history.
     if thruster_action.ndim > 1:

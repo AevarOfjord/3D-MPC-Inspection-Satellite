@@ -90,7 +90,17 @@ jobs:
         run: make install
 
       - name: Run fast MPC quality contract
-        run: .venv311/bin/python scripts/run_mpc_quality_suite.py --fail-on-breach
+        run: |
+          mkdir -p artifacts/quality
+          .venv311/bin/python scripts/run_mpc_quality_suite.py \
+            --fail-on-breach \
+            --output artifacts/quality/fast_suite.json
+
+      - name: Upload fast quality artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-fast-summary
+          path: artifacts/quality/fast_suite.json
 
   ui:
     runs-on: ubuntu-latest
@@ -297,4 +307,64 @@ jobs:
         run: python -m pytest -q tests/test_e2e_simulation.py --tb=short
 
       - name: Run full MPC quality suite
-        run: .venv311/bin/python scripts/run_mpc_quality_suite.py --full --fail-on-breach
+        run: |
+          mkdir -p artifacts/quality
+          .venv311/bin/python scripts/run_mpc_quality_suite.py \
+            --full \
+            --fail-on-breach \
+            --output artifacts/quality/full_suite.json
+
+      - name: Upload full quality artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-full-summary
+          path: artifacts/quality/full_suite.json
+
+  v6-cutover-readiness:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: [e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install system deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential ffmpeg libeigen3-dev
+
+      - name: Install project
+        run: make install
+
+      - name: Download full quality summary
+        uses: actions/download-artifact@v4
+        with:
+          name: quality-full-summary
+          path: artifacts/quality
+
+      - name: Evaluate V6 cutover readiness gate
+        run: |
+          mkdir -p artifacts/quality
+          .venv311/bin/python scripts/check_v6_cutover_readiness.py \
+            --suite-summary artifacts/quality/full_suite.json \
+            --min-fast-consecutive 1 \
+            --min-full-passes 1 \
+            --skip-schema-migration-check \
+            --fail-on-not-ready \
+            --output artifacts/quality/cutover_readiness.json
+
+      - name: Upload cutover readiness report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-cutover-readiness
+          path: artifacts/quality/cutover_readiness.json

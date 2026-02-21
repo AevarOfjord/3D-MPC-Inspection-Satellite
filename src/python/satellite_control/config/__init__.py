@@ -10,7 +10,16 @@ Primary API:
 
 from .constants import Constants
 from .mission_state import MissionState
-from .models import AppConfig, MPCParams, SatellitePhysicalParams, SimulationParams
+from .models import (
+    ActuatorPolicyParams,
+    AppConfig,
+    ControllerContractsParams,
+    MPCCoreParams,
+    MPCParams,
+    ReferenceSchedulerParams,
+    SatellitePhysicalParams,
+    SimulationParams,
+)
 from .physics import PhysicsConfig, get_physics_params
 from .simulation_config import SimulationConfig
 from .timing import TimingConfig, get_timing_params
@@ -25,6 +34,10 @@ __all__ = [
     "MPCParams",
     "SatellitePhysicalParams",
     "SimulationParams",
+    "ReferenceSchedulerParams",
+    "MPCCoreParams",
+    "ActuatorPolicyParams",
+    "ControllerContractsParams",
     # Supporting modules
     "PhysicsConfig",
     "TimingConfig",

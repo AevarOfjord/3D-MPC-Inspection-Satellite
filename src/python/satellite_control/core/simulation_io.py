@@ -278,6 +278,9 @@ class SimulationIO:
                 run_status=run_status,
                 status_detail=status_detail,
             )
+            self._write_mode_timeline(run_dir)
+            self._write_completion_gate_trace(run_dir)
+            self._write_controller_health(run_dir)
 
             plots_index = self._build_plots_index(run_dir)
             self._write_json(run_dir / "plots_index.json", plots_index)
@@ -347,9 +350,21 @@ class SimulationIO:
         config_meta = {
             "config_hash": os.environ.get("SATCTRL_RUNNER_CONFIG_HASH") or cfg_hash,
             "config_version": os.environ.get("SATCTRL_RUNNER_CONFIG_VERSION")
-            or "app_config_v2",
+            or "app_config_v3",
             "overrides_active": os.environ.get("SATCTRL_RUNNER_OVERRIDES_ACTIVE") == "1",
+            "response_mirrors_enabled": os.environ.get(
+                "SATCTRL_RUNNER_RESPONSE_MIRRORS_ENABLED", "1"
+            )
+            in {"1", "true", "TRUE"},
         }
+        mpc_controller = getattr(self.sim, "mpc_controller", None)
+        config_meta["controller_core"] = str(
+            getattr(self.sim, "controller_core_mode", None)
+            or getattr(mpc_controller, "controller_core", "legacy")
+        )
+        config_meta["solver_backend"] = str(
+            getattr(mpc_controller, "solver_backend", "OSQP")
+        )
 
         payload.setdefault("schema_version", "run_status_v1")
         payload.setdefault("run_id", run_dir.name)
@@ -430,6 +445,8 @@ class SimulationIO:
                 "final_time_s": 0.0,
                 "final_position_error_m": 0.0,
                 "final_angle_error_deg": 0.0,
+                "final_velocity_error_mps": 0.0,
+                "final_angular_velocity_error_degps": 0.0,
             }
 
         solve_times_ms: list[float] = []
@@ -441,6 +458,8 @@ class SimulationIO:
         final_time_s = 0.0
         final_position_error_m = 0.0
         final_angle_error_deg = 0.0
+        final_velocity_error_mps = 0.0
+        final_angular_velocity_error_degps = 0.0
         final_path_progress = 0.0
         final_path_remaining_m = 0.0
         max_position_error = {"value": 0.0, "time": 0.0}
@@ -464,6 +483,8 @@ class SimulationIO:
             "Path_Remaining_m",
             "Path_Error_m",
             "Path_Endpoint_Error_m",
+            "Velocity_Error_mps",
+            "Angular_Velocity_Error_degps",
             "Timing_Violation",
             "MPC_Time_Limit_Exceeded",
             "MPC_Status",
@@ -536,6 +557,19 @@ class SimulationIO:
                     self._to_float(row.get("Current_WY")),
                     self._to_float(row.get("Current_WZ")),
                 )
+                velocity_error_mps = self._vector_norm3(
+                    self._to_float(row.get("Error_VX")),
+                    self._to_float(row.get("Error_VY")),
+                    self._to_float(row.get("Error_VZ")),
+                )
+                angular_velocity_error_radps = self._vector_norm3(
+                    self._to_float(row.get("Error_WX")),
+                    self._to_float(row.get("Error_WY")),
+                    self._to_float(row.get("Error_WZ")),
+                )
+                angular_velocity_error_degps = math.degrees(
+                    angular_velocity_error_radps
+                )
                 active_thrusters = int(self._to_float(row.get("Total_Active_Thrusters")))
                 thruster_switches = int(self._to_float(row.get("Thruster_Switches")))
                 path_s = self._to_float(row.get("Path_S"))
@@ -569,6 +603,10 @@ class SimulationIO:
                         "Path_Remaining_m": f"{path_remaining:.6f}",
                         "Path_Error_m": f"{path_error:.6f}",
                         "Path_Endpoint_Error_m": f"{endpoint_error:.6f}",
+                        "Velocity_Error_mps": f"{velocity_error_mps:.6f}",
+                        "Angular_Velocity_Error_degps": (
+                            f"{angular_velocity_error_degps:.6f}"
+                        ),
                         "Timing_Violation": int(timing_violation),
                         "MPC_Time_Limit_Exceeded": int(time_limit_exceeded),
                         "MPC_Status": row.get("MPC_Status", ""),
@@ -582,6 +620,8 @@ class SimulationIO:
                 final_time_s = t
                 final_position_error_m = pos_error_m
                 final_angle_error_deg = ang_error_deg
+                final_velocity_error_mps = velocity_error_mps
+                final_angular_velocity_error_degps = angular_velocity_error_degps
                 final_path_progress = path_progress
                 final_path_remaining_m = path_remaining
 
@@ -613,6 +653,8 @@ class SimulationIO:
             "final_time_s": final_time_s,
             "final_position_error_m": final_position_error_m,
             "final_angle_error_deg": final_angle_error_deg,
+            "final_velocity_error_mps": final_velocity_error_mps,
+            "final_angular_velocity_error_degps": final_angular_velocity_error_degps,
             "final_path_progress": final_path_progress,
             "final_path_remaining_m": final_path_remaining_m,
             "max_position_error": max_position_error,
@@ -792,6 +834,16 @@ class SimulationIO:
             except Exception:
                 perf_metrics = {}
 
+        solver_health = getattr(self.sim, "v6_solver_health", None)
+        solver_fallback_count = int(getattr(solver_health, "fallback_count", 0))
+        solver_hard_limit_breaches = int(
+            getattr(solver_health, "hard_limit_breaches", 0)
+        )
+        solver_status = str(getattr(solver_health, "status", "ok"))
+        solver_fallback_active = bool(getattr(solver_health, "fallback_active", False))
+        solver_fallback_age_s = float(getattr(solver_health, "fallback_age_s", 0.0))
+        solver_fallback_scale = float(getattr(solver_health, "fallback_scale", 0.0))
+
         return {
             "schema_version": "kpi_summary_v1",
             "run_id": run_dir.name,
@@ -799,6 +851,12 @@ class SimulationIO:
             "final_time_s": control_stats.get("final_time_s", 0.0),
             "final_position_error_m": control_stats.get("final_position_error_m", 0.0),
             "final_angle_error_deg": control_stats.get("final_angle_error_deg", 0.0),
+            "final_velocity_error_mps": control_stats.get(
+                "final_velocity_error_mps", 0.0
+            ),
+            "final_angular_velocity_error_degps": control_stats.get(
+                "final_angular_velocity_error_degps", 0.0
+            ),
             "max_position_error_m": control_stats.get("max_position_error", {}).get(
                 "value", 0.0
             ),
@@ -825,6 +883,12 @@ class SimulationIO:
             "path_length_m": mission_stats.get("path_length_m", 0.0),
             "path_waypoint_count": mission_stats.get("path_waypoint_count", 0),
             "path_completed": mission_stats.get("path_completed", False),
+            "solver_fallback_count": solver_fallback_count,
+            "solver_hard_limit_breaches": solver_hard_limit_breaches,
+            "solver_status": solver_status,
+            "solver_fallback_active": solver_fallback_active,
+            "solver_fallback_age_s": solver_fallback_age_s,
+            "solver_fallback_scale": solver_fallback_scale,
             "performance_metrics_ref": perf_metrics.get("simulation", {}),
         }
 
@@ -1020,6 +1084,157 @@ class SimulationIO:
         with timeline_path.open("w", encoding="utf-8") as handle:
             for event in events:
                 handle.write(json.dumps(event) + "\n")
+
+    def _write_mode_timeline(self, run_dir: Path) -> None:
+        """Write V6 mode timeline CSV when runtime mode telemetry is available."""
+        entries = getattr(self.sim, "v6_mode_timeline", None)
+        if not isinstance(entries, list) or not entries:
+            return
+
+        output_path = run_dir / "mode_timeline.csv"
+        headers = [
+            "time_s",
+            "mode",
+            "time_in_mode_s",
+            "path_s",
+            "path_error_m",
+            "endpoint_error_m",
+        ]
+        with output_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            for row in entries:
+                if not isinstance(row, dict):
+                    continue
+                writer.writerow(
+                    {
+                        "time_s": f"{self._to_float(row.get('time_s')):.6f}",
+                        "mode": str(row.get("mode", "")),
+                        "time_in_mode_s": f"{self._to_float(row.get('time_in_mode_s')):.6f}",
+                        "path_s": f"{self._to_float(row.get('path_s')):.6f}",
+                        "path_error_m": f"{self._to_float(row.get('path_error_m')):.6f}",
+                        "endpoint_error_m": (
+                            ""
+                            if row.get("endpoint_error_m") is None
+                            else f"{self._to_float(row.get('endpoint_error_m')):.6f}"
+                        ),
+                    }
+                )
+
+    def _write_completion_gate_trace(self, run_dir: Path) -> None:
+        """Write V6 completion gate trace CSV for strict termination auditability."""
+        entries = getattr(self.sim, "v6_completion_gate_trace", None)
+        if not isinstance(entries, list) or not entries:
+            return
+
+        output_path = run_dir / "completion_gate_trace.csv"
+        headers = [
+            "time_s",
+            "progress_ok",
+            "position_ok",
+            "angle_ok",
+            "velocity_ok",
+            "angular_velocity_ok",
+            "hold_elapsed_s",
+            "hold_required_s",
+            "gate_ok",
+            "complete",
+            "last_breach_reason",
+            "path_s",
+            "path_length",
+            "path_error",
+        ]
+        with output_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            for row in entries:
+                if not isinstance(row, dict):
+                    continue
+                writer.writerow(
+                    {
+                        "time_s": f"{self._to_float(row.get('time_s')):.6f}",
+                        "progress_ok": int(bool(row.get("progress_ok", False))),
+                        "position_ok": int(bool(row.get("position_ok", False))),
+                        "angle_ok": int(bool(row.get("angle_ok", False))),
+                        "velocity_ok": int(bool(row.get("velocity_ok", False))),
+                        "angular_velocity_ok": int(
+                            bool(row.get("angular_velocity_ok", False))
+                        ),
+                        "hold_elapsed_s": f"{self._to_float(row.get('hold_elapsed_s')):.6f}",
+                        "hold_required_s": f"{self._to_float(row.get('hold_required_s')):.6f}",
+                        "gate_ok": int(bool(row.get("gate_ok", False))),
+                        "complete": int(bool(row.get("complete", False))),
+                        "last_breach_reason": str(
+                            row.get("last_breach_reason", "") or ""
+                        ),
+                        "path_s": f"{self._to_float(row.get('path_s')):.6f}",
+                        "path_length": f"{self._to_float(row.get('path_length')):.6f}",
+                        "path_error": f"{self._to_float(row.get('path_error')):.6f}",
+                    }
+                )
+
+    def _write_controller_health(self, run_dir: Path) -> None:
+        """Write V6 controller health summary JSON."""
+        solver_health = getattr(self.sim, "v6_solver_health", None)
+        mode_state = getattr(self.sim, "v6_mode_state", None)
+        completion_gate = getattr(self.sim, "v6_completion_gate", None)
+        mpc_controller = getattr(self.sim, "mpc_controller", None)
+        payload = {
+            "schema_version": "controller_health_v6",
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "controller_core": str(
+                getattr(self.sim, "controller_core_mode", None)
+                or getattr(mpc_controller, "controller_core", "v6")
+            ),
+            "solver_backend": str(getattr(mpc_controller, "solver_backend", "OSQP")),
+            "solver_health": {
+                "status": str(getattr(solver_health, "status", "ok")),
+                "fallback_count": int(getattr(solver_health, "fallback_count", 0)),
+                "hard_limit_breaches": int(
+                    getattr(solver_health, "hard_limit_breaches", 0)
+                ),
+                "last_fallback_reason": getattr(
+                    solver_health, "last_fallback_reason", None
+                ),
+                "fallback_reasons": dict(
+                    getattr(solver_health, "fallback_reasons", {}) or {}
+                ),
+                "fallback_active": bool(
+                    getattr(solver_health, "fallback_active", False)
+                ),
+                "fallback_age_s": float(
+                    self._to_float(getattr(solver_health, "fallback_age_s", 0.0))
+                ),
+                "fallback_scale": float(
+                    self._to_float(getattr(solver_health, "fallback_scale", 0.0))
+                ),
+            },
+            "mode_state": {
+                "current_mode": str(getattr(mode_state, "current_mode", "TRACK")),
+                "time_in_mode_s": float(
+                    self._to_float(getattr(mode_state, "time_in_mode_s", 0.0))
+                ),
+            },
+            "completion_gate": {
+                "position_ok": bool(getattr(completion_gate, "position_ok", False)),
+                "angle_ok": bool(getattr(completion_gate, "angle_ok", False)),
+                "velocity_ok": bool(getattr(completion_gate, "velocity_ok", False)),
+                "angular_velocity_ok": bool(
+                    getattr(completion_gate, "angular_velocity_ok", False)
+                ),
+                "hold_elapsed_s": float(
+                    self._to_float(getattr(completion_gate, "hold_elapsed_s", 0.0))
+                ),
+                "hold_required_s": float(
+                    self._to_float(getattr(completion_gate, "hold_required_s", 0.0))
+                ),
+                "last_breach_reason": getattr(
+                    completion_gate, "last_breach_reason", None
+                ),
+                "complete": bool(getattr(completion_gate, "complete", False)),
+            },
+        }
+        self._write_json(run_dir / "controller_health.json", payload)
 
     def _build_plots_index(self, run_dir: Path) -> dict[str, Any]:
         """Index static/interactive plot outputs for quick UI consumption."""
