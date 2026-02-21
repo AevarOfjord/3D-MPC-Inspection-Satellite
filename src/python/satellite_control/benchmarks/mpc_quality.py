@@ -78,7 +78,9 @@ def _read_latest_run_id() -> str | None:
 
 
 def _resolve_run_dir(before_run_id: str | None, combined_output: str) -> Path | None:
-    matches = re.findall(r"Created data directory:\s*(.+?)\s*$", combined_output, flags=re.MULTILINE)
+    matches = re.findall(
+        r"Created data directory:\s*(.+?)\s*$", combined_output, flags=re.MULTILINE
+    )
     if matches:
         candidate = Path(matches[-1].strip().strip("'\""))
         if not candidate.is_absolute():
@@ -129,7 +131,9 @@ def _extract_path_error_p95(step_stats_csv: Path) -> float:
     with step_stats_csv.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            value = _to_float(row.get("Path_Error_m", row.get("Path_Error")), default=-1.0)
+            value = _to_float(
+                row.get("Path_Error_m", row.get("Path_Error")), default=-1.0
+            )
             if value >= 0.0:
                 values.append(value)
     return _percentile(values, 0.95)
@@ -141,14 +145,18 @@ def _extract_metrics(run_dir: Path) -> dict[str, Any]:
 
     mpc_steps = int(_to_float(kpi.get("mpc_control_steps"), 0.0))
     total_switches = int(_to_float(kpi.get("total_thruster_switches"), 0.0))
-    switches_per_step = (float(total_switches) / float(mpc_steps)) if mpc_steps > 0 else 0.0
+    switches_per_step = (
+        (float(total_switches) / float(mpc_steps)) if mpc_steps > 0 else 0.0
+    )
 
     timing = perf.get("mpc_timing_contract")
     hard_limit_breaches = 0
     if isinstance(timing, dict):
         hard_limit_breaches = int(_to_float(timing.get("hard_limit_breaches"), 0.0))
     elif "solver_time_limit_exceeded_count" in kpi:
-        hard_limit_breaches = int(_to_float(kpi.get("solver_time_limit_exceeded_count"), 0.0))
+        hard_limit_breaches = int(
+            _to_float(kpi.get("solver_time_limit_exceeded_count"), 0.0)
+        )
 
     return {
         "path_completed": bool(kpi.get("path_completed", False)),

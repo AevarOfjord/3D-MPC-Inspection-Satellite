@@ -26,6 +26,7 @@ from satellite_control.dashboard.simulation_manager import SimulationManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
+
 # --- Shared constants ---
 def _resolve_project_root() -> Path:
     override = os.environ.get("SATELLITE_CONTROL_ROOT", "").strip()
@@ -142,4 +143,6 @@ if UI_DIST_DIR.exists():
 
         return FileResponse(UI_DIST_DIR / "index.html")
 else:
-    logger.info("No prebuilt UI found at %s; use Vite dev server on :5173.", UI_DIST_DIR)
+    logger.info(
+        "No prebuilt UI found at %s; use Vite dev server on :5173.", UI_DIST_DIR
+    )

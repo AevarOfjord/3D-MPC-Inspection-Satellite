@@ -41,7 +41,9 @@ class _FakeCompletionSimulation:
         position_tolerance: float = 0.1,
         validator: _FakeStateValidator | None = None,
     ):
-        self.mpc_controller = _FakeMPCController(s_val=s_val, endpoint_error=endpoint_error)
+        self.mpc_controller = _FakeMPCController(
+            s_val=s_val, endpoint_error=endpoint_error
+        )
         self.satellite = SimpleNamespace(position=np.array([2.0, 0.0, 0.0]))
         self.position_tolerance = position_tolerance
         self.state_validator = validator

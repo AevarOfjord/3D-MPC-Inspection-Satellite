@@ -280,7 +280,9 @@ class ConfigIO:
                     return value
             return None
 
-        def _resolve_path_hold_end(trajectory_dict: dict[str, Any] | None = None) -> float:
+        def _resolve_path_hold_end(
+            trajectory_dict: dict[str, Any] | None = None,
+        ) -> float:
             trajectory_dict = trajectory_dict or {}
             hold_raw = _pick_first_non_none(
                 mission_state_dict.get("path_hold_end"),

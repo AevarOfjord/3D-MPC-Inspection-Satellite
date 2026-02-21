@@ -268,7 +268,9 @@ async def preview_trajectory(config: MeshScanConfigModel):
         except Exception:
             return levels
 
-    def build_one_pass(pass_cfg: dict) -> tuple[list[tuple[float, float, float]], float, int]:
+    def build_one_pass(
+        pass_cfg: dict,
+    ) -> tuple[list[tuple[float, float, float]], float, int]:
         levels = compute_levels_for(
             pass_cfg["scan_axis"],
             pass_cfg.get("level_spacing"),
@@ -389,7 +391,13 @@ async def preview_trajectory(config: MeshScanConfigModel):
                     trans_len = float(
                         np.sum(
                             np.linalg.norm(
-                                np.diff(np.array([path[-1], *transition, pass_path[0]], dtype=float), axis=0),
+                                np.diff(
+                                    np.array(
+                                        [path[-1], *transition, pass_path[0]],
+                                        dtype=float,
+                                    ),
+                                    axis=0,
+                                ),
                                 axis=1,
                             )
                         )
@@ -420,7 +428,9 @@ async def preview_trajectory(config: MeshScanConfigModel):
         if not path:
             raise ValueError("No path generated from provided pass configuration.")
 
-        computed_levels = pass_summaries[0]["computed_levels"] if pass_summaries else config.levels
+        computed_levels = (
+            pass_summaries[0]["computed_levels"] if pass_summaries else config.levels
+        )
         return {
             "status": "success",
             "path": path,

@@ -11,25 +11,25 @@ interface CustomMeshModelProps {
   scale?: number;
 }
 
-export function CustomMeshModel({ 
-  objPath, 
-  position, 
+export function CustomMeshModel({
+  objPath,
+  position,
   orientation,
-  scale = 1 
+  scale = 1
 }: CustomMeshModelProps) {
   // Construct URL to serve the model via the backend API
   const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(objPath)}`;
-  
+
   console.log('[CustomMeshModel] Loading model from:', modelUrl);
-  
+
   // Load OBJ
   const obj = useLoader(OBJLoader, modelUrl);
 
-  
+
   // Clone and apply material
   const clonedObj = useMemo(() => {
     const clone = obj.clone();
-    
+
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -44,10 +44,10 @@ export function CustomMeshModel({
         mesh.receiveShadow = true;
       }
     });
-    
+
     return clone;
   }, [obj]);
-  
+
   return (
     <primitive
       object={clonedObj}

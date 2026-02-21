@@ -87,7 +87,9 @@ def _deterministic_scan_id(scan: dict[str, Any], index: int) -> str:
     return f"scan_{index + 1:02d}_{_safe_id(name)}"
 
 
-def _normalize_scan_project_payload(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _normalize_scan_project_payload(
+    data: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     scans_raw = data.get("scans") or []
     scans: list[dict[str, Any]] = []
     for index, scan in enumerate(scans_raw):
@@ -228,7 +230,9 @@ def _to_vec3(value: Any, fallback: tuple[float, float, float]) -> np.ndarray:
         return np.array(fallback, dtype=float)
 
 
-def _resample_polyline(path: list[list[float]], target_points: int) -> list[list[float]]:
+def _resample_polyline(
+    path: list[list[float]], target_points: int
+) -> list[list[float]]:
     if len(path) < 2 or target_points <= len(path):
         return [[float(p[0]), float(p[1]), float(p[2])] for p in path]
 
@@ -294,13 +298,19 @@ def _interpolate_key_level(levels: list[dict[str, Any]], t: float) -> dict[str, 
                     0.01,
                     float(prev.get("radius_x", 1.0))
                     + alpha
-                    * (float(nxt.get("radius_x", 1.0)) - float(prev.get("radius_x", 1.0))),
+                    * (
+                        float(nxt.get("radius_x", 1.0))
+                        - float(prev.get("radius_x", 1.0))
+                    ),
                 ),
                 "radius_y": max(
                     0.01,
                     float(prev.get("radius_y", 1.0))
                     + alpha
-                    * (float(nxt.get("radius_y", 1.0)) - float(prev.get("radius_y", 1.0))),
+                    * (
+                        float(nxt.get("radius_y", 1.0))
+                        - float(prev.get("radius_y", 1.0))
+                    ),
                 ),
                 "rotation_deg": float(prev.get("rotation_deg", 0.0))
                 + alpha
@@ -342,7 +352,10 @@ def _generate_scan_path(
     axis_span = float(np.dot(plane_b - plane_a, normal))
     if abs(axis_span) < 1e-9:
         # Fallback for degenerate input where A and B collapse along the axis.
-        axis_span = float(np.dot(plane_b - model_center, normal) - np.dot(plane_a - model_center, normal))
+        axis_span = float(
+            np.dot(plane_b - model_center, normal)
+            - np.dot(plane_a - model_center, normal)
+        )
     if abs(axis_span) < 1e-9:
         axis_span = 1.0
 
@@ -354,7 +367,9 @@ def _generate_scan_path(
     if spacing_raw is None:
         spacing_raw = scan.get("level_spacing")
     try:
-        level_spacing_m = float(spacing_raw) if spacing_raw is not None else float("nan")
+        level_spacing_m = (
+            float(spacing_raw) if spacing_raw is not None else float("nan")
+        )
     except Exception:
         level_spacing_m = float("nan")
 
@@ -396,7 +411,9 @@ def _generate_scan_path(
     base_densify = max(1, int(scan.get("densify_multiplier", 8)))
     densify_multiplier = max(1, int(round(base_densify * density_multiplier)))
 
-    dense_points = max(len(coarse_path), (len(coarse_path) - 1) * densify_multiplier + 1)
+    dense_points = max(
+        len(coarse_path), (len(coarse_path) - 1) * densify_multiplier + 1
+    )
     dense_path: list[list[float]] = []
     for idx in range(dense_points):
         t = idx / float(max(1, dense_points - 1))
@@ -537,7 +554,9 @@ def compile_scan_project(
         if from_id not in scans_by_id or to_id not in scans_by_id:
             raise ValueError(f"connector {connector.get('id')} references unknown scan")
         if from_id == to_id:
-            raise ValueError(f"connector {connector.get('id')} must connect two different scans")
+            raise ValueError(
+                f"connector {connector.get('id')} must connect two different scans"
+            )
         outgoing[from_id].append(connector)
         incoming[to_id].append(connector)
 
@@ -554,7 +573,9 @@ def compile_scan_project(
             if enforce_linear_chain and (
                 len(incoming[sid]) > 1 or len(outgoing[sid]) > 1
             ):
-                raise ValueError("only linear scan chains are supported in this version")
+                raise ValueError(
+                    "only linear scan chains are supported in this version"
+                )
 
         starts = [sid for sid in scan_ids if len(incoming[sid]) == 0]
         if enforce_linear_chain and len(starts) != 1:
@@ -621,7 +642,11 @@ def compile_scan_project(
             rev_from_in = str(incoming[sid][0].get("to_endpoint", "start")) == "end"
         if outgoing[sid]:
             rev_from_out = str(outgoing[sid][0].get("from_endpoint", "end")) == "start"
-        if rev_from_in is not None and rev_from_out is not None and rev_from_in != rev_from_out:
+        if (
+            rev_from_in is not None
+            and rev_from_out is not None
+            and rev_from_in != rev_from_out
+        ):
             raise ValueError(
                 f"scan '{sid}' has conflicting connector endpoint orientation"
             )
@@ -677,9 +702,14 @@ def compile_scan_project(
         samples = max(4, int(round(base_samples * density_multiplier)))
 
         connector_path = _sample_cubic_bezier(start, c1, c2, end, samples=samples)
-        if combined_path and np.linalg.norm(
-            np.asarray(combined_path[-1], dtype=float) - np.asarray(connector_path[0], dtype=float)
-        ) <= 1e-9:
+        if (
+            combined_path
+            and np.linalg.norm(
+                np.asarray(combined_path[-1], dtype=float)
+                - np.asarray(connector_path[0], dtype=float)
+            )
+            <= 1e-9
+        ):
             combined_path.extend(connector_path[1:])
         else:
             combined_path.extend(connector_path)
@@ -707,7 +737,8 @@ def compile_scan_project(
         else:
             if (
                 combined_path
-                and np.linalg.norm(np.asarray(combined_path[-1]) - np.asarray(path[0])) <= 1e-9
+                and np.linalg.norm(np.asarray(combined_path[-1]) - np.asarray(path[0]))
+                <= 1e-9
             ):
                 combined_path.extend(path[1:])
             else:

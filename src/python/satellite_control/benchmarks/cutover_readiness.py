@@ -55,7 +55,7 @@ def _read_json(path: Path) -> Any:
 def _coerce_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return value != 0
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
@@ -148,7 +148,11 @@ def _validate_full_scenarios(entry: dict[str, Any]) -> tuple[bool, str]:
     missing = sorted(EXPECTED_FULL_SCENARIOS - available)
     if missing:
         return False, f"missing scenarios: {', '.join(missing)}"
-    failed = [name for name in sorted(EXPECTED_FULL_SCENARIOS) if not _coerce_bool(idx[name].get("passed"))]
+    failed = [
+        name
+        for name in sorted(EXPECTED_FULL_SCENARIOS)
+        if not _coerce_bool(idx[name].get("passed"))
+    ]
     if failed:
         return False, f"failed scenarios: {', '.join(failed)}"
     return True, "all required full-scenarios passed"
@@ -181,11 +185,17 @@ def evaluate_cutover_readiness(
     schema_migration_ok: bool | None = None,
 ) -> CutoverReadinessReport:
     """Evaluate V6 default-cutover acceptance gates."""
-    normalized = [_normalize_suite_entry(item) for item in suite_history if isinstance(item, dict)]
+    normalized = [
+        _normalize_suite_entry(item) for item in suite_history if isinstance(item, dict)
+    ]
     sorted_entries = sorted(normalized, key=_sort_key)
 
-    fast_runs = [item for item in sorted_entries if not _coerce_bool(item.get("full", False))]
-    full_runs = [item for item in sorted_entries if _coerce_bool(item.get("full", False))]
+    fast_runs = [
+        item for item in sorted_entries if not _coerce_bool(item.get("full", False))
+    ]
+    full_runs = [
+        item for item in sorted_entries if _coerce_bool(item.get("full", False))
+    ]
 
     fast_consecutive = _iter_consecutive_passes(fast_runs)
     fast_ok = fast_consecutive >= int(max(1, min_fast_consecutive))
@@ -204,9 +214,7 @@ def evaluate_cutover_readiness(
             scenario_checks = [_validate_full_scenarios(item) for item in recent_full]
             if all(item[0] for item in scenario_checks):
                 full_ok = True
-                full_details = (
-                    f"{len(recent_full)}/{min_full_passes} recent full runs passed with required scenarios"
-                )
+                full_details = f"{len(recent_full)}/{min_full_passes} recent full runs passed with required scenarios"
             else:
                 first_fail = next(msg for ok, msg in scenario_checks if not ok)
                 full_details = first_fail
@@ -275,7 +283,9 @@ def evaluate_cutover_readiness(
         "total_runs": len(sorted_entries),
         "fast_runs": len(fast_runs),
         "full_runs": len(full_runs),
-        "latest_generated_at": _sort_key(sorted_entries[-1]) if sorted_entries else None,
+        "latest_generated_at": _sort_key(sorted_entries[-1])
+        if sorted_entries
+        else None,
         "min_fast_consecutive": int(max(1, min_fast_consecutive)),
         "min_full_passes": int(max(1, min_full_passes)),
     }

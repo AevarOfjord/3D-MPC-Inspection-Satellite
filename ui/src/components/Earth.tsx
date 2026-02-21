@@ -19,13 +19,13 @@ export function Earth() {
           Linearized dynamics assume a reference frame (LVLH).
           (0,0,0) is the reference position (e.g. another satellite or virtual point).
           Earth is far away "down" in Z direction usually, or somewhere else.
-          
+
           For visualization of "Relative Motion", we don't draw Earth at (0,0,0).
           We draw the reference at (0,0,0).
-          
+
           If we want to draw Earth in background to show orientation:
           Earth should be far away.
-          
+
           Let's just draw a "Reference" marker at (0,0,0) and the satellite.
           And maybe a grid.
       */}

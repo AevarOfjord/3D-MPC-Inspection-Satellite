@@ -53,7 +53,7 @@ export function TelemetryCharts() {
       </div>
 
       <div className="flex flex-1 gap-4 min-h-[120px] min-w-0">
-      
+
       {/* Position Error Chart */}
       {visible.pos && (
       <div className="flex-1 min-w-[240px] min-h-[120px] min-w-0 flex flex-col">
@@ -65,10 +65,10 @@ export function TelemetryCharts() {
            <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-               <XAxis 
-                  dataKey="time" 
-                  stroke="#666" 
-                  fontSize={10} 
+               <XAxis
+                  dataKey="time"
+                  stroke="#666"
+                  fontSize={10}
                   tickFormatter={(val) => `${val}s`}
                   interval="preserveStartEnd"
                   minTickGap={30}
@@ -99,12 +99,12 @@ export function TelemetryCharts() {
            <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-               <XAxis 
-                  dataKey="time" 
-                  stroke="#666" 
-                  fontSize={10} 
+               <XAxis
+                  dataKey="time"
+                  stroke="#666"
+                  fontSize={10}
                   tickFormatter={(val) => `${val}s`}
-                  interval="preserveStartEnd" 
+                  interval="preserveStartEnd"
                   minTickGap={30}
                />
                <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
@@ -133,12 +133,12 @@ export function TelemetryCharts() {
            <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-               <XAxis 
-                  dataKey="time" 
-                  stroke="#666" 
-                  fontSize={10} 
+               <XAxis
+                  dataKey="time"
+                  stroke="#666"
+                  fontSize={10}
                   tickFormatter={(val) => `${val}s`}
-                  interval="preserveStartEnd" 
+                  interval="preserveStartEnd"
                   minTickGap={30}
                />
                <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />
@@ -165,12 +165,12 @@ export function TelemetryCharts() {
            <ResponsiveContainer width="100%" height={120} minWidth={0}>
              <LineChart data={chartData}>
                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-               <XAxis 
-                  dataKey="time" 
-                  stroke="#666" 
-                  fontSize={10} 
+               <XAxis
+                  dataKey="time"
+                  stroke="#666"
+                  fontSize={10}
                   tickFormatter={(val) => `${val}s`}
-                  interval="preserveStartEnd" 
+                  interval="preserveStartEnd"
                   minTickGap={30}
                />
                <YAxis domain={['auto', 'auto']} stroke="#666" fontSize={10} width={50} />

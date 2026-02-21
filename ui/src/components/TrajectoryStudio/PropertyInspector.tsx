@@ -21,9 +21,9 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
         hasIssueForPath('start_pose') ||
         hasIssueForPath('start_target_id') ||
         hasIssueForPath('epoch');
-    
+
     if (selectedSegmentIndex === null) return null;
-    
+
     // --- Start Configuration Mode ---
     if (selectedSegmentIndex === -1) {
         return (
@@ -112,7 +112,7 @@ export function PropertyInspector({ builder }: PropertyInspectorProps) {
             </div>
         );
     }
-    
+
     const segment = state.segments[selectedSegmentIndex];
     if (!segment) return null;
     const segmentPathPrefix = `segments[${selectedSegmentIndex}]`;

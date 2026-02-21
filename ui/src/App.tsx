@@ -80,7 +80,7 @@ function App() {
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
   const scanFocusRef = useRef<string>('');
-  
+
   // Builder Hook (Hoisted State)
   const builder = useMissionBuilder();
   const is3DPrefetchedRef = useRef(false);
@@ -396,8 +396,8 @@ function App() {
                 onMouseEnter={preload3DModules}
                 onFocus={preload3DModules}
                 className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'viewer' 
-                    ? 'bg-blue-600 text-white shadow-sm' 
+                  appMode === 'viewer'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
@@ -420,8 +420,8 @@ function App() {
               <button
                 onClick={switchToRunner}
                 className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'runner' 
-                    ? 'bg-indigo-600 text-white shadow-sm' 
+                  appMode === 'runner'
+                    ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
@@ -431,8 +431,8 @@ function App() {
               <button
                 onClick={switchToDataView}
                 className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'data' 
-                    ? 'bg-orange-600 text-white shadow-sm' 
+                  appMode === 'data'
+                    ? 'bg-orange-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
@@ -442,8 +442,8 @@ function App() {
               <button
                 onClick={switchToSettings}
                 className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  appMode === 'settings' 
-                    ? 'bg-slate-600 text-white shadow-sm' 
+                  appMode === 'settings'
+                    ? 'bg-slate-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                 }`}
               >
@@ -487,8 +487,8 @@ function App() {
                 <button
                   onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
                   className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${
-                    viewMode === 'chase' 
-                      ? 'border-blue-500 bg-blue-900/30 text-blue-200' 
+                    viewMode === 'chase'
+                      ? 'border-blue-500 bg-blue-900/30 text-blue-200'
                       : 'border-slate-700 text-slate-300 hover:border-blue-500'
                   }`}
                 >
@@ -535,10 +535,10 @@ function App() {
           </div>
         )}
       </header>
-      
+
       {/* Main Layout Area */}
       <main className="flex-1 relative flex overflow-hidden">
-        
+
         {appMode === 'planner' && (
             <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
               <PlannerModeViewV4 viewMode={viewMode} builder={builder} onOpenRunner={switchToRunner} />

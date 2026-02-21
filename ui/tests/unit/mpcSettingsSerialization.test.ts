@@ -65,7 +65,7 @@ describe('MPC settings serialization', () => {
         ...normalized!.mpc,
         coast_pos_tolerance: 0.2,
         progress_taper_distance: 1.0,
-      } as unknown as typeof normalized!.mpc,
+      } as any,
     };
 
     const envelope = testingApi.buildV3Envelope(withRemoved);

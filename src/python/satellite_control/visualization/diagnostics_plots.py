@@ -355,7 +355,7 @@ def _extract_obstacles(plot_gen: Any) -> list[dict[str, Any]]:
             elif isinstance(obs, dict):
                 pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
                 radius = float(obs.get("radius", 0.0))
-            elif isinstance(obs, (list, tuple)) and len(obs) >= 4:
+            elif isinstance(obs, list | tuple) and len(obs) >= 4:
                 pos = [float(obs[0]), float(obs[1]), float(obs[2])]
                 radius = float(obs[3])
             else:
@@ -396,7 +396,9 @@ def generate_obstacle_clearance_over_time_plot(plot_gen: Any, plot_dir: Path) ->
         phys_df = None
         cols = []
 
-    if phys_df is not None and all(c in cols for c in ("Current_X", "Current_Y", "Current_Z")):
+    if phys_df is not None and all(
+        c in cols for c in ("Current_X", "Current_Y", "Current_Z")
+    ):
         x = np.array(phys_df["Current_X"].values, dtype=float)
         y = np.array(phys_df["Current_Y"].values, dtype=float)
         z = np.array(phys_df["Current_Z"].values, dtype=float)
@@ -494,7 +496,9 @@ def generate_solver_iterations_and_status_timeline_plot(
                 va="center",
                 transform=ax.transAxes,
             )
-        PlotStyle.save_figure(fig, plot_dir / "solver_iterations_and_status_timeline.png")
+        PlotStyle.save_figure(
+            fig, plot_dir / "solver_iterations_and_status_timeline.png"
+        )
         return
 
     def get_col(name: str) -> np.ndarray:
@@ -502,7 +506,9 @@ def generate_solver_iterations_and_status_timeline_plot(
             return np.array(df[name].values)
         return np.array(plot_gen._col(name))
 
-    iterations_raw = get_col("MPC_Iterations") if "MPC_Iterations" in cols else np.array([])
+    iterations_raw = (
+        get_col("MPC_Iterations") if "MPC_Iterations" in cols else np.array([])
+    )
     if len(iterations_raw) == 0:
         iterations = np.zeros(len(time), dtype=float)
     else:
@@ -513,7 +519,11 @@ def generate_solver_iterations_and_status_timeline_plot(
             except (TypeError, ValueError):
                 iterations[i] = 0.0
 
-    statuses = get_col("MPC_Status") if "MPC_Status" in cols else np.array(["UNKNOWN"] * len(time))
+    statuses = (
+        get_col("MPC_Status")
+        if "MPC_Status" in cols
+        else np.array(["UNKNOWN"] * len(time))
+    )
     status_labels = []
     status_codes = []
     for raw in statuses[: len(time)]:

@@ -16,7 +16,7 @@ Then open:
 
 ### Option B: macOS zero-terminal launch
 
-- Double-click `Start_Mission_Control.command`
+- Double-click `scripts/Start_Mission_Control.command`
 
 ### Option C: packaged handoff build
 

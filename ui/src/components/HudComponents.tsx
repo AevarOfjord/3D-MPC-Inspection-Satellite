@@ -28,7 +28,7 @@ export function HudPanel({ children, className = '', title }: { children: React.
   return (
     <div className={`
       relative overflow-hidden
-      bg-slate-950/80 backdrop-blur-md 
+      bg-slate-950/80 backdrop-blur-md
       border border-slate-700/50 rounded-lg
       shadow-xl
       ${className}
@@ -57,25 +57,25 @@ export function HudPanel({ children, className = '', title }: { children: React.
 /**
  * A stylized button with hover effects and glows.
  */
-export function HudButton({ 
-    children, 
-    onClick, 
-    variant = 'primary', 
-    size = 'md', 
-    className = '', 
+export function HudButton({
+    children,
+    onClick,
+    variant = 'primary',
+    size = 'md',
+    className = '',
     disabled = false,
     icon: Icon
-}: { 
-    children: React.ReactNode; 
-    onClick?: () => void; 
-    variant?: Variant; 
-    size?: Size; 
+}: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    variant?: Variant;
+    size?: Size;
     className?: string;
     disabled?: boolean;
     icon?: LucideIcon;
 }) {
   return (
-    <button 
+    <button
         onClick={onClick}
         disabled={disabled}
         className={`
@@ -92,7 +92,7 @@ export function HudButton({
     >
         {/* Animated Scanline effect on hover */}
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out pointer-events-none" />
-        
+
         {Icon && <Icon size={size === 'sm' ? 14 : 18} />}
         {children}
     </button>
@@ -102,13 +102,13 @@ export function HudButton({
 /**
  * A styled input field.
  */
-export function HudInput({ 
-    label, 
-    value, 
-    onChange, 
-    type = "text", 
-    step, 
-    min, 
+export function HudInput({
+    label,
+    value,
+    onChange,
+    type = "text",
+    step,
+    min,
     max,
     unit,
     placeholder,
@@ -160,8 +160,8 @@ export function HudInput({
                         onChange(e.target.value);
                     }}
                     className={`
-                        w-full bg-slate-900/50 border border-slate-700 
-                        focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 
+                        w-full bg-slate-900/50 border border-slate-700
+                        focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50
                         text-slate-200 font-mono text-sm
                         rounded-sm px-2 py-1.5 outline-none transition-all
                         placeholder:text-slate-600
@@ -185,7 +185,7 @@ export function HudSection({ title, children, defaultOpen = false }: { title: st
 
     return (
         <div className="border border-slate-800/50 rounded-sm overflow-hidden bg-slate-900/20">
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
             >

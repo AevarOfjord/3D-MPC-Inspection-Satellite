@@ -62,14 +62,14 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                     <mesh
                         onPointerOver={(e) => { e.stopPropagation(); setHighlightIndex(i); onHover?.(points[i]); }}
                         onPointerOut={() => { setHighlightIndex(null); onHover?.(null); }}
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
+                        onClick={(e) => {
+                            e.stopPropagation();
                             if (i === 0) return;
                             if (e.shiftKey || e.altKey) {
                                 builderActions.removeWaypointAtIndex?.(i);
                                 return;
                             }
-                            builderActions.setSelectedObjectId(`waypoint-${i}`); 
+                            builderActions.setSelectedObjectId(`waypoint-${i}`);
                         }}
                     >
                         <sphereGeometry args={[markerRadius, 8, 8]} />
@@ -92,7 +92,7 @@ export function EditableTrajectory({ points, onHover, builderActions, selectedId
                             />
                         </mesh>
                     )}
-                    
+
                     {/* Visual Dot for every 10th point to give structure without clutter */}
                     {/* {i % 10 === 0 && <mesh scale={0.5}><sphereGeometry args={[0.1]} /><meshBasicMaterial color="#22d3ee" opacity={0.3} transparent /></mesh>} */}
                 </group>

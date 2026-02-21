@@ -202,10 +202,10 @@ export function PlaybackSelector() {
         return telemetry.normalize(withPath);
       });
       dataRef.current = normalized;
-      
+
       // Store all playback data for trajectory visualization
       useTelemetryStore.getState().setPlaybackData(normalized);
-      
+
       // Set final state for visualization
       if (normalized.length > 0) {
         useTelemetryStore.getState().setPlaybackFinalState(normalized[normalized.length - 1]);

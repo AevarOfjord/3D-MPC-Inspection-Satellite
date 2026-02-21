@@ -114,9 +114,7 @@ class PlotGenerator:
         qx = self._col(f"{prefix}_QX")
         qy = self._col(f"{prefix}_QY")
         qz = self._col(f"{prefix}_QZ")
-        has_quat_cols = (
-            len(qw) == n and len(qx) == n and len(qy) == n and len(qz) == n
-        )
+        has_quat_cols = len(qw) == n and len(qx) == n and len(qy) == n and len(qz) == n
 
         if has_quat_cols:
             q = np.column_stack((qw, qx, qy, qz)).astype(float, copy=False)
@@ -482,10 +480,7 @@ class PlotGenerator:
 
         q_err_deg = np.degrees(
             np.array(
-                [
-                    quat_angle_error(q_ref[i], q_curr[i])
-                    for i in range(min_len)
-                ],
+                [quat_angle_error(q_ref[i], q_curr[i]) for i in range(min_len)],
                 dtype=float,
             )
         )

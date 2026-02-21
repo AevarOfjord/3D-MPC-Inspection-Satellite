@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
- 
+
 import { DoubleSide, Group, Mesh } from 'three';
 import { telemetry } from '../services/telemetry';
 import type { TelemetryData } from '../services/telemetry';
@@ -35,7 +35,7 @@ export function SatelliteModel() {
       if (!position || !quaternion) return;
       if (!Number.isFinite(position[0]) || !Number.isFinite(position[1]) || !Number.isFinite(position[2])) return;
       if (quaternion.some(v => !Number.isFinite(v))) return;
-      
+
       // Update Position
       groupRef.current.position.set(position[0], position[1], position[2]);
 
@@ -48,14 +48,14 @@ export function SatelliteModel() {
           THRUSTER_CONFIG.forEach((_, i) => {
               const mesh = plumeRefs.current[i];
               if (mesh) {
-                  // indices 1-6 in physics might map to 0-5. 
+                  // indices 1-6 in physics might map to 0-5.
                   // app.py sends 12 values? let's assume first 6 map nicely.
                   // If thruster value > 0, show plume
                   const val = thrusters[i];
                   if (val > 0.05) {
                       mesh.visible = true;
                       // Scale length with thrust
-                      mesh.scale.set(1, 0.5 + val * 2, 1); 
+                      mesh.scale.set(1, 0.5 + val * 2, 1);
                       // Update opacity
                       (mesh.material as any).opacity = 0.4 + val * 0.4;
                   } else {
@@ -133,7 +133,7 @@ export function SatelliteModel() {
              <meshBasicMaterial color="#00ffff" transparent opacity={0.6} depthWrite={false} />
           </mesh>
       ))}
-      
+
       {/* Body axes removed for scale realism */}
     </group>
   );

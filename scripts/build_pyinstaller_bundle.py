@@ -30,14 +30,16 @@ def _data_sep() -> str:
 
 
 def _write_launcher(app_dir: Path) -> None:
-    exe_name = "SatelliteControl.exe" if sys.platform.startswith("win") else "SatelliteControl"
+    exe_name = (
+        "SatelliteControl.exe" if sys.platform.startswith("win") else "SatelliteControl"
+    )
     if sys.platform.startswith("win"):
         launcher = app_dir / "RUN_APP.bat"
         launcher.write_text(
             "@echo off\r\n"
             "setlocal\r\n"
             "set ROOT=%~dp0\r\n"
-            "\"%ROOT%SatelliteControl.exe\" %*\r\n",
+            '"%ROOT%SatelliteControl.exe" %*\r\n',
             encoding="utf-8",
         )
         return
@@ -45,8 +47,8 @@ def _write_launcher(app_dir: Path) -> None:
     launcher.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "ROOT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n"
-        f"exec \"$ROOT_DIR/{exe_name}\" \"$@\"\n",
+        'ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+        f'exec "$ROOT_DIR/{exe_name}" "$@"\n',
         encoding="utf-8",
     )
     launcher.chmod(0o755)
@@ -122,14 +124,18 @@ def _build_pyinstaller(root: Path, dist_dir: Path, work_dir: Path) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build Mission Control PyInstaller artifact.")
+    parser = argparse.ArgumentParser(
+        description="Build Mission Control PyInstaller artifact."
+    )
     parser.add_argument("--max-mb", type=int, default=150)
     args = parser.parse_args()
 
     root = _project_root()
     ui_dist = root / "ui" / "dist" / "index.html"
     if not ui_dist.exists():
-        raise SystemExit("Prebuilt UI missing at ui/dist/index.html. Run `make ui-build` first.")
+        raise SystemExit(
+            "Prebuilt UI missing at ui/dist/index.html. Run `make ui-build` first."
+        )
 
     platform = _platform_tag()
     release_dir = root / "release"

@@ -11,22 +11,22 @@
 
 ## 🚀 Features
 
-| Feature                    | Description                                            |
-| -------------------------- | ------------------------------------------------------ |
-| **Reaction Wheel Control** | 3-axis attitude control with 0.18° precision           |
-| **Orbital Dynamics**       | Hill-Clohessy-Wiltshire gravity gradient model         |
-| **Obstacle Avoidance**     | Dynamic hard constraints for environment obstacles     |
-| **Mission Designer UI**    | Three.js web interface for trajectory planning         |
+| Feature                    | Description                                             |
+| -------------------------- | ------------------------------------------------------- |
+| **Reaction Wheel Control** | 3-axis attitude control with 0.18° precision            |
+| **Orbital Dynamics**       | Hill-Clohessy-Wiltshire gravity gradient model          |
+| **Obstacle Avoidance**     | Dynamic hard constraints for environment obstacles      |
+| **Mission Designer UI**    | Three.js web interface for trajectory planning          |
 | **Mission System**         | Unified mission JSON with scan, transfer, hold segments |
 
 ## 🛠️ Technology Stack
 
-| Component   | Technology                         |
-| ----------- | ---------------------------------- |
-| **Solver**  | OSQP (<5ms solve times)            |
-| **Physics** | Custom C++ engine                  |
+| Component   | Technology                                    |
+| ----------- | --------------------------------------------- |
+| **Solver**  | OSQP (<5ms solve times)                       |
+| **Physics** | Custom C++ engine                             |
 | **Control** | 13-state MPC with thrusters + reaction wheels |
-| **UI**      | Three.js 3D visualization          |
+| **UI**      | Three.js 3D visualization                     |
 
 ## 📁 Project Structure
 
@@ -87,8 +87,8 @@ make ui-build
 
 ## 🧪 Tests
 
-| Test      | Command                |
-| --------- | ---------------------- |
+| Test      | Command                         |
+| --------- | ------------------------------- |
 | All tests | `.venv311/bin/python -m pytest` |
 
 ## 📊 Performance
@@ -107,9 +107,9 @@ and drive the path-following MPC setup.
 
 ## 🤝 First Contribution
 
-- Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and workflow.
-- Please follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) in all project spaces.
-- Report vulnerabilities via [SECURITY.md](SECURITY.md).
+- Start with [CONTRIBUTING.md](docs/CONTRIBUTING.md) for setup and workflow.
+- Please follow [CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md) in all project spaces.
+- Report vulnerabilities via [SECURITY.md](docs/SECURITY.md).
 - Good first task: run `make lint-backend` and pick one lint/docs cleanup item from open issues.
 
 ## 📄 License
