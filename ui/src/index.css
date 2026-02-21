@@ -8,6 +8,13 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
+  background-color: #0b0f19; /* space-950 */
+  background-image:
+    radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(217, 70, 239, 0.15) 0px, transparent 50%);
+  color: #e2e8f0;
+  font-family: "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer utilities {
@@ -15,5 +22,9 @@ body,
     text-shadow:
       0 0 5px rgba(6, 182, 212, 0.5),
       0 0 10px rgba(6, 182, 212, 0.3);
+  }
+
+  .glass-panel {
+    @apply bg-slate-900/60 backdrop-blur-md border border-white/5;
   }
 }

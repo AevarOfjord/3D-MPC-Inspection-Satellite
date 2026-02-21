@@ -149,6 +149,7 @@ run: stop
 stop:
 	@echo "Stopping any existing process on port 8000 (Backend)..."
 	@$(KILL_BACKEND)
+	@pkill -f "satellite_control.cli serve" || true
 	@echo "Stopping any existing process on port 5173 (Frontend)..."
 	@$(KILL_FRONTEND)
 
@@ -160,7 +161,7 @@ backend:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py --dev
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli serve --dev
 
 # Start backend in packaged-app mode (no Vite, serves ui/dist on :8000).
 backend-prod:
@@ -175,7 +176,7 @@ backend-prod:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_dashboard.py
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli serve
 
 # Install frontend dependencies only when lockfiles change.
 $(UI_DEPS_STAMP): $(UI_LOCKFILES)
@@ -318,7 +319,7 @@ sim:
 		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
 		*) echo "Skipping tests."; ;; \
 	esac
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/run_simulation.py
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli run
 
 # ============================================================================
 # Build targets
@@ -393,11 +394,12 @@ test-ui-e2e: $(UI_DEPS_STAMP)
 
 # Build docs with warnings treated as errors.
 docs-build:
-	@if ! $(VENV_PY) -c "import sphinx, myst_parser" >/dev/null 2>&1; then \
+	@echo "Building MkDocs documentation..."
+	@if ! $(VENV_PY) -c "import mkdocs" >/dev/null 2>&1; then \
 		echo "Missing docs dependencies. Install with: $(VENV_PY) -m pip install -e \".[docs]\""; \
 		exit 1; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m sphinx -W -b html docs docs/_build/html
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_ACTIVATE) && mkdocs build --strict
 
 # Run full V4 beta release verification and packaging.
 release-v4-beta: lint test-cov test-ui test-ui-e2e docs-build package-app package-pyinstaller

@@ -321,5 +321,27 @@ def run(
             sim.close()
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Host to bind (default: 127.0.0.1)"),
+    port: int = typer.Option(8000, help="Port to bind (default: 8000)"),
+    dev: bool = typer.Option(
+        False, "--dev", help="Enable auto-reload for local development"
+    ),
+):
+    """
+    Run Satellite Control dashboard backend.
+    """
+    import uvicorn
+
+    uvicorn.run(
+        "satellite_control.dashboard.app:app",
+        host=host,
+        port=port,
+        reload=dev,
+        reload_dirs=["src"] if dev else None,
+    )
+
+
 if __name__ == "__main__":
     app()

@@ -43,7 +43,9 @@ def main() -> int:
     python_exec = _venv_python(root) or Path(sys.executable)
     cmd = [
         str(python_exec),
-        str(root / "scripts" / "run_dashboard.py"),
+        "-m",
+        "satellite_control.cli",
+        "serve",
         "--host",
         args.host,
         "--port",
