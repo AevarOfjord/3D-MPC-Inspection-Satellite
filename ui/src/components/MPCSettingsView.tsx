@@ -33,9 +33,6 @@ interface MpcSettings {
   r_rw_torque: number;
   thrust_l1_weight: number;
   thrust_pair_weight: number;
-  coast_pos_tolerance: number;
-  coast_vel_tolerance: number;
-  coast_min_speed: number;
   thruster_type: 'PWM' | 'CON';
   verbose_mpc: boolean;
   obstacle_margin: number;
@@ -43,8 +40,6 @@ interface MpcSettings {
   path_speed: number;
   path_speed_min: number;
   path_speed_max: number;
-  progress_taper_distance: number;
-  progress_slowdown_distance: number;
   enable_thruster_hysteresis: boolean;
   thruster_hysteresis_on: number;
   thruster_hysteresis_off: number;
@@ -165,9 +160,6 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   r_rw_torque: 0.003,
   thrust_l1_weight: 0.02,
   thrust_pair_weight: 0.8,
-  coast_pos_tolerance: 0.0,
-  coast_vel_tolerance: 0.0,
-  coast_min_speed: 0.0,
   thruster_type: 'CON',
   verbose_mpc: false,
   obstacle_margin: 0.1,
@@ -175,8 +167,6 @@ const DEFAULT_MPC_SETTINGS: MpcSettings = {
   path_speed: 0.08,
   path_speed_min: 0.0,
   path_speed_max: 0.08,
-  progress_taper_distance: 0.0,
-  progress_slowdown_distance: 0.0,
   enable_thruster_hysteresis: true,
   thruster_hysteresis_on: 0.015,
   thruster_hysteresis_off: 0.007,
@@ -192,6 +182,7 @@ const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   max_duration: 0.0,
   control_dt: 0.05,
 };
+const MPC_CANONICAL_KEYS = new Set(Object.keys(DEFAULT_MPC_SETTINGS));
 
 const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
   {
@@ -333,18 +324,6 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         impact: 'Lower maximum limits aggressiveness and compute stress.',
       },
       {
-        key: 'mpc.progress_taper_distance',
-        label: 'Progress Taper Distance (m)',
-        description: 'Distance-to-end region where path speed can taper. 0 uses auto behavior.',
-        impact: 'Higher values start slowing earlier near endpoint.',
-      },
-      {
-        key: 'mpc.progress_slowdown_distance',
-        label: 'Progress Slowdown Distance (m)',
-        description: 'Error-trigger distance used to reduce progress when tracking quality degrades.',
-        impact: 'Higher values trigger slowdown earlier for safer tracking.',
-      },
-      {
         key: 'mpc.Q_terminal_pos',
         label: 'Terminal Position (Q_terminal_pos)',
         description: 'Terminal-stage position weight. 0 means automatic scaling.',
@@ -439,24 +418,6 @@ const SETTING_REFERENCE_SECTIONS: SettingReferenceSection[] = [
         description: 'Penalty on opposing thrusters firing together.',
         impact: 'Higher values discourage wasteful opposing pair usage.',
       },
-      {
-        key: 'mpc.coast_pos_tolerance',
-        label: 'Coast Position Tol. (m)',
-        description: 'Position-error band where coasting logic may engage.',
-        impact: 'Higher tolerance enters coast mode more easily.',
-      },
-      {
-        key: 'mpc.coast_vel_tolerance',
-        label: 'Coast Velocity Tol. (m/s)',
-        description: 'Lateral velocity threshold for coasting behavior.',
-        impact: 'Higher tolerance allows coasting at larger residual velocity.',
-      },
-      {
-        key: 'mpc.coast_min_speed',
-        label: 'Coast Min Speed (m/s)',
-        description: 'Minimum forward speed maintained when coasting logic is active.',
-        impact: 'Higher values keep progress moving even in coast mode.',
-      },
     ],
   },
 ];
@@ -466,6 +427,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return value as Record<string, unknown>;
   }
   return null;
+}
+
+function stripRemovedMpcFields(
+  mpc: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  const source = mpc ?? {};
+  const sanitized: Record<string, unknown> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (MPC_CANONICAL_KEYS.has(key)) {
+      sanitized[key] = value;
+    }
+  });
+  return sanitized;
 }
 
 function normalizeConfig(raw: unknown): SettingsConfig | null {
@@ -487,9 +461,10 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
       : undefined;
 
   if (mpc && simulation) {
+    const sanitizedMpc = stripRemovedMpcFields(mpc);
     const normalizedMpc = {
       ...DEFAULT_MPC_SETTINGS,
-      ...(mpc as Partial<MpcSettings>),
+      ...(sanitizedMpc as Partial<MpcSettings>),
     };
     const normalizedSimulation = {
       ...DEFAULT_SIMULATION_SETTINGS,
@@ -530,7 +505,7 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
 
   const normalizedMpc = {
     ...DEFAULT_MPC_SETTINGS,
-    ...(legacyMpc as Partial<MpcSettings>),
+    ...(stripRemovedMpcFields(legacyMpc) as Partial<MpcSettings>),
   };
 
   if (legacyWeights) {
@@ -581,6 +556,7 @@ function normalizeConfig(raw: unknown): SettingsConfig | null {
 }
 
 function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
+  const sanitizedMpc = stripRemovedMpcFields(config.mpc as Record<string, unknown>);
   const actuatorPolicy =
     asRecord(config.actuator_policy) ?? {};
   const mergedActuatorPolicy: Record<string, unknown> = {
@@ -591,7 +567,7 @@ function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
   };
 
   const appConfig: Record<string, unknown> = {
-    mpc_core: config.mpc,
+    mpc_core: sanitizedMpc,
     actuator_policy: mergedActuatorPolicy,
     simulation: {
       ...config.simulation,
@@ -615,6 +591,12 @@ function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
     app_config: appConfig,
   };
 }
+
+export const MPC_SETTINGS_TESTING = {
+  normalizeConfig,
+  buildV3Envelope,
+  stripRemovedMpcFields,
+};
 
 function stableSerializeConfig(config: SettingsConfig): string {
   return JSON.stringify(config);
@@ -704,9 +686,6 @@ function validateConfig(config: SettingsConfig): string[] {
     ['r_rw_torque', mpc.r_rw_torque],
     ['thrust_l1_weight', mpc.thrust_l1_weight],
     ['thrust_pair_weight', mpc.thrust_pair_weight],
-    ['coast_pos_tolerance', mpc.coast_pos_tolerance],
-    ['coast_vel_tolerance', mpc.coast_vel_tolerance],
-    ['coast_min_speed', mpc.coast_min_speed],
   ];
   nonNegativeWeights.forEach(([name, value]) => {
     if (!isNonNegative(value)) issues.push(`${name} must be >= 0.`);
@@ -718,6 +697,7 @@ function validateConfig(config: SettingsConfig): string[] {
 export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [config, setConfig] = useState<SettingsConfig | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string>('');
+  const [removedMpcFieldsWarning, setRemovedMpcFieldsWarning] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -794,6 +774,15 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       const data = await res.json();
       const normalized = normalizeConfig(data);
       if (!normalized) throw new Error('Backend returned invalid config format');
+      const configMeta = asRecord(asRecord(data)?.config_meta);
+      const deprecations = asRecord(configMeta?.deprecations);
+      const removedFieldValue = deprecations?.removed_mpc_fields_seen;
+      const removedFields = Array.isArray(removedFieldValue)
+        ? removedFieldValue.filter(
+            (value): value is string => typeof value === 'string' && value.length > 0
+          )
+        : [];
+      setRemovedMpcFieldsWarning(removedFields);
       setConfig(normalized);
       setSavedSnapshot(stableSerializeConfig(normalized));
     } catch (err) {
@@ -1286,6 +1275,12 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
           {successMsg && (
             <div className="p-3 bg-green-900/20 border border-green-800 rounded text-green-200 text-sm flex items-center gap-2">
               <Check size={16} /> {successMsg}
+            </div>
+          )}
+          {removedMpcFieldsWarning.length > 0 && (
+            <div className="p-3 bg-amber-900/20 border border-amber-700 rounded text-amber-200 text-sm">
+              <p className="font-semibold">Deprecated MPC fields were dropped by backend:</p>
+              <p className="text-xs mt-1">{removedMpcFieldsWarning.join(', ')}</p>
             </div>
           )}
           {validationErrors.length > 0 && (
@@ -1895,22 +1890,6 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   step={0.001}
                 />
                 <ConfigField
-                  label="Progress Taper Distance (m)"
-                  value={config?.mpc.progress_taper_distance}
-                  onChange={(v) => updateConfig('mpc.progress_taper_distance', v)}
-                  isNumber
-                  step={0.01}
-                  desc="0 = auto"
-                />
-                <ConfigField
-                  label="Progress Slowdown Distance (m)"
-                  value={config?.mpc.progress_slowdown_distance}
-                  onChange={(v) => updateConfig('mpc.progress_slowdown_distance', v)}
-                  isNumber
-                  step={0.01}
-                  desc="0 = auto"
-                />
-                <ConfigField
                   label="Terminal Position (Q_terminal_pos)"
                   value={config?.mpc.Q_terminal_pos}
                   onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)}
@@ -2018,24 +1997,6 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                   label="Thruster Pair Weight"
                   value={config?.mpc.thrust_pair_weight}
                   onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Coast Position Tol. (m)"
-                  value={config?.mpc.coast_pos_tolerance}
-                  onChange={(v) => updateConfig('mpc.coast_pos_tolerance', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Coast Velocity Tol. (m/s)"
-                  value={config?.mpc.coast_vel_tolerance}
-                  onChange={(v) => updateConfig('mpc.coast_vel_tolerance', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Coast Min Speed (m/s)"
-                  value={config?.mpc.coast_min_speed}
-                  onChange={(v) => updateConfig('mpc.coast_min_speed', v)}
                   isNumber
                 />
               </div>

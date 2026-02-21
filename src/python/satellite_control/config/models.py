@@ -373,24 +373,6 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Penalty on opposing thruster co-firing (promotes single-thruster use per axis)",
     )
-    coast_pos_tolerance: float = Field(
-        constants.Constants.COAST_POS_TOLERANCE,
-        ge=0.0,
-        le=1e3,
-        description="Coasting band position error [m] (0 = off)",
-    )
-    coast_vel_tolerance: float = Field(
-        constants.Constants.COAST_VEL_TOLERANCE,
-        ge=0.0,
-        le=1e3,
-        description="Coasting band lateral velocity [m/s] (0 = off)",
-    )
-    coast_min_speed: float = Field(
-        constants.Constants.COAST_MIN_SPEED,
-        ge=0.0,
-        le=1e3,
-        description="Minimum progress speed when coasting [m/s]",
-    )
     # Adaptive control
     thruster_type: str = Field(
         constants.Constants.THRUSTER_TYPE,
@@ -431,18 +413,6 @@ class MPCParams(BaseModel):
         gt=0.0,
         le=1.0,
         description="Maximum path speed [m/s]",
-    )
-    progress_taper_distance: float = Field(
-        constants.Constants.PROGRESS_TAPER_DISTANCE,
-        ge=0.0,
-        le=1e6,
-        description="Distance before endpoint to taper v_ref (0 = auto)",
-    )
-    progress_slowdown_distance: float = Field(
-        constants.Constants.PROGRESS_SLOWDOWN_DISTANCE,
-        ge=0.0,
-        le=1e6,
-        description="Contour error threshold to slow progress (0 = auto)",
     )
     max_linear_velocity: float = Field(
         constants.Constants.MAX_LINEAR_VELOCITY,
@@ -515,8 +485,6 @@ class MPCParams(BaseModel):
         "Q_s_anchor",
         "path_speed_min",
         "path_speed_max",
-        "progress_taper_distance",
-        "progress_slowdown_distance",
         "Q_terminal_pos",
         "Q_terminal_s",
         "progress_reward",
@@ -537,9 +505,6 @@ class MPCParams(BaseModel):
     EXPERT_FIELDS: ClassVar[tuple[str, ...]] = (
         "thrust_l1_weight",
         "thrust_pair_weight",
-        "coast_pos_tolerance",
-        "coast_vel_tolerance",
-        "coast_min_speed",
     )
 
     @classmethod

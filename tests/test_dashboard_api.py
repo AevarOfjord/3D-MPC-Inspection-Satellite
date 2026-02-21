@@ -194,6 +194,64 @@ class TestDashboardAPI:
         assert cfg["mpc"]["prediction_horizon"] == 45
         assert cfg["simulation"]["max_duration"] == 93.0
 
+    def test_runner_config_warn_ignores_removed_mpc_fields(self, client):
+        """Removed MPC fields should be ignored with deprecation metadata."""
+        reset_resp = client.post("/runner/config/reset")
+        assert reset_resp.status_code == 200
+
+        v3_resp = client.post(
+            "/runner/config",
+            json={
+                "schema_version": "app_config_v3",
+                "app_config": {
+                    "mpc_core": {
+                        "prediction_horizon": 46,
+                        "coast_pos_tolerance": 0.25,
+                        "progress_taper_distance": 1.5,
+                    }
+                },
+            },
+        )
+        assert v3_resp.status_code == 200
+
+        legacy_resp = client.post(
+            "/runner/config",
+            json={
+                "control": {
+                    "mpc": {
+                        "prediction_horizon": 47,
+                        "path_following": {
+                            "coast_min_speed": 0.02,
+                            "progress_slowdown_distance": 0.8,
+                        },
+                    }
+                }
+            },
+        )
+        assert legacy_resp.status_code == 200
+
+        cfg = client.get("/runner/config").json()
+        assert cfg["mpc"]["prediction_horizon"] == 47
+        for removed_key in (
+            "coast_pos_tolerance",
+            "coast_vel_tolerance",
+            "coast_min_speed",
+            "progress_taper_distance",
+            "progress_slowdown_distance",
+        ):
+            assert removed_key not in cfg["mpc"]
+
+        deprecations = cfg.get("config_meta", {}).get("deprecations", {})
+        seen = set(deprecations.get("removed_mpc_fields_seen", []))
+        assert {
+            "coast_pos_tolerance",
+            "coast_min_speed",
+            "progress_taper_distance",
+            "progress_slowdown_distance",
+        }.issubset(seen)
+        assert deprecations.get("removed_mpc_fields_policy") == "warn_ignore"
+        assert deprecations.get("removed_mpc_fields_sunset") == "next_major"
+
     def test_runner_presets_crud_and_apply(self, client):
         """Runner presets should persist via API and be applicable."""
         clear_resp = client.post("/runner/presets/reset")

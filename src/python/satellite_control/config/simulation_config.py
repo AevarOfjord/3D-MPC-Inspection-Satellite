@@ -133,9 +133,6 @@ class SimulationConfig:
             "r_rw_torque": self.app_config.mpc.r_rw_torque,
             "thrust_l1_weight": self.app_config.mpc.thrust_l1_weight,
             "thrust_pair_weight": self.app_config.mpc.thrust_pair_weight,
-            "coast_pos_tolerance": self.app_config.mpc.coast_pos_tolerance,
-            "coast_vel_tolerance": self.app_config.mpc.coast_vel_tolerance,
-            "coast_min_speed": self.app_config.mpc.coast_min_speed,
             "enable_collision_avoidance": self.app_config.mpc.enable_collision_avoidance,
             "obstacle_margin": self.app_config.mpc.obstacle_margin,
             "max_linear_velocity": self.app_config.mpc.max_linear_velocity,
@@ -146,8 +143,6 @@ class SimulationConfig:
             "path_speed": self.app_config.mpc.path_speed,
             "path_speed_min": self.app_config.mpc.path_speed_min,
             "path_speed_max": self.app_config.mpc.path_speed_max,
-            "progress_taper_distance": self.app_config.mpc.progress_taper_distance,
-            "progress_slowdown_distance": self.app_config.mpc.progress_slowdown_distance,
             "enable_thruster_hysteresis": self.app_config.mpc.enable_thruster_hysteresis,
             "thruster_hysteresis_on": self.app_config.mpc.thruster_hysteresis_on,
             "thruster_hysteresis_off": self.app_config.mpc.thruster_hysteresis_off,
@@ -254,8 +249,6 @@ class SimulationConfig:
             },
             "path_following": {
                 "path_speed": mpc.path_speed,
-                "progress_taper_distance": mpc.progress_taper_distance,
-                "progress_slowdown_distance": mpc.progress_slowdown_distance,
             },
             "settings": {
                 "dt": mpc.dt,

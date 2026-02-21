@@ -50,6 +50,8 @@ Key properties:
 
 - 17-state linearized MPCC model.
 - Explicit runtime mode profile scaling (no legacy adaptive recovery branch).
+- Legacy taper/coast knobs are removed from canonical V6 config surface.
+- Hard scan-attitude quaternion constraints are removed; attitude is enforced via cost shaping.
 - OSQP-only backend in V6.0.
 - Bounded solver fallback policy with telemetry:
   - `fallback_active`
@@ -96,6 +98,9 @@ Current release behavior:
 - API dual-reads legacy/v1/v2 payloads for compatibility.
 - API writes persist only `app_config_v3`.
 - Transitional top-level mirrors (`physics`, `mpc`, `simulation`) are still emitted for one release.
+- Removed legacy MPC knobs are warn-ignored on input and reported via:
+  - `config_meta.deprecations.removed_mpc_fields_seen`
+  - `config_meta.deprecations.removed_mpc_fields_policy = "warn_ignore"`
 
 ## 7. Observability and Artifacts
 

@@ -49,9 +49,6 @@ struct MPCParams {
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
     double thrust_l1_weight = 0.0;  ///< Linear thruster penalty (fuel bias)
     double thrust_pair_weight = 0.0; ///< Penalty on opposing-pair co-firing
-    double coast_pos_tolerance = 0.0; ///< Coasting band position error [m] (0 = off)
-    double coast_vel_tolerance = 0.0; ///< Coasting band lateral velocity [m/s] (0 = off)
-    double coast_min_speed = 0.0;     ///< Minimum progress speed when coasting [m/s]
     double max_linear_velocity = 0.0; ///< Linear velocity bound [m/s] (0 = auto)
     double max_angular_velocity = 0.0; ///< Angular velocity bound [rad/s] (0 = auto)
     bool enable_delta_u_coupling = false; ///< Enable full Δu temporal coupling in smoothness cost
@@ -73,8 +70,6 @@ struct MPCParams {
     // If set to 0, controller will auto-scale from Q_contour/Q_progress.
     double Q_terminal_pos = 0.0;       ///< Terminal position weight (0 = auto)
     double Q_terminal_s = 0.0;         ///< Terminal progress weight (0 = auto)
-    double progress_taper_distance = 0.0; ///< Distance to taper v_ref near end (0 = auto)
-    double progress_slowdown_distance = 0.0; ///< Slow down v_ref if contour error is high (0 = auto)
     double recover_contour_scale = 2.0; ///< RECOVER contour multiplier
     double recover_lag_scale = 2.0; ///< RECOVER lag multiplier
     double recover_progress_scale = 0.6; ///< RECOVER progress multiplier
@@ -372,7 +367,6 @@ private:
     bool scan_center_valid_ = false;
     Eigen::Vector3d scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     bool scan_direction_cw_ = true;
-    bool scan_attitude_hard_constraint_ = false; // Soft-only by default (use Q_attitude cost)
     std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
     bool scan_q_ref_valid_ = false;
     mutable bool ref_frame_initialized_ = false;

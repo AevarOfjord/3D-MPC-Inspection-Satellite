@@ -147,6 +147,22 @@ Coverage expectations:
   - `pointing_guardrail_breached`
   - `object_visible_side`
 
+### MPC Deep-Cleanup Regression (V6)
+
+Run this subset when validating dead-knob removal and compatibility behavior:
+
+```bash
+.venv311/bin/python -m pytest -q tests/test_config.py tests/test_mpc.py tests/test_cpp_integration.py tests/test_v6_runtime.py tests/test_dashboard_api.py
+npm --prefix ui run test -- tests/unit/mpcSettingsSerialization.test.ts tests/unit/missionSerializer.test.ts
+```
+
+Checks include:
+
+- removed MPC knobs absent from canonical schema/bindings/UI payload serialization
+- legacy payloads with removed knobs are accepted and warn-ignored
+- deprecation metadata is exposed in `config_meta.deprecations`
+- reference velocity follows MPC-owned `path_v_s` semantics in runtime tests
+
 ### Mission Flow for Testing
 
 Tests unified mission compile/hydration and path tracking runtime behavior.

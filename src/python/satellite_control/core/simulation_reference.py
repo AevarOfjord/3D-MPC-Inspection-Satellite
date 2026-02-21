@@ -263,8 +263,7 @@ def update_path_reference_state(
 
     Sets ``sim.reference_state`` to a 13-element vector that tracks the
     current path position, derives a forward-looking orientation from the
-    path tangent, and tapers the reference velocity to zero near the path
-    end so that completion tolerances can be satisfied.
+    path tangent, and mirrors V6 reference-speed ownership from MPC runtime.
 
     Args:
         sim: The simulation instance whose ``reference_state`` will be updated.
@@ -277,9 +276,8 @@ def update_path_reference_state(
 
     # Always MPCC mode
     q_ref_from_controller = None
-    can_query_cpp_ref = (
-        hasattr(sim.mpc_controller, "_cpp_controller")
-        and hasattr(sim.mpc_controller._cpp_controller, "get_reference_at_s")
+    can_query_cpp_ref = hasattr(sim.mpc_controller, "_cpp_controller") and hasattr(
+        sim.mpc_controller._cpp_controller, "get_reference_at_s"
     )
     if can_query_cpp_ref and hasattr(sim.mpc_controller, "get_path_reference_state"):
         try:
@@ -307,7 +305,10 @@ def update_path_reference_state(
 
     tangent_norm = _norm3(tangent)
     if tangent_norm > 1e-6:
-        if q_ref_from_controller is not None and np.linalg.norm(q_ref_from_controller) > 1e-9:
+        if (
+            q_ref_from_controller is not None
+            and np.linalg.norm(q_ref_from_controller) > 1e-9
+        ):
             q_norm = float(np.linalg.norm(q_ref_from_controller))
             reference_state[3:7] = np.array(q_ref_from_controller, dtype=float) / q_norm
         else:
@@ -337,72 +338,41 @@ def update_path_reference_state(
         if sim.simulation_config is not None:
             mpc_cfg = sim.simulation_config.app_config.mpc
             sim._ref_path_speed = float(mpc_cfg.path_speed)
-            sim._ref_taper_dist = float(
-                getattr(mpc_cfg, "progress_taper_distance", 0.0) or 0.0
-            )
-            sim._ref_coast_pos_tol = float(
-                getattr(mpc_cfg, "coast_pos_tolerance", 0.0) or 0.0
-            )
-            sim._ref_coast_vel_tol = float(
-                getattr(mpc_cfg, "coast_vel_tolerance", 0.0) or 0.0
-            )
-            sim._ref_coast_min_speed = float(
-                getattr(mpc_cfg, "coast_min_speed", 0.0) or 0.0
-            )
+            sim._ref_path_speed_min = float(getattr(mpc_cfg, "path_speed_min", 0.0))
+            sim._ref_path_speed_max = float(getattr(mpc_cfg, "path_speed_max", 0.0))
         else:
             sim._ref_path_speed = 0.0
-            sim._ref_taper_dist = 0.0
-            sim._ref_coast_pos_tol = 0.0
-            sim._ref_coast_vel_tol = 0.0
-            sim._ref_coast_min_speed = 0.0
+            sim._ref_path_speed_min = 0.0
+            sim._ref_path_speed_max = 0.0
 
-    path_speed = sim._ref_path_speed
-    taper_dist = sim._ref_taper_dist
-    coast_pos_tol = sim._ref_coast_pos_tol
-    coast_vel_tol = sim._ref_coast_vel_tol
-    coast_min_speed = sim._ref_coast_min_speed
+    path_speed = float(getattr(sim, "_ref_path_speed", 0.0))
+    path_speed_min = float(getattr(sim, "_ref_path_speed_min", 0.0))
+    path_speed_max = float(getattr(sim, "_ref_path_speed_max", 0.0))
     current_mode = str(
         getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
     ).upper()
 
-    # --- Taper speed near path end ---
-    speed_scale = 1.0
-    remaining = None
-    try:
-        path_len = sim._get_mission_path_length(compute_if_missing=True)
-        s_val = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
-        if path_len > 0.0:
-            remaining = max(0.0, path_len - s_val)
-            if taper_dist <= 0.0:
-                pos_tol = float(getattr(sim, "position_tolerance", 0.05))
-                taper_dist = max(pos_tol, path_speed * sim.control_update_interval)
-            if taper_dist > 1e-6:
-                speed_scale = max(0.0, min(1.0, remaining / taper_dist))
-    except Exception:
-        logger.debug(
-            "Speed tapering calculation failed, using scale=1.0", exc_info=True
-        )
-        speed_scale = 1.0
+    v_ref = path_speed
+    projection_cache = getattr(sim.mpc_controller, "_last_path_projection", None)
+    if isinstance(projection_cache, dict):
+        path_v_s = projection_cache.get("path_v_s")
+        if path_v_s is not None:
+            try:
+                path_v_s_val = float(path_v_s)
+                if np.isfinite(path_v_s_val):
+                    v_ref = path_v_s_val
+            except (TypeError, ValueError):
+                logger.debug(
+                    "Invalid cached path_v_s for reference velocity", exc_info=True
+                )
 
-    pos_tol = float(getattr(sim, "position_tolerance", 0.05))
-    at_path_end = remaining is not None and remaining <= max(pos_tol, 1e-6)
+    if path_speed_max > 0.0 and path_speed_min > path_speed_max:
+        path_speed_min = 0.0
+    if path_speed_min > 0.0:
+        v_ref = max(v_ref, path_speed_min)
+    if path_speed_max > 0.0:
+        v_ref = min(v_ref, path_speed_max)
 
-    # Coasting bias: match reference speed to current along-track speed when on-path.
-    v_ref = path_speed * speed_scale
-    if (not at_path_end) and coast_pos_tol > 0.0 and tangent_norm > 1e-6:
-        pos_err = _norm3(current_state[:3] - pos_ref)
-        v_curr = current_state[7:10]
-        v_along = float(np.dot(v_curr, tangent))
-        v_perp = v_curr - v_along * tangent
-        if (
-            pos_err <= coast_pos_tol
-            and _norm3(v_perp) <= coast_vel_tol
-            and v_along >= 0.0
-        ):
-            v_ref = max(coast_min_speed, v_along)
-    if at_path_end:
-        # Force a full stop at the end of the path.
-        v_ref = 0.0
     if current_mode in {"SETTLE", "HOLD", "COMPLETE"}:
         # V6 explicit endpoint behavior: SETTLE/HOLD use zero velocity targets.
         v_ref = 0.0

@@ -981,37 +981,6 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
         }
     }
 
-    // Optional hard scan-attitude constraint (disabled by default):
-    // when enabled, keep predicted quaternion near scan/path reference.
-    {
-        constexpr double kInf = 1e20;
-        constexpr double kQuatTol = 1e-5;
-        const bool enforce_scan_quat =
-            scan_attitude_enabled_ &&
-            scan_attitude_hard_constraint_ &&
-            scan_q_ref_valid_ &&
-            (scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1));
-
-        for (int k = 0; k <= N_; ++k) {
-            int q_row = state_idx_start + k * nx_ + 3;
-            if (q_row < 0 || q_row + 3 >= l_.size() || q_row + 3 >= u_.size()) {
-                continue;
-            }
-
-            // Do not constrain k=0: it is fixed by the measured current state.
-            if (enforce_scan_quat && k > 0) {
-                const Eigen::Vector4d& q_ref = scan_q_ref_traj_[static_cast<size_t>(k)];
-                for (int i = 0; i < 4; ++i) {
-                    l_(q_row + i) = q_ref(i) - kQuatTol;
-                    u_(q_row + i) = q_ref(i) + kQuatTol;
-                }
-            } else {
-                l_.segment(q_row, 4).setConstant(-kInf);
-                u_.segment(q_row, 4).setConstant(kInf);
-            }
-        }
-    }
-
     osqp_update_bounds(work_, l_.data(), u_.data());
 }
 

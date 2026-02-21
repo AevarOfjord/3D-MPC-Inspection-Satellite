@@ -272,9 +272,7 @@ class MissionReportGenerator:
         f.write(f"  Contour Weight (Q):      {self.app_config.mpc.Q_contour:.1f}\n")
         f.write(f"  Progress Weight (Q):     {self.app_config.mpc.Q_progress:.1f}\n")
         f.write(f"  Smooth Weight (Q):       {self.app_config.mpc.Q_smooth:.1f}\n")
-        f.write(
-            f"  Axis Align Weight (Q):   {self.app_config.mpc.Q_axis_align:.1f}\n"
-        )
+        f.write(f"  Axis Align Weight (Q):   {self.app_config.mpc.Q_axis_align:.1f}\n")
         f.write(
             f"  Angular Vel Weight (Q):  {self.app_config.mpc.q_angular_velocity:.1f}\n"
         )
@@ -373,12 +371,6 @@ class MissionReportGenerator:
         )
         f.write(
             f"  PATH_SPEED:                   {self.app_config.mpc.path_speed:.3f} m/s\n"
-        )
-        f.write(
-            f"  PROGRESS_TAPER_DISTANCE:      {self.app_config.mpc.progress_taper_distance:.3f} m\n"
-        )
-        f.write(
-            f"  PROGRESS_SLOWDOWN_DISTANCE:   {self.app_config.mpc.progress_slowdown_distance:.3f} m\n"
         )
 
         f.write(
@@ -534,9 +526,13 @@ class MissionReportGenerator:
 
         obstacle_margin = float(getattr(self.app_config.mpc, "obstacle_margin", 0.0))
         margin_breach_count = int(
-            sum(1 for clearance in min_clearance_per_step if clearance < obstacle_margin)
+            sum(
+                1 for clearance in min_clearance_per_step if clearance < obstacle_margin
+            )
         )
-        collision_count = int(sum(1 for clearance in min_clearance_per_step if clearance < 0.0))
+        collision_count = int(
+            sum(1 for clearance in min_clearance_per_step if clearance < 0.0)
+        )
 
         return {
             "obstacle_count": len(obstacles),
@@ -624,7 +620,9 @@ class MissionReportGenerator:
                     "max_abs_error_time_s": max_abs_error_time,
                     "max_abs_error_channel": max_abs_error_channel,
                     "worst_thruster": worst_thruster,
-                    "worst_thruster_mean_abs_error": thruster_mean_errors[worst_thruster],
+                    "worst_thruster_mean_abs_error": thruster_mean_errors[
+                        worst_thruster
+                    ],
                 }
         except Exception:
             return {}
@@ -702,11 +700,13 @@ class MissionReportGenerator:
         )
         f.write(f"Started At:                {started_at or 'n/a'}\n")
         f.write(f"Completed At:              {completed_at or 'n/a'}\n")
-        if isinstance(wall_clock_s, (int, float)):
+        if isinstance(wall_clock_s, int | float):
             f.write(f"Wall Clock Duration:       {float(wall_clock_s):.2f} s\n")
         else:
             f.write("Wall Clock Duration:       n/a\n")
-        f.write(f"Termination Status:        {status_payload.get('status') or 'unknown'}\n")
+        f.write(
+            f"Termination Status:        {status_payload.get('status') or 'unknown'}\n"
+        )
         f.write(
             f"Termination Detail:        {status_payload.get('status_detail') or 'n/a'}\n"
         )
@@ -725,7 +725,9 @@ class MissionReportGenerator:
 
         if payload:
             violations = payload.get("violations", []) or []
-            f.write(f"Constraints Pass:          {'YES' if payload.get('pass') else 'NO'}\n")
+            f.write(
+                f"Constraints Pass:          {'YES' if payload.get('pass') else 'NO'}\n"
+            )
             f.write(f"Violation Types:           {len(violations)}\n")
             limits = payload.get("limits", {}) or {}
             if limits:
@@ -763,7 +765,9 @@ class MissionReportGenerator:
             control_time=control_time,
         )
         if not clearance:
-            f.write("Obstacle Data:             n/a (obstacles disabled or unavailable)\n")
+            f.write(
+                "Obstacle Data:             n/a (obstacles disabled or unavailable)\n"
+            )
             return
 
         f.write(f"Obstacle Count:            {int(clearance['obstacle_count'])}\n")
@@ -774,16 +778,16 @@ class MissionReportGenerator:
             f"Min Clearance Time:        {float(clearance['minimum_clearance_time_s']):.3f} s\n"
         )
         obs_idx = clearance.get("minimum_clearance_obstacle_index")
-        f.write(f"Closest Obstacle Index:    {obs_idx if obs_idx is not None else 'n/a'}\n")
+        f.write(
+            f"Closest Obstacle Index:    {obs_idx if obs_idx is not None else 'n/a'}\n"
+        )
         f.write(
             f"Required Margin:           {float(clearance['required_margin_m']):.4f} m\n"
         )
         f.write(
             f"Clearance-Margin Delta:    {float(clearance['minimum_margin_delta_m']):.4f} m\n"
         )
-        f.write(
-            f"Margin Breach Samples:     {int(clearance['margin_breach_count'])}\n"
-        )
+        f.write(f"Margin Breach Samples:     {int(clearance['margin_breach_count'])}\n")
         f.write(f"Collision Samples:         {int(clearance['collision_count'])}\n")
 
     def _write_actuator_tracking_summary(self, f, run_dir: Path) -> None:
@@ -988,9 +992,7 @@ class MissionReportGenerator:
             f.write(
                 f"Fastest MPC Solve:         {np.min(mpc_convergence_times):.3f} s\n"
             )
-            f.write(
-                f"Slowest MPC Solve:         {max_solve:.3f} s\n"
-            )
+            f.write(f"Slowest MPC Solve:         {max_solve:.3f} s\n")
             f.write(f"Average MPC Solve:         {mean_solve:.3f} s\n")
             f.write(
                 f"MPC Solve Std Dev:         {np.std(mpc_convergence_times):.3f} s\n"
@@ -1064,7 +1066,9 @@ class MissionReportGenerator:
         # Precision Analysis
         f.write(f"Achieved Precision:        {pos_error_final:.4f}m\n")
         precision_ratio = (
-            pos_error_final / position_tolerance if position_tolerance > 0 else float("inf")
+            pos_error_final / position_tolerance
+            if position_tolerance > 0
+            else float("inf")
         )
         if precision_ratio <= 1.0:
             f.write(f"Precision Ratio:           {precision_ratio:.2f} (PASSED)\n")
