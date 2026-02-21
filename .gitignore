@@ -66,6 +66,7 @@ ui/public/model_files/**/*.usdz
 # Docs build output
 docs/_build/
 docs/_static/
+site/
 src/python/satellite_control/cpp/*.so
 src/python/satellite_control/cpp/*.pyd
 src/python/satellite_control/cpp/*.dylib
