@@ -34,7 +34,7 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
   const viewNonce = useCameraStore(s => s.viewNonce);
   const fallbackDistance = EARTH_RADIUS_M * 2.5 * ORBIT_SCALE;
   const baseDistance = Number.isFinite(focusDistance ?? NaN) ? (focusDistance as number) : fallbackDistance;
-  
+
   useEffect(() => {
     originRef.current.set(origin[0], origin[1], origin[2]);
   }, [origin[0], origin[1], origin[2]]);
@@ -45,7 +45,7 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
        // Valid Check
        if (!isValidVector(d.position)) return;
        if (d.quaternion.some(v => !Number.isFinite(v))) return;
-       
+
        satPosRef.current.set(
          d.position[0] - originRef.current.x,
          d.position[1] - originRef.current.y,
@@ -157,22 +157,22 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
     if (mode === 'chase') {
         // Orbit Follow: Move camera with satellite but allow orbiting
         const targetPos = satPosRef.current.clone();
-        
+
         if (controls) {
             const currentTarget = (controls as any).target as Vector3;
             // Calculate movement delta of the target (satellite)
             const delta = targetPos.clone().sub(currentTarget);
-            
+
             // Move camera by same delta to preserve relative offset
             camera.position.add(delta);
-            
+
             // Update OrbitControls target
             (controls as any).target.copy(targetPos);
             (controls as any).update();
         }
     } else if (mode === 'top') {
          // Keep looking at 0,0,0? Or follow sat from top?
-         // Let's just fix it for now to overview. 
+         // Let's just fix it for now to overview.
     }
   });
 

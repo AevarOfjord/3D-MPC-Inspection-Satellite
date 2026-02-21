@@ -592,6 +592,7 @@ function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const MPC_SETTINGS_TESTING = {
   normalizeConfig,
   buildV3Envelope,

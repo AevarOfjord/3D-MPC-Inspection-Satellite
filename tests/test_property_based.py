@@ -15,6 +15,7 @@ try:
     HYPOTHESIS_AVAILABLE = True
 except ImportError:
     HYPOTHESIS_AVAILABLE = False
+
     # Keep module importable when hypothesis is missing so skipif can apply.
     def _identity_decorator(*args, **kwargs):
         def _wrap(fn):

@@ -65,6 +65,7 @@ async def get_mission_draft_v2(draft_id: str):
 
 
 @router.post("/missions/migrate_legacy", response_model=UnifiedMissionV2Model)
-async def migrate_legacy_mission_payload_v2(request: LegacyMissionMigrateRequestV2Model):
+async def migrate_legacy_mission_payload_v2(
+    request: LegacyMissionMigrateRequestV2Model,
+):
     return migrate_legacy_request_to_v2(request)
-

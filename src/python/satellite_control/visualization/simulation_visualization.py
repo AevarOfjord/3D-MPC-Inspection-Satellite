@@ -1001,7 +1001,8 @@ class SimulationVisualizationManager:
 
         # Continuous Euler display angles derived from quaternion when available.
         has_quat_cols = all(
-            c in df.columns for c in ("Current_QW", "Current_QX", "Current_QY", "Current_QZ")
+            c in df.columns
+            for c in ("Current_QW", "Current_QX", "Current_QY", "Current_QZ")
         )
         if has_quat_cols:
             q_wxyz = np.column_stack(

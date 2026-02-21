@@ -101,7 +101,7 @@ Compare current benchmarks against previous runs:
 ### Benchmark Output
 
 ```
-test_mpc_solve_time (test_benchmark.py::TestMPCBenchmarks) ... 
+test_mpc_solve_time (test_benchmark.py::TestMPCBenchmarks) ...
   Mean: 4.23ms
   Median: 4.10ms
   Std Dev: 0.15ms

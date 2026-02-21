@@ -600,7 +600,9 @@ class PerformanceMonitor:
 
     def should_fail_on_timing_contract(self) -> bool:
         """Return True when strict contract enforcement is enabled and violated."""
-        return self.metrics.enforce_mpc_timing_contract and self.timing_contract_violated()
+        return (
+            self.metrics.enforce_mpc_timing_contract and self.timing_contract_violated()
+        )
 
     def reset(self) -> None:
         """Reset all metrics."""

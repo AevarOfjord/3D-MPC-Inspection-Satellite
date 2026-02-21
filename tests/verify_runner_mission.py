@@ -6,6 +6,7 @@ from satellite_control.dashboard.runner_manager import RunnerManager
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+
 class MockWebSocket:
     def __init__(self):
         self.accepted = False
@@ -24,17 +25,18 @@ class MockWebSocket:
         self.closed = True
         print("WS Closed")
 
+
 async def test_runner_mission_selection():
     print("Testing RunnerManager Mission Selection...")
     manager = RunnerManager()
-    
+
     # Mock WebSocket
     ws = MockWebSocket()
     await manager.connect(ws)
-    
+
     mission_name = "Starlink_Scan_M00"
     print(f"Starting simulation with mission: {mission_name}...")
-    
+
     # This should fail if mission doesn't exist, or pass if it does.
     # We are testing the argument passing logic.
     try:
@@ -44,14 +46,14 @@ async def test_runner_mission_selection():
 
     # Wait a bit
     await asyncio.sleep(2)
-    
+
     # Verify messages contain the selected mission log
     found_mission_log = False
     for msg in ws.messages:
         if f"Selected mission: {mission_name}" in msg:
             found_mission_log = True
             break
-            
+
     if found_mission_log:
         print("SUCCESS: Found mission selection log.")
     else:
@@ -61,9 +63,10 @@ async def test_runner_mission_selection():
     # Stop Simulation
     print("Stopping simulation...")
     await manager.stop_simulation()
-    
+
     # Verify process is gone
     await asyncio.sleep(1)
+
 
 if __name__ == "__main__":
     try:

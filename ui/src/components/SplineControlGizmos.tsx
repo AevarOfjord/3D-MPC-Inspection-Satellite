@@ -15,7 +15,7 @@ export function SplineControlGizmos({ controls, onUpdate, onSelect, selectedId }
         <group>
             {controls.map((control, idx) => {
                 const isSelected = selectedId === `spline-${idx}`;
-                
+
                 return (
                     <group key={idx}>
                         <TransformControls
@@ -41,7 +41,7 @@ export function SplineControlGizmos({ controls, onUpdate, onSelect, selectedId }
                                 });
                             }}
                         />
-                        
+
                         {/* Always visible marker */}
                         <mesh
                             position={[control.position[0], control.position[1], control.position[2]]}
@@ -53,7 +53,7 @@ export function SplineControlGizmos({ controls, onUpdate, onSelect, selectedId }
                             <sphereGeometry args={[isSelected ? 0.3 : 0.2, 16, 16]} />
                             <meshBasicMaterial color={isSelected ? "#f59e0b" : "#fbbf24"} transparent opacity={0.8} />
                         </mesh>
-                        
+
                         {/* Label */}
                         <Html position={[control.position[0], control.position[1], control.position[2]]}>
                             <div

@@ -776,8 +776,16 @@ def _build_thruster_cmd_val_matrices(
     for i, tid in enumerate(thruster_ids):
         cmd_col = f"Thruster_{tid}_Cmd"
         val_col = f"Thruster_{tid}_Val"
-        cmd_vals = get_series(plot_gen, cmd_col, df, cols) if cmd_col in cols else np.zeros(base_len)
-        val_vals = get_series(plot_gen, val_col, df, cols) if val_col in cols else np.zeros(base_len)
+        cmd_vals = (
+            get_series(plot_gen, cmd_col, df, cols)
+            if cmd_col in cols
+            else np.zeros(base_len)
+        )
+        val_vals = (
+            get_series(plot_gen, val_col, df, cols)
+            if val_col in cols
+            else np.zeros(base_len)
+        )
         cmd[:, i] = normalize_series(cmd_vals, base_len)
         val[:, i] = normalize_series(val_vals, base_len)
 
@@ -850,7 +858,9 @@ def generate_command_vs_valve_tracking_plot(plot_gen: Any, plot_dir: Path) -> No
     PlotStyle.save_figure(fig, plot_dir / "command_vs_valve_tracking.png")
 
 
-def generate_cumulative_impulse_delta_v_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
+def generate_cumulative_impulse_delta_v_proxy_plot(
+    plot_gen: Any, plot_dir: Path
+) -> None:
     """Generate cumulative impulse and delta-v proxy from thruster outputs."""
     fig, axes = plt.subplots(2, 1, figsize=PlotStyle.FIGSIZE_SUBPLOTS, sharex=True)
     fig.suptitle(f"Cumulative Impulse & Delta-v Proxy - {plot_gen.system_title}")
@@ -866,7 +876,9 @@ def generate_cumulative_impulse_delta_v_proxy_plot(plot_gen: Any, plot_dir: Path
                 va="center",
                 transform=ax.transAxes,
             )
-        PlotStyle.save_figure(fig, plot_dir / "cumulative_impulse_and_delta_v_proxy.png")
+        PlotStyle.save_figure(
+            fig, plot_dir / "cumulative_impulse_and_delta_v_proxy.png"
+        )
         return
 
     # Prefer actual valve output where available.

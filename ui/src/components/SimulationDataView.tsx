@@ -79,7 +79,7 @@ export const SimulationDataView: React.FC = () => {
         setCurrentDir('');
         return;
     }
-    
+
     fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files`)
       .then(res => res.json())
       .then(data => {
@@ -115,7 +115,7 @@ export const SimulationDataView: React.FC = () => {
     }
 
     const ext = selectedFile.name.split('.').pop()?.toLowerCase();
-    
+
     if (['png', 'jpg', 'jpeg', 'gif'].includes(ext || '')) {
         setContentType('image');
         setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
@@ -161,7 +161,7 @@ export const SimulationDataView: React.FC = () => {
         </div>
         <div className="flex-1 overflow-y-auto">
           {runs.map(run => (
-            <div 
+            <div
               key={run.id}
               onClick={() => {
                 setSelectedRunId(run.id);
@@ -220,7 +220,7 @@ export const SimulationDataView: React.FC = () => {
                 }}
                 className={`p-2 px-4 cursor-pointer hover:bg-slate-800 flex items-center gap-2 ${selectedFile?.path === file.path ? 'bg-blue-900/30 text-blue-300' : 'text-slate-400'}`}
              >
-                {file.type === 'directory' ? <Folder size={14} className="text-yellow-500" /> : 
+                {file.type === 'directory' ? <Folder size={14} className="text-yellow-500" /> :
                  file.name.endsWith('.json') ? <FileCode size={14} className="text-green-500" /> :
                  file.name.endsWith('.csv') ? <FileText size={14} className="text-blue-500" /> :
                  file.name.endsWith('.mp4') ? <Film size={14} className="text-purple-500" /> :
@@ -246,9 +246,9 @@ export const SimulationDataView: React.FC = () => {
             {selectedFile ? selectedFile.name : "Preview"}
           </span>
           {selectedFile && selectedRunId && (
-             <a 
-                href={`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`} 
-                target="_blank" 
+             <a
+                href={`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`}
+                target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-2 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded transition-colors"
              >
@@ -262,7 +262,7 @@ export const SimulationDataView: React.FC = () => {
                     Loading...
                 </div>
             )}
-            
+
             {!selectedFile && (
                 <div className="absolute inset-0 flex items-center justify-center text-slate-600">
                     Select a file to view content
@@ -286,7 +286,7 @@ export const SimulationDataView: React.FC = () => {
                      <video controls src={fileContent as string} className="max-w-full max-h-full" />
                 </div>
             )}
-             
+
              {selectedFile && !isLoading && contentType === 'other' && (
                 <div className="absolute inset-0 flex items-center justify-center text-slate-500">
                     Preview not available for this file type.

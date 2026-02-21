@@ -62,11 +62,11 @@ export function PlannedPath({ origin = [0, 0, 0] }: PlannedPathProps) {
             transparent
             dashed={false}
         />
-        <ReferenceMarker 
+        <ReferenceMarker
             position={markerPosition}
             quaternion={markerQuaternion}
             orientation={markerOrientation}
-            color="#4ade80" 
+            color="#4ade80"
         />
     </>
   );

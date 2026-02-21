@@ -18,14 +18,20 @@ def _project_root() -> Path:
 
 def _default_app_dir() -> Path:
     root = _project_root() / "release" / "pyinstaller"
-    candidates = sorted(root.glob("*/SatelliteControl"), key=lambda p: p.stat().st_mtime)
+    candidates = sorted(
+        root.glob("*/SatelliteControl"), key=lambda p: p.stat().st_mtime
+    )
     if not candidates:
-        raise FileNotFoundError("No packaged app directory found under release/pyinstaller/*/SatelliteControl")
+        raise FileNotFoundError(
+            "No packaged app directory found under release/pyinstaller/*/SatelliteControl"
+        )
     return candidates[-1]
 
 
 def _resolve_executable(app_dir: Path) -> Path:
-    candidate = app_dir / ("SatelliteControl.exe" if sys.platform.startswith("win") else "SatelliteControl")
+    candidate = app_dir / (
+        "SatelliteControl.exe" if sys.platform.startswith("win") else "SatelliteControl"
+    )
     if candidate.exists():
         return candidate
     raise FileNotFoundError(f"Packaged executable not found: {candidate}")
@@ -53,8 +59,12 @@ def _wait_for_http_ready(host: str, port: int, timeout_s: float) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Smoke test packaged Mission Control binary.")
-    parser.add_argument("--app-dir", default=None, help="Path to packaged app directory.")
+    parser = argparse.ArgumentParser(
+        description="Smoke test packaged Mission Control binary."
+    )
+    parser.add_argument(
+        "--app-dir", default=None, help="Path to packaged app directory."
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--timeout-s", type=float, default=45.0)
@@ -65,7 +75,14 @@ def main() -> int:
     print(f"Smoke testing packaged app: {executable}")
 
     proc = subprocess.Popen(
-        [str(executable), "--host", args.host, "--port", str(args.port), "--no-browser"],
+        [
+            str(executable),
+            "--host",
+            args.host,
+            "--port",
+            str(args.port),
+            "--no-browser",
+        ],
         cwd=str(app_dir),
     )
     try:

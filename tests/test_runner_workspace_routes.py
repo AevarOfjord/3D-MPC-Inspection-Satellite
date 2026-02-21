@@ -56,7 +56,9 @@ def isolated_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     }
 
 
-def test_workspace_export_includes_simulation_runs(client: TestClient, isolated_workspace):
+def test_workspace_export_includes_simulation_runs(
+    client: TestClient, isolated_workspace
+):
     mission_repo.save_mission_json(
         name="MissionAlpha",
         payload={"segments": [], "start_pose": {"position": [0, 0, 0]}},
@@ -227,7 +229,9 @@ def test_workspace_import_per_item_overwrite(client: TestClient, isolated_worksp
     assert body["config_imported"] is False
 
     mission_keep = json.loads(
-        (isolated_workspace["missions_dir"] / "MissionKeep.json").read_text(encoding="utf-8")
+        (isolated_workspace["missions_dir"] / "MissionKeep.json").read_text(
+            encoding="utf-8"
+        )
     )
     mission_overwrite = json.loads(
         (isolated_workspace["missions_dir"] / "MissionOverwrite.json").read_text(
@@ -241,9 +245,9 @@ def test_workspace_import_per_item_overwrite(client: TestClient, isolated_worksp
     assert presets["preset-keep"]["config"]["mpc"]["prediction_horizon"] == 9
     assert presets["preset-overwrite"]["config"]["mpc"]["prediction_horizon"] == 13
 
-    keep_csv = (isolated_workspace["sim_dir"] / "run_keep" / "physics_data.csv").read_text(
-        encoding="utf-8"
-    )
+    keep_csv = (
+        isolated_workspace["sim_dir"] / "run_keep" / "physics_data.csv"
+    ).read_text(encoding="utf-8")
     overwrite_csv = (
         isolated_workspace["sim_dir"] / "run_overwrite" / "physics_data.csv"
     ).read_text(encoding="utf-8")

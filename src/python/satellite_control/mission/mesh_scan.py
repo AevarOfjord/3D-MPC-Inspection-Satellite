@@ -124,9 +124,7 @@ def filter_vertices_faces_by_aabb(
 
     inside = np.zeros(vertices.shape[0], dtype=bool)
     inside[idx] = True
-    keep_faces = (
-        inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
-    )
+    keep_faces = inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
     sel_faces_old = faces[keep_faces]
     if sel_faces_old.size == 0:
         return sel_vertices, np.empty((0, 3), dtype=int)
@@ -176,9 +174,7 @@ def filter_vertices_faces_by_parallel_planes(
 
     inside = np.zeros(vertices.shape[0], dtype=bool)
     inside[idx] = True
-    keep_faces = (
-        inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
-    )
+    keep_faces = inside[faces[:, 0]] & inside[faces[:, 1]] & inside[faces[:, 2]]
     sel_faces_old = faces[keep_faces]
     if sel_faces_old.size == 0:
         return sel_vertices, np.empty((0, 3), dtype=int)

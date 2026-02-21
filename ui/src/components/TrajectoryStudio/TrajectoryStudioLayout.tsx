@@ -44,8 +44,8 @@ export function TrajectoryStudioLayout({
                      </div>
                  )}
 
-                 {/* Property Inspector - Below Generator Stack or Separate? 
-                     Let's put it next to it or allow it to be separate. 
+                 {/* Property Inspector - Below Generator Stack or Separate?
+                     Let's put it next to it or allow it to be separate.
                      For now, maybe just below it if selected.
                  */}
                  {showInspector && (

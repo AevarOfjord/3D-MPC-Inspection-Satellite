@@ -1,6 +1,7 @@
 """
 Routes for controlling the simulation runner.
 """
+
 import asyncio
 import importlib
 import io
@@ -41,14 +42,17 @@ router = APIRouter(prefix="/runner", tags=["runner"])
 # Singleton instance will be injected or accessed
 _runner_manager: RunnerManager | None = None
 
+
 def set_runner_manager(manager: RunnerManager):
     global _runner_manager
     _runner_manager = manager
+
 
 def get_runner_manager() -> RunnerManager:
     if _runner_manager is None:
         raise RuntimeError("RunnerManager not initialized")
     return _runner_manager
+
 
 from pydantic import BaseModel
 
@@ -65,6 +69,7 @@ _package_state: dict[str, Any] = {
 _MAX_PACKAGE_LOG_LINES = 300
 _RELEASE_DIR = (PROJECT_ROOT / "release").resolve()
 _SIMULATION_DIR = (PROJECT_ROOT / "Data" / "Simulation").resolve()
+
 
 class StartSimulationRequest(BaseModel):
     mission_name: str | None = None
@@ -221,7 +226,11 @@ def _inspect_workspace_zip(raw_bytes: bytes, manager: RunnerManager) -> dict[str
                 presets = presets_payload.get("presets", {})
                 if isinstance(presets, dict):
                     bundle_preset_names = sorted(
-                        [name for name, value in presets.items() if isinstance(name, str) and isinstance(value, dict)]
+                        [
+                            name
+                            for name, value in presets.items()
+                            if isinstance(name, str) and isinstance(value, dict)
+                        ]
                     )
             except Exception:
                 bundle_preset_names = []
@@ -274,6 +283,7 @@ async def start_simulation(request: StartSimulationRequest | None = None):
     await manager.start_simulation(mission_name)
     return {"status": "started", "mission": mission_name}
 
+
 @router.post("/stop")
 async def stop_simulation():
     """Stop the simulation process."""
@@ -281,11 +291,13 @@ async def stop_simulation():
     await manager.stop_simulation()
     return {"status": "stopped"}
 
+
 @router.get("/config")
 def get_config():
     """Get the current simulation configuration (defaults + overrides)."""
     manager = get_runner_manager()
     return manager.get_config()
+
 
 @router.post("/config")
 def update_config(overrides: dict):
@@ -293,6 +305,7 @@ def update_config(overrides: dict):
     manager = get_runner_manager()
     manager.update_config(overrides)
     return {"status": "updated", "config": manager.get_config()}
+
 
 @router.post("/config/reset")
 def reset_config():
@@ -337,7 +350,9 @@ def apply_preset(payload: PresetApplyRequest):
     try:
         config = manager.apply_preset(payload.name)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Preset '{payload.name}' not found") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Preset '{payload.name}' not found"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "applied", "name": payload.name, "config": config}
@@ -548,7 +563,9 @@ async def import_workspace_bundle(
     with zf:
         for name in zf.namelist():
             normalized = name.strip().replace("\\", "/")
-            if not normalized.startswith("missions/") or not normalized.endswith(".json"):
+            if not normalized.startswith("missions/") or not normalized.endswith(
+                ".json"
+            ):
                 continue
             mission_name = Path(normalized).name
             if not mission_name:
@@ -560,7 +577,9 @@ async def import_workspace_bundle(
                 skipped_missions += 1
                 continue
             payload = json.loads(zf.read(name).decode("utf-8"))
-            save_mission_json(name=Path(mission_name).stem, payload=payload, source="local")
+            save_mission_json(
+                name=Path(mission_name).stem, payload=payload, source="local"
+            )
             imported_missions += 1
 
         if "runner_presets.json" in zf.namelist():
@@ -568,7 +587,9 @@ async def import_workspace_bundle(
             presets = presets_payload.get("presets", {})
             if isinstance(presets, dict):
                 for preset_name, preset_value in presets.items():
-                    if not isinstance(preset_name, str) or not isinstance(preset_value, dict):
+                    if not isinstance(preset_name, str) or not isinstance(
+                        preset_value, dict
+                    ):
                         continue
                     preset_config = preset_value.get("config")
                     if not isinstance(preset_config, dict):
@@ -576,7 +597,9 @@ async def import_workspace_bundle(
                     allow_overwrite = replace_existing_presets or (
                         preset_name in explicit_preset_overwrites
                     )
-                    if (preset_name in existing_preset_conflicts) and (not allow_overwrite):
+                    if (preset_name in existing_preset_conflicts) and (
+                        not allow_overwrite
+                    ):
                         skipped_presets += 1
                         continue
                     manager.save_preset(preset_name, preset_config)
@@ -624,7 +647,9 @@ async def import_workspace_bundle(
             imported_simulation_runs += 1
 
         if apply_runner_config and "runner_overrides.json" in zf.namelist():
-            config_payload = json.loads(zf.read("runner_overrides.json").decode("utf-8"))
+            config_payload = json.loads(
+                zf.read("runner_overrides.json").decode("utf-8")
+            )
             if isinstance(config_payload, dict):
                 manager.update_config(config_payload)
                 imported_config = True
@@ -663,10 +688,12 @@ def get_system_status():
 
     checks = {
         "ui_dist_ready": ui_dist_index.exists() and ui_dist_index.is_file(),
-        "simulation_script_ready": SIMULATION_SCRIPT.exists() and SIMULATION_SCRIPT.is_file(),
+        "simulation_script_ready": SIMULATION_SCRIPT.exists()
+        and SIMULATION_SCRIPT.is_file(),
         "src_python_ready": src_python_dir.exists() and src_python_dir.is_dir(),
         "data_sim_ready": data_sim_dir.exists() and data_sim_dir.is_dir(),
-        "data_dashboard_ready": data_dashboard_dir.exists() and data_dashboard_dir.is_dir(),
+        "data_dashboard_ready": data_dashboard_dir.exists()
+        and data_dashboard_dir.is_dir(),
         "python_executable_ready": bool(sys.executable),
     }
 

@@ -48,9 +48,7 @@ class MeshScanPassModel(BaseModel):
 
     @field_validator("region_center")
     @classmethod
-    def validate_region_center(
-        cls, value: list[float] | None
-    ) -> list[float] | None:
+    def validate_region_center(cls, value: list[float] | None) -> list[float] | None:
         if value is None:
             return value
         if len(value) != 3:

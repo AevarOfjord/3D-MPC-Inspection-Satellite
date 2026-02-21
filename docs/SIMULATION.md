@@ -403,11 +403,11 @@ SIMULATION_DT = 0.005  # Physics frequency
 
 The simulation provides:
 
-✅ **Accurate physics** with high-rate (200 Hz) integration  
-✅ **Realistic control** with discrete-time (16.67 Hz) MPC  
-✅ **Efficient computation** by separating control and physics rates  
-✅ **Comprehensive logging** for post-analysis  
-✅ **Real-time visualization** via terminal dashboard  
+✅ **Accurate physics** with high-rate (200 Hz) integration
+✅ **Realistic control** with discrete-time (16.67 Hz) MPC
+✅ **Efficient computation** by separating control and physics rates
+✅ **Comprehensive logging** for post-analysis
+✅ **Real-time visualization** via terminal dashboard
 ✅ **Path-based missions** created in web UI and executed in terminal
 
 This design mirrors real embedded control systems where controllers run at lower rates than sensor/actuator updates.

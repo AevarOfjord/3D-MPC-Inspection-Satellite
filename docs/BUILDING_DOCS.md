@@ -62,14 +62,14 @@ Use Google-style docstrings (supported by Napoleon extension):
 def solve_mpc(self, state: np.ndarray, target: np.ndarray) -> np.ndarray:
     """
     Solve MPC optimization problem.
-    
+
     Args:
         state: Current state vector [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]
         target: Target state vector (same format)
-        
+
     Returns:
         Optimal control action [u1, u2, ..., u12]
-        
+
     Raises:
         OptimizationError: If solver fails
     """

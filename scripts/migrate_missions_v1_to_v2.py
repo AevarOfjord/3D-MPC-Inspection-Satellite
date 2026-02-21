@@ -58,7 +58,9 @@ def _migrate_file(
     target = source if in_place else (output_dir / source.name)
 
     if not in_place and target.resolve() == source.resolve():
-        raise ValueError(f"Refusing to overwrite source path without --in-place: {source}")
+        raise ValueError(
+            f"Refusing to overwrite source path without --in-place: {source}"
+        )
     if target.exists() and target.resolve() != source.resolve() and not overwrite:
         raise FileExistsError(f"Output already exists: {target}")
     if dry_run:

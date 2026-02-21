@@ -154,12 +154,18 @@ async def get_simulation_telemetry(
                 metadata.get("planned_path_frame", "LVLH")
             ).upper()
             planned_path_frame = (
-                planned_path_frame_raw if planned_path_frame_raw in {"LVLH", "ECI"} else "LVLH"
+                planned_path_frame_raw
+                if planned_path_frame_raw in {"LVLH", "ECI"}
+                else "LVLH"
             )
             frame = planned_path_frame
             meta_origin = metadata.get("frame_origin")
             if isinstance(meta_origin, list) and len(meta_origin) >= 3:
-                frame_origin = [float(meta_origin[0]), float(meta_origin[1]), float(meta_origin[2])]
+                frame_origin = [
+                    float(meta_origin[0]),
+                    float(meta_origin[1]),
+                    float(meta_origin[2]),
+                ]
             elif scan_object and scan_object.get("position") is not None:
                 pos = scan_object.get("position")
                 if isinstance(pos, list) and len(pos) >= 3:
@@ -396,28 +402,28 @@ async def list_simulation_files(run_id: str):
     """List all files in the simulation directory."""
     run_dir = _get_run_dir(run_id)
     files = []
-    
+
     # We only want to list the files in the run directory and its immediate subdirectories (like Plots)
     # For now, let's keep it simple: generic recursive list or just top level + specific known folders?
     # Let's do a simple recursive walk for the response.
-    
+
     for path in run_dir.rglob("*"):
         if path.is_file():
             rel_path = path.relative_to(run_dir)
-            files.append({
-                "path": str(rel_path),
-                "name": path.name,
-                "size": path.stat().st_size,
-                "type": "file"
-            })
+            files.append(
+                {
+                    "path": str(rel_path),
+                    "name": path.name,
+                    "size": path.stat().st_size,
+                    "type": "file",
+                }
+            )
         elif path.is_dir():
-             rel_path = path.relative_to(run_dir)
-             files.append({
-                "path": str(rel_path),
-                "name": path.name,
-                "type": "directory"
-             })
-             
+            rel_path = path.relative_to(run_dir)
+            files.append(
+                {"path": str(rel_path), "name": path.name, "type": "directory"}
+            )
+
     # Sort by type (dir first) then name
     files.sort(key=lambda x: (x["type"] == "file", x["path"]))
     return {"files": files}
@@ -428,11 +434,11 @@ async def get_simulation_file(run_id: str, file_path: str):
     """Serve a specific file from the simulation directory."""
     run_dir = _get_run_dir(run_id)
     target_path = (run_dir / file_path).resolve()
-    
+
     # Security check: Ensure we haven't escaped the run dir
     if not str(target_path).startswith(str(run_dir.resolve())):
-         raise HTTPException(status_code=403, detail="Access denied")
-         
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not target_path.exists() or not target_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -446,12 +452,10 @@ async def get_simulation_file(run_id: str, file_path: str):
     elif target_path.suffix.lower() == ".mp4":
         media_type = "video/mp4"
     elif target_path.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif"]:
-        media_type = "image/jpeg" # or determine dynamically
+        media_type = "image/jpeg"  # or determine dynamically
 
     return FileResponse(
-        path=target_path, 
-        filename=target_path.name, 
-        media_type=media_type
+        path=target_path, filename=target_path.name, media_type=media_type
     )
 
 
@@ -508,7 +512,9 @@ async def runs_updates_websocket(websocket: WebSocket):
             if signature != last_signature:
                 await websocket.send_json(
                     {
-                        "type": "runs_snapshot" if last_signature is None else "runs_updated",
+                        "type": "runs_snapshot"
+                        if last_signature is None
+                        else "runs_updated",
                         "runs": runs,
                         "latest_run_id": runs[0]["id"] if runs else None,
                         "updated_at": time.time(),
