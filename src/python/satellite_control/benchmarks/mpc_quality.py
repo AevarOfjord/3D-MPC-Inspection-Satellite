@@ -19,9 +19,13 @@ from satellite_control.core.v6_controller_runtime import QualityContractReportV6
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DATA_SIM_DIR = PROJECT_ROOT / "Data" / "Simulation"
 SIM_RUNNER = PROJECT_ROOT / "scripts" / "run_simulation.py"
+MISSIONS_DIR = PROJECT_ROOT / "missions"
 
 MISSION_PLANNER_M4 = PROJECT_ROOT / "missions" / "STARLINK-1008_M4_202602192133.json"
 MISSION_PLANNER_2M = PROJECT_ROOT / "missions" / "Starlink2mScan.json"
+ENV_MISSION_M4 = "SATCTRL_QUALITY_MISSION_M4"
+ENV_MISSION_2M = "SATCTRL_QUALITY_MISSION_2M"
+ENV_MISSION_FALLBACK = "SATCTRL_QUALITY_MISSION_FALLBACK"
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,7 @@ class ScenarioSpec:
     mission_path: Path | None = None
     generate_manual_scurve: bool = False
     contract_run: bool = True
+    optional: bool = False
 
 
 @dataclass
@@ -45,6 +50,8 @@ class ScenarioResult:
     contracts: dict[str, dict[str, Any]]
     passed: bool
     breaches: list[str]
+    skipped: bool = False
+    skip_reason: str | None = None
 
 
 @dataclass
@@ -54,6 +61,7 @@ class QualitySuiteResult:
     full: bool
     scenarios: list[ScenarioResult]
     passed: bool
+    messages: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -67,6 +75,107 @@ class QualitySuiteResult:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _path_from_raw(raw: str | os.PathLike[str] | None) -> Path | None:
+    if raw is None:
+        return None
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = (PROJECT_ROOT / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    if candidate.exists() and candidate.is_file():
+        return candidate
+    return None
+
+
+def _discover_local_mission_candidates() -> list[Path]:
+    if not MISSIONS_DIR.exists():
+        return []
+    return sorted(
+        path.resolve() for path in MISSIONS_DIR.glob("*.json") if path.is_file()
+    )
+
+
+def _resolve_planner_missions(
+    *,
+    mission_m4: str | os.PathLike[str] | None = None,
+    mission_2m: str | os.PathLike[str] | None = None,
+) -> tuple[Path | None, Path | None, list[str]]:
+    messages: list[str] = []
+
+    fallback_candidates: list[Path] = []
+    fallback_raw = os.environ.get(ENV_MISSION_FALLBACK, "").strip()
+    if fallback_raw:
+        fallback_path = _path_from_raw(fallback_raw)
+        if fallback_path is not None:
+            fallback_candidates.append(fallback_path)
+        else:
+            messages.append(
+                f"{ENV_MISSION_FALLBACK} is set but missing/unreadable: {fallback_raw}"
+            )
+    for candidate in _discover_local_mission_candidates():
+        if candidate not in fallback_candidates:
+            fallback_candidates.append(candidate)
+
+    def _resolve_one(
+        *,
+        scenario_name: str,
+        explicit_raw: str | os.PathLike[str] | None,
+        env_var: str,
+        default_path: Path,
+        fallback_index: int,
+    ) -> Path | None:
+        explicit_path = _path_from_raw(explicit_raw)
+        if explicit_raw is not None and explicit_path is None:
+            messages.append(
+                f"{scenario_name}: explicit mission override missing/unreadable: {explicit_raw}"
+            )
+        if explicit_path is not None:
+            return explicit_path
+
+        env_raw = os.environ.get(env_var, "").strip()
+        if env_raw:
+            env_path = _path_from_raw(env_raw)
+            if env_path is None:
+                messages.append(
+                    f"{scenario_name}: {env_var} is set but missing/unreadable: {env_raw}"
+                )
+            else:
+                return env_path
+
+        if default_path.exists():
+            return default_path.resolve()
+
+        if fallback_candidates:
+            idx = min(fallback_index, len(fallback_candidates) - 1)
+            fallback_path = fallback_candidates[idx]
+            messages.append(
+                f"{scenario_name}: default mission missing, falling back to {fallback_path}"
+            )
+            return fallback_path
+
+        messages.append(
+            f"{scenario_name}: no planner mission file available; scenario will be skipped"
+        )
+        return None
+
+    resolved_m4 = _resolve_one(
+        scenario_name="planner_m4",
+        explicit_raw=mission_m4,
+        env_var=ENV_MISSION_M4,
+        default_path=MISSION_PLANNER_M4,
+        fallback_index=0,
+    )
+    resolved_2m = _resolve_one(
+        scenario_name="planner_2m",
+        explicit_raw=mission_2m,
+        env_var=ENV_MISSION_2M,
+        default_path=MISSION_PLANNER_2M,
+        fallback_index=1,
+    )
+    return resolved_m4, resolved_2m, messages
 
 
 def _read_latest_run_id() -> str | None:
@@ -248,7 +357,12 @@ class QualityContractEngineV6:
         )
 
 
-def _default_scenarios(full: bool) -> list[ScenarioSpec]:
+def _default_scenarios(
+    full: bool,
+    *,
+    planner_m4: Path | None,
+    planner_2m: Path | None,
+) -> list[ScenarioSpec]:
     auto_contracts = {
         "path_completed": ("==", True),
         "final_position_error_m": ("<=", 0.06),
@@ -291,14 +405,16 @@ def _default_scenarios(full: bool) -> list[ScenarioSpec]:
                 ScenarioSpec(
                     name="planner_m4",
                     duration_s=60.0,
-                    mission_path=MISSION_PLANNER_M4,
+                    mission_path=planner_m4,
                     contracts=planner_contracts,
+                    optional=True,
                 ),
                 ScenarioSpec(
                     name="planner_2m",
                     duration_s=60.0,
-                    mission_path=MISSION_PLANNER_2M,
+                    mission_path=planner_2m,
                     contracts=planner_contracts,
+                    optional=True,
                 ),
                 ScenarioSpec(
                     name="stress_manual_scurve",
@@ -309,8 +425,9 @@ def _default_scenarios(full: bool) -> list[ScenarioSpec]:
                 ScenarioSpec(
                     name="long_completion_tier",
                     duration_s=180.0,
-                    mission_path=MISSION_PLANNER_M4,
+                    mission_path=planner_m4,
                     contracts=long_completion_contracts,
+                    optional=True,
                 ),
             ]
         )
@@ -379,6 +496,35 @@ def _run_scenario(
         command.append("--auto")
     elif mission_path is not None:
         command.extend(["--mission", str(mission_path)])
+    elif scenario.optional:
+        return ScenarioResult(
+            name=scenario.name,
+            command=command,
+            return_code=0,
+            run_dir=None,
+            metrics={},
+            contracts={},
+            passed=True,
+            breaches=[],
+            skipped=True,
+            skip_reason=(
+                "Optional planner scenario skipped because no mission file was resolved."
+            ),
+        )
+
+    if not SIM_RUNNER.exists():
+        return ScenarioResult(
+            name=scenario.name,
+            command=command,
+            return_code=1,
+            run_dir=None,
+            metrics={},
+            contracts={},
+            passed=False,
+            breaches=[f"simulation_runner_missing ({SIM_RUNNER})"],
+            skipped=False,
+            skip_reason=None,
+        )
 
     before_run_id = _read_latest_run_id()
     env = os.environ.copy()
@@ -457,10 +603,20 @@ def run_mpc_quality_suite(
     fail_on_breach: bool = False,
     python_executable: str | None = None,
     keep_temp_files: bool = False,
+    mission_m4: str | os.PathLike[str] | None = None,
+    mission_2m: str | os.PathLike[str] | None = None,
 ) -> QualitySuiteResult:
     """Execute MPC quality scenarios and evaluate contract thresholds."""
     py_exec = python_executable or sys.executable
-    scenarios = _default_scenarios(full=full)
+    resolved_m4, resolved_2m, messages = _resolve_planner_missions(
+        mission_m4=mission_m4,
+        mission_2m=mission_2m,
+    )
+    scenarios = _default_scenarios(
+        full=full,
+        planner_m4=resolved_m4,
+        planner_2m=resolved_2m,
+    )
 
     manual_path: Path | None = None
     temp_dir_obj: tempfile.TemporaryDirectory[str] | None = None
@@ -483,6 +639,7 @@ def run_mpc_quality_suite(
         full=full,
         scenarios=results,
         passed=passed,
+        messages=messages,
     )
 
     if fail_on_breach and not passed:

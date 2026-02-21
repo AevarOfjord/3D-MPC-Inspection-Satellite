@@ -45,6 +45,11 @@ htmlcov/
 # IDEs
 .vscode/
 .idea/
+.continue/
+
+# Benchmark / Cache artifacts
+.benchmarks/
+.pycache_local/
 
 # OS
 .DS_Store
@@ -56,6 +61,7 @@ node_modules/
 ui/node_modules/
 ui/npm_cache/
 ui/dist/
+ui/test-results/
 ui/public/model_files/**/*.obj
 ui/public/model_files/**/*.mtl
 ui/public/model_files/**/*.usdz

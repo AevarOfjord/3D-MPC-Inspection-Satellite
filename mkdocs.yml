@@ -37,18 +37,8 @@ plugins:
           paths: [src/python]
 
 nav:
-  - Home: index.md
-  - User Guide: user-guide.md
-  - Core Physics: physics.md
-  - Developer Guide: developer-guide.md
-  - API Reference: api.md
-  - Meta:
-      - Asset Attribution: ASSET_ATTRIBUTION.md
-      - Changelog: CHANGELOG.md
-      - Code of Conduct: CODE_OF_CONDUCT.md
-      - Contributing: CONTRIBUTING.md
-      - Security: SECURITY.md
-      - Third Party Notices: THIRD_PARTY_NOTICES.md
+  - Physics Engine: architecture/physics_engine.md
+  - Mathematics: architecture/mathematics.md
 
 markdown_extensions:
   - admonition

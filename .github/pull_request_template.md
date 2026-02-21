@@ -1,27 +1,21 @@
 ## Summary
 
-Describe what this PR changes and why.
-
-## Scope
-
-- [ ] Backend (Python/FastAPI)
-- [ ] UI (React/Three.js)
-- [ ] Simulation/C++ bindings
-- [ ] Documentation
-- [ ] Tooling/CI
+Describe what changed and why.
 
 ## Validation
 
+List commands/tests run:
+
 - [ ] `make lint`
-- [ ] `make test-cov`
-- [ ] `make docs-build` (if docs or API refs changed)
-- [ ] `make package-app` (if packaging/release changes)
+- [ ] `make test`
+- [ ] `npm --prefix ui run test`
+- [ ] `npm --prefix ui run build`
 
-## Compatibility
+## Risk & Rollback
 
-- [ ] Existing API contracts remain unchanged
-- [ ] Any behavior changes are documented
+- Primary risk:
+- Rollback plan:
 
 ## Notes
 
-Link related issues and include screenshots/log output when relevant.
+Any migrations, compatibility concerns, or follow-up tasks.

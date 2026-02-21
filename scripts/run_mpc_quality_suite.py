@@ -33,6 +33,22 @@ def parse_args() -> argparse.Namespace:
         help="Keep temporary generated scenario files (debug only)",
     )
     parser.add_argument(
+        "--mission-m4",
+        default=None,
+        help=(
+            "Optional planner mission override for m4 scenarios "
+            "(also configurable via SATCTRL_QUALITY_MISSION_M4)."
+        ),
+    )
+    parser.add_argument(
+        "--mission-2m",
+        default=None,
+        help=(
+            "Optional planner mission override for 2m scenarios "
+            "(also configurable via SATCTRL_QUALITY_MISSION_2M)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=None,
         help="Optional path for suite summary JSON output",
@@ -49,14 +65,24 @@ def main() -> int:
             fail_on_breach=args.fail_on_breach,
             python_executable=args.python_executable,
             keep_temp_files=args.keep_temp_files,
+            mission_m4=args.mission_m4,
+            mission_2m=args.mission_2m,
         )
     except RuntimeError as exc:
         print(str(exc))
         return 1
 
+    for message in suite.messages:
+        print(f"[WARN] {message}")
+
     for scenario in suite.scenarios:
-        status = "PASS" if scenario.passed else "FAIL"
+        if scenario.skipped:
+            status = "SKIP"
+        else:
+            status = "PASS" if scenario.passed else "FAIL"
         print(f"[{status}] {scenario.name} run_dir={scenario.run_dir or 'n/a'}")
+        if scenario.skipped and scenario.skip_reason:
+            print(f"  - {scenario.skip_reason}")
         if scenario.breaches:
             for breach in scenario.breaches:
                 print(f"  - {breach}")
