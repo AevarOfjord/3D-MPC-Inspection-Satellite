@@ -94,6 +94,7 @@ class MPCController(Controller):
         sat_params.rw_torque_limits = self.rw_torque_limits
         sat_params.rw_inertia = self.rw_inertia
         sat_params.rw_speed_limits = self.rw_speed_limits
+        sat_params.rw_axes = [np.array(a) for a in self.rw_axes]
         sat_params.com_offset = self.com_offset
         sat_params.orbital_mean_motion = self.orbital_mean_motion
         sat_params.orbital_mu = self.orbital_mu
@@ -122,6 +123,7 @@ class MPCController(Controller):
         mpc_params.Q_angvel = self.Q_angvel
         mpc_params.Q_attitude = self.Q_attitude
         mpc_params.Q_axis_align = float(self.Q_axis_align)
+        mpc_params.Q_quat_norm = float(self.Q_quat_norm)
         mpc_params.R_thrust = self.R_thrust
         mpc_params.R_rw_torque = self.R_rw_torque
         mpc_params.thrust_l1_weight = float(self.thrust_l1_weight)
@@ -153,7 +155,19 @@ class MPCController(Controller):
         mpc_params.max_angular_velocity = float(self.max_angular_velocity)
         mpc_params.enable_delta_u_coupling = bool(self.enable_delta_u_coupling)
         mpc_params.enable_gyro_jacobian = bool(self.enable_gyro_jacobian)
+        mpc_params.auto_enable_gyro_jacobian = bool(self.auto_enable_gyro_jacobian)
+        mpc_params.gyro_enable_threshold_radps = float(self.gyro_enable_threshold_radps)
         mpc_params.enable_auto_state_bounds = bool(self.enable_auto_state_bounds)
+        mpc_params.enable_online_dare_terminal = bool(self.enable_online_dare_terminal)
+        mpc_params.dare_update_period_steps = int(self.dare_update_period_steps)
+        mpc_params.terminal_cost_profile = str(self.terminal_cost_profile)
+        mpc_params.robustness_mode = str(self.robustness_mode)
+        mpc_params.constraint_tightening_scale = float(self.constraint_tightening_scale)
+        mpc_params.tube_feedback_gain_scale = float(self.tube_feedback_gain_scale)
+        mpc_params.tube_feedback_max_correction = float(
+            self.tube_feedback_max_correction
+        )
+        mpc_params.enable_variable_scaling = bool(self.enable_variable_scaling)
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
@@ -535,12 +549,22 @@ class MPCController(Controller):
             self.rw_speed_limits = [
                 float(getattr(rw, "max_speed", 0.0)) for rw in self.reaction_wheels
             ]
+            self.rw_axes = []
+            for rw in self.reaction_wheels:
+                axis = np.array(getattr(rw, "axis", (1.0, 0.0, 0.0)), dtype=float)
+                axis_norm = np.linalg.norm(axis)
+                if axis_norm > 1e-12:
+                    axis = axis / axis_norm
+                else:
+                    axis = np.array([1.0, 0.0, 0.0], dtype=float)
+                self.rw_axes.append(axis)
         else:
             self.reaction_wheels = []
             self.num_rw_axes = 0
             self.rw_torque_limits = []
             self.rw_inertia = []
             self.rw_speed_limits = []
+            self.rw_axes = []
 
         self.max_rw_torque = (
             max(self.rw_torque_limits) if self.rw_torque_limits else 0.0
@@ -583,6 +607,7 @@ class MPCController(Controller):
         self.Q_angvel = mpc.q_angular_velocity
         self.Q_attitude = mpc.Q_attitude
         self.Q_axis_align = mpc.Q_axis_align
+        self.Q_quat_norm = float(mpc.Q_quat_norm)
         self.R_thrust = mpc.r_thrust
         self.R_rw_torque = mpc.r_rw_torque
         self.thrust_l1_weight = mpc.thrust_l1_weight
@@ -591,7 +616,17 @@ class MPCController(Controller):
         self.max_angular_velocity = mpc.max_angular_velocity
         self.enable_delta_u_coupling = bool(mpc.enable_delta_u_coupling)
         self.enable_gyro_jacobian = bool(mpc.enable_gyro_jacobian)
+        self.auto_enable_gyro_jacobian = bool(mpc.auto_enable_gyro_jacobian)
+        self.gyro_enable_threshold_radps = float(mpc.gyro_enable_threshold_radps)
         self.enable_auto_state_bounds = bool(mpc.enable_auto_state_bounds)
+        self.enable_online_dare_terminal = bool(mpc.enable_online_dare_terminal)
+        self.dare_update_period_steps = int(mpc.dare_update_period_steps)
+        self.terminal_cost_profile = str(mpc.terminal_cost_profile)
+        self.robustness_mode = str(mpc.robustness_mode)
+        self.constraint_tightening_scale = float(mpc.constraint_tightening_scale)
+        self.tube_feedback_gain_scale = float(mpc.tube_feedback_gain_scale)
+        self.tube_feedback_max_correction = float(mpc.tube_feedback_max_correction)
+        self.enable_variable_scaling = bool(mpc.enable_variable_scaling)
 
         # Path Following. - General Path MPCC
         self.Q_contour = mpc.Q_contour
@@ -790,6 +825,14 @@ class MPCController(Controller):
             "fallback_active": fallback_active,
             "fallback_age_s": fallback_age_s,
             "fallback_scale": fallback_scale,
+            "timing_linearization_s": float(getattr(result, "t_linearization_s", 0.0)),
+            "timing_cost_update_s": float(getattr(result, "t_cost_update_s", 0.0)),
+            "timing_constraint_update_s": float(
+                getattr(result, "t_constraint_update_s", 0.0)
+            ),
+            "timing_matrix_update_s": float(getattr(result, "t_matrix_update_s", 0.0)),
+            "timing_warmstart_s": float(getattr(result, "t_warmstart_s", 0.0)),
+            "timing_solve_only_s": float(getattr(result, "t_solve_only_s", 0.0)),
             "controller_core": self.controller_core,
             "path_s": path_s,
             "path_s_proj": float(path_s_proj) if path_s_proj is not None else None,

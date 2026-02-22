@@ -18,6 +18,7 @@ public:
     std::pair<MatrixXd, MatrixXd> linearize(const VectorXd& x_current);
     const VectorXd& affine() const { return affine_; }
     void set_freeze_target(bool freeze) { freeze_target_ = freeze; }
+    void set_enable_gyro_jacobian(bool enable) { enable_gyro_jacobian_ = enable; }
 
 private:
     SatelliteParams params_;

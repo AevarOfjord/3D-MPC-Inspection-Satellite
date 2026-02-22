@@ -33,6 +33,7 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("rw_torque_limits", &SatelliteParams::rw_torque_limits)
         .def_readwrite("rw_inertia", &SatelliteParams::rw_inertia)
         .def_readwrite("rw_speed_limits", &SatelliteParams::rw_speed_limits)
+        .def_readwrite("rw_axes", &SatelliteParams::rw_axes)
         .def_readwrite("com_offset", &SatelliteParams::com_offset)
         .def_readwrite("orbital_mean_motion", &SatelliteParams::orbital_mean_motion)
         .def_readwrite("orbital_mu", &SatelliteParams::orbital_mu)
@@ -56,6 +57,7 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("Q_angvel", &MPCParams::Q_angvel)
         .def_readwrite("Q_attitude", &MPCParams::Q_attitude)
         .def_readwrite("Q_axis_align", &MPCParams::Q_axis_align)
+        .def_readwrite("Q_quat_norm", &MPCParams::Q_quat_norm)
         .def_readwrite("R_thrust", &MPCParams::R_thrust)
         .def_readwrite("R_rw_torque", &MPCParams::R_rw_torque)
         .def_readwrite("thrust_l1_weight", &MPCParams::thrust_l1_weight)
@@ -64,10 +66,38 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("max_angular_velocity", &MPCParams::max_angular_velocity)
         .def_readwrite("enable_delta_u_coupling", &MPCParams::enable_delta_u_coupling)
         .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
+        .def_readwrite(
+            "auto_enable_gyro_jacobian",
+            &MPCParams::auto_enable_gyro_jacobian
+        )
+        .def_readwrite(
+            "gyro_enable_threshold_radps",
+            &MPCParams::gyro_enable_threshold_radps
+        )
         .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
-
-        .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
-        .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
+        .def_readwrite(
+            "enable_online_dare_terminal",
+            &MPCParams::enable_online_dare_terminal
+        )
+        .def_readwrite(
+            "dare_update_period_steps",
+            &MPCParams::dare_update_period_steps
+        )
+        .def_readwrite("terminal_cost_profile", &MPCParams::terminal_cost_profile)
+        .def_readwrite("robustness_mode", &MPCParams::robustness_mode)
+        .def_readwrite(
+            "constraint_tightening_scale",
+            &MPCParams::constraint_tightening_scale
+        )
+        .def_readwrite(
+            "tube_feedback_gain_scale",
+            &MPCParams::tube_feedback_gain_scale
+        )
+        .def_readwrite(
+            "tube_feedback_max_correction",
+            &MPCParams::tube_feedback_max_correction
+        )
+        .def_readwrite("enable_variable_scaling", &MPCParams::enable_variable_scaling)
         // Path following (general MPCC)
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
@@ -129,7 +159,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("path_endpoint_error", &ControlResult::path_endpoint_error)
         .def_readwrite("fallback_active", &ControlResult::fallback_active)
         .def_readwrite("fallback_age_s", &ControlResult::fallback_age_s)
-        .def_readwrite("fallback_scale", &ControlResult::fallback_scale);
+        .def_readwrite("fallback_scale", &ControlResult::fallback_scale)
+        .def_readwrite("t_linearization_s", &ControlResult::t_linearization_s)
+        .def_readwrite("t_cost_update_s", &ControlResult::t_cost_update_s)
+        .def_readwrite("t_constraint_update_s", &ControlResult::t_constraint_update_s)
+        .def_readwrite("t_matrix_update_s", &ControlResult::t_matrix_update_s)
+        .def_readwrite("t_warmstart_s", &ControlResult::t_warmstart_s)
+        .def_readwrite("t_solve_only_s", &ControlResult::t_solve_only_s);
 
     // Obstacle Types
     py::enum_<satellite_control::ObstacleType>(m, "ObstacleType")

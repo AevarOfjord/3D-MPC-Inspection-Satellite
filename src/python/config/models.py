@@ -331,6 +331,12 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Extra axis-alignment weight (adds to Q_attitude)",
     )
+    Q_quat_norm: float = Field(
+        constants.Constants.Q_QUAT_NORM,
+        ge=0.0,
+        le=1e6,
+        description="Soft quaternion normalization weight",
+    )
     Q_terminal_pos: float = Field(
         constants.Constants.Q_TERMINAL_POS,
         ge=0.0,
@@ -429,11 +435,63 @@ class MPCParams(BaseModel):
             "(improves high-rate accuracy, adds compute)"
         ),
     )
+    auto_enable_gyro_jacobian: bool = Field(
+        constants.Constants.AUTO_ENABLE_GYRO_JACOBIAN,
+        description=("Auto-enable gyro Jacobian when angular rate exceeds threshold"),
+    )
+    gyro_enable_threshold_radps: float = Field(
+        constants.Constants.GYRO_ENABLE_THRESHOLD_RADPS,
+        ge=0.0,
+        le=100.0,
+        description="Angular-rate threshold for auto gyro Jacobian [rad/s]",
+    )
     enable_auto_state_bounds: bool = Field(
         constants.Constants.ENABLE_AUTO_STATE_BOUNDS,
         description=(
             "Auto-derive velocity state bounds when explicit limits are unset"
         ),
+    )
+    enable_online_dare_terminal: bool = Field(
+        constants.Constants.ENABLE_ONLINE_DARE_TERMINAL,
+        description=(
+            "Periodically recompute DARE terminal diagonal around local trajectory tail"
+        ),
+    )
+    dare_update_period_steps: int = Field(
+        constants.Constants.DARE_UPDATE_PERIOD_STEPS,
+        ge=1,
+        le=1000,
+        description="Control steps between online DARE terminal updates",
+    )
+    terminal_cost_profile: str = Field(
+        constants.Constants.TERMINAL_COST_PROFILE,
+        description='Terminal cost profile ("diagonal" or "dense_terminal")',
+    )
+    robustness_mode: str = Field(
+        constants.Constants.ROBUSTNESS_MODE,
+        description='Robustness scaffold mode ("none" or "tube")',
+    )
+    constraint_tightening_scale: float = Field(
+        constants.Constants.CONSTRAINT_TIGHTENING_SCALE,
+        ge=0.0,
+        le=0.3,
+        description="Constraint tightening fraction for robust scaffold",
+    )
+    tube_feedback_gain_scale: float = Field(
+        constants.Constants.TUBE_FEEDBACK_GAIN_SCALE,
+        ge=0.0,
+        le=1.0,
+        description="Ancillary tube feedback gain scale",
+    )
+    tube_feedback_max_correction: float = Field(
+        constants.Constants.TUBE_FEEDBACK_MAX_CORRECTION,
+        ge=0.0,
+        le=1.0,
+        description="Maximum absolute tube feedback correction per control channel",
+    )
+    enable_variable_scaling: bool = Field(
+        constants.Constants.ENABLE_VARIABLE_SCALING,
+        description="Enable solver-coordinate variable scaling for improved conditioning",
     )
     enable_thruster_hysteresis: bool = Field(
         constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
@@ -461,6 +519,7 @@ class MPCParams(BaseModel):
         "Q_progress",
         "Q_attitude",
         "Q_axis_align",
+        "Q_quat_norm",
         "Q_smooth",
         "q_angular_velocity",
         "r_thrust",
@@ -484,7 +543,17 @@ class MPCParams(BaseModel):
         "solver_type",
         "enable_delta_u_coupling",
         "enable_gyro_jacobian",
+        "auto_enable_gyro_jacobian",
+        "gyro_enable_threshold_radps",
         "verbose_mpc",
+        "enable_online_dare_terminal",
+        "dare_update_period_steps",
+        "terminal_cost_profile",
+        "robustness_mode",
+        "constraint_tightening_scale",
+        "tube_feedback_gain_scale",
+        "tube_feedback_max_correction",
+        "enable_variable_scaling",
         "enable_thruster_hysteresis",
         "thruster_hysteresis_on",
         "thruster_hysteresis_off",
@@ -510,6 +579,26 @@ class MPCParams(BaseModel):
         if v not in ["PWM", "CON"]:
             raise ValueError(f"Thruster type must be 'PWM' or 'CON', got '{v}'")
         return v
+
+    @field_validator("terminal_cost_profile")
+    @classmethod
+    def validate_terminal_cost_profile(cls, v: str) -> str:
+        """Validate terminal cost profile selector."""
+        normalized = str(v).strip().lower()
+        if normalized not in {"diagonal", "dense_terminal"}:
+            raise ValueError(
+                "terminal_cost_profile must be 'diagonal' or 'dense_terminal'"
+            )
+        return normalized
+
+    @field_validator("robustness_mode")
+    @classmethod
+    def validate_robustness_mode(cls, v: str) -> str:
+        """Validate robustness scaffold selector."""
+        normalized = str(v).strip().lower()
+        if normalized not in {"none", "tube"}:
+            raise ValueError("robustness_mode must be 'none' or 'tube'")
+        return normalized
 
     @field_validator("control_horizon")
     @classmethod
@@ -545,6 +634,7 @@ class MPCParams(BaseModel):
             + self.Q_smooth
             + self.Q_attitude
             + self.Q_axis_align
+            + self.Q_quat_norm
             + self.Q_terminal_pos
             + self.Q_terminal_s
             + self.q_angular_velocity
