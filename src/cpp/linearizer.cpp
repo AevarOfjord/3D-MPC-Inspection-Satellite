@@ -136,10 +136,21 @@ std::pair<MatrixXd, MatrixXd> Linearizer::linearize(const VectorXd& x_current) {
     for(int i=0; i < params_.num_rw; ++i) {
         if(params_.rw_torque_limits[i] == 0.0) continue;
 
-        // 1. Angular velocity dynamics: Idot_w = -tau_rw
-        // B[10+i, i] = -1/I_sat * tau_max * dt
-        // Note: This is simplified diagonal inertia assumption for body axes aligned with principal axes
-        B(10 + i, i) = -(1.0 / params_.inertia[i]) * dt * params_.rw_torque_limits[i];
+        // 1. Angular velocity dynamics: I * w_dot = tau_body, tau_body = -axis * tau_rw
+        Eigen::Vector3d axis = Eigen::Vector3d::Zero();
+        if (i < static_cast<int>(params_.rw_axes.size())) {
+            axis = params_.rw_axes[i];
+        } else if (i < 3) {
+            axis(i) = 1.0;
+        } else {
+            axis(0) = 1.0;
+        }
+        double axis_norm = axis.norm();
+        if (axis_norm > 1e-12) {
+            axis /= axis_norm;
+        }
+        B.block<3, 1>(10, i) =
+            -(axis.cwiseQuotient(params_.inertia)) * dt * params_.rw_torque_limits[i];
 
         // 2. Wheel speed dynamics: dot_wr = tau_rw / I_rw
         // B[13+i, i] = 1/I_rw * tau_max * dt

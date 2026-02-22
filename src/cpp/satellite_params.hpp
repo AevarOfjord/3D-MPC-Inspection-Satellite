@@ -20,6 +20,7 @@ struct SatelliteParams {
     std::vector<double> rw_torque_limits;
     std::vector<double> rw_inertia;
     std::vector<double> rw_speed_limits;
+    std::vector<Vector3d> rw_axes;
     Vector3d com_offset;
 
     // Orbital dynamics parameters (for MPC linearization)

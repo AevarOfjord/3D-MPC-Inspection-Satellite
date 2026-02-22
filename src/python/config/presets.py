@@ -63,6 +63,7 @@ def _create_fast_mpc() -> MPCParams:
         Q_smooth=1.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_quat_norm=Constants.Q_QUAT_NORM,
         Q_terminal_pos=Constants.Q_TERMINAL_POS,
         Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=100.0,
@@ -71,7 +72,16 @@ def _create_fast_mpc() -> MPCParams:
         path_speed=0.5,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.5,
-        obstacle_margin=0.5,
+        auto_enable_gyro_jacobian=Constants.AUTO_ENABLE_GYRO_JACOBIAN,
+        gyro_enable_threshold_radps=Constants.GYRO_ENABLE_THRESHOLD_RADPS,
+        enable_online_dare_terminal=Constants.ENABLE_ONLINE_DARE_TERMINAL,
+        dare_update_period_steps=Constants.DARE_UPDATE_PERIOD_STEPS,
+        terminal_cost_profile="diagonal",
+        robustness_mode="none",
+        constraint_tightening_scale=0.0,
+        tube_feedback_gain_scale=Constants.TUBE_FEEDBACK_GAIN_SCALE,
+        tube_feedback_max_correction=Constants.TUBE_FEEDBACK_MAX_CORRECTION,
+        enable_variable_scaling=Constants.ENABLE_VARIABLE_SCALING,
     )
 
 
@@ -96,6 +106,7 @@ def _create_balanced_mpc() -> MPCParams:
         Q_smooth=Constants.Q_SMOOTH,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_quat_norm=Constants.Q_QUAT_NORM,
         Q_terminal_pos=Constants.Q_TERMINAL_POS,
         Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=Constants.Q_ANGULAR_VELOCITY,
@@ -110,7 +121,16 @@ def _create_balanced_mpc() -> MPCParams:
         path_speed=Constants.PATH_SPEED_MAX,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=Constants.PATH_SPEED_MAX,
-        obstacle_margin=0.5,
+        auto_enable_gyro_jacobian=Constants.AUTO_ENABLE_GYRO_JACOBIAN,
+        gyro_enable_threshold_radps=Constants.GYRO_ENABLE_THRESHOLD_RADPS,
+        enable_online_dare_terminal=Constants.ENABLE_ONLINE_DARE_TERMINAL,
+        dare_update_period_steps=Constants.DARE_UPDATE_PERIOD_STEPS,
+        terminal_cost_profile="diagonal",
+        robustness_mode="none",
+        constraint_tightening_scale=0.0,
+        tube_feedback_gain_scale=Constants.TUBE_FEEDBACK_GAIN_SCALE,
+        tube_feedback_max_correction=Constants.TUBE_FEEDBACK_MAX_CORRECTION,
+        enable_variable_scaling=Constants.ENABLE_VARIABLE_SCALING,
     )
 
 
@@ -132,6 +152,7 @@ def _create_stable_mpc() -> MPCParams:
         Q_smooth=50.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_quat_norm=Constants.Q_QUAT_NORM,
         Q_terminal_pos=Constants.Q_TERMINAL_POS,
         Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=2000.0,
@@ -141,7 +162,16 @@ def _create_stable_mpc() -> MPCParams:
         path_speed=0.05,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.1,
-        obstacle_margin=0.5,
+        auto_enable_gyro_jacobian=Constants.AUTO_ENABLE_GYRO_JACOBIAN,
+        gyro_enable_threshold_radps=Constants.GYRO_ENABLE_THRESHOLD_RADPS,
+        enable_online_dare_terminal=Constants.ENABLE_ONLINE_DARE_TERMINAL,
+        dare_update_period_steps=Constants.DARE_UPDATE_PERIOD_STEPS,
+        terminal_cost_profile="diagonal",
+        robustness_mode="tube",
+        constraint_tightening_scale=0.05,
+        tube_feedback_gain_scale=0.12,
+        tube_feedback_max_correction=0.15,
+        enable_variable_scaling=Constants.ENABLE_VARIABLE_SCALING,
     )
 
 
@@ -163,6 +193,7 @@ def _create_precision_mpc() -> MPCParams:
         Q_smooth=100.0,
         Q_attitude=Constants.Q_ATTITUDE,
         Q_axis_align=Constants.Q_AXIS_ALIGN,
+        Q_quat_norm=Constants.Q_QUAT_NORM,
         Q_terminal_pos=Constants.Q_TERMINAL_POS,
         Q_terminal_s=Constants.Q_TERMINAL_S,
         q_angular_velocity=5000.0,
@@ -172,7 +203,16 @@ def _create_precision_mpc() -> MPCParams:
         path_speed=0.02,
         path_speed_min=Constants.PATH_SPEED_MIN,
         path_speed_max=0.05,
-        obstacle_margin=0.5,
+        auto_enable_gyro_jacobian=Constants.AUTO_ENABLE_GYRO_JACOBIAN,
+        gyro_enable_threshold_radps=Constants.GYRO_ENABLE_THRESHOLD_RADPS,
+        enable_online_dare_terminal=Constants.ENABLE_ONLINE_DARE_TERMINAL,
+        dare_update_period_steps=max(4, Constants.DARE_UPDATE_PERIOD_STEPS // 2),
+        terminal_cost_profile="dense_terminal",
+        robustness_mode="tube",
+        constraint_tightening_scale=0.08,
+        tube_feedback_gain_scale=0.20,
+        tube_feedback_max_correction=0.20,
+        enable_variable_scaling=Constants.ENABLE_VARIABLE_SCALING,
     )
 
 
@@ -224,6 +264,7 @@ def load_preset(preset_name: str) -> dict[str, Any]:
             "Q_smooth": mpc.Q_smooth,
             "Q_attitude": mpc.Q_attitude,
             "Q_axis_align": mpc.Q_axis_align,
+            "Q_quat_norm": mpc.Q_quat_norm,
             "Q_terminal_pos": mpc.Q_terminal_pos,
             "Q_terminal_s": mpc.Q_terminal_s,
             "q_angular_velocity": mpc.q_angular_velocity,
@@ -237,6 +278,16 @@ def load_preset(preset_name: str) -> dict[str, Any]:
             "enable_thruster_hysteresis": mpc.enable_thruster_hysteresis,
             "thruster_hysteresis_on": mpc.thruster_hysteresis_on,
             "thruster_hysteresis_off": mpc.thruster_hysteresis_off,
+            "auto_enable_gyro_jacobian": mpc.auto_enable_gyro_jacobian,
+            "gyro_enable_threshold_radps": mpc.gyro_enable_threshold_radps,
+            "enable_online_dare_terminal": mpc.enable_online_dare_terminal,
+            "dare_update_period_steps": mpc.dare_update_period_steps,
+            "terminal_cost_profile": mpc.terminal_cost_profile,
+            "robustness_mode": mpc.robustness_mode,
+            "constraint_tightening_scale": mpc.constraint_tightening_scale,
+            "tube_feedback_gain_scale": mpc.tube_feedback_gain_scale,
+            "tube_feedback_max_correction": mpc.tube_feedback_max_correction,
+            "enable_variable_scaling": mpc.enable_variable_scaling,
         }
     }
 

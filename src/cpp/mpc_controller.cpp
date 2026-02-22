@@ -23,10 +23,12 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     N_ = mpc_params_.prediction_horizon;
     dt_ = mpc_params_.dt;
     control_horizon_ = std::max(1, std::min(mpc_params_.control_horizon, N_));
+    base_control_horizon_ = control_horizon_;
     base_q_smooth_ = std::max(0.0, mpc_params_.Q_smooth);
     base_thrust_pair_weight_ = std::max(0.0, mpc_params_.thrust_pair_weight);
     active_smoothness_scale_ = 1.0;
     active_thruster_pair_scale_ = 1.0;
+    active_gyro_jacobian_ = mpc_params_.enable_gyro_jacobian;
 
     // Control: RW + Thrusters + 1 virtual path velocity v_s
     nu_ = sat_params_.num_rw + sat_params_.num_thrusters + 1;
@@ -53,6 +55,7 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     R_diag_ << VectorXd::Constant(sat_params_.num_rw, mpc_params_.R_rw_torque),
                VectorXd::Constant(sat_params_.num_thrusters, mpc_params_.R_thrust),
                VectorXd::Constant(1, mpc_params_.Q_progress);
+    R_diag_ = R_diag_.cwiseMax(1e-6);
 
     // Control bounds
     control_lower_.resize(nu_);
@@ -124,6 +127,7 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
     // Initialize path following state
     s_guess_.resize(N_ + 1, 0.0);
     last_feasible_control_ = VectorXd::Zero(nu_);
+    initialize_variable_scaling();
 
     // Initialize solver
     init_solver();
@@ -162,7 +166,59 @@ void MPCControllerCpp::cleanup_solver() {
 
 void MPCControllerCpp::rebuild_solver() {
     cleanup_solver();
+    initialize_variable_scaling();
     init_solver();
+}
+
+void MPCControllerCpp::initialize_variable_scaling() {
+    state_var_scale_ = VectorXd::Ones(nx_);
+    control_var_scale_ = VectorXd::Ones(nu_);
+    if (!mpc_params_.enable_variable_scaling) {
+        return;
+    }
+
+    const double pos_scale = std::max(1.0, 2.0 * mpc_params_.path_speed * dt_ * N_);
+    state_var_scale_.segment(0, 3).setConstant(pos_scale);
+    state_var_scale_.segment(3, 4).setConstant(1.0);
+
+    double vel_scale = std::max(
+        0.2,
+        std::max(
+            max_linear_velocity_bound_,
+            std::max(mpc_params_.path_speed, mpc_params_.path_speed_max)
+        )
+    );
+    state_var_scale_.segment(7, 3).setConstant(vel_scale);
+
+    double ang_scale = std::max(0.2, max_angular_velocity_bound_ > 0.0 ? max_angular_velocity_bound_ : 1.0);
+    state_var_scale_.segment(10, 3).setConstant(ang_scale);
+
+    for (int i = 0; i < 3; ++i) {
+        double ws = 600.0;
+        if (i < static_cast<int>(sat_params_.rw_speed_limits.size()) &&
+            sat_params_.rw_speed_limits[i] > 0.0) {
+            ws = sat_params_.rw_speed_limits[i];
+        }
+        state_var_scale_(13 + i) = std::max(1.0, ws);
+    }
+    state_var_scale_(16) = std::max(1.0, mpc_params_.path_speed * dt_ * N_);
+
+    control_var_scale_.segment(0, sat_params_.num_rw).setConstant(1.0);
+    control_var_scale_.segment(sat_params_.num_rw, sat_params_.num_thrusters).setConstant(1.0);
+    control_var_scale_(nu_ - 1) = std::max(0.05, control_upper_(nu_ - 1));
+}
+
+double MPCControllerCpp::decision_var_scale(int decision_index) const {
+    if (!mpc_params_.enable_variable_scaling) {
+        return 1.0;
+    }
+    int state_span = (N_ + 1) * nx_;
+    if (decision_index < state_span) {
+        int local = decision_index % nx_;
+        return state_var_scale_(local);
+    }
+    int u_local = (decision_index - state_span) % nu_;
+    return control_var_scale_(u_local);
 }
 
 void MPCControllerCpp::init_solver() {
@@ -294,20 +350,18 @@ void MPCControllerCpp::init_solver() {
             v.clear();
         }
     }
-    if (mpc_params_.enable_gyro_jacobian) {
-        for (int k = 0; k < N_; ++k) {
-            int row_base = k * nx_;
-            int col_base = k * nx_;
+    for (int k = 0; k < N_; ++k) {
+        int row_base = k * nx_;
+        int col_base = k * nx_;
 
-            for (int wr = 0; wr < 3; ++wr) {      // Relative rows 10-12
-                for (int wc = 0; wc < 3; ++wc) { // Relative cols 10-12
-                    int row = row_base + 10 + wr;
-                    int col = col_base + 10 + wc;
+        for (int wr = 0; wr < 3; ++wr) {      // Relative rows 10-12
+            for (int wc = 0; wc < 3; ++wc) { // Relative cols 10-12
+                int row = row_base + 10 + wr;
+                int col = col_base + 10 + wc;
 
-                    for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
-                        if (A_.innerIndexPtr()[idx] == row) {
-                            A_angvel_idx_map_[k][wr * 3 + wc].push_back(idx);
-                        }
+                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
+                    if (A_.innerIndexPtr()[idx] == row) {
+                        A_angvel_idx_map_[k][wr * 3 + wc].push_back(idx);
                     }
                 }
             }
@@ -523,21 +577,49 @@ void MPCControllerCpp::init_solver() {
         path_P_update_values_.resize(path_P_update_indices_.size(), 0.0);
     }
 
+    // G. Terminal-state diagonal indices (physics states only 0..15 at k=N)
+    terminal_phys_diag_indices_.assign(16, -1);
+    int terminal_base = N_ * nx_;
+    for (int i = 0; i < 16; ++i) {
+        int col = terminal_base + i;
+        int row = terminal_base + i;
+        for (int idx = P_.outerIndexPtr()[col]; idx < P_.outerIndexPtr()[col + 1]; ++idx) {
+            if (P_.innerIndexPtr()[idx] == row) {
+                terminal_phys_diag_indices_[i] = idx;
+                break;
+            }
+        }
+    }
+    terminal_phys_update_indices_.clear();
+    terminal_phys_update_values_.clear();
+    for (int idx : terminal_phys_diag_indices_) {
+        if (idx >= 0) {
+            terminal_phys_update_indices_.push_back(static_cast<c_int>(idx));
+            terminal_phys_update_values_.push_back(0.0);
+        }
+    }
+
     // 4. Setup Bounds and OSQP workspace
     setup_osqp_workspace(n_vars, n_constraints);
 }
 
-VectorXd MPCControllerCpp::compute_dare_terminal_cost(const VectorXd& Q_diag, const VectorXd& R_diag) {
-    // The linearizer operates on the 16-state physics space (no path augmentation).
-    // We solve DARE in that space using physics Q/R, then embed back to nx_=17.
+MatrixXd MPCControllerCpp::compute_dare_terminal_matrix(
+    const VectorXd& Q_diag,
+    const VectorXd& R_diag,
+    const VectorXd& x_nominal_phys
+) {
     int nx_phys = 16;
     int nu_phys = nu_ - 1; // exclude v_s virtual control
 
-    auto [A_phys, B_phys] = linearizer_->linearize(VectorXd::Zero(nx_phys));
+    VectorXd x_nom = x_nominal_phys;
+    if (x_nom.size() != nx_phys) {
+        x_nom = VectorXd::Zero(nx_phys);
+    }
+    auto [A_phys, B_phys] = linearizer_->linearize(x_nom);
 
-    if (A_phys.rows() != nx_phys || A_phys.cols() != nx_phys
-        || B_phys.rows() != nx_phys || B_phys.cols() != nu_phys) {
-        return Q_diag * 10.0;
+    if (A_phys.rows() != nx_phys || A_phys.cols() != nx_phys ||
+        B_phys.rows() != nx_phys || B_phys.cols() != nu_phys) {
+        return Q_diag.head(nx_phys).asDiagonal();
     }
 
     // Extract physics portion of the weight vectors
@@ -558,11 +640,9 @@ VectorXd MPCControllerCpp::compute_dare_terminal_cost(const VectorXd& Q_diag, co
         MatrixXd S = R_phys + B_phys.transpose() * P * B_phys;
         // Riccati iteration: P_new = Q + A'PA - A'PB inv(S) B'PA
         MatrixXd K = S.llt().solve(B_phys.transpose() * P * A_phys);
-        MatrixXd P_next = Q_phys + A_phys.transpose() * P * A_phys
-            - B_phys.transpose().transpose() /* = B_phys */ .eval() .transpose() * K;
-        // Simplified form: P_next = Q + (A - B*K)'*P*(A - B*K) + K'*R*K (algebraically equivalent)
+        // DARE: P_next = Q + (A - B*K)'*P*(A - B*K) + K'*R*K
         MatrixXd AminBK = A_phys - B_phys * K;
-        P_next = Q_phys + AminBK.transpose() * P * AminBK + K.transpose() * R_phys * K;
+        MatrixXd P_next = Q_phys + AminBK.transpose() * P * AminBK + K.transpose() * R_phys * K;
 
         if ((P_next - P).norm() < tol) {
             P = P_next;
@@ -571,8 +651,16 @@ VectorXd MPCControllerCpp::compute_dare_terminal_cost(const VectorXd& Q_diag, co
         P = P_next;
     }
 
-    // Embed physics DARE diagonal back to full augmented state (nx_=17)
-    // Path param s (index 16) gets the same terminal cost as the stage cost (Q_diag(16))
+    return P;
+}
+
+VectorXd MPCControllerCpp::compute_dare_terminal_cost(
+    const VectorXd& Q_diag,
+    const VectorXd& R_diag,
+    const VectorXd& x_nominal_phys
+) {
+    int nx_phys = 16;
+    MatrixXd P = compute_dare_terminal_matrix(Q_diag, R_diag, x_nominal_phys);
     VectorXd result = Q_diag * 10.0; // default fallback for augmented entries
     result.head(nx_phys) = P.diagonal();
     return result;
@@ -586,7 +674,16 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
         P_diag.segment(k * nx_, nx_) = Q_diag_;
     }
     // Terminal cost (N) - exact DARE solution diagonal
-    VectorXd P_dare_diag = compute_dare_terminal_cost(Q_diag_, R_diag_);
+    MatrixXd P_dare_full = compute_dare_terminal_matrix(
+        Q_diag_,
+        R_diag_,
+        VectorXd::Zero(16)
+    );
+    VectorXd P_dare_diag = compute_dare_terminal_cost(
+        Q_diag_,
+        R_diag_,
+        VectorXd::Zero(16)
+    );
     P_diag.segment(N_ * nx_, nx_) = P_dare_diag;
 
     // Control costs (0 to N-1)
@@ -605,7 +702,9 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 P_diag(uk + c) += 2.0 * w;
                 P_diag(ukm1 + c) += 2.0 * w;
                 if (mpc_params_.enable_delta_u_coupling) {
-                    triplets.emplace_back(ukm1 + c, uk + c, -2.0 * w);
+                    double s_i = decision_var_scale(ukm1 + c);
+                    double s_j = decision_var_scale(uk + c);
+                    triplets.emplace_back(ukm1 + c, uk + c, -2.0 * w * s_i * s_j);
                 }
             }
         }
@@ -626,13 +725,32 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 }
                 P_diag(i) += 2.0 * w;
                 P_diag(j) += 2.0 * w;
-                triplets.emplace_back(i, j, 2.0 * w);
+                double s_i = decision_var_scale(i);
+                double s_j = decision_var_scale(j);
+                triplets.emplace_back(i, j, 2.0 * w * s_i * s_j);
             }
         }
     }
 
     for (int i = 0; i < n_vars; ++i) {
-        triplets.emplace_back(i, i, P_diag(i));
+        double s = decision_var_scale(i);
+        triplets.emplace_back(i, i, P_diag(i) * s * s);
+    }
+
+    if (mpc_params_.terminal_cost_profile == "dense_terminal") {
+        int terminal_base = N_ * nx_;
+        for (int i = 0; i < 16; ++i) {
+            for (int j = i + 1; j < 16; ++j) {
+                double value = P_dare_full(i, j);
+                if (std::abs(value) > 1e-12) {
+                    int gi = terminal_base + i;
+                    int gj = terminal_base + j;
+                    double si = decision_var_scale(gi);
+                    double sj = decision_var_scale(gj);
+                    triplets.emplace_back(gi, gj, value * si * sj);
+                }
+            }
+        }
     }
 
     // Path Following: Pre-allocate cross-terms for (x, s), (y, s), (z, s)
@@ -669,6 +787,9 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
     auto [A_dyn, B_dyn] = linearizer_->linearize(dummy_state);
 
     int row_idx = 0;
+    auto add_A = [&](int row, int col, double val) {
+        triplets.emplace_back(row, col, val * decision_var_scale(col));
+    };
 
     // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
     for (int k = 0; k < N_; ++k) {
@@ -683,7 +804,7 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 // s_{k+1} = s_k + v_s * dt  =>  -s_k + s_{k+1} - dt*v_s = 0
                 // So A term for s is just 1.0 at (16, 16).
                 if (r == 16) {
-                    if (c == 16) triplets.emplace_back(row_idx + r, x_k_idx + c, -1.0);
+                    if (c == 16) add_A(row_idx + r, x_k_idx + c, -1.0);
                     continue;
                 }
 
@@ -692,17 +813,16 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 if (r < 16 && c < 16) {
                     // Force inclusion of G-block (rows 3-6, cols 10-12) for quaternion dynamics updates
                     bool is_g_block = (r >= 3 && r < 7 && c >= 10 && c < 13);
-                    bool is_angvel_block = mpc_params_.enable_gyro_jacobian &&
-                        (r >= 10 && r < 13 && c >= 10 && c < 13);
+                    bool is_angvel_block = (r >= 10 && r < 13 && c >= 10 && c < 13);
                     if (is_g_block || is_angvel_block || std::abs(A_dyn(r, c)) > 1e-12) {
-                        triplets.emplace_back(row_idx + r, x_k_idx + c, -A_dyn(r, c));
+                        add_A(row_idx + r, x_k_idx + c, -A_dyn(r, c));
                     }
                 }
             }
         }
         // +I block (x_{k+1})
         for (int r = 0; r < nx_; ++r) {
-            triplets.emplace_back(row_idx + r, x_kp1_idx + r, 1.0);
+            add_A(row_idx + r, x_kp1_idx + r, 1.0);
         }
         // -B block
         for (int r = 0; r < nx_; ++r) {
@@ -712,7 +832,7 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
                 // Dynamics: -dt * v_s
                 if (r == 16) {
                     if (c == nu_ - 1) { // Last control is v_s
-                        triplets.emplace_back(row_idx + r, u_k_idx + c, -mpc_params_.dt);
+                        add_A(row_idx + r, u_k_idx + c, -mpc_params_.dt);
                     }
                     continue;
                 }
@@ -725,7 +845,7 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
                     // Force inclusion of velocity rows (7-12) for updates
                     bool is_velocity_row = (r >= 7);
                     if (is_velocity_row || std::abs(B_dyn(r, c)) > 1e-12) {
-                        triplets.emplace_back(row_idx + r, u_k_idx + c, -B_dyn(r, c));
+                        add_A(row_idx + r, u_k_idx + c, -B_dyn(r, c));
                     }
                 }
             }
@@ -735,14 +855,14 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
 
     // 2. Initial state constraint: I*x_0 = x_current
     for (int r = 0; r < nx_; ++r) {
-        triplets.emplace_back(row_idx + r, r, 1.0);
+        add_A(row_idx + r, r, 1.0);
     }
     row_idx += nx_;
 
     // 3. State bounds: I*x_k
     for (int k = 0; k < N_ + 1; ++k) {
         for (int r = 0; r < nx_; ++r) {
-            triplets.emplace_back(row_idx + r, k * nx_ + r, 1.0);
+            add_A(row_idx + r, k * nx_ + r, 1.0);
         }
         row_idx += nx_;
     }
@@ -751,7 +871,7 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
     for (int k = 0; k < N_; ++k) {
         int u_k_idx = (N_ + 1) * nx_ + k * nu_;
         for (int r = 0; r < nu_; ++r) {
-            triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
+            add_A(row_idx + r, u_k_idx + r, 1.0);
         }
         row_idx += nu_;
     }
@@ -762,8 +882,8 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
         for (int k = control_horizon_; k < N_; ++k) {
             int u_k_idx = (N_ + 1) * nx_ + k * nu_;
             for (int r = 0; r < nu_; ++r) {
-                triplets.emplace_back(row_idx + r, u_k_idx + r, 1.0);
-                triplets.emplace_back(row_idx + r, u_anchor_idx + r, -1.0);
+                add_A(row_idx + r, u_k_idx + r, 1.0);
+                add_A(row_idx + r, u_anchor_idx + r, -1.0);
             }
             row_idx += nu_;
         }
@@ -782,6 +902,10 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     int n_init = n_init_;
     int n_bounds_x = n_bounds_x_;
     int n_bounds_u = n_bounds_u_;
+    const bool tube_mode = (mpc_params_.robustness_mode == "tube");
+    const double tighten = tube_mode
+        ? std::clamp(mpc_params_.constraint_tightening_scale, 0.0, 0.3)
+        : 0.0;
 
     // 1. Dynamics equality (l=0, u=0) - default is 0
 
@@ -794,19 +918,21 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
 
     // 3a. Velocity bounds (indices 7-9)
     if (max_linear_velocity_bound_ > 0.0) {
+        double linear_limit = max_linear_velocity_bound_ * (1.0 - tighten);
         for (int k = 0; k < N_ + 1; ++k) {
             int vel_idx = state_idx_start + k * nx_ + 7;
-            l_.segment(vel_idx, 3).setConstant(-max_linear_velocity_bound_);
-            u_.segment(vel_idx, 3).setConstant(max_linear_velocity_bound_);
+            l_.segment(vel_idx, 3).setConstant(-linear_limit);
+            u_.segment(vel_idx, 3).setConstant(linear_limit);
         }
     }
 
     // 3b. Angular velocity bounds (indices 10-12)
     if (max_angular_velocity_bound_ > 0.0) {
+        double ang_limit = max_angular_velocity_bound_ * (1.0 - tighten);
         for (int k = 0; k < N_ + 1; ++k) {
             int w_idx = state_idx_start + k * nx_ + 10;
-            l_.segment(w_idx, 3).setConstant(-max_angular_velocity_bound_);
-            u_.segment(w_idx, 3).setConstant(max_angular_velocity_bound_);
+            l_.segment(w_idx, 3).setConstant(-ang_limit);
+            u_.segment(w_idx, 3).setConstant(ang_limit);
         }
     }
 
@@ -841,9 +967,19 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     // 4. Control bounds
     int ctrl_idx_start = n_dyn + n_init + n_bounds_x;
     ctrl_row_start_ = ctrl_idx_start;
+    VectorXd control_lower_runtime = control_lower_;
+    VectorXd control_upper_runtime = control_upper_;
+    if (tighten > 0.0) {
+        for (int i = 0; i < nu_; ++i) {
+            double center = 0.5 * (control_lower_(i) + control_upper_(i));
+            double half = 0.5 * (control_upper_(i) - control_lower_(i)) * (1.0 - tighten);
+            control_lower_runtime(i) = center - half;
+            control_upper_runtime(i) = center + half;
+        }
+    }
     for (int k = 0; k < N_; ++k) {
-        l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_;
-        u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_;
+        l_.segment(ctrl_idx_start + k * nu_, nu_) = control_lower_runtime;
+        u_.segment(ctrl_idx_start + k * nu_, nu_) = control_upper_runtime;
     }
 
     // 5. Control horizon constraints (initialized to equality 0)
@@ -889,8 +1025,12 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
     // Favor deterministic, low-jitter behavior for real-time MPC.
     // Adaptive rho can trigger occasional expensive refactorizations.
     settings_->adaptive_rho = 0;
+    settings_->rho = 0.1;
     settings_->max_iter = 800;
     settings_->check_termination = 1;
+    settings_->eps_abs = 1e-3;
+    settings_->eps_rel = 1e-3;
+    settings_->polish = 0;
 
     if (!mpc_params_.solver_type.empty() && mpc_params_.solver_type != "OSQP") {
         std::cerr << "[MPC] Warning: solver_type '" << mpc_params_.solver_type
@@ -926,7 +1066,7 @@ void MPCControllerCpp::update_dynamics(const std::vector<VectorXd>& x_traj) {
         // A_dyn rows 3-6, cols 10-12
         for (int qr = 0; qr < 4; ++qr) {
             for (int oc = 0; oc < 3; ++oc) {
-                double val = -A_dyn(3 + qr, 10 + oc); // Stored as -A
+                double val = -A_dyn(3 + qr, 10 + oc) * state_var_scale_(10 + oc); // Stored as -A
                 for (int idx : A_idx_map_[k][qr * 3 + oc]) {
                     A_data_[idx] = val;
                 }
@@ -936,7 +1076,7 @@ void MPCControllerCpp::update_dynamics(const std::vector<VectorXd>& x_traj) {
         // Update orbital/velocity dynamics block (rows 7-9, cols 0-9)
         for (int vr = 0; vr < 3; ++vr) {
             for (int vc = 0; vc < 10; ++vc) {
-                double val = -A_dyn(7 + vr, vc);
+                double val = -A_dyn(7 + vr, vc) * state_var_scale_(vc);
                 for (int idx : A_orbital_idx_map_[k][vr * 10 + vc]) {
                     A_data_[idx] = val;
                 }
@@ -944,10 +1084,10 @@ void MPCControllerCpp::update_dynamics(const std::vector<VectorXd>& x_traj) {
         }
 
         // Update angular velocity dynamics block (rows 10-12, cols 10-12)
-        if (mpc_params_.enable_gyro_jacobian) {
+        if (active_gyro_jacobian_) {
             for (int wr = 0; wr < 3; ++wr) {
                 for (int wc = 0; wc < 3; ++wc) {
-                    double val = -A_dyn(10 + wr, 10 + wc);
+                    double val = -A_dyn(10 + wr, 10 + wc) * state_var_scale_(10 + wc);
                     for (int idx : A_angvel_idx_map_[k][wr * 3 + wc]) {
                         A_data_[idx] = val;
                     }
@@ -960,7 +1100,7 @@ void MPCControllerCpp::update_dynamics(const std::vector<VectorXd>& x_traj) {
         int nu_phys = nu_ - 1;
         for (int r = 0; r < nx_phys; ++r) {
             for (int c = 0; c < nu_phys; ++c) {
-                double val = -B_dyn(r, c);
+                double val = -B_dyn(r, c) * control_var_scale_(c);
                 for (int idx : B_idx_map_[k][r * nu_ + c]) {
                     A_data_[idx] = val;
                 }
@@ -999,11 +1139,23 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
         if (x_current.size() >= 17) {
             s_curr = x_current(16);
         }
+        const bool tube_mode = (mpc_params_.robustness_mode == "tube");
+        const double tighten = tube_mode
+            ? std::clamp(mpc_params_.constraint_tightening_scale, 0.0, 0.3)
+            : 0.0;
+        double base_lower_vs = control_lower_(nu_ - 1);
+        double base_upper_vs = control_upper_(nu_ - 1);
+        if (tighten > 0.0) {
+            double center = 0.5 * (base_lower_vs + base_upper_vs);
+            double half = 0.5 * (base_upper_vs - base_lower_vs) * (1.0 - tighten);
+            base_lower_vs = center - half;
+            base_upper_vs = center + half;
+        }
         double v_s_min_dynamic = compute_dynamic_vs_min(s_curr);
         for (int k = 0; k < N_; ++k) {
             int row = ctrl_row_start_ + k * nu_ + (nu_ - 1);
-            l_(row) = v_s_min_dynamic;
-            u_(row) = control_upper_(nu_ - 1);
+            l_(row) = std::max(base_lower_vs, v_s_min_dynamic);
+            u_(row) = base_upper_vs;
         }
     }
 
@@ -1116,28 +1268,96 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
         }
     }
 
-    // Successive Linearization: Update dynamics each step to capture orbital effects
-    // Create a simple trajectory from current state for linearizer
-    // Later this will be updated to use actual trajectory
+    const double gyro_threshold = std::max(0.0, mpc_params_.gyro_enable_threshold_radps);
+    double omega_norm = 0.0;
+    if (x_curr_aug.size() >= 13) {
+        omega_norm = x_curr_aug.segment<3>(10).norm();
+    }
+    active_gyro_jacobian_ =
+        mpc_params_.enable_gyro_jacobian ||
+        (mpc_params_.auto_enable_gyro_jacobian && omega_norm >= gyro_threshold);
+    if (linearizer_) {
+        linearizer_->set_enable_gyro_jacobian(active_gyro_jacobian_);
+    }
+
+    // Successive linearization trajectory for per-stage A/B updates.
     std::vector<VectorXd> x_traj;
     x_traj.push_back(x_curr_aug);
-    for (int k = 1; k <= N_; ++k) {
-        if (has_warm_start_control_ && warm_start_x_.size() > 0) {
-            VectorXd x_k = warm_start_x_.segment(k * nx_, nx_);
+    if (has_warm_start_control_ && warm_start_x_.size() > 0) {
+        for (int k = 1; k <= N_; ++k) {
+            VectorXd x_k_tilde = warm_start_x_.segment(k * nx_, nx_);
+            VectorXd x_k = x_k_tilde.array() * state_var_scale_.array();
             x_traj.push_back(x_k);
+        }
+    } else {
+        VectorXd x_pred = x_curr_aug;
+        VectorXd u_nom = VectorXd::Zero(nu_);
+        if (has_last_feasible_control_ && last_feasible_control_.size() == nu_) {
+            u_nom = last_feasible_control_;
         } else {
-            x_traj.push_back(x_curr_aug); // Fallback to current state
+            u_nom(nu_ - 1) = mpc_params_.path_speed;
+        }
+        int nu_phys = nu_ - 1;
+        for (int k = 1; k <= N_; ++k) {
+            auto [A_pred, B_pred] = linearizer_->linearize(x_pred.head(16));
+            VectorXd x_next = x_pred;
+            x_next.head(16) =
+                A_pred * x_pred.head(16) + B_pred * u_nom.head(nu_phys) + linearizer_->affine();
+            Eigen::Vector4d q_next = x_next.segment<4>(3);
+            double q_norm = q_next.norm();
+            if (q_norm > 1e-12) {
+                x_next.segment<4>(3) = q_next / q_norm;
+            } else {
+                x_next.segment<4>(3) = Eigen::Vector4d(1.0, 0.0, 0.0, 0.0);
+            }
+            x_next(16) = clamp_path_s(x_pred(16) + dt_ * u_nom(nu_ - 1));
+            x_traj.push_back(x_next);
+            x_pred = x_next;
         }
     }
+
+    ++control_step_counter_;
+    if (mpc_params_.enable_online_dare_terminal &&
+        !terminal_phys_update_indices_.empty()) {
+        int period = std::max(1, mpc_params_.dare_update_period_steps);
+        if ((control_step_counter_ % period) == 0 && !x_traj.empty()) {
+            VectorXd dare_diag = compute_dare_terminal_cost(
+                Q_diag_,
+                R_diag_,
+                x_traj.back().head(16)
+            );
+            for (size_t i = 0; i < terminal_phys_update_indices_.size(); ++i) {
+                int p_idx = static_cast<int>(terminal_phys_update_indices_[i]);
+                if (static_cast<int>(i) < dare_diag.size() &&
+                    p_idx >= 0 &&
+                    p_idx < static_cast<int>(P_data_.size())) {
+                    double s = state_var_scale_(static_cast<int>(i));
+                    P_data_[p_idx] = dare_diag(static_cast<int>(i)) * s * s;
+                    terminal_phys_update_values_[i] = P_data_[p_idx];
+                }
+            }
+            osqp_update_P(
+                work_,
+                terminal_phys_update_values_.data(),
+                terminal_phys_update_indices_.data(),
+                static_cast<c_int>(terminal_phys_update_indices_.size())
+            );
+        }
+    }
+    auto t0 = std::chrono::steady_clock::now();
     update_dynamics(x_traj);
+    auto t1 = std::chrono::steady_clock::now();
 
     // update_path_cost updates both P and q; no need for a redundant q reset/update.
     update_path_cost(x_curr_aug);
+    auto t2 = std::chrono::steady_clock::now();
     update_constraints(x_curr_aug);
+    auto t3 = std::chrono::steady_clock::now();
 
     if (A_dirty_) {
         osqp_update_A(work_, A_data_.data(), OSQP_NULL, A_.nonZeros());
     }
+    auto t4 = std::chrono::steady_clock::now();
 
     if (has_warm_start_control_) {
         int n_vars = data_ ? data_->n : 0;
@@ -1168,7 +1388,8 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
             int u_idx = (N_ + 1) * nx_;
             for (int k = 0; k < N_; ++k) {
                 for (int i = 0; i < nu_; ++i) {
-                    warm_start_x_(u_idx + k * nu_ + i) = u_guess(i);
+                    warm_start_x_(u_idx + k * nu_ + i) =
+                        u_guess(i) / std::max(1e-12, control_var_scale_(i));
                 }
             }
 
@@ -1176,11 +1397,19 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
         }
         has_warm_start_control_ = false;
     }
+    auto t5 = std::chrono::steady_clock::now();
 
     osqp_solve(work_);
+    auto t6 = std::chrono::steady_clock::now();
 
     auto end = std::chrono::steady_clock::now();
     result.solve_time = std::chrono::duration<double>(end - start).count();
+    result.t_linearization_s = std::chrono::duration<double>(t1 - t0).count();
+    result.t_cost_update_s = std::chrono::duration<double>(t2 - t1).count();
+    result.t_constraint_update_s = std::chrono::duration<double>(t3 - t2).count();
+    result.t_matrix_update_s = std::chrono::duration<double>(t4 - t3).count();
+    result.t_warmstart_s = std::chrono::duration<double>(t5 - t4).count();
+    result.t_solve_only_s = std::chrono::duration<double>(t6 - t5).count();
 
     int solver_status = 0;
     if (work_ && work_->info) {
@@ -1252,7 +1481,7 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 
     // Extract predicted s trajectory for next step (optional, for better linearization)
     for (int k = 0; k <= N_; ++k) {
-        double s_k = work_->solution->x[k * nx_ + 16];
+        double s_k = work_->solution->x[k * nx_ + 16] * state_var_scale_(16);
         if (path_total_length_ > 0.0) {
             s_k = std::max(0.0, std::min(s_k, path_total_length_));
         }
@@ -1261,7 +1490,35 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 
     // Extract control from solution
     int u_idx = (N_ + 1) * nx_;
-    result.u = Eigen::Map<VectorXd>(work_->solution->x + u_idx, nu_);
+    VectorXd u_tilde = Eigen::Map<VectorXd>(work_->solution->x + u_idx, nu_);
+    result.u = u_tilde.array() * control_var_scale_.array();
+
+    // Tube-MPC ancillary feedback: correct nominal control with local linear feedback
+    // around last nominal trajectory/state estimate.
+    if (mpc_params_.robustness_mode == "tube" && nu_ > 1) {
+        VectorXd x_nom = x_curr_aug;
+        if (warm_start_x_.size() >= nx_) {
+            VectorXd x_nom_tilde = warm_start_x_.segment(0, nx_);
+            x_nom = x_nom_tilde.array() * state_var_scale_.array();
+        } else if (!x_traj.empty()) {
+            x_nom = x_traj.front();
+        }
+        VectorXd dx = x_curr_aug.head(16) - x_nom.head(16);
+        MatrixXd P_tube = compute_dare_terminal_matrix(Q_diag_, R_diag_, x_nom.head(16));
+        auto [A_tube, B_tube] = linearizer_->linearize(x_nom.head(16));
+        MatrixXd R_tube = R_diag_.head(nu_ - 1).asDiagonal();
+        R_tube.diagonal() = R_tube.diagonal().cwiseMax(1e-6);
+        MatrixXd S = R_tube + B_tube.transpose() * P_tube * B_tube;
+        MatrixXd K = S.llt().solve(B_tube.transpose() * P_tube * A_tube);
+
+        double gain_scale = std::clamp(mpc_params_.tube_feedback_gain_scale, 0.0, 1.0);
+        double max_corr = std::max(0.0, mpc_params_.tube_feedback_max_correction);
+        VectorXd delta_u = -gain_scale * (K * dx);
+        for (int i = 0; i < delta_u.size(); ++i) {
+            delta_u(i) = std::clamp(delta_u(i), -max_corr, max_corr);
+        }
+        result.u.head(nu_ - 1) += delta_u;
+    }
 
     // Clip to bounds (safety)
     VectorXd lower = control_lower_;
@@ -1363,21 +1620,31 @@ MPCControllerCpp::RuntimeMode MPCControllerCpp::parse_runtime_mode(
 void MPCControllerCpp::update_mode_dependent_regularizers() {
     double smooth_scale = 1.0;
     double pair_scale = 1.0;
+    int desired_control_horizon = base_control_horizon_;
     if (runtime_mode_ == RuntimeMode::HOLD) {
         smooth_scale = std::max(0.0, mpc_params_.hold_smoothness_scale);
         pair_scale = std::max(0.0, mpc_params_.hold_thruster_pair_scale);
+        desired_control_horizon = std::max(1, std::min(base_control_horizon_, N_ / 2));
+    } else if (runtime_mode_ == RuntimeMode::RECOVER) {
+        desired_control_horizon = std::max(1, std::min(base_control_horizon_, N_ / 3));
+    } else if (runtime_mode_ == RuntimeMode::SETTLE ||
+               runtime_mode_ == RuntimeMode::COMPLETE) {
+        desired_control_horizon = std::max(1, std::min(base_control_horizon_, N_ / 2));
     }
 
     const bool smooth_changed =
         std::abs(smooth_scale - active_smoothness_scale_) > 1e-9;
     const bool pair_changed =
         std::abs(pair_scale - active_thruster_pair_scale_) > 1e-9;
-    if (!smooth_changed && !pair_changed) {
+    const bool horizon_changed =
+        std::abs(desired_control_horizon - control_horizon_) > 0;
+    if (!smooth_changed && !pair_changed && !horizon_changed) {
         return;
     }
 
     active_smoothness_scale_ = smooth_scale;
     active_thruster_pair_scale_ = pair_scale;
+    control_horizon_ = desired_control_horizon;
     mpc_params_.Q_smooth = base_q_smooth_ * active_smoothness_scale_;
     mpc_params_.thrust_pair_weight =
         base_thrust_pair_weight_ * active_thruster_pair_scale_;
@@ -1453,6 +1720,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     }
     double Q_s_anchor_cfg = mpc_params_.Q_s_anchor;  // Anchor s to progress reference
     double Q_att = mpc_params_.Q_attitude + mpc_params_.Q_axis_align; // Attitude + explicit axis-alignment
+    double Q_quat_norm = std::max(0.0, mpc_params_.Q_quat_norm); // Soft quaternion norm regularizer
     double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
     if (mpc_params_.path_speed_max > 0.0) {
         v_ref = std::min(v_ref, mpc_params_.path_speed_max);
@@ -1472,6 +1740,12 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     Eigen::Vector4d q_curr = Eigen::Vector4d::Zero();
     if (x_current.size() >= 7) {
         q_curr = x_current.segment<4>(3);
+    }
+    double q_curr_norm = q_curr.norm();
+    if (q_curr_norm > 1e-12) {
+        q_curr /= q_curr_norm;
+    } else {
+        q_curr = Eigen::Vector4d(1.0, 0.0, 0.0, 0.0);
     }
 
     double s_curr = 0.0;
@@ -1580,15 +1854,18 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         double t_dot_pref = t_ref.dot(p_ref);
 
         int x_idx = k * nx_;  // State index for this step
+        auto sx = [this](int i) { return mpc_params_.enable_variable_scaling ? state_var_scale_(i) : 1.0; };
+        auto su = [this](int i) { return mpc_params_.enable_variable_scaling ? control_var_scale_(i) : 1.0; };
 
         // Update quaternion diagonal entries for dynamic attitude weighting.
         if (k < static_cast<int>(path_att_diag_indices_.size())) {
-            double q_att_diag = 2.0 * Q_att_eff * att_stage_scale;
+            double q_att_diag = 2.0 * (Q_att_eff + Q_quat_norm) * att_stage_scale;
             auto &att_diag_indices = path_att_diag_indices_[k];
             for (int i = 0; i < 4 && i < static_cast<int>(att_diag_indices.size()); ++i) {
                 int idx = att_diag_indices[i];
                 if (idx >= 0) {
-                    P_data_[idx] = q_att_diag;
+                    double s = sx(3 + i);
+                    P_data_[idx] = q_att_diag * s * s;
                 }
             }
         }
@@ -1600,7 +1877,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             for (int i = 0; i < 3 && i < static_cast<int>(w_diag_indices.size()); ++i) {
                 int idx = w_diag_indices[i];
                 if (idx >= 0) {
-                    P_data_[idx] = q_w_diag;
+                    double s = sx(10 + i);
+                    P_data_[idx] = q_w_diag * s * s;
                 }
             }
         }
@@ -1613,7 +1891,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             if (k == N_) {
                 pos_diag += 2.0 * Q_term_pos_eff;
             }
-            P_data_[path_pos_diag_indices_[k][i]] = pos_diag;
+            double s = sx(i);
+            P_data_[path_pos_diag_indices_[k][i]] = pos_diag * s * s;
         }
 
         // 0b. Update position off-diagonals for lag cost (t*t^T)
@@ -1624,8 +1903,9 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             auto &offdiag = path_pos_offdiag_indices_[k];
             if (offdiag.size() == 3) {
                 P_data_[offdiag[0]] = xy;
-                P_data_[offdiag[1]] = xz;
-                P_data_[offdiag[2]] = yz;
+                P_data_[offdiag[0]] *= sx(0) * sx(1);
+                P_data_[offdiag[1]] = xz * sx(0) * sx(2);
+                P_data_[offdiag[2]] = yz * sx(1) * sx(2);
             }
         }
 
@@ -1634,7 +1914,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         // P_ps = -2 * Q_c * t (off-diagonal coupling position with s)
         for (int i = 0; i < 3; ++i) {
             double val = -2.0 * Q_c_k * t_ref(i);
-            P_data_[path_P_indices_[k][i]] = val;
+            P_data_[path_P_indices_[k][i]] = val * sx(i) * sx(16);
         }
 
         // 1b. Update s diagonal entry
@@ -1646,27 +1926,26 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             if (Q_s_anchor_eff > 0.0) {
                 s_diag += 2.0 * Q_s_anchor_eff * stage_scale;
             }
-            P_data_[path_s_diag_indices_[k]] = s_diag;
+            P_data_[path_s_diag_indices_[k]] = s_diag * sx(16) * sx(16);
         }
 
         // 2. Update q vector (linear costs)
         // q_p = -2 * Q_c * C  (attracts position toward path)
         for (int i = 0; i < 3; ++i) {
-            q_(x_idx + i) = -2.0 * Q_c_k * C(i);
-            q_(x_idx + i) += -2.0 * Q_l_k * t_dot_pref * t_ref(i);
+            q_(x_idx + i) = (-2.0 * Q_c_k * C(i) + -2.0 * Q_l_k * t_dot_pref * t_ref(i)) * sx(i);
         }
 
         // q_s = 2 * Q_c * (t·C) (pushes s forward)
-        q_(x_idx + 16) = 2.0 * Q_c_k * t_dot_C;
+        q_(x_idx + 16) = 2.0 * Q_c_k * t_dot_C * sx(16);
         if (k == N_) {
             // Terminal penalties: position and s to endpoint
             for (int i = 0; i < 3; ++i) {
-                q_(x_idx + i) += -2.0 * Q_term_pos_eff * p_end(i);
+                q_(x_idx + i) += -2.0 * Q_term_pos_eff * p_end(i) * sx(i);
             }
-            q_(x_idx + 16) += -2.0 * Q_term_s_eff * path_total_length_;
+            q_(x_idx + 16) += -2.0 * Q_term_s_eff * path_total_length_ * sx(16);
         }
         if (Q_s_anchor_eff > 0.0) {
-            q_(x_idx + 16) += -2.0 * Q_s_anchor_eff * stage_scale * s_bar;
+            q_(x_idx + 16) += -2.0 * Q_s_anchor_eff * stage_scale * s_bar * sx(16);
         }
 
         // 2c. Attitude tracking:
@@ -1685,8 +1964,15 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
 
             if (Q_att_eff > 0.0) {
                 for (int i = 0; i < 4; ++i) {
-                    q_(x_idx + 3 + i) = -2.0 * Q_att_eff * att_stage_scale * q_ref(i);
+                    q_(x_idx + 3 + i) =
+                        -2.0 * Q_att_eff * att_stage_scale * q_ref(i) * sx(3 + i);
                 }
+            }
+        }
+        if (Q_quat_norm > 0.0) {
+            for (int i = 0; i < 4; ++i) {
+                q_(x_idx + 3 + i) +=
+                    -2.0 * Q_quat_norm * att_stage_scale * q_curr(i) * sx(3 + i);
             }
         }
 
@@ -1702,17 +1988,18 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             double vel_weight = 2.0 * Q_v_eff * stage_scale;
             auto &vel_indices = path_vel_P_indices_[k];
             if (vel_indices.size() >= 6) {
-                if (vel_indices[0] >= 0) P_data_[vel_indices[0]] = vel_weight;
+                if (vel_indices[0] >= 0) P_data_[vel_indices[0]] = vel_weight * sx(7) * sx(7);
                 if (vel_indices[1] >= 0) P_data_[vel_indices[1]] = 0.0;
                 if (vel_indices[2] >= 0) P_data_[vel_indices[2]] = 0.0;
-                if (vel_indices[3] >= 0) P_data_[vel_indices[3]] = vel_weight;
+                if (vel_indices[3] >= 0) P_data_[vel_indices[3]] = vel_weight * sx(8) * sx(8);
                 if (vel_indices[4] >= 0) P_data_[vel_indices[4]] = 0.0;
-                if (vel_indices[5] >= 0) P_data_[vel_indices[5]] = vel_weight;
+                if (vel_indices[5] >= 0) P_data_[vel_indices[5]] = vel_weight * sx(9) * sx(9);
             }
 
             // Linear term encourages velocity along tangent
             for (int i = 0; i < 3; ++i) {
-                q_(x_idx + 7 + i) += -2.0 * Q_v_eff * v_ref_k * t_ref(i) * stage_scale;
+                q_(x_idx + 7 + i) +=
+                    -2.0 * Q_v_eff * v_ref_k * t_ref(i) * stage_scale * sx(7 + i);
             }
         }
 
@@ -1725,21 +2012,22 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             if (static_cast<size_t>(k) < path_vs_diag_indices_.size()) {
                 int vs_diag_idx = path_vs_diag_indices_[static_cast<size_t>(k)];
                 if (vs_diag_idx >= 0) {
-                    P_data_[vs_diag_idx] = 2.0 * Q_p_eff;
+                    double s = su(nu_ - 1);
+                    P_data_[vs_diag_idx] = 2.0 * Q_p_eff * s * s;
                 }
             }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
             if (auto_progress) {
-                q_(u_idx) = -2.0 * progress_reward_eff;
+                q_(u_idx) = -2.0 * progress_reward_eff * su(nu_ - 1);
             } else {
-                q_(u_idx) = -2.0 * Q_p_eff * v_ref_k;
+                q_(u_idx) = -2.0 * Q_p_eff * v_ref_k * su(nu_ - 1);
             }
 
             // Fuel bias: linear penalty on thruster usage to promote coasting.
             if (mpc_params_.thrust_l1_weight > 0.0) {
                 int thruster_base = (N_ + 1) * nx_ + k * nu_ + sat_params_.num_rw;
                 for (int i = 0; i < sat_params_.num_thrusters; ++i) {
-                    q_(thruster_base + i) += mpc_params_.thrust_l1_weight;
+                    q_(thruster_base + i) += mpc_params_.thrust_l1_weight * su(sat_params_.num_rw + i);
                 }
             }
         }

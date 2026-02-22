@@ -142,6 +142,12 @@ class SimulationLogger:
         mpc_iterations = mpc_info.get("iterations")
         mpc_optimality_gap = mpc_info.get("optimality_gap")
         mpc_computation_time = mpc_info.get("mpc_computation_time", 0.0)
+        mpc_t_linearization = mpc_info.get("timing_linearization_s", 0.0)
+        mpc_t_cost_update = mpc_info.get("timing_cost_update_s", 0.0)
+        mpc_t_constraint_update = mpc_info.get("timing_constraint_update_s", 0.0)
+        mpc_t_matrix_update = mpc_info.get("timing_matrix_update_s", 0.0)
+        mpc_t_warmstart = mpc_info.get("timing_warmstart_s", 0.0)
+        mpc_t_solve_only = mpc_info.get("timing_solve_only_s", 0.0)
         path_s = mpc_info.get("path_s")
         path_s_proj = mpc_info.get("path_s_proj")
         path_v_s = mpc_info.get("path_v_s")
@@ -259,6 +265,12 @@ class SimulationLogger:
             "Frame_Origin_Y": context.frame_origin[1],
             "Frame_Origin_Z": context.frame_origin[2],
             "MPC_Computation_Time": mpc_computation_time,
+            "MPC_T_Linearization": mpc_t_linearization,
+            "MPC_T_Cost_Update": mpc_t_cost_update,
+            "MPC_T_Constraint_Update": mpc_t_constraint_update,
+            "MPC_T_Matrix_Update": mpc_t_matrix_update,
+            "MPC_T_Warmstart": mpc_t_warmstart,
+            "MPC_T_Solve_Only": mpc_t_solve_only,
             "MPC_Status": mpc_status_name,
             "MPC_Solver": mpc_solver_type,
             "MPC_Solver_Time_Limit": mpc_time_limit,

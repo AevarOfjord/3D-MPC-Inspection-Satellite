@@ -11,7 +11,7 @@
 #include <chrono>
 #include "osqp.h"
 #include "linearizer.hpp"
-#include "linearizer.hpp"
+
 namespace satellite_control {
 
 using Eigen::VectorXd;
@@ -42,6 +42,7 @@ struct MPCParams {
     double Q_angvel = 1.0;              ///< Angular velocity error weight (retain for stabilization)
     double Q_attitude = 0.0;            ///< Attitude tracking weight (align body x-axis to path tangent)
     double Q_axis_align = 0.0;          ///< Extra axis-alignment weight (adds to Q_attitude)
+    double Q_quat_norm = 0.0;           ///< Soft quaternion normalization weight
 
     double R_thrust = 0.1;          ///< Thruster usage weight
     double R_rw_torque = 0.1;       ///< Reaction wheel torque usage weight
@@ -51,7 +52,17 @@ struct MPCParams {
     double max_angular_velocity = 0.0; ///< Angular velocity bound [rad/s] (0 = auto)
     bool enable_delta_u_coupling = false; ///< Enable full Δu temporal coupling in smoothness cost
     bool enable_gyro_jacobian = false; ///< Enable gyroscopic Jacobian updates in angular dynamics
+    bool auto_enable_gyro_jacobian = true; ///< Auto-enable gyro Jacobian above angular-rate threshold
+    double gyro_enable_threshold_radps = 0.1; ///< Angular-rate threshold for auto gyro Jacobian
     bool enable_auto_state_bounds = false; ///< Auto-derive velocity bounds when explicit bounds are unset
+    bool enable_online_dare_terminal = true; ///< Recompute DARE terminal diagonal online from local linearization
+    int dare_update_period_steps = 8; ///< Number of control steps between DARE updates
+    std::string terminal_cost_profile = "diagonal"; ///< Terminal cost profile: diagonal|dense_terminal
+    std::string robustness_mode = "none"; ///< Robustness mode: none|tube
+    double constraint_tightening_scale = 0.0; ///< Constraint tightening fraction for robust scaffold [0..0.3]
+    double tube_feedback_gain_scale = 0.15; ///< Ancillary tube-feedback gain scale [0..1]
+    double tube_feedback_max_correction = 0.25; ///< Max absolute tube correction per control channel
+    bool enable_variable_scaling = true; ///< Solve in scaled decision coordinates for better conditioning
 
 
 
@@ -100,6 +111,13 @@ struct ControlResult {
     bool fallback_active = false; ///< Whether fallback command scaling is active this step
     double fallback_age_s = 0.0;  ///< Age of active fallback command [s]
     double fallback_scale = 0.0;  ///< Multiplicative scale applied to fallback command [0..1]
+    // Per-step timing breakdown for profiling/contract monitoring.
+    double t_linearization_s = 0.0;
+    double t_cost_update_s = 0.0;
+    double t_constraint_update_s = 0.0;
+    double t_matrix_update_s = 0.0;
+    double t_warmstart_s = 0.0;
+    double t_solve_only_s = 0.0;
 };
 
 /**
@@ -217,6 +235,8 @@ private:
     VectorXd R_diag_;
     VectorXd control_lower_;
     VectorXd control_upper_;
+    VectorXd state_var_scale_;
+    VectorXd control_var_scale_;
 
     // -- Initialization Helpers --
     /**
@@ -239,7 +259,16 @@ private:
     /**
      * @brief Compute exactly stabilizing DARE terminal costs for the nominal state.
      */
-    VectorXd compute_dare_terminal_cost(const VectorXd& Q_diag, const VectorXd& R_diag);
+    VectorXd compute_dare_terminal_cost(
+        const VectorXd& Q_diag,
+        const VectorXd& R_diag,
+        const VectorXd& x_nominal_phys
+    );
+    MatrixXd compute_dare_terminal_matrix(
+        const VectorXd& Q_diag,
+        const VectorXd& R_diag,
+        const VectorXd& x_nominal_phys
+    );
 
     /**
      * @brief Configure and load OSQP settings and data.
@@ -289,6 +318,9 @@ private:
     std::vector<int> path_vs_diag_indices_;
     std::vector<c_int> path_P_update_indices_;
     std::vector<c_float> path_P_update_values_;
+    std::vector<int> terminal_phys_diag_indices_;
+    std::vector<c_int> terminal_phys_update_indices_;
+    std::vector<c_float> terminal_phys_update_values_;
 
     // Constraint bookkeeping
     int n_dyn_ = 0;
@@ -297,6 +329,7 @@ private:
     int n_bounds_u_ = 0;
     int n_control_horizon_constraints_ = 0;
     int control_horizon_ = 0;
+    int base_control_horizon_ = 0;
     int ctrl_row_start_ = 0;
 
     // Dynamic affine term (for gravity, etc.)
@@ -311,6 +344,8 @@ private:
     bool has_warm_start_control_ = false;
     VectorXd last_feasible_control_;
     bool has_last_feasible_control_ = false;
+    bool active_gyro_jacobian_ = false;
+    int control_step_counter_ = 0;
 
     // Auto-derived state bounds (used when params are unset)
     double max_linear_velocity_bound_ = 0.0;
@@ -364,6 +399,8 @@ private:
     ) const;
     RuntimeMode parse_runtime_mode(const std::string& mode) const;
     void update_mode_dependent_regularizers();
+    void initialize_variable_scaling();
+    double decision_var_scale(int decision_index) const;
 
 public:
     // Set path data for general path following

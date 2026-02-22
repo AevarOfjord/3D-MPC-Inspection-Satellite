@@ -215,7 +215,6 @@ The constraint matrix includes:
 3. State bounds for all stages
 4. Control bounds for all control stages
 5. Control horizon tying (`u_k = u_{M-1}` for `k >= M` if control horizon `M < N`)
-6. Optional obstacle half-space constraints
 
 ## 5.1 Typical bounds
 
@@ -225,15 +224,7 @@ The constraint matrix includes:
 - Optional velocity / angular velocity bounds
 - Path progress `s`: bounded to path range with margin
 
-## 5.2 Obstacle linear constraints
-
-For each horizon stage and obstacle, constraints are linearized as:
-
-```text
-n^T p_k >= d
-```
-
-where `n, d` are computed from obstacle geometry and safety margin around a stage-dependent position guess.
+Note: obstacle linear constraints were removed from the active MPC formulation in the current V6 code path.
 
 ## 6. Runtime adaptation policies
 
@@ -250,3 +241,13 @@ Additional runtime policies:
 QP is solved with OSQP using warm start and a strict per-step time budget capped relative to `dt`.
 
 This gives deterministic convex optimization behavior each step with online relinearization of dynamics and path costs.
+
+## 8. Advanced runtime options (speed/robustness)
+
+- **Terminal cost profile**
+  - `diagonal`: terminal DARE contributes diagonal-only physics terms (fast default).
+  - `dense_terminal`: adds off-diagonal terminal coupling terms from DARE in the terminal block (accuracy-oriented).
+- **Online terminal DARE refresh**
+  - Optional periodic DARE recomputation around the local trajectory tail, then terminal diagonal update in-place.
+- **Robust scaffold mode (`tube`)**
+  - Applies configurable constraint tightening to state/control bounds for margin against modeling/state-estimation errors.

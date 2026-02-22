@@ -107,6 +107,10 @@ class TestConfigValidation:
             MPCParams(thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01)
         with pytest.raises(ValidationError):
             MPCParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
+        with pytest.raises(ValidationError):
+            MPCParams(terminal_cost_profile="not_valid")
+        with pytest.raises(ValidationError):
+            MPCParams(robustness_mode="not_valid")
 
     def test_removed_mpc_dead_knobs_absent_from_schema(self):
         """Removed V6 cleanup knobs should not exist in canonical MPC schema."""
