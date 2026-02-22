@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dashboard.mission_v2_service import (
     build_validation_report,
+    list_draft_ids_v2,
     list_missions_v2,
     load_draft_v2,
     load_mission_v2,
@@ -56,6 +57,11 @@ async def get_mission_v2(mission_id: str):
 @router.post("/missions/drafts", response_model=MissionDraftResponseV2Model)
 async def save_mission_draft_v2(request: MissionDraftSaveRequestV2Model):
     return save_draft_v2(request)
+
+
+@router.get("/missions/drafts/list")
+async def list_mission_drafts_v2():
+    return {"draft_ids": list_draft_ids_v2()}
 
 
 @router.get("/missions/drafts/{draft_id}", response_model=MissionDraftResponseV2Model)

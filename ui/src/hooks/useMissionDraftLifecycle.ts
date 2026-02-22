@@ -5,6 +5,7 @@ import type { UnifiedMission } from '../api/unifiedMission';
 
 interface UseMissionDraftLifecycleArgs {
   storageKey: string;
+  listDraftIds: () => Promise<{ draft_ids: string[] }>;
   loadDraftById: (draftId: string) => Promise<MissionDraftResponse>;
   onRestoreMission: (mission: UnifiedMission, fallbackName?: string) => void;
   onDraftMetadata: (draftId: string, revision: number, savedAt: string) => void;
@@ -31,6 +32,7 @@ type PendingDraftRestore = {
 
 export function useMissionDraftLifecycle({
   storageKey,
+  listDraftIds,
   loadDraftById,
   onRestoreMission,
   onDraftMetadata,
@@ -58,8 +60,16 @@ export function useMissionDraftLifecycle({
     const storedDraftId = window.localStorage.getItem(storageKey);
     if (!storedDraftId) return;
 
-    loadDraftById(storedDraftId)
+    listDraftIds()
+      .then(({ draft_ids }) => {
+        if (!draft_ids.includes(storedDraftId)) {
+          window.localStorage.removeItem(storageKey);
+          return null;
+        }
+        return loadDraftById(storedDraftId);
+      })
       .then((draft) => {
+        if (!draft) return;
         onDraftMetadata(draft.draft_id, draft.revision, draft.saved_at);
         setPendingDraftRestore({
           draftId: draft.draft_id,
@@ -71,7 +81,7 @@ export function useMissionDraftLifecycle({
       .catch(() => {
         window.localStorage.removeItem(storageKey);
       });
-  }, [storageKey, loadDraftById, onDraftMetadata, onRestoreMission]);
+  }, [storageKey, listDraftIds, loadDraftById, onDraftMetadata, onRestoreMission]);
 
   const restorePendingDraft = () => {
     if (!pendingDraftRestore) return;

@@ -658,6 +658,21 @@ def save_draft_v2(
     )
 
 
+def list_draft_ids_v2(limit: int = 200) -> list[str]:
+    drafts: list[tuple[float, str]] = []
+    if not DRAFTS_DIR.exists():
+        return []
+    for path in DRAFTS_DIR.glob("*.json"):
+        if not path.is_file():
+            continue
+        try:
+            drafts.append((path.stat().st_mtime, path.stem))
+        except OSError:
+            continue
+    drafts.sort(key=lambda item: item[0], reverse=True)
+    return [draft_id for _, draft_id in drafts[:limit]]
+
+
 def load_draft_v2(draft_id: str) -> MissionDraftResponseV2Model:
     path = _draft_path(draft_id)
     if not path.exists():

@@ -24,11 +24,20 @@ export interface SimulationTelemetryResponse {
 
 export const simulationsApi = {
   list: async (): Promise<SimulationListResponse> => {
-    const response = await fetch(`${API_BASE_URL}/simulations`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch simulations');
+    try {
+      const response = await fetch(`${API_BASE_URL}/simulations`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch simulations');
+      }
+      return response.json();
+    } catch {
+      // Fallback for deployments where UI and API are served from the same origin.
+      const response = await fetch('/simulations');
+      if (!response.ok) {
+        throw new Error('Failed to fetch simulations');
+      }
+      return response.json();
     }
-    return response.json();
   },
   loadTelemetry: async (runId: string, stride: number): Promise<SimulationTelemetryResponse> => {
     const response = await fetch(
