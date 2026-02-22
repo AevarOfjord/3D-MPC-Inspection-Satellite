@@ -7,8 +7,8 @@ Trims down `test_simulation_state_validator.py`.
 
 import numpy as np
 import pytest
-from satellite_control.config.constants import Constants
-from satellite_control.utils.simulation_state_validator import (
+from config.constants import Constants
+from utils.simulation_state_validator import (
     create_state_validator_from_config,
 )
 

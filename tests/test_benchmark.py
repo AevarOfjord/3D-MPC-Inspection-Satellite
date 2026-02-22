@@ -10,8 +10,8 @@ from importlib.util import find_spec
 
 import numpy as np
 import pytest
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.control.mpc_controller import MPCController
+from config.simulation_config import SimulationConfig
+from control.mpc_controller import MPCController
 
 BENCHMARK_AVAILABLE = find_spec("pytest_benchmark") is not None
 

@@ -71,7 +71,7 @@ Documentation = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thru
 Changelog = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/docs/CHANGELOG.md"
 
 [project.scripts]
-satellite-control = "satellite_control.cli:app"
+satellite-control = "cli:app"
 
 [project.optional-dependencies]
 dev = [
@@ -98,7 +98,7 @@ where = ["src/python"]
 cmake.version = ">=3.20"
 cmake.build-type = "Release"
 cmake.args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
-wheel.packages = ["src/python/satellite_control"]
+wheel.packages = ["src/python"]
 # Setup for development install (editable)
 editable.rebuild = true
 build-dir = "build/{wheel_tag}"

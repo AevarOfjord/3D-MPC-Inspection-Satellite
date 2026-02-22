@@ -7,8 +7,8 @@ Consolidates `test_path_following_obstacles.py` and parts of `test_navigation_ut
 
 import numpy as np
 import pytest
-from satellite_control.mission.path_following import build_point_to_point_path
-from satellite_control.utils.navigation_utils import calculate_safe_path_to_waypoint
+from mission.path_following import build_point_to_point_path
+from utils.navigation_utils import calculate_safe_path_to_waypoint
 
 
 class TestPathPlanning:

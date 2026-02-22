@@ -2,8 +2,8 @@
 
 import json
 
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.core.performance_monitor import PerformanceMonitor
+from config.simulation_config import SimulationConfig
+from core.performance_monitor import PerformanceMonitor
 
 
 def test_default_simulation_timing_contract_config() -> None:

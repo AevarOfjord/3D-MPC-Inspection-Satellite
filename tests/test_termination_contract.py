@@ -5,8 +5,8 @@ Termination contract tests for strict last-waypoint completion behavior.
 from types import SimpleNamespace
 
 import numpy as np
-from satellite_control.core.path_completion import check_path_complete
-from satellite_control.core.simulation_loop import SimulationLoop
+from core.path_completion import check_path_complete
+from core.simulation_loop import SimulationLoop
 
 
 class _FakeMPCController:

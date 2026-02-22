@@ -4,8 +4,8 @@ This document explains the math implemented by the simulation/physics stack, pri
 
 - `src/cpp/simulation_engine.cpp`
 - `src/cpp/orbital_dynamics.cpp`
-- `src/python/satellite_control/core/thruster_manager.py`
-- `src/python/satellite_control/physics/orbital_dynamics.py`
+- `src/python/core/thruster_manager.py`
+- `src/python/physics/orbital_dynamics.py`
 
 ## 1. State and Inputs
 

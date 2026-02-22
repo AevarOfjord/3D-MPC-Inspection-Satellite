@@ -8,18 +8,18 @@ Consolidates `test_config_validation.py` and `test_presets.py`.
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-from satellite_control.config import physics as physics_cfg
-from satellite_control.config.io import ConfigIO
-from satellite_control.config.mission_state import DEFAULT_PATH_HOLD_END_S
-from satellite_control.config.models import (
+from config import physics as physics_cfg
+from config.io import ConfigIO
+from config.mission_state import DEFAULT_PATH_HOLD_END_S
+from config.models import (
     ActuatorPolicyParams,
     ControllerContractsParams,
     MPCParams,
     SatellitePhysicalParams,
 )
-from satellite_control.config.presets import list_presets, load_preset
-from satellite_control.config.simulation_config import SimulationConfig
+from config.presets import list_presets, load_preset
+from config.simulation_config import SimulationConfig
+from pydantic import ValidationError
 
 
 class TestConfigValidation:
@@ -130,11 +130,9 @@ class TestConfigValidation:
             "progress_slowdown_distance",
         )
         repo_root = Path(__file__).resolve().parents[1]
-        allowed = {
-            repo_root / "src/python/satellite_control/dashboard/runner_manager.py"
-        }
+        allowed = {repo_root / "src/python/dashboard/runner_manager.py"}
 
-        for base in ("src/python/satellite_control", "src/cpp", "ui/src"):
+        for base in ("src/python", "src/cpp", "ui/src"):
             for path in (repo_root / base).rglob("*"):
                 if not path.is_file():
                     continue

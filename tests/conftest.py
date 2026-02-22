@@ -13,7 +13,7 @@ import sys
 # macOS APFS marks every file inside a dot-prefixed directory (like .venv311)
 # with UF_HIDDEN, causing Python's ``site.py`` to skip all ``.pth`` files.
 # Prepending ``src/`` to ``sys.path`` and symlinking the C++ ``.so`` files
-# into ``src/satellite_control/cpp/`` is the most reliable cross-platform
+# into ``src/python/cpp/`` is the most reliable cross-platform
 # workaround.
 # ---------------------------------------------------------------------------
 _SRC_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "src" / "python")
@@ -22,7 +22,7 @@ if _SRC_DIR not in sys.path:
 
 import matplotlib.pyplot as plt
 import pytest
-from satellite_control.config.simulation_config import SimulationConfig
+from config.simulation_config import SimulationConfig
 
 # ============================================================================
 # Configuration Reset Fixture
