@@ -693,7 +693,8 @@ def get_system_status():
     src_python_dir = SRC_PYTHON_ROOT.resolve()
 
     checks = {
-        "ui_dist_ready": ui_dist_index.exists() and ui_dist_index.is_file(),
+        "ui_dist_ready": (ui_dist_index.exists() and ui_dist_index.is_file())
+        or (UI_DIST_DIR.parent / "index.html").is_file(),
         "simulation_script_ready": SIMULATION_SCRIPT.exists()
         and SIMULATION_SCRIPT.is_file(),
         "src_python_ready": src_python_dir.exists() and src_python_dir.is_dir(),

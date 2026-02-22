@@ -144,7 +144,7 @@ export const SimulationDataView: React.FC = () => {
   }, [selectedRunId, selectedFile]);
 
   return (
-    <div className="flex h-full text-white overflow-hidden font-mono text-sm">
+    <div className="flex h-full w-full text-white overflow-hidden font-mono text-sm">
       {/* Sidebar: Runs */}
       <div className="w-64 border-r border-slate-700 flex flex-col bg-slate-900/50">
         <div className="p-3 border-b border-slate-700 font-bold text-slate-300">
