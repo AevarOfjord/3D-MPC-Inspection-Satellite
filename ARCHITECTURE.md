@@ -1,0 +1,319 @@
+# Architecture
+
+This document explains how the project is structured, how data/control flow through the system, and how major modules connect.
+
+## 1. System Overview
+
+The repository is a hybrid Python + C++ + React system:
+
+- Python orchestrates mission loading, runtime control flow, simulation management, API serving, and plotting.
+- C++ implements the high-performance MPC core, dynamics linearization, and simulation engine (bound into Python via pybind11).
+- UI (`ui/`) provides mission authoring, run control, and telemetry visualization through REST + WebSocket APIs.
+
+Primary runtime loop:
+
+1. Load/compile mission and config.
+2. Initialize simulation + MPC controller.
+3. Run control loop:
+   - Build references and runtime mode state.
+   - Solve MPC in C++.
+   - Apply actuator commands.
+   - Advance physics simulation.
+   - Log telemetry/metrics.
+4. Persist outputs and visualize in dashboard/plots.
+
+## 2. End-to-End Execution Flow
+
+## 2.1 Config and Mission Intake
+
+- Defaults and schema:
+  - `src/python/config/defaults.py`
+  - `src/python/config/models.py`
+  - `src/python/config/validator.py`
+- Mission payload parsing and runtime compilation:
+  - `src/python/mission/runtime_loader.py`
+  - `src/python/mission/unified_compiler.py`
+  - `src/python/mission/unified_mission.py`
+
+Result: a validated runtime mission representation with path/reference context and controller settings.
+
+## 2.2 Controller and Simulation Initialization
+
+- High-level simulation object:
+  - `src/python/core/simulation.py`
+- Init wiring:
+  - `src/python/core/simulation_initialization.py`
+  - `src/python/core/cpp_satellite.py`
+  - `src/python/control/mpc_controller.py`
+  - `src/python/core/v6_controller_runtime.py`
+
+Python wrapper `MPCController` loads C++ extension `cpp._cpp_mpc` and passes:
+
+- physical parameters (mass, inertia, thruster geometry, RW config),
+- MPC parameters (weights, horizons, bounds, policies),
+- path samples for MPCC.
+
+## 2.3 Runtime Control Loop
+
+Main loop modules:
+
+- `src/python/core/simulation_loop.py`
+- `src/python/core/control_loop.py`
+- `src/python/core/mpc_runner.py`
+- `src/python/core/thruster_manager.py`
+
+Per control step:
+
+1. Compute current mode/state contracts (TRACK/RECOVER/SETTLE/HOLD/COMPLETE).
+2. Build reference slice/path context.
+3. Call C++ MPC solve.
+4. Process actuator policy and safety/fallback behavior.
+5. Apply controls to simulation engine.
+6. Log state/control/solver timing and completion metrics.
+
+## 2.4 C++ Core Responsibilities
+
+- MPC QP builder/solver (OSQP):
+  - `src/cpp/mpc_controller.cpp`
+  - `src/cpp/mpc_controller.hpp`
+- Dynamics linearization:
+  - `src/cpp/linearizer.cpp`
+  - `src/cpp/linearizer.hpp`
+- Orbital dynamics:
+  - `src/cpp/orbital_dynamics.cpp`
+  - `src/cpp/orbital_dynamics.hpp`
+- Simulation engine:
+  - `src/cpp/simulation_engine.cpp`
+  - `src/cpp/simulation_engine.hpp`
+- Python bindings:
+  - `src/cpp/bindings.cpp`
+  - `src/cpp/bindings_sim.cpp`
+  - `src/cpp/bindings_physics.cpp`
+
+## 2.5 Dashboard and UI Flow
+
+Backend API:
+
+- FastAPI app: `src/python/dashboard/app.py`
+- Routes:
+  - `src/python/dashboard/routes/runner.py`
+  - `src/python/dashboard/routes/simulations.py`
+  - `src/python/dashboard/routes/missions_v2.py`
+  - `src/python/dashboard/routes/assets.py`
+
+Frontend:
+
+- React entry: `ui/src/main.tsx`, `ui/src/App.tsx`
+- API clients: `ui/src/api/*.ts`
+- Mission/planner state hooks: `ui/src/hooks/*`
+- 3D/telemetry UI: `ui/src/components/*`, `ui/src/store/*`
+
+Run output and artifacts are written under `data/simulation_data/`.
+
+## 3. Key Interfaces and Contracts
+
+## 3.1 Python <-> C++
+
+- Extension loader:
+  - `src/python/cpp/__init__.py`
+- MPC wrapper:
+  - `src/python/control/mpc_controller.py`
+- C++ API contract includes:
+  - state/control vectors,
+  - path data (`s,x,y,z`),
+  - solver status/timing fields,
+  - projected progress/error metrics.
+
+## 3.2 Backend <-> UI
+
+- REST for mission compile/save/load, run control, and telemetry retrieval.
+- WebSocket for run-time streaming/log/status updates.
+- JSON payloads for mission definitions, run presets, telemetry series, and artifacts metadata.
+
+## 4. Entry Points
+
+- CLI:
+  - `src/python/cli.py`
+- Dashboard server:
+  - `src/python/dashboard/app.py`
+- Script launchers:
+  - `scripts/start_app.py`
+  - `scripts/run_simulation.py`
+  - `scripts/run_mpc_quality_suite.py`
+- Python tests:
+  - `tests/`
+- UI tests:
+  - `ui/tests/` and `ui/src/utils/*test*`
+
+## 5. Full Code Tree (Source-Centric)
+
+The tree below focuses on maintained source and runtime assets (excluding generated/cache folders like `.git`, `build`, `.venv`, `.pytest_cache`, `.ruff_cache`).
+
+```text
+Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
+├── src/
+│   ├── python/
+│   │   ├── cli.py
+│   │   ├── config/
+│   │   │   ├── constants.py
+│   │   │   ├── defaults.py
+│   │   │   ├── models.py
+│   │   │   ├── mission_state.py
+│   │   │   ├── orbital_config.py
+│   │   │   ├── paths.py
+│   │   │   ├── physics.py
+│   │   │   ├── reaction_wheel_config.py
+│   │   │   ├── simulation_config.py
+│   │   │   ├── timing.py
+│   │   │   └── validator.py
+│   │   ├── control/
+│   │   │   ├── base.py
+│   │   │   └── mpc_controller.py
+│   │   ├── core/
+│   │   │   ├── backend.py
+│   │   │   ├── control_loop.py
+│   │   │   ├── cpp_satellite.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── model.py
+│   │   │   ├── mpc_runner.py
+│   │   │   ├── path_completion.py
+│   │   │   ├── performance_monitor.py
+│   │   │   ├── simulation.py
+│   │   │   ├── simulation_context.py
+│   │   │   ├── simulation_initialization.py
+│   │   │   ├── simulation_io.py
+│   │   │   ├── simulation_loop.py
+│   │   │   ├── simulation_logger.py
+│   │   │   ├── simulation_reference.py
+│   │   │   ├── simulation_step_logging.py
+│   │   │   ├── thruster_manager.py
+│   │   │   └── v6_controller_runtime.py
+│   │   ├── cpp/
+│   │   │   └── __init__.py
+│   │   ├── dashboard/
+│   │   │   ├── app.py
+│   │   │   ├── mission_v2_service.py
+│   │   │   ├── models.py
+│   │   │   ├── runner_manager.py
+│   │   │   ├── simulation_manager.py
+│   │   │   └── routes/
+│   │   │       ├── assets.py
+│   │   │       ├── missions.py
+│   │   │       ├── missions_v2.py
+│   │   │       ├── runner.py
+│   │   │       └── simulations.py
+│   │   ├── mission/
+│   │   │   ├── mesh_scan.py
+│   │   │   ├── mission_report_generator.py
+│   │   │   ├── mission_types.py
+│   │   │   ├── path_assets.py
+│   │   │   ├── path_following.py
+│   │   │   ├── repository.py
+│   │   │   ├── runtime_loader.py
+│   │   │   ├── scan_projects.py
+│   │   │   ├── trajectory_utils.py
+│   │   │   ├── unified_compiler.py
+│   │   │   └── unified_mission.py
+│   │   ├── physics/
+│   │   │   └── orbital_dynamics.py
+│   │   ├── utils/
+│   │   │   ├── data_logger.py
+│   │   │   ├── logging_config.py
+│   │   │   ├── navigation_utils.py
+│   │   │   ├── orientation_utils.py
+│   │   │   └── simulation_state_validator.py
+│   │   └── visualization/
+│   │       ├── actuator_plots.py
+│   │       ├── command_utils.py
+│   │       ├── diagnostics_plots.py
+│   │       ├── plot_data_utils.py
+│   │       ├── plot_generator.py
+│   │       ├── plot_style.py
+│   │       ├── simulation_visualization.py
+│   │       ├── state_plots.py
+│   │       ├── trajectory_plots.py
+│   │       ├── unified_visualizer.py
+│   │       └── video_renderer.py
+│   └── cpp/
+│       ├── bindings.cpp
+│       ├── bindings_physics.cpp
+│       ├── bindings_sim.cpp
+│       ├── linearizer.cpp
+│       ├── linearizer.hpp
+│       ├── mpc_controller.cpp
+│       ├── mpc_controller.hpp
+│       ├── orbital_dynamics.cpp
+│       ├── orbital_dynamics.hpp
+│       ├── satellite_params.hpp
+│       ├── simulation_engine.cpp
+│       └── simulation_engine.hpp
+├── ui/
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── config/
+│   │   ├── data/
+│   │   ├── feedback/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   ├── store/
+│   │   ├── types/
+│   │   └── utils/
+│   ├── tests/
+│   │   ├── e2e/
+│   │   └── unit/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   └── playwright.config.ts
+├── tests/
+│   ├── conftest.py
+│   ├── test_benchmark.py
+│   ├── test_config.py
+│   ├── test_cpp_integration.py
+│   ├── test_dashboard_api.py
+│   ├── test_e2e_simulation.py
+│   ├── test_math.py
+│   ├── test_mission_workflow.py
+│   ├── test_mpc.py
+│   ├── test_mpc_monte_carlo.py
+│   ├── test_missions_v2_api.py
+│   ├── test_path_planning.py
+│   ├── test_performance_monitor.py
+│   ├── test_property_based.py
+│   ├── test_runner_workspace_routes.py
+│   ├── test_scan_project_pipeline.py
+│   ├── test_state_validation.py
+│   ├── test_termination_contract.py
+│   ├── test_thruster_logic.py
+│   ├── test_unified_compiler.py
+│   ├── test_v6_runtime.py
+│   ├── verify_runner_manager.py
+│   └── verify_runner_mission.py
+├── scripts/
+│   ├── packaged_entrypoint.py
+│   ├── run_mpc_quality_suite.py
+│   ├── run_simulation.py
+│   ├── smoke_test_packaged_app.py
+│   ├── start_app.py
+│   └── tuning/
+├── missions/
+├── data/
+│   ├── assets/
+│   ├── dashboard/
+│   └── simulation_data/
+├── ARCHITECTURE.md
+├── MATHEMATICS.md
+├── PHYSICS-ENGINE.md
+├── README.md
+├── pyproject.toml
+├── MANIFEST.in
+└── Makefile
+```
+
+## 6. Notes
+
+- The canonical source of MPC math and objective details is `MATHEMATICS.md`.
+- Architecture and behavior should be read with current code defaults from `config/defaults.py` and `config/models.py`.
