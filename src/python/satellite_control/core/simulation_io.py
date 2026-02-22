@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from satellite_control.config.paths import SIMULATION_DATA_ROOT
 from satellite_control.utils.orientation_utils import quat_angle_error
 
 if TYPE_CHECKING:
@@ -58,10 +59,8 @@ class SimulationIO:
         """
         timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
 
-        # Create directory path: Data/Simulation/timestamp
-        base_path = Path("Data")
-        sim_path = base_path / "Simulation"
-        timestamped_path = sim_path / timestamp
+        # Canonical directory path: data/simulation_data/<timestamp>
+        timestamped_path = SIMULATION_DATA_ROOT / timestamp
 
         # Create directories
         timestamped_path.mkdir(parents=True, exist_ok=True)
@@ -1547,7 +1546,7 @@ class SimulationIO:
         )
 
     def _update_global_run_indexes(self, run_dir: Path, max_runs: int = 500) -> None:
-        """Update Data/Simulation/runs_index.json and latest_run.txt."""
+        """Update data/simulation_data/runs_index.json and latest_run.txt."""
         base_dir = run_dir.parent
         latest_run_path = base_dir / "latest_run.txt"
         latest_run_path.write_text(run_dir.name + "\n", encoding="utf-8")

@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from satellite_control.config.paths import resolve_repo_path
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.mission.mesh_scan import (
     compute_scan_sampling,
@@ -28,19 +29,14 @@ from satellite_control.mission.unified_mission import (
 )
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _resolve_target_obj_path(target_id: str) -> Path | None:
     if not target_id:
         return None
     upper = target_id.upper()
-    root = _repo_root()
     if "ISS" in upper:
-        return root / "assets" / "model_files" / "ISS" / "ISS.obj"
+        return resolve_repo_path("assets/model_files/ISS/ISS.obj")
     if "STARLINK" in upper:
-        return root / "assets" / "model_files" / "Starlink" / "starlink.obj"
+        return resolve_repo_path("assets/model_files/Starlink/starlink.obj")
     return None
 
 

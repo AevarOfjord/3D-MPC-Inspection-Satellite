@@ -26,10 +26,15 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
-from satellite_control.dashboard.runner_manager import (
-    PRESETS_FILE,
+from satellite_control.config.paths import (
+    DASHBOARD_DATA_ROOT,
     PROJECT_ROOT,
-    SIMULATION_SCRIPT,
+    SCRIPTS_DIR,
+    SIMULATION_DATA_ROOT,
+    SRC_PYTHON_ROOT,
+    UI_DIST_DIR,
+)
+from satellite_control.dashboard.runner_manager import (
     RunnerManager,
 )
 from satellite_control.mission.repository import (
@@ -68,7 +73,9 @@ _package_state: dict[str, Any] = {
 }
 _MAX_PACKAGE_LOG_LINES = 300
 _RELEASE_DIR = (PROJECT_ROOT / "release").resolve()
-_SIMULATION_DIR = (PROJECT_ROOT / "Data" / "Simulation").resolve()
+_SIMULATION_DIR = SIMULATION_DATA_ROOT.resolve()
+SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
+PRESETS_FILE = DASHBOARD_DATA_ROOT / "runner_presets.json"
 
 
 class StartSimulationRequest(BaseModel):
@@ -681,10 +688,10 @@ async def import_workspace_bundle(
 def get_system_status():
     """Return runtime readiness status for web-only operation."""
     manager = get_runner_manager()
-    ui_dist_index = (PROJECT_ROOT / "ui" / "dist" / "index.html").resolve()
-    data_sim_dir = (PROJECT_ROOT / "Data" / "Simulation").resolve()
-    data_dashboard_dir = (PROJECT_ROOT / "Data" / "Dashboard").resolve()
-    src_python_dir = (PROJECT_ROOT / "src" / "python").resolve()
+    ui_dist_index = (UI_DIST_DIR / "index.html").resolve()
+    data_sim_dir = SIMULATION_DATA_ROOT.resolve()
+    data_dashboard_dir = DASHBOARD_DATA_ROOT.resolve()
+    src_python_dir = SRC_PYTHON_ROOT.resolve()
 
     checks = {
         "ui_dist_ready": ui_dist_index.exists() and ui_dist_index.is_file(),

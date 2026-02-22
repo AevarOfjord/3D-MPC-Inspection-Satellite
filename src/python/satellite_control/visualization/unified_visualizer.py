@@ -34,6 +34,11 @@ from matplotlib.figure import Figure
 from satellite_control.config.constants import Constants
 from satellite_control.config.mission_state import MissionState
 from satellite_control.config.models import AppConfig
+from satellite_control.config.paths import (
+    LEGACY_SIMULATION_DATA_ROOT,
+    SIMULATION_DATA_ROOT,
+    resolve_repo_path,
+)
 from satellite_control.config.physics import THRUSTER_COUNT
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.visualization.plot_style import PlotStyle
@@ -1385,18 +1390,21 @@ def select_data_file_interactive() -> tuple:
     print("   VISUALIZATION DATA FILE SELECTOR")
     print("=" * 60)
 
-    # Scan for available data directories
-    data_root = Path("Data")
-    if not data_root.exists():
-        print(f" Error: Data directory not found at {data_root.absolute()}")
+    search_roots = []
+    for root in (SIMULATION_DATA_ROOT, LEGACY_SIMULATION_DATA_ROOT):
+        if root.exists() and root.resolve() not in search_roots:
+            search_roots.append(root.resolve())
+
+    if not search_roots:
+        print(
+            " Error: data directory not found at "
+            f"{SIMULATION_DATA_ROOT.resolve()} (legacy {LEGACY_SIMULATION_DATA_ROOT.resolve()})"
+        )
         return None, None
 
-    # Find all CSV files in Data/Simulation
-    sim_csvs = (
-        list((data_root / "Simulation").rglob("simulation_data.csv"))
-        if (data_root / "Simulation").exists()
-        else []
-    )
+    sim_csvs: list[Path] = []
+    for root in search_roots:
+        sim_csvs.extend(list(root.rglob("simulation_data.csv")))
 
     all_csvs = []
 
@@ -1406,7 +1414,7 @@ def select_data_file_interactive() -> tuple:
         all_csvs.append(("Simulation", timestamp_dir, csv_path))
 
     if not all_csvs:
-        print(" No data files found in Data/Simulation")
+        print(" No data files found in data/simulation_data")
         return None, None
 
     # Display available files
@@ -1474,9 +1482,11 @@ def main() -> int:
             return 1
         args.data_dir = data_dir
 
-    # Default to Data/Simulation if still not set
+    # Default to canonical simulation data root if still not set.
     if args.data_dir is None:
-        args.data_dir = "Data/Simulation"
+        args.data_dir = str(SIMULATION_DATA_ROOT)
+    else:
+        args.data_dir = str(resolve_repo_path(args.data_dir))
 
     try:
         # Create visualizer

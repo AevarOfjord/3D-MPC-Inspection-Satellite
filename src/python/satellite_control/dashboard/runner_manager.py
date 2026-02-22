@@ -15,14 +15,19 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from satellite_control.config.paths import (
+    DASHBOARD_DATA_ROOT,
+    PROJECT_ROOT,
+    SCRIPTS_DIR,
+    SRC_PYTHON_ROOT,
+)
+
 logger = logging.getLogger("dashboard.runner")
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 # Constants
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
-PRESETS_FILE = PROJECT_ROOT / "Data" / "Dashboard" / "runner_presets.json"
+PRESETS_FILE = DASHBOARD_DATA_ROOT / "runner_presets.json"
 APP_CONFIG_SCHEMA_VERSION = "app_config_v3"
 APP_CONFIG_SCHEMA_VERSION_V2 = "app_config_v2"
 COMPATIBILITY_WINDOW = "v6.x"
@@ -729,7 +734,7 @@ class RunnerManager:
             # Inherit current env but ensure PYTHONPATH includes src/python
             env = os.environ.copy()
             python_path = env.get("PYTHONPATH", "")
-            src_python = str(PROJECT_ROOT / "src" / "python")
+            src_python = str(SRC_PYTHON_ROOT)
             if src_python not in python_path:
                 env["PYTHONPATH"] = (
                     f"{src_python}:{python_path}" if python_path else src_python

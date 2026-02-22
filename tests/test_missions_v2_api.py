@@ -81,7 +81,7 @@ def _scan_mission_payload(
 def client(tmp_path, monkeypatch):
     missions_dir = tmp_path / "missions"
     drafts_dir = tmp_path / "mission_drafts_v2"
-    path_assets_dir = tmp_path / "assets" / "paths"
+    path_assets_dir = tmp_path / "data" / "assets" / "paths"
     path_assets_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(mission_v2_service, "MISSIONS_DIR", missions_dir)
     monkeypatch.setattr(mission_v2_service, "DRAFTS_DIR", drafts_dir)
@@ -92,7 +92,7 @@ def client(tmp_path, monkeypatch):
         {
             "id": "asset_y_axis",
             "name": "asset_y_axis",
-            "obj_path": "assets/model_files/Starlink/starlink.obj",
+            "obj_path": "data/assets/model_files/Starlink/starlink.obj",
             "open": True,
             "relative_to_obj": True,
             "path": [

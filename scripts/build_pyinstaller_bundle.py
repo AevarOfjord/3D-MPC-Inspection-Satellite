@@ -106,10 +106,16 @@ def _build_pyinstaller(root: Path, dist_dir: Path, work_dir: Path) -> Path:
 
     data_sources = [
         (root / "ui" / "dist", "ui/dist"),
-        (root / "assets" / "model_files", "assets/model_files"),
-        (root / "assets" / "scan_projects", "assets/scan_projects"),
-        (root / "Data", "Data"),
+        (root / "data", "data"),
     ]
+    # Backward-compatibility fallback for legacy layouts.
+    if not (root / "data").exists():
+        data_sources.extend(
+            [
+                (root / "assets", "assets"),
+                (root / "Data", "Data"),
+            ]
+        )
     for source, target in data_sources:
         if source.exists():
             cmd.extend(["--add-data", f"{source}{sep}{target}"])

@@ -54,7 +54,7 @@ SYSTEM_CMAKE := $(shell PATH=$$(echo "$$PATH" | sed 's|$(CURDIR)/$(VENV_BIN):||g
 UI_DIR ?= ui
 UI_NODE_MODULES := $(UI_DIR)/node_modules
 UI_LOCKFILES := $(UI_DIR)/package-lock.json $(UI_DIR)/package.json
-ASSET_MODEL_DIR := assets/model_files
+ASSET_MODEL_DIR := data/assets/model_files
 UI_DIST_MODEL_DIR := $(UI_DIR)/dist/model_files
 RELEASE_DIR ?= release
 APP_BUNDLE_NAME ?= satellite-control-app
@@ -93,7 +93,7 @@ help:
 	@echo "  make run          Start backend + frontend dev servers (stops existing instances first)"
 	@echo "  make run-app      Start backend only and serve prebuilt UI from ui/dist at :8000"
 	@echo "  make stop         Stop running backend and frontend processes"
-	@echo "  make sync-ui-model-assets Sync canonical assets/model_files -> ui/dist/model_files"
+	@echo "  make sync-ui-model-assets Sync canonical data/assets/model_files -> ui/dist/model_files"
 	@echo "  make ui-build     Build production UI bundle into ui/dist"
 	@echo "  make package-app  Create distributable prebuilt app bundle under ./release"
 	@echo "  make package-pyinstaller Build OS-native PyInstaller bundle + archive under ./release"
@@ -188,7 +188,7 @@ $(UI_DEPS_STAMP): $(UI_LOCKFILES)
 frontend: $(UI_DEPS_STAMP)
 	cd $(UI_DIR) && npm run dev
 
-# Keep `assets/model_files` as the canonical source and mirror into built UI assets.
+# Keep `data/assets/model_files` as the canonical source and mirror into built UI assets.
 sync-ui-model-assets:
 	@mkdir -p "$(UI_DIST_MODEL_DIR)"
 	@rsync -a --delete "$(ASSET_MODEL_DIR)/" "$(UI_DIST_MODEL_DIR)/"
@@ -228,9 +228,11 @@ package-app: ui-build
 		--exclude 'ui/npm_cache/' \
 		--exclude 'ui/public/model_files/' \
 		--exclude 'ui/dist/model_files/' \
+		--exclude '/data/simulation_data/' \
 		--exclude '/Data/Simulation/' \
 		./ "$(APP_BUNDLE_DIR)/"
-	@mkdir -p "$(APP_BUNDLE_DIR)/Data/Simulation"
+	@mkdir -p "$(APP_BUNDLE_DIR)/data/simulation_data"
+	@mkdir -p "$(APP_BUNDLE_DIR)/data/dashboard"
 	@printf '%s\n' \
 		'#!/usr/bin/env bash' \
 		'set -euo pipefail' \
