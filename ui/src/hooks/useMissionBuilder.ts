@@ -458,6 +458,7 @@ export function useMissionBuilder() {
 
   const missionDraftLifecycle = useMissionDraftLifecycle({
     storageKey: DRAFT_ID_STORAGE_KEY,
+    listDraftIds: unifiedMissionApi.listDrafts,
     loadDraftById: unifiedMissionApi.loadDraft,
     onRestoreMission: applyLoadedMission,
     onDraftMetadata: setDraftMetadata,

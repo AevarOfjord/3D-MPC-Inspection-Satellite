@@ -59,6 +59,10 @@ export interface MissionDraftResponse {
   mission: UnifiedMission;
 }
 
+export interface MissionDraftListResponse {
+  draft_ids: string[];
+}
+
 export const unifiedMissionApi = {
   setMission: async (config: UnifiedMission) => {
     const response = await fetch(`${API_BASE_URL}/mission_v2`, {
@@ -164,6 +168,15 @@ export const unifiedMissionApi = {
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Draft load failed' }));
       throw new Error(err.detail || 'Draft load failed');
+    }
+    return response.json();
+  },
+
+  listDrafts: async (): Promise<MissionDraftListResponse> => {
+    const response = await fetch(`${API_BASE_URL}/api/v2/missions/drafts/list`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Draft list failed' }));
+      throw new Error(err.detail || 'Draft list failed');
     }
     return response.json();
   },
