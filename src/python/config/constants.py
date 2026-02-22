@@ -5,7 +5,7 @@ Read-only system-wide constants organized by domain.
 These values remain unchanged during execution.
 
 Usage:
-    from config.constants import Constants  # backward-compatible
+    from config.constants import Constants
     from config.constants import MPCDefaults, ToleranceConstants
 """
 
@@ -280,16 +280,13 @@ PhysicsConstants = _PhysicsConstants()
 
 
 # ============================================================================
-# Backward-compatible Constants facade
+# Constants facade
 # ============================================================================
 
 
 class Constants:
     """
-    Backward-compatible facade exposing all constants as class attributes.
-
-    New code should import the domain-specific singletons directly
-    (e.g. MPCDefaults, ToleranceConstants).
+    Constants facade exposing all constants as class attributes.
     """
 
     # UI
@@ -319,8 +316,6 @@ class Constants:
     FFMPEG_PATH_MACOS = FFmpegConstants.FFMPEG_PATH_MACOS
     FFMPEG_PATH_LINUX = FFmpegConstants.FFMPEG_PATH_LINUX
     FFMPEG_PATH = FFmpegConstants.FFMPEG_PATH
-    _platform = platform.system()
-
     # Mission defaults
     DEFAULT_START_POS = MissionDefaults.DEFAULT_START_POS
     DEFAULT_END_POS = MissionDefaults.DEFAULT_END_POS
@@ -420,22 +415,3 @@ class Constants:
     SATELLITE_SIZE = PhysicsConstants.SATELLITE_SIZE
     GRAVITY_M_S2 = PhysicsConstants.GRAVITY_M_S2
     DEFAULT_SATELLITE_SHAPE = PhysicsConstants.DEFAULT_SATELLITE_SHAPE
-
-    @classmethod
-    def get_simulation_params(cls) -> dict:
-        """Get simulation-specific parameters."""
-        return {
-            "data_dir": cls.LINEARIZED_DATA_DIR,
-            "timestamp_format": cls.CSV_TIMESTAMP_FORMAT,
-        }
-
-    @classmethod
-    def print_constants(cls) -> None:
-        """Print all system constants for debugging."""
-        print("=" * 80)
-        print("SYSTEM CONSTANTS")
-        print("=" * 80)
-        print(f"  UI: {cls.WINDOW_WIDTH}x{cls.WINDOW_HEIGHT}")
-        print(f"  Data directory: {cls.DATA_DIR}")
-        print(f"  FFmpeg path: {cls.FFMPEG_PATH}")
-        print("=" * 80)

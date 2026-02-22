@@ -81,13 +81,9 @@ class MPCController(Controller):
             _raise_cpp_binding_import_error()
 
         if not isinstance(cfg, AppConfig):
-            if hasattr(cfg, "physics") and hasattr(cfg, "mpc"):
-                # Duck-typed compatible object (e.g. test doubles)
-                pass
-            else:
-                raise TypeError(
-                    f"MPCController requires AppConfig, got {type(cfg).__name__}"
-                )
+            raise TypeError(
+                f"MPCController requires AppConfig, got {type(cfg).__name__}"
+            )
 
         self._extract_params_from_app_config(cfg)
 
@@ -244,11 +240,6 @@ class MPCController(Controller):
         - tuple/list: (x, y, z, radius) for spherical obstacles
         - dict/object with fields: type, position, radius, size, axis, name
         """
-        if not hasattr(self, "_cpp_controller") or not hasattr(
-            self._cpp_controller, "set_obstacles"
-        ):
-            return
-
         if not obstacles:
             self.clear_obstacles()
             return
@@ -265,8 +256,7 @@ class MPCController(Controller):
         def _to_enum(raw_type: Any) -> Any:
             if raw_type is None:
                 return ObstacleType.SPHERE
-            if hasattr(raw_type, "name"):
-                raw_type = raw_type.name
+            raw_type = getattr(raw_type, "name", raw_type)
             t = str(raw_type).strip().upper()
             if t.endswith(".SPHERE") or t == "SPHERE":
                 return ObstacleType.SPHERE
@@ -328,10 +318,7 @@ class MPCController(Controller):
 
     def clear_obstacles(self) -> None:
         """Clear all runtime MPC obstacle constraints."""
-        if hasattr(self, "_cpp_controller") and hasattr(
-            self._cpp_controller, "clear_obstacles"
-        ):
-            self._cpp_controller.clear_obstacles()
+        self._cpp_controller.clear_obstacles()
         self.enable_collision_avoidance = False
 
     def set_scan_attitude_context(
@@ -342,31 +329,26 @@ class MPCController(Controller):
     ) -> None:
         """Configure scan attitude context (+Z aligns with mission scan axis)."""
         if axis is None:
-            if hasattr(self._cpp_controller, "clear_scan_attitude_context"):
-                self._cpp_controller.clear_scan_attitude_context()
+            self._cpp_controller.clear_scan_attitude_context()
             self._scan_attitude_enabled = False
             return
 
-        if hasattr(self._cpp_controller, "set_scan_attitude_context"):
-            if center is None:
-                c = np.array([np.nan, np.nan, np.nan], dtype=float)
-            else:
-                c = np.array(center, dtype=float)
-            a = np.array(axis, dtype=float)
-            self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
+        if center is None:
+            c = np.array([np.nan, np.nan, np.nan], dtype=float)
+        else:
+            c = np.array(center, dtype=float)
+        a = np.array(axis, dtype=float)
+        self._cpp_controller.set_scan_attitude_context(c, a, str(direction))
         self._scan_attitude_enabled = True
 
     def set_runtime_mode(self, mode: str | None) -> None:
         """Set runtime V6 mode in the C++ controller core."""
         mode_name = str(mode or "TRACK").upper()
         self._runtime_mode = mode_name
-        if hasattr(self._cpp_controller, "set_runtime_mode"):
-            try:
-                self._cpp_controller.set_runtime_mode(mode_name)
-            except Exception:
-                logger.debug(
-                    "Failed to set runtime mode in C++ MPC core", exc_info=True
-                )
+        try:
+            self._cpp_controller.set_runtime_mode(mode_name)
+        except Exception:
+            logger.debug("Failed to set runtime mode in C++ MPC core", exc_info=True)
 
     @staticmethod
     def _classify_solver_fallback_reason(
@@ -409,17 +391,14 @@ class MPCController(Controller):
             return 0.0, np.zeros(3, dtype=float), float("inf")
         pos = pos_arr[:3]
 
-        if hasattr(self, "_cpp_controller") and hasattr(
-            self._cpp_controller, "project_onto_path"
-        ):
-            try:
-                s_val, proj, dist, _ = self._cpp_controller.project_onto_path(pos)
-                return float(s_val), np.array(proj, dtype=float), float(dist)
-            except Exception:
-                self._debug_fallback_once(
-                    "project_onto_path",
-                    "C++ project_onto_path failed, using Python fallback",
-                )
+        try:
+            s_val, proj, dist, _ = self._cpp_controller.project_onto_path(pos)
+            return float(s_val), np.array(proj, dtype=float), float(dist)
+        except Exception:
+            self._debug_fallback_once(
+                "project_onto_path",
+                "C++ project_onto_path failed, using Python fallback",
+            )
 
         min_dist = float("inf")
         best_s = 0.0
@@ -466,12 +445,9 @@ class MPCController(Controller):
             }
 
         if position is None:
-            if hasattr(self._cpp_controller, "current_path_s"):
-                try:
-                    s_val = float(self._cpp_controller.current_path_s)
-                except Exception:
-                    s_val = float(self.s)
-            else:
+            try:
+                s_val = float(self._cpp_controller.current_path_s)
+            except Exception:
                 s_val = float(self.s)
             if self._last_path_projection:
                 path_error = float(
@@ -486,28 +462,21 @@ class MPCController(Controller):
         else:
             pos_arr = np.array(position, dtype=float).reshape(-1)
             pos = pos_arr[:3] if pos_arr.size >= 3 else pos_arr
-            if hasattr(self, "_cpp_controller") and hasattr(
-                self._cpp_controller, "project_onto_path"
-            ):
-                try:
-                    s_val, _, path_error, endpoint_error = (
-                        self._cpp_controller.project_onto_path(pos)
-                    )
-                    s_val = float(s_val)
-                    path_error = float(path_error)
-                    endpoint_error = float(endpoint_error)
-                except Exception:
-                    self._debug_fallback_once(
-                        "get_path_progress_projection",
-                        (
-                            "C++ project_onto_path failed in get_path_progress, "
-                            "using Python fallback"
-                        ),
-                    )
-                    s_val, _, path_error = self._project_onto_path(position)
-                    endpoint = np.array(self._path_data[-1][1:4], dtype=float)
-                    endpoint_error = float(np.linalg.norm(pos - endpoint))
-            else:
+            try:
+                s_val, _, path_error, endpoint_error = (
+                    self._cpp_controller.project_onto_path(pos)
+                )
+                s_val = float(s_val)
+                path_error = float(path_error)
+                endpoint_error = float(endpoint_error)
+            except Exception:
+                self._debug_fallback_once(
+                    "get_path_progress_projection",
+                    (
+                        "C++ project_onto_path failed in get_path_progress, "
+                        "using Python fallback"
+                    ),
+                )
                 s_val, _, path_error = self._project_onto_path(position)
                 endpoint = np.array(self._path_data[-1][1:4], dtype=float)
                 endpoint_error = float(np.linalg.norm(pos - endpoint))
@@ -558,29 +527,25 @@ class MPCController(Controller):
             )
 
         s_val = float(self.s if s_query is None else s_query)
-        if hasattr(self, "_path_length"):
-            s_val = max(0.0, min(s_val, float(self._path_length)))
+        s_val = max(0.0, min(s_val, float(self._path_length)))
 
         q_curr = (
             np.array(q_current, dtype=float)
             if q_current is not None
             else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
         )
-        if hasattr(self._cpp_controller, "get_reference_at_s"):
-            try:
-                pos, tangent, q_ref = self._cpp_controller.get_reference_at_s(
-                    s_val, q_curr
-                )
-                return (
-                    np.array(pos, dtype=float),
-                    np.array(tangent, dtype=float),
-                    np.array(q_ref, dtype=float),
-                )
-            except Exception:
-                self._debug_fallback_once(
-                    "get_reference_at_s",
-                    "C++ get_reference_at_s failed, using Python fallback",
-                )
+        try:
+            pos, tangent, q_ref = self._cpp_controller.get_reference_at_s(s_val, q_curr)
+            return (
+                np.array(pos, dtype=float),
+                np.array(tangent, dtype=float),
+                np.array(q_ref, dtype=float),
+            )
+        except Exception:
+            self._debug_fallback_once(
+                "get_reference_at_s",
+                "C++ get_reference_at_s failed, using Python fallback",
+            )
 
         # At exact path end, use the final non-degenerate segment direction
         # (second-last waypoint heading) because no forward segment exists.
@@ -658,8 +623,8 @@ class MPCController(Controller):
         self.thruster_directions = [physics.thruster_directions[i] for i in sorted_ids]
         self.thruster_forces = [physics.thruster_forces[i] for i in sorted_ids]
 
-        # Reaction Wheels (Now in AppConfig.physics)
-        if hasattr(physics, "reaction_wheels") and physics.reaction_wheels:
+        # Reaction Wheels.
+        if physics.reaction_wheels:
             self.reaction_wheels = physics.reaction_wheels
             self.num_rw_axes = len(self.reaction_wheels)
             self.rw_torque_limits = [
@@ -686,12 +651,12 @@ class MPCController(Controller):
         self.solver_time_limit = mpc.solver_time_limit
         self.control_horizon = max(
             1,
-            min(int(getattr(mpc, "control_horizon", self.N)), int(self.N)),
+            min(int(mpc.control_horizon), int(self.N)),
         )
-        mpc_core = getattr(cfg, "mpc_core", None)
-        controller_contracts = getattr(cfg, "controller_contracts", None)
+        mpc_core = cfg.mpc_core
+        controller_contracts = cfg.controller_contracts
         self.controller_core = "v6"
-        self.solver_backend = str(getattr(mpc_core, "solver_backend", "OSQP")).upper()
+        self.solver_backend = str(mpc_core.solver_backend).upper()
         if self.solver_backend != "OSQP":
             logger.warning(
                 "mpc_core.solver_backend '%s' is unsupported; using OSQP.",
@@ -712,115 +677,71 @@ class MPCController(Controller):
                 self.solver_backend,
             )
             self.solver_type = self.solver_backend
-        self.verbose_mpc = getattr(mpc, "verbose_mpc", False)
+        self.verbose_mpc = mpc.verbose_mpc
 
         self.Q_angvel = mpc.q_angular_velocity
-        self.Q_attitude = getattr(mpc, "Q_attitude", 0.0)
-        self.Q_axis_align = getattr(mpc, "Q_axis_align", 0.0)
+        self.Q_attitude = mpc.Q_attitude
+        self.Q_axis_align = mpc.Q_axis_align
         self.R_thrust = mpc.r_thrust
-        self.R_rw_torque = mpc.r_rw_torque if hasattr(mpc, "r_rw_torque") else 0.1
-        self.thrust_l1_weight = getattr(mpc, "thrust_l1_weight", 0.0)
-        self.thrust_pair_weight = getattr(mpc, "thrust_pair_weight", 0.0)
-        self.max_linear_velocity = getattr(mpc, "max_linear_velocity", 0.0)
-        self.max_angular_velocity = getattr(mpc, "max_angular_velocity", 0.0)
-        self.enable_delta_u_coupling = bool(
-            getattr(mpc, "enable_delta_u_coupling", False)
-        )
-        self.enable_gyro_jacobian = bool(getattr(mpc, "enable_gyro_jacobian", False))
-        self.enable_auto_state_bounds = bool(
-            getattr(mpc, "enable_auto_state_bounds", False)
-        )
-        self.enable_collision_avoidance = bool(
-            getattr(mpc, "enable_collision_avoidance", False)
-        )
+        self.R_rw_torque = mpc.r_rw_torque
+        self.thrust_l1_weight = mpc.thrust_l1_weight
+        self.thrust_pair_weight = mpc.thrust_pair_weight
+        self.max_linear_velocity = mpc.max_linear_velocity
+        self.max_angular_velocity = mpc.max_angular_velocity
+        self.enable_delta_u_coupling = bool(mpc.enable_delta_u_coupling)
+        self.enable_gyro_jacobian = bool(mpc.enable_gyro_jacobian)
+        self.enable_auto_state_bounds = bool(mpc.enable_auto_state_bounds)
+        self.enable_collision_avoidance = bool(mpc.enable_collision_avoidance)
 
         # Path Following. - General Path MPCC
-        self.mode_path_following = True  # Always True now
         self.Q_contour = mpc.Q_contour
         self.Q_progress = mpc.Q_progress
-        self.progress_reward = getattr(mpc, "progress_reward", 0.0)
+        self.progress_reward = mpc.progress_reward
         self.Q_smooth = mpc.Q_smooth
-        self.Q_lag = getattr(mpc, "Q_lag", 0.0)
-        self.Q_lag_default = getattr(mpc, "Q_lag_default", -1.0)
-        self.Q_velocity_align = getattr(mpc, "Q_velocity_align", 0.0)
-        self.Q_s_anchor = getattr(mpc, "Q_s_anchor", -1.0)
-        self.Q_terminal_pos = getattr(mpc, "Q_terminal_pos", 0.0)
-        self.Q_terminal_s = getattr(mpc, "Q_terminal_s", 0.0)
+        self.Q_lag = mpc.Q_lag
+        self.Q_lag_default = mpc.Q_lag_default
+        self.Q_velocity_align = mpc.Q_velocity_align
+        self.Q_s_anchor = mpc.Q_s_anchor
+        self.Q_terminal_pos = mpc.Q_terminal_pos
+        self.Q_terminal_s = mpc.Q_terminal_s
         self.path_speed = mpc.path_speed
-        self.path_speed_min = getattr(mpc, "path_speed_min", 0.0)
-        self.path_speed_max = getattr(mpc, "path_speed_max", 0.0)
-        self.recover_contour_scale = float(
-            getattr(mpc_core, "recover_contour_scale", 2.0)
-        )
-        self.recover_lag_scale = float(getattr(mpc_core, "recover_lag_scale", 2.0))
-        self.recover_progress_scale = float(
-            getattr(mpc_core, "recover_progress_scale", 0.6)
-        )
-        self.recover_attitude_scale = float(
-            getattr(mpc_core, "recover_attitude_scale", 0.8)
-        )
-        self.settle_progress_scale = float(
-            getattr(mpc_core, "settle_progress_scale", 0.0)
-        )
-        self.settle_terminal_pos_scale = float(
-            getattr(mpc_core, "settle_terminal_pos_scale", 2.0)
-        )
+        self.path_speed_min = mpc.path_speed_min
+        self.path_speed_max = mpc.path_speed_max
+        self.recover_contour_scale = float(mpc_core.recover_contour_scale)
+        self.recover_lag_scale = float(mpc_core.recover_lag_scale)
+        self.recover_progress_scale = float(mpc_core.recover_progress_scale)
+        self.recover_attitude_scale = float(mpc_core.recover_attitude_scale)
+        self.settle_progress_scale = float(mpc_core.settle_progress_scale)
+        self.settle_terminal_pos_scale = float(mpc_core.settle_terminal_pos_scale)
         self.settle_terminal_attitude_scale = float(
-            getattr(mpc_core, "settle_terminal_attitude_scale", 1.5)
+            mpc_core.settle_terminal_attitude_scale
         )
-        self.settle_velocity_align_scale = float(
-            getattr(mpc_core, "settle_velocity_align_scale", 1.5)
-        )
+        self.settle_velocity_align_scale = float(mpc_core.settle_velocity_align_scale)
         self.settle_angular_velocity_scale = float(
-            getattr(mpc_core, "settle_angular_velocity_scale", 2.0)
+            mpc_core.settle_angular_velocity_scale
         )
-        self.hold_smoothness_scale = float(
-            getattr(mpc_core, "hold_smoothness_scale", 1.5)
-        )
-        self.hold_thruster_pair_scale = float(
-            getattr(mpc_core, "hold_thruster_pair_scale", 1.2)
-        )
-        self.solver_fallback_hold_s = float(
-            getattr(controller_contracts, "solver_fallback_hold_s", 0.30)
-        )
+        self.hold_smoothness_scale = float(mpc_core.hold_smoothness_scale)
+        self.hold_thruster_pair_scale = float(mpc_core.hold_thruster_pair_scale)
+        self.solver_fallback_hold_s = float(controller_contracts.solver_fallback_hold_s)
         self.solver_fallback_decay_s = float(
-            getattr(controller_contracts, "solver_fallback_decay_s", 0.70)
+            controller_contracts.solver_fallback_decay_s
         )
         self.solver_fallback_zero_after_s = float(
-            getattr(controller_contracts, "solver_fallback_zero_after_s", 1.00)
+            controller_contracts.solver_fallback_zero_after_s
         )
-        self.enable_thruster_hysteresis = bool(
-            getattr(mpc, "enable_thruster_hysteresis", True)
-        )
-        self.thruster_hysteresis_on = float(
-            getattr(mpc, "thruster_hysteresis_on", 0.015)
-        )
-        self.thruster_hysteresis_off = float(
-            getattr(mpc, "thruster_hysteresis_off", 0.007)
-        )
+        self.enable_thruster_hysteresis = bool(mpc.enable_thruster_hysteresis)
+        self.thruster_hysteresis_on = float(mpc.thruster_hysteresis_on)
+        self.thruster_hysteresis_off = float(mpc.thruster_hysteresis_off)
 
         # Orbital parameters (for MPC linearization)
         try:
             from config.orbital_config import OrbitalConfig
 
-            orbital_cfg = getattr(physics, "orbital", None)
-            if orbital_cfg is not None:
-                self.orbital_mu = float(getattr(orbital_cfg, "mu", OrbitalConfig().mu))
-                self.orbital_radius = float(
-                    getattr(
-                        orbital_cfg, "orbital_radius", OrbitalConfig().orbital_radius
-                    )
-                )
-                self.orbital_mean_motion = float(
-                    getattr(orbital_cfg, "mean_motion", OrbitalConfig().mean_motion)
-                )
-                self.use_two_body = bool(getattr(orbital_cfg, "use_two_body", True))
-            else:
-                orbital_default = OrbitalConfig()
-                self.orbital_mu = float(orbital_default.mu)
-                self.orbital_radius = float(orbital_default.orbital_radius)
-                self.orbital_mean_motion = float(orbital_default.mean_motion)
-                self.use_two_body = True
+            orbital_default = OrbitalConfig()
+            self.orbital_mu = float(orbital_default.mu)
+            self.orbital_radius = float(orbital_default.orbital_radius)
+            self.orbital_mean_motion = float(orbital_default.mean_motion)
+            self.use_two_body = True
         except Exception:
             logger.warning(
                 "Failed to load orbital config, using Earth LEO defaults", exc_info=True
@@ -839,34 +760,6 @@ class MPCController(Controller):
     def prediction_horizon(self) -> int:
         """Prediction horizon."""
         return self.N
-
-    @property
-    def body_frame_forces(self) -> list[np.ndarray]:
-        """Compute body frame force vector for each thruster."""
-        forces = []
-        for i in range(self.num_thrusters):
-            f_mag = self.thruster_forces[i]
-            f_dir = np.array(self.thruster_directions[i])
-            forces.append(f_mag * f_dir)
-        return forces
-
-    @property
-    def body_frame_torques(self) -> list[np.ndarray]:
-        """Compute body frame torque vector for each thruster."""
-        torques = []
-        forces = self.body_frame_forces
-        for i in range(self.num_thrusters):
-            pos = np.array(self.thruster_positions[i])
-            r = pos - self.com_offset
-            torques.append(np.cross(r, forces[i]))
-        return torques
-
-    @property
-    def max_thrust(self) -> float:
-        """Maximum thrust force (assumes uniform thrusters)."""
-        if not self.thruster_forces:
-            return 0.0
-        return max(self.thruster_forces)
 
     def split_control(self, control: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Split control vector into RW torques and thruster commands."""
@@ -893,7 +786,7 @@ class MPCController(Controller):
         """Compute optimal control action via C++ backend."""
         # C++ owns path-progress continuity and projection filtering.
         s_for_state = float(self.s)
-        if self._path_set and hasattr(self._cpp_controller, "current_path_s"):
+        if self._path_set:
             try:
                 s_for_state = float(self._cpp_controller.current_path_s)
                 self.s = s_for_state
@@ -908,9 +801,7 @@ class MPCController(Controller):
         else:
             x_input = x_current  # Assuming already augmented or custom
 
-        if previous_thrusters is not None and hasattr(
-            self._cpp_controller, "set_warm_start_control"
-        ):
+        if previous_thrusters is not None:
             try:
                 self._cpp_controller.set_warm_start_control(
                     np.array(previous_thrusters, dtype=float)
@@ -918,18 +809,7 @@ class MPCController(Controller):
             except Exception:
                 logger.debug("Warm-start control failed", exc_info=True)
 
-        try:
-            result = self._cpp_controller.get_control_action(x_input)
-        except TypeError:
-            # Older/newer C++ bindings expect (x_current, x_target).
-            x_target = np.array(x_input, dtype=float)
-            try:
-                pos_ref, _ = self.get_path_reference()
-                if x_target.shape[0] >= 3:
-                    x_target[0:3] = pos_ref
-            except Exception:
-                logger.debug("Path reference override failed", exc_info=True)
-            result = self._cpp_controller.get_control_action(x_input, x_target)
+        result = self._cpp_controller.get_control_action(x_input)
 
         self.solve_times.append(result.solve_time)
 

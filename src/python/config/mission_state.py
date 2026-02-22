@@ -51,7 +51,6 @@ class MissionState:
     Mission state tracking for runtime execution.
 
     Composes path-following and obstacle runtime state.
-    Maintains a small set of compatibility aliases for path fields.
     """
 
     path: PathFollowingState = field(default_factory=PathFollowingState)

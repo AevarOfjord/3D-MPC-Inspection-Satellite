@@ -45,7 +45,7 @@ public:
     std::pair<Eigen::Matrix<double, 16, 16>, Eigen::Matrix<double, 16, 9>> get_mpc_dynamics_matrices(double dt) const;
 
 private:
-    double n_;      // Mean motionn
+    double n_;      // Mean motion
     double n_sq_;   // n^2
 };
 
@@ -80,13 +80,11 @@ public:
      * @brief Compute relative acceleration between inspector and target
      *
      * @param rel_position Relative position (inspector - target) [m]
-     * @param rel_velocity Relative velocity [m/s]
      * @param target_pos Target absolute position [m]
      * @return Eigen::Vector3d Relative acceleration [m/s²]
      */
     Eigen::Vector3d compute_relative_acceleration(
         const Eigen::Vector3d& rel_position,
-        const Eigen::Vector3d& rel_velocity,
         const Eigen::Vector3d& target_pos
     ) const;
 

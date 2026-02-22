@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def get_path_completion_status(sim: Any) -> dict[str, Any]:
     """Compute strict path-end completion status and per-threshold booleans."""
-    if not hasattr(sim, "mpc_controller") or not sim.mpc_controller:
+    if getattr(sim, "mpc_controller", None) is None:
         return {
             "progress_ok": False,
             "position_ok": False,
@@ -42,7 +42,7 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         }
 
     pos = None
-    if hasattr(sim.satellite, "position"):
+    if getattr(sim.satellite, "position", None) is not None:
         pos = np.array(sim.satellite.position, dtype=float)
     else:
         try:
@@ -54,20 +54,12 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
     path_s = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
     path_error = float("inf")
     endpoint_error = float("inf")
-    if hasattr(sim.mpc_controller, "get_path_progress") and pos is not None:
+    if pos is not None:
         metrics = sim.mpc_controller.get_path_progress(pos)
         if isinstance(metrics, dict):
             path_s = float(metrics.get("s", path_s))
             path_error = float(metrics.get("path_error", path_error))
             endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
-    elif pos is not None:
-        try:
-            path = sim._get_mission_path_waypoints()
-            end_pt = np.array(path[-1], dtype=float)
-            endpoint_error = float(np.linalg.norm(pos - end_pt))
-        except Exception:
-            logger.debug("Failed to compute endpoint error", exc_info=True)
-            endpoint_error = float("inf")
 
     pos_tol = float(getattr(sim, "position_tolerance", 0.05))
     progress_ok = path_s >= (path_len - pos_tol)
@@ -80,17 +72,19 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         "angular_velocity": False,
     }
     state_ok: bool | None = None
-    if hasattr(sim, "state_validator") and sim.state_validator is not None:
+    state_validator = getattr(sim, "state_validator", None)
+    if state_validator is not None:
         try:
             validator_available = True
             current_state = sim.get_current_state()[:13]
             reference_state = (
                 sim.reference_state if sim.reference_state is not None else np.zeros(13)
             )
-            if hasattr(sim.state_validator, "check_within_tolerances"):
-                checks = sim.state_validator.check_within_tolerances(
-                    current_state, reference_state
-                )
+            check_within_tolerances = getattr(
+                state_validator, "check_within_tolerances", None
+            )
+            if callable(check_within_tolerances):
+                checks = check_within_tolerances(current_state, reference_state)
                 if isinstance(checks, dict):
                     threshold_status["position"] = bool(
                         checks.get("position", threshold_status["position"])
@@ -107,7 +101,7 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
                         and threshold_status["angular_velocity"]
                     )
             if state_ok is None:
-                raw_state_ok = sim.state_validator.check_reference_reached(
+                raw_state_ok = state_validator.check_reference_reached(
                     current_state, reference_state
                 )
                 state_ok = bool(raw_state_ok)

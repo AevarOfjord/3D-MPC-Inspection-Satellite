@@ -5,14 +5,11 @@ Handles the formatting and logging of simulation data.
 De-clutters the main simulation loop by encapsulating the data mapping logic.
 """
 
-import logging
 from typing import Any
 
 import numpy as np
 from utils.data_logger import DataLogger
 from utils.orientation_utils import quat_angle_error
-
-logger = logging.getLogger(__name__)
 
 
 class SimulationLogger:
@@ -135,85 +132,53 @@ class SimulationLogger:
         actual_time_interval = control_update_interval  # Simplified
 
         # MPC Info
-        mpc_status_name = mpc_info.get("status_name") if mpc_info else None
-        mpc_solver_type = mpc_info.get("solver_type") if mpc_info else None
-        mpc_time_limit = mpc_info.get("solver_time_limit") if mpc_info else None
-        mpc_time_exceeded = mpc_info.get("time_limit_exceeded") if mpc_info else None
-        mpc_fallback_used = mpc_info.get("solver_fallback") if mpc_info else None
-        mpc_objective = mpc_info.get("objective_value") if mpc_info else None
-        mpc_solve_time = mpc_info.get("solve_time") if mpc_info else None
-        mpc_iterations = mpc_info.get("iterations") if mpc_info else None
-        mpc_optimality_gap = mpc_info.get("optimality_gap") if mpc_info else None
+        mpc_status_name = mpc_info.get("status_name")
+        mpc_solver_type = mpc_info.get("solver_type")
+        mpc_time_limit = mpc_info.get("solver_time_limit")
+        mpc_time_exceeded = mpc_info.get("time_limit_exceeded")
+        mpc_fallback_used = mpc_info.get("solver_fallback")
+        mpc_objective = mpc_info.get("objective_value")
+        mpc_solve_time = mpc_info.get("solve_time")
+        mpc_iterations = mpc_info.get("iterations")
+        mpc_optimality_gap = mpc_info.get("optimality_gap")
         mpc_computation_time = mpc_info.get("mpc_computation_time", 0.0)
-        path_s = mpc_info.get("path_s") if mpc_info else None
-        path_s_proj = mpc_info.get("path_s_proj") if mpc_info else None
-        path_v_s = mpc_info.get("path_v_s") if mpc_info else None
-        path_progress = mpc_info.get("path_progress") if mpc_info else None
-        path_remaining = mpc_info.get("path_remaining") if mpc_info else None
-        path_error = mpc_info.get("path_error") if mpc_info else None
-        endpoint_error = mpc_info.get("path_endpoint_error") if mpc_info else None
-        path_s_pred = mpc_info.get("path_s_pred") if mpc_info else None
-        mode_state = mpc_info.get("mode_state") if mpc_info else None
-        mode_time_in_mode_s = mpc_info.get("mode_time_in_mode_s") if mpc_info else None
-        completion_gate_position_ok = (
-            mpc_info.get("completion_gate_position_ok") if mpc_info else None
+        path_s = mpc_info.get("path_s")
+        path_s_proj = mpc_info.get("path_s_proj")
+        path_v_s = mpc_info.get("path_v_s")
+        path_progress = mpc_info.get("path_progress")
+        path_remaining = mpc_info.get("path_remaining")
+        path_error = mpc_info.get("path_error")
+        endpoint_error = mpc_info.get("path_endpoint_error")
+        path_s_pred = mpc_info.get("path_s_pred")
+        mode_state = mpc_info.get("mode_state")
+        mode_time_in_mode_s = mpc_info.get("mode_time_in_mode_s")
+        completion_gate_position_ok = mpc_info.get("completion_gate_position_ok")
+        completion_gate_angle_ok = mpc_info.get("completion_gate_angle_ok")
+        completion_gate_velocity_ok = mpc_info.get("completion_gate_velocity_ok")
+        completion_gate_angular_velocity_ok = mpc_info.get(
+            "completion_gate_angular_velocity_ok"
         )
-        completion_gate_angle_ok = (
-            mpc_info.get("completion_gate_angle_ok") if mpc_info else None
+        completion_gate_hold_elapsed_s = mpc_info.get("completion_gate_hold_elapsed_s")
+        completion_gate_hold_required_s = mpc_info.get(
+            "completion_gate_hold_required_s"
         )
-        completion_gate_velocity_ok = (
-            mpc_info.get("completion_gate_velocity_ok") if mpc_info else None
+        completion_gate_last_breach_reason = mpc_info.get(
+            "completion_gate_last_breach_reason"
         )
-        completion_gate_angular_velocity_ok = (
-            mpc_info.get("completion_gate_angular_velocity_ok") if mpc_info else None
-        )
-        completion_gate_hold_elapsed_s = (
-            mpc_info.get("completion_gate_hold_elapsed_s") if mpc_info else None
-        )
-        completion_gate_hold_required_s = (
-            mpc_info.get("completion_gate_hold_required_s") if mpc_info else None
-        )
-        completion_gate_last_breach_reason = (
-            mpc_info.get("completion_gate_last_breach_reason") if mpc_info else None
-        )
-        solver_health_status = (
-            mpc_info.get("solver_health_status") if mpc_info else None
-        )
-        solver_fallback_count = (
-            mpc_info.get("solver_fallback_count") if mpc_info else None
-        )
-        solver_hard_limit_breaches = (
-            mpc_info.get("solver_hard_limit_breaches") if mpc_info else None
-        )
-        solver_last_fallback_reason = (
-            mpc_info.get("solver_last_fallback_reason") if mpc_info else None
-        )
-        solver_fallback_active = (
-            mpc_info.get("solver_fallback_active") if mpc_info else None
-        )
-        solver_fallback_age_s = (
-            mpc_info.get("solver_fallback_age_s") if mpc_info else None
-        )
-        solver_fallback_scale = (
-            mpc_info.get("solver_fallback_scale") if mpc_info else None
-        )
-        pointing_context_source = (
-            mpc_info.get("pointing_context_source") if mpc_info else None
-        )
-        pointing_axis_world = mpc_info.get("pointing_axis_world") if mpc_info else None
-        pointing_z_axis_error_deg = (
-            mpc_info.get("z_axis_error_deg") if mpc_info else None
-        )
-        pointing_x_axis_error_deg = (
-            mpc_info.get("x_axis_error_deg") if mpc_info else None
-        )
-        pointing_guardrail_breached = (
-            mpc_info.get("pointing_guardrail_breached") if mpc_info else None
-        )
-        pointing_guardrail_reason = (
-            mpc_info.get("pointing_guardrail_reason") if mpc_info else None
-        )
-        object_visible_side = mpc_info.get("object_visible_side") if mpc_info else None
+        solver_health_status = mpc_info.get("solver_health_status")
+        solver_fallback_count = mpc_info.get("solver_fallback_count")
+        solver_hard_limit_breaches = mpc_info.get("solver_hard_limit_breaches")
+        solver_last_fallback_reason = mpc_info.get("solver_last_fallback_reason")
+        solver_fallback_active = mpc_info.get("solver_fallback_active")
+        solver_fallback_age_s = mpc_info.get("solver_fallback_age_s")
+        solver_fallback_scale = mpc_info.get("solver_fallback_scale")
+        pointing_context_source = mpc_info.get("pointing_context_source")
+        pointing_axis_world = mpc_info.get("pointing_axis_world")
+        pointing_z_axis_error_deg = mpc_info.get("z_axis_error_deg")
+        pointing_x_axis_error_deg = mpc_info.get("x_axis_error_deg")
+        pointing_guardrail_breached = mpc_info.get("pointing_guardrail_breached")
+        pointing_guardrail_reason = mpc_info.get("pointing_guardrail_reason")
+        object_visible_side = mpc_info.get("object_visible_side")
 
         # Velocity errors
         error_vx = ref_vx - curr_vx

@@ -41,33 +41,29 @@ def _set_runtime_pointing_context(
     )
     direction = "CW" if context.direction_cw else "CCW"
 
-    if hasattr(sim, "mpc_controller") and hasattr(
-        sim.mpc_controller, "set_scan_attitude_context"
-    ):
-        sim.mpc_controller.set_scan_attitude_context(
-            center_payload,
-            axis_payload,
-            direction,
-        )
+    sim.mpc_controller.set_scan_attitude_context(
+        center_payload,
+        axis_payload,
+        direction,
+    )
 
     x_error_deg = None
     z_error_deg = None
     try:
-        if hasattr(sim.mpc_controller, "get_path_reference_state"):
-            q_curr = (
-                np.array(current_state[3:7], dtype=float)
-                if current_state.size >= 7
-                else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        q_curr = (
+            np.array(current_state[3:7], dtype=float)
+            if current_state.size >= 7
+            else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        )
+        _, _, q_ref = sim.mpc_controller.get_path_reference_state(
+            s_query=float(path_s),
+            q_current=q_curr,
+        )
+        if q_ref is not None:
+            x_error_deg, z_error_deg = compute_pointing_errors_deg(
+                current_quat_wxyz=q_curr,
+                reference_quat_wxyz=np.array(q_ref, dtype=float),
             )
-            _, _, q_ref = sim.mpc_controller.get_path_reference_state(
-                s_query=float(path_s),
-                q_current=q_curr,
-            )
-            if q_ref is not None:
-                x_error_deg, z_error_deg = compute_pointing_errors_deg(
-                    current_quat_wxyz=q_curr,
-                    reference_quat_wxyz=np.array(q_ref, dtype=float),
-                )
     except Exception:
         x_error_deg = None
         z_error_deg = None
@@ -89,12 +85,11 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
     endpoint_error = None
 
     try:
-        if hasattr(sim.mpc_controller, "get_path_progress"):
-            metrics = sim.mpc_controller.get_path_progress(current_state[:3])
-            if isinstance(metrics, dict):
-                path_s = float(metrics.get("s", path_s))
-                contour_error = float(metrics.get("path_error", contour_error) or 0.0)
-                endpoint_error = metrics.get("endpoint_error")
+        metrics = sim.mpc_controller.get_path_progress(current_state[:3])
+        if isinstance(metrics, dict):
+            path_s = float(metrics.get("s", path_s))
+            contour_error = float(metrics.get("path_error", contour_error) or 0.0)
+            endpoint_error = metrics.get("endpoint_error")
     except Exception:
         contour_error = 0.0
 
@@ -157,9 +152,7 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
             path_s=path_s,
         )
         context_source = getattr(context, "source", None)
-    elif hasattr(sim, "mpc_controller") and hasattr(
-        sim.mpc_controller, "set_scan_attitude_context"
-    ):
+    else:
         sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
 
     pointing_guardrail = getattr(sim, "v6_pointing_guardrail", None)
@@ -210,9 +203,10 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
     )
     sim.v6_mode_profile = mode_manager.profile_for_mode(sim.v6_mode_state.current_mode)
 
-    if hasattr(sim, "v6_mode_timeline"):
+    mode_timeline = getattr(sim, "v6_mode_timeline", None)
+    if mode_timeline is not None:
         sim._append_capped_history(
-            sim.v6_mode_timeline,
+            mode_timeline,
             {
                 "time_s": float(sim.simulation_time),
                 "mode": str(sim.v6_mode_state.current_mode),
@@ -242,13 +236,9 @@ def update_mpc_control_step(sim: Any) -> None:
     current_state = sim.get_current_state()
     _update_v6_mode_state(sim, current_state)
     reference_scheduler = getattr(sim, "v6_reference_scheduler", None)
-    if reference_scheduler is not None and hasattr(reference_scheduler, "build_slice"):
+    if reference_scheduler is not None:
         try:
-            horizon = int(
-                getattr(sim.mpc_controller, "prediction_horizon", 10)
-                if hasattr(sim, "mpc_controller")
-                else 10
-            )
+            horizon = int(getattr(sim.mpc_controller, "prediction_horizon", 10))
             sim.v6_reference_slice = reference_scheduler.build_slice(
                 sim=sim,
                 current_state=current_state,
@@ -264,7 +254,7 @@ def update_mpc_control_step(sim: Any) -> None:
             sim.v6_reference_slice = None
 
     # Delegate to MPCRunner
-    if not hasattr(sim, "mpc_runner"):
+    if getattr(sim, "mpc_runner", None) is None:
         from core.mpc_runner import MPCRunner
 
         # Initialize MPC Runner wrapper
@@ -274,8 +264,7 @@ def update_mpc_control_step(sim: Any) -> None:
             state_validator=sim.state_validator,
             actuator_policy=getattr(sim, "v6_actuator_policy", None),
         )
-    if hasattr(sim.mpc_runner, "set_mode_state"):
-        sim.mpc_runner.set_mode_state(getattr(sim, "v6_mode_state", None))
+    sim.mpc_runner.set_mode_state(getattr(sim, "v6_mode_state", None))
 
     mpc_start_sim_time = sim.simulation_time
     mpc_start_wall_time = time.perf_counter()
@@ -352,8 +341,6 @@ def update_mpc_control_step(sim: Any) -> None:
             solver_health.fallback_count += 1
             reason_key = str(fallback_reason or "solver_fallback")
             solver_health.last_fallback_reason = reason_key
-            if not isinstance(getattr(solver_health, "fallback_reasons", None), dict):
-                solver_health.fallback_reasons = {}
             solver_health.fallback_reasons[reason_key] = (
                 int(solver_health.fallback_reasons.get(reason_key, 0)) + 1
             )
@@ -368,18 +355,10 @@ def update_mpc_control_step(sim: Any) -> None:
         mpc_info["solver_health_status"] = solver_health.status
         mpc_info["solver_fallback_count"] = int(solver_health.fallback_count)
         mpc_info["solver_hard_limit_breaches"] = int(solver_health.hard_limit_breaches)
-        mpc_info["solver_last_fallback_reason"] = getattr(
-            solver_health, "last_fallback_reason", None
-        )
-        mpc_info["solver_fallback_active"] = bool(
-            getattr(solver_health, "fallback_active", False)
-        )
-        mpc_info["solver_fallback_age_s"] = float(
-            getattr(solver_health, "fallback_age_s", 0.0)
-        )
-        mpc_info["solver_fallback_scale"] = float(
-            getattr(solver_health, "fallback_scale", 0.0)
-        )
+        mpc_info["solver_last_fallback_reason"] = solver_health.last_fallback_reason
+        mpc_info["solver_fallback_active"] = bool(solver_health.fallback_active)
+        mpc_info["solver_fallback_age_s"] = float(solver_health.fallback_age_s)
+        mpc_info["solver_fallback_scale"] = float(solver_health.fallback_scale)
 
     # Track solve time for high-frequency logging
     if mpc_info:
@@ -389,11 +368,7 @@ def update_mpc_control_step(sim: Any) -> None:
     max_rw_torque = getattr(sim.mpc_controller, "max_rw_torque", 0.0)
     if rw_torque_norm is not None and max_rw_torque:
         rw_torque_cmd[: len(rw_torque_norm)] = rw_torque_norm * max_rw_torque
-    # Cache the capability check for set_reaction_wheel_torque
-    if not hasattr(sim, "_sat_has_rw_torque"):
-        sim._sat_has_rw_torque = hasattr(sim.satellite, "set_reaction_wheel_torque")
-    if sim._sat_has_rw_torque:
-        sim.satellite.set_reaction_wheel_torque(rw_torque_cmd)
+    sim.satellite.set_reaction_wheel_torque(rw_torque_cmd)
 
     # Update simulation state
     sim.last_control_update = sim.simulation_time
@@ -402,13 +377,9 @@ def update_mpc_control_step(sim: Any) -> None:
     thruster_copy = thruster_action.copy()
     sim.previous_thrusters = thruster_copy
     history_stride = int(getattr(sim, "history_downsample_stride", 1) or 1)
-    if not hasattr(sim, "_control_history_downsample_counter"):
-        sim._control_history_downsample_counter = 0
-    sim._control_history_downsample_counter += 1
-    if (
-        history_stride <= 1
-        or (sim._control_history_downsample_counter % history_stride) == 0
-    ):
+    downsample_counter = int(getattr(sim, "_control_history_downsample_counter", 0)) + 1
+    sim._control_history_downsample_counter = downsample_counter
+    if history_stride <= 1 or (downsample_counter % history_stride) == 0:
         sim._append_capped_history(sim.control_history, thruster_copy)
     sim.set_thruster_pattern(thruster_action)
 

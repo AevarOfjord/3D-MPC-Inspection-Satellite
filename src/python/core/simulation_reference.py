@@ -129,15 +129,16 @@ def _get_scan_attitude_context(
 ) -> tuple[np.ndarray, np.ndarray, bool] | None:
     """Return scan center/axis/direction when scan-attitude mode is active."""
     mission_state = None
-    if hasattr(sim, "_get_mission_state"):
-        mission_state = sim._get_mission_state()
+    mission_state_getter = getattr(sim, "_get_mission_state", None)
+    if callable(mission_state_getter):
+        mission_state = mission_state_getter()
     if mission_state is None and sim.simulation_config is not None:
-        mission_state = getattr(sim.simulation_config, "mission_state", None)
+        mission_state = sim.simulation_config.mission_state
     if mission_state is None:
         return None
 
-    center = getattr(mission_state, "scan_attitude_center", None)
-    axis = getattr(mission_state, "scan_attitude_axis", None)
+    center = mission_state.scan_attitude_center
+    axis = mission_state.scan_attitude_axis
     if center is None or axis is None:
         return None
 
@@ -148,7 +149,7 @@ def _get_scan_attitude_context(
     center_vec = center_arr[:3]
     axis_vec = _normalize_or_default(axis_arr[:3], np.array([0.0, 0.0, 1.0]))
 
-    direction_raw = str(getattr(mission_state, "scan_attitude_direction", "CW"))
+    direction_raw = str(mission_state.scan_attitude_direction)
     scan_direction_cw = direction_raw.strip().upper() != "CCW"
     return center_vec, axis_vec, scan_direction_cw
 
@@ -269,34 +270,28 @@ def update_path_reference_state(
         current_state: Current state vector
             ``[x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz]``.
     """
-    if not hasattr(sim, "mpc_controller") or not sim.mpc_controller:
+    if getattr(sim, "mpc_controller", None) is None:
         sim.reference_state = current_state[:13].copy()
         return
 
     # Always MPCC mode
     q_ref_from_controller = None
-    can_query_cpp_ref = hasattr(sim.mpc_controller, "_cpp_controller") and hasattr(
-        sim.mpc_controller._cpp_controller, "get_reference_at_s"
-    )
-    if can_query_cpp_ref and hasattr(sim.mpc_controller, "get_path_reference_state"):
-        try:
-            q_curr = (
-                np.array(current_state[3:7], dtype=float)
-                if current_state.shape[0] >= 7
-                else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
-            )
-            pos_ref, tangent, q_ref_from_controller = (
-                sim.mpc_controller.get_path_reference_state(q_current=q_curr)
-            )
-        except Exception:
-            logger.debug(
-                "C++ reference frame query failed, using Python frame fallback",
-                exc_info=True,
-            )
-            pos_ref, tangent = sim.mpc_controller.get_path_reference()
-            q_ref_from_controller = None
-    else:
+    try:
+        q_curr = (
+            np.array(current_state[3:7], dtype=float)
+            if current_state.shape[0] >= 7
+            else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        )
+        pos_ref, tangent, q_ref_from_controller = (
+            sim.mpc_controller.get_path_reference_state(q_current=q_curr)
+        )
+    except Exception:
+        logger.debug(
+            "C++ reference frame query failed, using Python frame fallback",
+            exc_info=True,
+        )
         pos_ref, tangent = sim.mpc_controller.get_path_reference()
+        q_ref_from_controller = None
 
     reference_state = _REF_BUF
     reference_state[:] = 0.0
@@ -332,13 +327,13 @@ def update_path_reference_state(
         reference_state[3:7] = current_state[3:7]
 
     # --- Read MPC config (cached on sim to avoid repeated getattr per step) ---
-    if not hasattr(sim, "_ref_config_cached"):
+    if not bool(getattr(sim, "_ref_config_cached", False)):
         sim._ref_config_cached = True
         if sim.simulation_config is not None:
             mpc_cfg = sim.simulation_config.app_config.mpc
             sim._ref_path_speed = float(mpc_cfg.path_speed)
-            sim._ref_path_speed_min = float(getattr(mpc_cfg, "path_speed_min", 0.0))
-            sim._ref_path_speed_max = float(getattr(mpc_cfg, "path_speed_max", 0.0))
+            sim._ref_path_speed_min = float(mpc_cfg.path_speed_min)
+            sim._ref_path_speed_max = float(mpc_cfg.path_speed_max)
         else:
             sim._ref_path_speed = 0.0
             sim._ref_path_speed_min = 0.0

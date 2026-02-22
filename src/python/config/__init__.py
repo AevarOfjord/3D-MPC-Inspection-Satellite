@@ -1,7 +1,7 @@
 """
-Configuration Package for Satellite Control System
+Configuration package for Satellite Control System.
 
-Pydantic-based configuration system..
+Pydantic-based configuration system.
 
 Primary API:
     from config import SimulationConfig
@@ -24,8 +24,6 @@ from .physics import PhysicsConfig, get_physics_params
 from .simulation_config import SimulationConfig
 from .timing import TimingConfig, get_timing_params
 from .validator import ConfigValidator, validate_config_at_startup
-
-# Legacy exports (for backward compatibility during transition)
 
 __all__ = [
     # Primary API.

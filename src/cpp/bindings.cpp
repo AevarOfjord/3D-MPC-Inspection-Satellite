@@ -7,13 +7,20 @@
 #include "obstacle.hpp"
 
 namespace py = pybind11;
-using namespace satellite_control;
+using satellite_control::ControlResult;
+using satellite_control::Linearizer;
+using satellite_control::MPCControllerCpp;
+using satellite_control::MPCParams;
+using satellite_control::Obstacle;
+using satellite_control::ObstacleSet;
+using satellite_control::ObstacleType;
+using satellite_control::SatelliteParams;
 
 PYBIND11_MODULE(_cpp_mpc, m) {
     m.doc() = "C++ backend for Satellite MPC controller";
 
     // Satellite Parameters
-    py::class_<SatelliteParams>(m, "SatelliteParams")
+    py::class_<satellite_control::SatelliteParams>(m, "SatelliteParams")
         .def(py::init<>())
         .def_readwrite("dt", &SatelliteParams::dt)
         .def_readwrite("mass", &SatelliteParams::mass)
@@ -33,12 +40,12 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("use_two_body", &SatelliteParams::use_two_body);
 
     // Linearizer
-    py::class_<Linearizer>(m, "Linearizer")
-        .def(py::init<const SatelliteParams&>())
-        .def("linearize", &Linearizer::linearize, "Compute Linearized Dynamics (A, B)");
+    py::class_<satellite_control::Linearizer>(m, "Linearizer")
+        .def(py::init<const satellite_control::SatelliteParams&>())
+        .def("linearize", &satellite_control::Linearizer::linearize, "Compute Linearized Dynamics (A, B)");
 
     // MPC Parameters
-    py::class_<MPCParams>(m, "MPCParams")
+    py::class_<satellite_control::MPCParams>(m, "MPCParams")
         .def(py::init<>())
         .def_readwrite("prediction_horizon", &MPCParams::prediction_horizon)
         .def_readwrite("control_horizon", &MPCParams::control_horizon)
@@ -59,10 +66,10 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
         .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
 
-        // Collision avoidance (V3.0.0)
+        // Collision avoidance
         .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
         .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin)
-        // Path Following (V4.0.1) - General Path MPCC
+        // Path following (general MPCC)
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
         .def_readwrite("progress_reward", &MPCParams::progress_reward)
@@ -107,7 +114,7 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         );
 
     // Control Result
-    py::class_<ControlResult>(m, "ControlResult")
+    py::class_<satellite_control::ControlResult>(m, "ControlResult")
         .def(py::init<>())
         .def_readwrite("u", &ControlResult::u)
         .def_readwrite("status", &ControlResult::status)
@@ -126,13 +133,13 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("fallback_scale", &ControlResult::fallback_scale);
 
     // Obstacle Types
-    py::enum_<ObstacleType>(m, "ObstacleType")
-        .value("SPHERE", ObstacleType::SPHERE)
-        .value("CYLINDER", ObstacleType::CYLINDER)
-        .value("BOX", ObstacleType::BOX)
+    py::enum_<satellite_control::ObstacleType>(m, "ObstacleType")
+        .value("SPHERE", satellite_control::ObstacleType::SPHERE)
+        .value("CYLINDER", satellite_control::ObstacleType::CYLINDER)
+        .value("BOX", satellite_control::ObstacleType::BOX)
         .export_values();
 
-    py::class_<Obstacle>(m, "Obstacle")
+    py::class_<satellite_control::Obstacle>(m, "Obstacle")
         .def(py::init<>())
         .def_readwrite("type", &Obstacle::type)
         .def_readwrite("position", &Obstacle::position)
@@ -141,44 +148,44 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("axis", &Obstacle::axis)
         .def_readwrite("name", &Obstacle::name);
 
-    py::class_<ObstacleSet>(m, "ObstacleSet")
+    py::class_<satellite_control::ObstacleSet>(m, "ObstacleSet")
         .def(py::init<>())
         .def("add", &ObstacleSet::add)
         .def("clear", &ObstacleSet::clear)
         .def("size", &ObstacleSet::size);
 
     // MPC Controller
-    py::class_<MPCControllerCpp>(m, "MPCControllerCpp")
-        .def(py::init<const SatelliteParams&, const MPCParams&>())
-        .def("get_control_action", &MPCControllerCpp::get_control_action,
+    py::class_<satellite_control::MPCControllerCpp>(m, "MPCControllerCpp")
+        .def(py::init<const satellite_control::SatelliteParams&, const satellite_control::MPCParams&>())
+        .def("get_control_action", &satellite_control::MPCControllerCpp::get_control_action,
              py::arg("x_current"),
              "Compute optimal control action")
-        .def("set_obstacles", &MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
-        .def("clear_obstacles", &MPCControllerCpp::clear_obstacles, "Clear all obstacles")
-        .def("set_warm_start_control", &MPCControllerCpp::set_warm_start_control,
+        .def("set_obstacles", &satellite_control::MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
+        .def("clear_obstacles", &satellite_control::MPCControllerCpp::clear_obstacles, "Clear all obstacles")
+        .def("set_warm_start_control", &satellite_control::MPCControllerCpp::set_warm_start_control,
              py::arg("u_prev"),
              "Provide a warm-start control guess")
-        .def("set_path_data", &MPCControllerCpp::set_path_data,
+        .def("set_path_data", &satellite_control::MPCControllerCpp::set_path_data,
              py::arg("path_data"),
              "Set path data for general path following. path_data is list of [s, x, y, z] arrays.")
-        .def("set_scan_attitude_context", &MPCControllerCpp::set_scan_attitude_context,
+        .def("set_scan_attitude_context", &satellite_control::MPCControllerCpp::set_scan_attitude_context,
              py::arg("center"), py::arg("axis"), py::arg("direction"),
              "Set scan attitude context (center, axis, optional direction hint).")
-        .def("clear_scan_attitude_context", &MPCControllerCpp::clear_scan_attitude_context,
+        .def("clear_scan_attitude_context", &satellite_control::MPCControllerCpp::clear_scan_attitude_context,
              "Disable scan attitude context.")
-        .def("set_runtime_mode", &MPCControllerCpp::set_runtime_mode,
+        .def("set_runtime_mode", &satellite_control::MPCControllerCpp::set_runtime_mode,
              py::arg("mode"),
              "Set runtime controller mode (TRACK/RECOVER/SETTLE/HOLD/COMPLETE).")
-        .def("project_onto_path", &MPCControllerCpp::project_onto_path,
+        .def("project_onto_path", &satellite_control::MPCControllerCpp::project_onto_path,
              py::arg("position"),
              "Project a position onto the current path. Returns (s, point, distance, endpoint_error).")
-        .def("get_reference_at_s", &MPCControllerCpp::get_reference_at_s,
+        .def("get_reference_at_s", &satellite_control::MPCControllerCpp::get_reference_at_s,
              py::arg("s_query"), py::arg("q_current"),
              "Get path reference at arc-length s: returns (position, tangent, quaternion_ref).")
-        .def_property_readonly("num_controls", &MPCControllerCpp::num_controls)
-        .def_property_readonly("prediction_horizon", &MPCControllerCpp::prediction_horizon)
-        .def_property_readonly("dt", &MPCControllerCpp::dt)
-        .def_property_readonly("path_length", &MPCControllerCpp::path_length)
-        .def_property_readonly("has_path", &MPCControllerCpp::has_path)
-        .def_property_readonly("current_path_s", &MPCControllerCpp::current_path_s);
+        .def_property_readonly("num_controls", &satellite_control::MPCControllerCpp::num_controls)
+        .def_property_readonly("prediction_horizon", &satellite_control::MPCControllerCpp::prediction_horizon)
+        .def_property_readonly("dt", &satellite_control::MPCControllerCpp::dt)
+        .def_property_readonly("path_length", &satellite_control::MPCControllerCpp::path_length)
+        .def_property_readonly("has_path", &satellite_control::MPCControllerCpp::has_path)
+        .def_property_readonly("current_path_s", &satellite_control::MPCControllerCpp::current_path_s);
 }

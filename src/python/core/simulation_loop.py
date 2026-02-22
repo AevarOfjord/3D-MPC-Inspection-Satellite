@@ -46,21 +46,9 @@ class SimulationLoop:
 
     def _get_mission_state(self):
         """Get mission_state from simulation_config.."""
-        if (
-            not hasattr(self.simulation, "simulation_config")
-            or not self.simulation.simulation_config
-        ):
+        if not self.simulation.simulation_config:
             raise ValueError("simulation_config is required.")
         return self.simulation.simulation_config.mission_state
-
-    def _get_app_config(self):
-        """Get app_config from simulation_config.."""
-        if (
-            not hasattr(self.simulation, "simulation_config")
-            or not self.simulation.simulation_config
-        ):
-            raise ValueError("simulation_config is required.")
-        return self.simulation.simulation_config.app_config
 
     def run(
         self,
@@ -105,19 +93,16 @@ class SimulationLoop:
             SimulationContext,
         )
 
-        if not hasattr(self.simulation, "context"):
+        if getattr(self.simulation, "context", None) is None:
             self.simulation.context = SimulationContext()
             self.simulation.context.dt = self.simulation.satellite.dt
             self.simulation.context.control_dt = self.simulation.control_update_interval
 
         # Initialize MPC Controller (Linearized Model)
         try:
-            has_fig = (
-                hasattr(self.simulation.satellite, "fig")
-                and self.simulation.satellite.fig is not None
-            )
+            has_fig = self.simulation.satellite.fig is not None
             if show_animation and has_fig:
-                # Matplotlib animation mode (legacy)
+                # Matplotlib animation mode.
                 return self._run_matplotlib_animation()
             else:
                 # Run headless batch mode (no visualization)
@@ -244,7 +229,7 @@ class SimulationLoop:
         fast_batch_steps = steps_per_batch - 1
         can_batch_physics = (
             batch_mode
-            and hasattr(self.simulation.satellite, "update_physics_batch")
+            and self.simulation.satellite is not None
             and getattr(self.simulation.thruster_manager, "thruster_type", "") == "CON"
             and not getattr(
                 self.simulation.thruster_manager, "use_realistic_physics", True
@@ -338,7 +323,7 @@ class SimulationLoop:
     def _enforce_timing_contract_if_needed(self) -> None:
         """Raise if strict timing contract enforcement is enabled and violated."""
         monitor = getattr(self.simulation, "performance_monitor", None)
-        if monitor is None or not hasattr(monitor, "should_fail_on_timing_contract"):
+        if monitor is None:
             return
         if monitor.should_fail_on_timing_contract():
             summary = monitor.get_summary()
@@ -428,12 +413,12 @@ class SimulationLoop:
         mission_state = self._get_mission_state()
         terminal_supervisor = getattr(self.simulation, "v6_terminal_supervisor", None)
         if terminal_supervisor is None:
-            hold_required = float(getattr(mission_state, "path_hold_end", 10.0) or 10.0)
+            hold_required = float(mission_state.path_hold_end or 10.0)
             terminal_supervisor = TerminalSupervisorV6(hold_required_s=hold_required)
             self.simulation.v6_terminal_supervisor = terminal_supervisor
 
         status = get_path_completion_status(self.simulation)
-        hold_required = float(getattr(mission_state, "path_hold_end", 10.0) or 10.0)
+        hold_required = float(mission_state.path_hold_end or 10.0)
         terminal_supervisor.hold_required_s = max(0.0, hold_required)
         gate = terminal_supervisor.evaluate(
             sim_time_s=float(self.simulation.simulation_time),
@@ -451,9 +436,12 @@ class SimulationLoop:
             else None
         )
 
-        if hasattr(self.simulation, "v6_completion_gate_trace"):
+        completion_gate_trace = getattr(
+            self.simulation, "v6_completion_gate_trace", None
+        )
+        if completion_gate_trace is not None:
             self.simulation._append_capped_history(
-                self.simulation.v6_completion_gate_trace,
+                completion_gate_trace,
                 {
                     "time_s": float(self.simulation.simulation_time),
                     "progress_ok": bool(gate.progress_ok),

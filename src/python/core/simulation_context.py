@@ -44,10 +44,10 @@ class SimulationContext:
         state: np.ndarray,
         reference_state: np.ndarray,
         frame_origin: np.ndarray | None = None,
-    ):
+    ) -> None:
         """Update dynamic state variables."""
-        self.simulation_time = time
-        self.current_state = state
-        self.reference_state = reference_state
+        self.simulation_time = float(time)
+        self.current_state = np.array(state, dtype=np.float64, copy=True)
+        self.reference_state = np.array(reference_state, dtype=np.float64, copy=True)
         if frame_origin is not None:
-            self.frame_origin = frame_origin
+            self.frame_origin = np.array(frame_origin, dtype=np.float64, copy=True)

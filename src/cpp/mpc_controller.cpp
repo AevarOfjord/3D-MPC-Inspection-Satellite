@@ -73,9 +73,6 @@ MPCControllerCpp::MPCControllerCpp(const SatelliteParams& sat_params, const MPCP
                       VectorXd::Ones(sat_params_.num_thrusters),
                       VectorXd::Constant(1, v_s_max); // v_s max bound
 
-    // Initialize quaternion tracking
-    prev_quat_ << -999, -999, -999, -999;
-
     // Derive practical state bounds only when requested.
     max_linear_velocity_bound_ =
         (mpc_params_.max_linear_velocity > 0.0) ? mpc_params_.max_linear_velocity : 0.0;
@@ -596,10 +593,7 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
 
     // Path Following: Pre-allocate cross-terms for (x, s), (y, s), (z, s)
     // These correspond to the -2 * weight * r^T * t * s term in the cost expansion.
-    // We need sparsity at (k*nx + 0, k*nx + 16), (k*nx + 1, k*nx + 16), etc.
-    // Path Following: Pre-allocate cross-terms for (x, s), (y, s), (z, s)
-    // These correspond to the -2 * weight * r^T * t * s term in the cost expansion.
-    // We need sparsity at (k*nx + 0, k*nx + 16), (k*nx + 1, k*nx + 16), etc.
+    // We keep explicit sparsity slots at (k*nx + {0,1,2}, k*nx + 16) for fast updates.
     {
         int s_offset = 16; // Index of s in state vector
         int v_offset = 7; // Index of velocity block in state vector
@@ -607,7 +601,7 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
             int base_idx = k * nx_;
             // Add entries for x, y, z cross s
             for (int i = 0; i < 3; ++i) {
-                triplets.emplace_back(base_idx + i, base_idx + s_offset, 0.0); // Placeholder
+                triplets.emplace_back(base_idx + i, base_idx + s_offset, 0.0);
             }
             // Add entries for position block off-diagonals (x,y), (x,z), (y,z)
             triplets.emplace_back(base_idx + 0, base_idx + 1, 0.0);
@@ -617,7 +611,7 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
             for (int i = 0; i < 3; ++i) {
                 for (int j = i; j < 3; ++j) {
                     triplets.emplace_back(base_idx + v_offset + i,
-                                          base_idx + v_offset + j, 0.0); // Placeholder
+                                          base_idx + v_offset + j, 0.0);
                 }
             }
         }
@@ -632,7 +626,6 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
 
     int row_idx = 0;
 
-    // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
     // 1. Dynamics constraints: -A*x_k + x_{k+1} - B*u_k = 0
     for (int k = 0; k < N_; ++k) {
         int x_k_idx = k * nx_;
@@ -1091,9 +1084,7 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     }
 
     // Successive Linearization: Update dynamics each step to capture orbital effects
-    Eigen::Vector4d quat = x_curr_aug.segment<4>(3);
     update_dynamics(x_curr_aug);
-    prev_quat_ = quat;
 
     // update_path_cost updates both P and q; no need for a redundant q reset/update.
     update_path_cost(x_curr_aug);
@@ -1307,8 +1298,6 @@ void MPCControllerCpp::set_scan_attitude_context(
     );
     scan_direction_cw_ = (dir != "CCW");
     scan_attitude_enabled_ = true;
-    scan_q_ref_valid_ = false;
-    scan_q_ref_traj_.clear();
 }
 
 void MPCControllerCpp::clear_scan_attitude_context() {
@@ -1317,8 +1306,6 @@ void MPCControllerCpp::clear_scan_attitude_context() {
     scan_center_valid_ = false;
     scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     scan_direction_cw_ = true;
-    scan_q_ref_valid_ = false;
-    scan_q_ref_traj_.clear();
 }
 
 MPCControllerCpp::RuntimeMode MPCControllerCpp::parse_runtime_mode(
@@ -1398,7 +1385,6 @@ double MPCControllerCpp::compute_dynamic_vs_min(double s_curr) const {
 }
 
 void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
-    // if (!mpc_params_.mode_path_following) return; // Always on
     q_.setZero();
     if (!path_data_valid_) {
         // No path data - cannot compute path-following cost
@@ -1407,7 +1393,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     }
 
     // ==========================================================================
-    // General Path-Following MPC (MPCC) Cost Update - V4.0.1
+    // General path-following MPC (MPCC) cost update
     // ==========================================================================
     //
     // Cost function:
@@ -1441,7 +1427,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     }
     double Q_s_anchor_cfg = mpc_params_.Q_s_anchor;  // Anchor s to progress reference
     double Q_att = mpc_params_.Q_attitude + mpc_params_.Q_axis_align; // Attitude + explicit axis-alignment
-    // double Q_v = mpc_params_.Q_vel;    // Removed legacy parameter
     double v_ref = mpc_params_.path_speed;  // Path speed reference (max speed)
     if (mpc_params_.path_speed_max > 0.0) {
         v_ref = std::min(v_ref, mpc_params_.path_speed_max);
@@ -1530,12 +1515,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             s_guess_[k] = std::min(s0 + k * v_ref_base * dt_, path_total_length_);
         }
     }
-    if (scan_attitude_enabled_) {
-        scan_q_ref_traj_.assign(static_cast<size_t>(N_ + 1), Eigen::Vector4d::Zero());
-    } else {
-        scan_q_ref_traj_.clear();
-    }
-    scan_q_ref_valid_ = false;
     Eigen::Vector4d q_prev_ref = Eigen::Vector4d::Zero();
     bool has_q_prev_ref = false;
 
@@ -1678,12 +1657,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             q_prev_ref = q_ref;
             has_q_prev_ref = true;
 
-            if (scan_attitude_enabled_ &&
-                scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1)) {
-                scan_q_ref_traj_[static_cast<size_t>(k)] = q_ref;
-                scan_q_ref_valid_ = true;
-            }
-
             if (Q_att_eff > 0.0) {
                 for (int i = 0; i < 4; ++i) {
                     q_(x_idx + 3 + i) = -2.0 * Q_att_eff * att_stage_scale * q_ref(i);
@@ -1744,14 +1717,8 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                 }
             }
         }
+    }
 
-    }
-    if (scan_attitude_enabled_) {
-        scan_q_ref_valid_ =
-            (scan_q_ref_traj_.size() == static_cast<size_t>(N_ + 1));
-    } else {
-        scan_q_ref_valid_ = false;
-    }
     // Push updates to OSQP
     if (!path_P_update_indices_.empty()) {
         for (size_t i = 0; i < path_P_update_indices_.size(); ++i) {
@@ -1838,7 +1805,7 @@ void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current) {
 }
 
 // ============================================================================
-// Path Following: General Path Support (V4.0.1)
+// Path following: general path support
 // ============================================================================
 
 void MPCControllerCpp::set_path_data(const std::vector<std::array<double, 4>>& path_data) {

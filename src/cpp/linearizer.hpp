@@ -1,7 +1,6 @@
 #pragma once
 #include <Eigen/Dense>
 #include <vector>
-#include <tuple>
 #include "satellite_params.hpp"
 #include "orbital_dynamics.hpp"
 

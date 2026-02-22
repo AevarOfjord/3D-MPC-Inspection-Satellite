@@ -374,7 +374,7 @@ class SimulationIO:
         mpc_controller = getattr(self.sim, "mpc_controller", None)
         config_meta["controller_core"] = str(
             getattr(self.sim, "controller_core_mode", None)
-            or getattr(mpc_controller, "controller_core", "legacy")
+            or getattr(mpc_controller, "controller_core", "v6")
         )
         config_meta["solver_backend"] = str(
             getattr(mpc_controller, "solver_backend", "OSQP")
@@ -594,16 +594,10 @@ class SimulationIO:
                 path_remaining = self._to_float(row.get("Path_Remaining"))
                 path_error = self._to_float(row.get("Path_Error"))
                 endpoint_error = self._to_float(row.get("Path_Endpoint_Error"))
-                timing_violation = str(
-                    row.get("Timing_Violation", "")
-                ).strip().upper() in {
-                    "YES",
-                    "TRUE",
-                    "1",
-                }
-                time_limit_exceeded = str(
+                timing_violation = self._to_bool_flag(row.get("Timing_Violation", ""))
+                time_limit_exceeded = self._to_bool_flag(
                     row.get("MPC_Time_Limit_Exceeded", "")
-                ).strip().upper() in {"YES", "TRUE", "1"}
+                )
 
                 writer.writerow(
                     {
@@ -1658,17 +1652,19 @@ class SimulationIO:
         normalized: list[dict[str, Any]] = []
         for obs in getattr(mission_state, "obstacles", []) or []:
             try:
-                if hasattr(obs, "position") and hasattr(obs, "radius"):
-                    pos = [float(v) for v in obs.position]
-                    rad = float(obs.radius)
-                elif isinstance(obs, dict):
+                if isinstance(obs, dict):
                     pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
                     rad = float(obs.get("radius", 0.0))
                 elif isinstance(obs, list | tuple) and len(obs) >= 4:
                     pos = [float(obs[0]), float(obs[1]), float(obs[2])]
                     rad = float(obs[3])
                 else:
-                    continue
+                    pos_raw = getattr(obs, "position", None)
+                    rad_raw = getattr(obs, "radius", None)
+                    if pos_raw is None or rad_raw is None:
+                        continue
+                    pos = [float(v) for v in pos_raw]
+                    rad = float(rad_raw)
                 normalized.append({"position": pos, "radius": rad})
             except Exception:
                 continue

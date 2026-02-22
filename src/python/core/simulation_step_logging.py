@@ -63,19 +63,10 @@ def log_simulation_step(
     mpc_computation_time: float | None = None,
     control_loop_duration: float | None = None,
     rw_torque: np.ndarray | None = None,
-    **legacy_kwargs: Any,
 ) -> None:
     """Log control-step data to terminal output and CSV files."""
-    if mpc_start_sim_time is None:
-        mpc_start_sim_time = legacy_kwargs.pop("mpc_start_time", None)
-    if command_sent_sim_time is None:
-        command_sent_sim_time = legacy_kwargs.pop(
-            "command_sent_sim_time", legacy_kwargs.pop("command_sent_time", None)
-        )
-    if current_state is None:
-        current_state = legacy_kwargs.pop("state", None)
-    if thruster_action is None:
-        thruster_action = legacy_kwargs.pop("thrusters", None)
+    if mpc_info is None:
+        mpc_info = {}
 
     if current_state is None or thruster_action is None:
         raise ValueError(
@@ -88,35 +79,28 @@ def log_simulation_step(
         command_sent_sim_time = sim.simulation_time
 
     if mpc_computation_time is None:
-        mpc_computation_time = (
-            float(mpc_info.get("solve_time", 0.0)) if mpc_info else 0.0
-        )
+        mpc_computation_time = float(mpc_info.get("solve_time", 0.0))
     if control_loop_duration is None:
         control_loop_duration = 0.0
 
     stride = int(getattr(sim, "control_log_stride", 1) or 1)
-    if not hasattr(sim, "_control_log_counter"):
-        sim._control_log_counter = 0
-    sim._control_log_counter += 1
-    do_log = stride <= 1 or (sim._control_log_counter % stride) == 0
+    control_log_counter = int(getattr(sim, "_control_log_counter", 0)) + 1
+    sim._control_log_counter = control_log_counter
+    do_log = stride <= 1 or (control_log_counter % stride) == 0
 
     # Store state history for summaries/plots.
     record_history = False
     if do_log:
         history_stride = int(getattr(sim, "history_downsample_stride", 1) or 1)
-        if not hasattr(sim, "_history_downsample_counter"):
-            sim._history_downsample_counter = 0
-        sim._history_downsample_counter += 1
-        record_history = (
-            history_stride <= 1
-            or (sim._history_downsample_counter % history_stride) == 0
-        )
+        history_counter = int(getattr(sim, "_history_downsample_counter", 0)) + 1
+        sim._history_downsample_counter = history_counter
+        record_history = history_stride <= 1 or (history_counter % history_stride) == 0
         if record_history:
             sim._append_capped_history(sim.state_history, current_state.copy())
 
     # Record performance metrics.
-    solve_time = mpc_info.get("solve_time", 0.0) if mpc_info else 0.0
-    timeout = mpc_info.get("timeout", False) if mpc_info else False
+    solve_time = mpc_info.get("solve_time", 0.0)
+    timeout = mpc_info.get("timeout", False)
     sim.performance_monitor.record_mpc_solve(solve_time, timeout=timeout)
 
     # Record control loop time.
@@ -182,7 +166,7 @@ def log_simulation_step(
         vel_error = _norm3(current_state[7:10] - safe_reference[7:10])
         ang_vel_error = _norm3(current_state[10:13] - safe_reference[10:13])
     ang_vel_err_deg = np.degrees(ang_vel_error)
-    solve_ms = mpc_info.get("solve_time", 0) * 1000 if mpc_info else 0.0
+    solve_ms = mpc_info.get("solve_time", 0) * 1000
 
     # Show duty cycle for each active thruster (matching active_thruster_ids).
     thr_out = [round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids]
@@ -215,9 +199,9 @@ def log_simulation_step(
     curr_euler_deg = np.degrees(np.array([curr_r, curr_p, curr_y], dtype=float))
     ref_euler_deg = np.degrees(np.array([ref_r, ref_p, ref_y], dtype=float))
 
-    if not hasattr(sim, "_terminal_curr_euler_unwrapped_deg"):
+    if getattr(sim, "_terminal_curr_euler_unwrapped_deg", None) is None:
         sim._terminal_curr_euler_unwrapped_deg = None
-    if not hasattr(sim, "_terminal_ref_euler_unwrapped_deg"):
+    if getattr(sim, "_terminal_ref_euler_unwrapped_deg", None) is None:
         sim._terminal_ref_euler_unwrapped_deg = None
 
     curr_unwrapped_deg = _unwrap_euler_deg(
@@ -303,20 +287,18 @@ def log_simulation_step(
 
     if do_log:
         # Delegate to SimulationLogger for control_data.csv output.
-        if not hasattr(sim, "logger_helper"):
+        if getattr(sim, "logger_helper", None) is None:
             from core.simulation_logger import SimulationLogger
 
             sim.logger_helper = SimulationLogger(sim.data_logger)
 
-        previous_thruster_action: np.ndarray | None = (
-            sim.previous_command if hasattr(sim, "previous_command") else None
-        )
+        previous_thruster_action: np.ndarray | None = sim.previous_command
 
         # Update Context.
         # Update Context.
-        mission_state = getattr(sim.simulation_config, "mission_state", None)
+        mission_state = sim.simulation_config.mission_state
         frame_origin = None
-        if mission_state and hasattr(mission_state, "frame_origin"):
+        if mission_state is not None:
             frame_origin = np.array(mission_state.frame_origin, dtype=float)
 
         sim.context.update_state(
