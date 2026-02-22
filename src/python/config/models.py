@@ -493,6 +493,22 @@ class MPCParams(BaseModel):
         constants.Constants.ENABLE_VARIABLE_SCALING,
         description="Enable solver-coordinate variable scaling for improved conditioning",
     )
+    progress_policy: str = Field(
+        constants.Constants.PROGRESS_POLICY,
+        description='Progress policy ("speed_tracking" or "error_priority")',
+    )
+    error_priority_min_vs: float = Field(
+        constants.Constants.ERROR_PRIORITY_MIN_VS,
+        ge=0.0,
+        le=1.0,
+        description="Minimum progress speed in error-priority mode [m/s]",
+    )
+    error_priority_error_speed_gain: float = Field(
+        constants.Constants.ERROR_PRIORITY_ERROR_SPEED_GAIN,
+        ge=0.0,
+        le=1000.0,
+        description="Path-error-to-speed reduction gain in error-priority mode",
+    )
     enable_thruster_hysteresis: bool = Field(
         constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
         description="Enable output hysteresis to reduce thruster chatter/switching",
@@ -554,6 +570,9 @@ class MPCParams(BaseModel):
         "tube_feedback_gain_scale",
         "tube_feedback_max_correction",
         "enable_variable_scaling",
+        "progress_policy",
+        "error_priority_min_vs",
+        "error_priority_error_speed_gain",
         "enable_thruster_hysteresis",
         "thruster_hysteresis_on",
         "thruster_hysteresis_off",
@@ -598,6 +617,17 @@ class MPCParams(BaseModel):
         normalized = str(v).strip().lower()
         if normalized not in {"none", "tube"}:
             raise ValueError("robustness_mode must be 'none' or 'tube'")
+        return normalized
+
+    @field_validator("progress_policy")
+    @classmethod
+    def validate_progress_policy(cls, v: str) -> str:
+        """Validate progress behavior policy."""
+        normalized = str(v).strip().lower()
+        if normalized not in {"speed_tracking", "error_priority"}:
+            raise ValueError(
+                "progress_policy must be 'speed_tracking' or 'error_priority'"
+            )
         return normalized
 
     @field_validator("control_horizon")

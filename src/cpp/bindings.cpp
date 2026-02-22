@@ -98,6 +98,12 @@ PYBIND11_MODULE(_cpp_mpc, m) {
             &MPCParams::tube_feedback_max_correction
         )
         .def_readwrite("enable_variable_scaling", &MPCParams::enable_variable_scaling)
+        .def_readwrite("progress_policy", &MPCParams::progress_policy)
+        .def_readwrite("error_priority_min_vs", &MPCParams::error_priority_min_vs)
+        .def_readwrite(
+            "error_priority_error_speed_gain",
+            &MPCParams::error_priority_error_speed_gain
+        )
         // Path following (general MPCC)
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)

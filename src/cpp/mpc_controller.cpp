@@ -1135,6 +1135,7 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
 
     // Dynamically relax progress lower bound near the path endpoint so MPC can stop.
     if (ctrl_row_start_ > 0 && nu_ > 0) {
+        const bool error_priority_mode = (mpc_params_.progress_policy == "error_priority");
         double s_curr = 0.0;
         if (x_current.size() >= 17) {
             s_curr = x_current(16);
@@ -1150,6 +1151,27 @@ void MPCControllerCpp::update_constraints(const VectorXd& x_current) {
             double half = 0.5 * (base_upper_vs - base_lower_vs) * (1.0 - tighten);
             base_lower_vs = center - half;
             base_upper_vs = center + half;
+        }
+        if (error_priority_mode) {
+            double path_error = 0.0;
+            if (path_data_valid_ && x_current.size() >= 3) {
+                Eigen::Vector3d p_curr = x_current.segment<3>(0);
+                Eigen::Vector3d proj = Eigen::Vector3d::Zero();
+                double s_proj = 0.0;
+                double endpoint_error = 0.0;
+                std::tie(s_proj, proj, path_error, endpoint_error) = project_onto_path(p_curr);
+                (void)s_proj;
+                (void)proj;
+                (void)endpoint_error;
+            }
+            const double min_vs = std::max(
+                0.0,
+                std::max(base_lower_vs, mpc_params_.error_priority_min_vs)
+            );
+            const double gain = std::max(0.0, mpc_params_.error_priority_error_speed_gain);
+            const double adaptive_cap = base_upper_vs / (1.0 + gain * path_error * path_error);
+            base_upper_vs = std::clamp(adaptive_cap, min_vs, base_upper_vs);
+            base_lower_vs = min_vs;
         }
         double v_s_min_dynamic = compute_dynamic_vs_min(s_curr);
         for (int k = 0; k < N_; ++k) {
@@ -1703,6 +1725,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     //   where t = dp/ds is the unit tangent
     // ==========================================================================
 
+    const bool error_priority_mode = (mpc_params_.progress_policy == "error_priority");
     double Q_c = mpc_params_.Q_contour;   // Contouring weight
     double Q_p = mpc_params_.Q_progress;  // Progress weight (quadratic)
     double progress_reward = mpc_params_.progress_reward; // Linear reward for v_s
@@ -1802,6 +1825,12 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
         Q_s_anchor_eff = std::max(Q_p_eff, 0.5 * Q_c_eff);
     } else {
         Q_s_anchor_eff *= progress_weight_scale;
+    }
+    if (error_priority_mode) {
+        Q_p = 0.0;
+        progress_reward = 0.0;
+        Q_v = 0.0;
+        Q_s_anchor_eff = 0.0;
     }
 
     double v_ref_base = v_ref;
@@ -1982,10 +2011,11 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             if (auto_progress) {
                 v_ref_k = 0.0;
             }
+            const double qv_stage = error_priority_mode ? 0.0 : Q_v_eff;
 
             // Update velocity quadratic terms (diagonal only)
             // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
-            double vel_weight = 2.0 * Q_v_eff * stage_scale;
+            double vel_weight = 2.0 * qv_stage * stage_scale;
             auto &vel_indices = path_vel_P_indices_[k];
             if (vel_indices.size() >= 6) {
                 if (vel_indices[0] >= 0) P_data_[vel_indices[0]] = vel_weight * sx(7) * sx(7);
@@ -1999,7 +2029,7 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             // Linear term encourages velocity along tangent
             for (int i = 0; i < 3; ++i) {
                 q_(x_idx + 7 + i) +=
-                    -2.0 * Q_v_eff * v_ref_k * t_ref(i) * stage_scale * sx(7 + i);
+                    -2.0 * qv_stage * v_ref_k * t_ref(i) * stage_scale * sx(7 + i);
             }
         }
 
@@ -2013,11 +2043,14 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
                 int vs_diag_idx = path_vs_diag_indices_[static_cast<size_t>(k)];
                 if (vs_diag_idx >= 0) {
                     double s = su(nu_ - 1);
-                    P_data_[vs_diag_idx] = 2.0 * Q_p_eff * s * s;
+                    const double vs_reg = error_priority_mode ? 1e-4 : Q_p_eff;
+                    P_data_[vs_diag_idx] = 2.0 * vs_reg * s * s;
                 }
             }
             int u_idx = (N_ + 1) * nx_ + k * nu_ + (nu_ - 1);
-            if (auto_progress) {
+            if (error_priority_mode) {
+                q_(u_idx) = 0.0;
+            } else if (auto_progress) {
                 q_(u_idx) = -2.0 * progress_reward_eff * su(nu_ - 1);
             } else {
                 q_(u_idx) = -2.0 * Q_p_eff * v_ref_k * su(nu_ - 1);
