@@ -1,0 +1,13 @@
+{
+  "mpc": {
+    "progress_policy": "error_priority",
+    "error_priority_min_vs": 0.004,
+    "error_priority_error_speed_gain": 22.0,
+    "robustness_mode": "tube",
+    "constraint_tightening_scale": 0.05,
+    "tube_feedback_gain_scale": 0.2,
+    "tube_feedback_max_correction": 0.2,
+    "path_speed_min": 0.0,
+    "path_speed_max": 0.08
+  }
+}

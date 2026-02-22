@@ -77,10 +77,13 @@ def _create_fast_mpc() -> MPCParams:
         enable_online_dare_terminal=Constants.ENABLE_ONLINE_DARE_TERMINAL,
         dare_update_period_steps=Constants.DARE_UPDATE_PERIOD_STEPS,
         terminal_cost_profile="diagonal",
-        robustness_mode="none",
-        constraint_tightening_scale=0.0,
-        tube_feedback_gain_scale=Constants.TUBE_FEEDBACK_GAIN_SCALE,
-        tube_feedback_max_correction=Constants.TUBE_FEEDBACK_MAX_CORRECTION,
+        robustness_mode="tube",
+        constraint_tightening_scale=0.05,
+        tube_feedback_gain_scale=0.2,
+        tube_feedback_max_correction=0.2,
+        progress_policy="error_priority",
+        error_priority_min_vs=0.005,
+        error_priority_error_speed_gain=16.0,
         enable_variable_scaling=Constants.ENABLE_VARIABLE_SCALING,
     )
 

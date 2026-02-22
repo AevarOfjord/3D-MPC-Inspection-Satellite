@@ -101,6 +101,13 @@ def create_default_app_config() -> AppConfig:
         enable_delta_u_coupling=constants.Constants.ENABLE_DELTA_U_COUPLING,
         enable_gyro_jacobian=constants.Constants.ENABLE_GYRO_JACOBIAN,
         enable_auto_state_bounds=constants.Constants.ENABLE_AUTO_STATE_BOUNDS,
+        robustness_mode="tube",
+        constraint_tightening_scale=0.05,
+        tube_feedback_gain_scale=0.2,
+        tube_feedback_max_correction=0.2,
+        progress_policy="error_priority",
+        error_priority_min_vs=0.005,
+        error_priority_error_speed_gain=16.0,
         # Path Following
         path_speed=constants.Constants.PATH_SPEED_MAX,
         path_speed_min=constants.Constants.PATH_SPEED_MIN,
