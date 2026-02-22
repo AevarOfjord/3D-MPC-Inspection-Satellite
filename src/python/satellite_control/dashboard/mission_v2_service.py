@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +19,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from satellite_control.config.paths import DASHBOARD_DATA_ROOT
 from satellite_control.config.simulation_config import SimulationConfig
 from satellite_control.dashboard.models import (
     LegacyMissionMigrateRequestV2Model,
@@ -45,16 +45,7 @@ from satellite_control.mission.runtime_loader import (
     parse_unified_mission_payload,
 )
 
-
-def _resolve_project_root() -> Path:
-    override = os.environ.get("SATELLITE_CONTROL_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve()
-    return Path(__file__).resolve().parents[3]
-
-
-PROJECT_ROOT = _resolve_project_root()
-DRAFTS_DIR = PROJECT_ROOT / "Data" / "Dashboard" / "mission_drafts_v2"
+DRAFTS_DIR = DASHBOARD_DATA_ROOT / "mission_drafts_v2"
 V2_DOC_LINK = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/docs/V2_MIGRATION.md"
 LEGACY_SUNSET_HTTP = "Mon, 18 May 2026 00:00:00 GMT"
 LEGACY_DEPRECATION_HEADERS: dict[str, str] = {

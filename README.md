@@ -35,8 +35,11 @@ make package-pyinstaller
 ## Repository Layout
 
 - `src/python/satellite_control/` backend code
+- `src/cpp/` C++ solver/runtime modules
 - `ui/` frontend application
 - `scripts/` operations and release scripts
+- `missions/` saved mission payloads
+- `data/` canonical assets and runtime simulation/dashboard data
 - `tests/` backend test suite
 - `docs/architecture/` architecture notes
 

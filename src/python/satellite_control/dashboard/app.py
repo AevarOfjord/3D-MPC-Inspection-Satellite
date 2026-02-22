@@ -6,7 +6,6 @@ registers route modules, and wires up lifecycle hooks.
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,6 +13,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from satellite_control.config.paths import (
+    ASSET_MODEL_FILES_ROOT,
+    LEGACY_ASSET_MODEL_FILES_ROOT,
+    PROJECT_ROOT,
+    SIMULATION_DATA_ROOT,
+    UI_PUBLIC_MODEL_FILES_ROOT,
+    ensure_runtime_data_dirs,
+)
+from satellite_control.config.paths import (
+    UI_DIST_DIR as UI_DIST_ROOT,
+)
 from satellite_control.dashboard.routes import assets as asset_routes
 from satellite_control.dashboard.routes import missions as mission_routes
 from satellite_control.dashboard.routes import missions_v2 as mission_v2_routes
@@ -28,20 +38,24 @@ logger = logging.getLogger("dashboard")
 
 
 # --- Shared constants ---
-def _resolve_project_root() -> Path:
-    override = os.environ.get("SATELLITE_CONTROL_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve()
-    return Path(__file__).resolve().parents[4]
+DATA_DIR = SIMULATION_DATA_ROOT
 
 
-PROJECT_ROOT = _resolve_project_root()
-DATA_DIR = PROJECT_ROOT / "Data" / "Simulation"
-MODEL_ALLOWED_ROOTS = (
-    (PROJECT_ROOT / "assets" / "model_files").resolve(),
-    (PROJECT_ROOT / "ui" / "public" / "model_files").resolve(),
+def _dedupe_paths(*paths: Path) -> tuple[Path, ...]:
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved not in unique:
+            unique.append(resolved)
+    return tuple(unique)
+
+
+MODEL_ALLOWED_ROOTS = _dedupe_paths(
+    ASSET_MODEL_FILES_ROOT,
+    LEGACY_ASSET_MODEL_FILES_ROOT,
+    UI_PUBLIC_MODEL_FILES_ROOT,
 )
-UI_DIST_DIR = (PROJECT_ROOT / "ui" / "dist").resolve()
+UI_DIST_DIR = UI_DIST_ROOT.resolve()
 SPA_BLOCKED_PREFIXES = (
     "api",
     "runner",
@@ -62,6 +76,7 @@ SPA_BLOCKED_PREFIXES = (
 )
 
 # --- Global Singleton ---
+ensure_runtime_data_dirs()
 sim_manager = SimulationManager()
 runner_manager = RunnerManager()
 

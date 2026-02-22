@@ -30,9 +30,9 @@ def client():
 @pytest.fixture
 def isolated_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     missions_dir = tmp_path / "missions"
-    sim_dir = tmp_path / "Data" / "Simulation"
+    sim_dir = tmp_path / "data" / "simulation_data"
     release_dir = tmp_path / "release"
-    presets_file = tmp_path / "Data" / "Dashboard" / "runner_presets.json"
+    presets_file = tmp_path / "data" / "dashboard" / "runner_presets.json"
     missions_dir.mkdir(parents=True, exist_ok=True)
     sim_dir.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)

@@ -14,12 +14,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from satellite_control.config.paths import (
+    MISSIONS_DIR,
+    PROJECT_ROOT,
+    SCRIPTS_DIR,
+    SIMULATION_DATA_ROOT,
+    resolve_repo_path,
+)
 from satellite_control.core.v6_controller_runtime import QualityContractReportV6
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DATA_SIM_DIR = PROJECT_ROOT / "Data" / "Simulation"
-SIM_RUNNER = PROJECT_ROOT / "scripts" / "run_simulation.py"
-MISSIONS_DIR = PROJECT_ROOT / "missions"
+DATA_SIM_DIR = SIMULATION_DATA_ROOT
+SIM_RUNNER = SCRIPTS_DIR / "run_simulation.py"
 
 MISSION_PLANNER_M4 = PROJECT_ROOT / "missions" / "STARLINK-1008_M4_202602192133.json"
 MISSION_PLANNER_2M = PROJECT_ROOT / "missions" / "Starlink2mScan.json"
@@ -80,11 +85,7 @@ def _now_iso() -> str:
 def _path_from_raw(raw: str | os.PathLike[str] | None) -> Path | None:
     if raw is None:
         return None
-    candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = (PROJECT_ROOT / candidate).resolve()
-    else:
-        candidate = candidate.resolve()
+    candidate = resolve_repo_path(Path(raw).expanduser())
     if candidate.exists() and candidate.is_file():
         return candidate
     return None
@@ -192,10 +193,7 @@ def _resolve_run_dir(before_run_id: str | None, combined_output: str) -> Path | 
     )
     if matches:
         candidate = Path(matches[-1].strip().strip("'\""))
-        if not candidate.is_absolute():
-            candidate = (PROJECT_ROOT / candidate).resolve()
-        else:
-            candidate = candidate.resolve()
+        candidate = resolve_repo_path(candidate)
         if candidate.exists() and candidate.is_dir():
             return candidate
 

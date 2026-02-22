@@ -218,14 +218,16 @@ configure_module_log_levels(DEFAULT_MODULE_LEVELS)
 # Example usage
 if __name__ == "__main__":
     # Standard logging
-    logger = setup_logging(__name__, log_file="Data/satellite.log")
+    logger = setup_logging(__name__, log_file="data/simulation_data/satellite.log")
     logger.info("System initialized")
     logger.warning("High CPU usage detected")
     logger.error("Connection failed")
 
     # Structured logging
     structured_logger = setup_logging(
-        __name__, log_file="Data/satellite_structured.log", structured=True
+        __name__,
+        log_file="data/simulation_data/satellite_structured.log",
+        structured=True,
     )
     structured_logger.info(
         "MPC solve completed",

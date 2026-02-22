@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from satellite_control.config.paths import MISSIONS_DIR
+
 MissionSource = Literal["local"]
 
 
@@ -24,9 +26,6 @@ class MissionEntry:
     path: Path
     source: MissionSource
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-MISSIONS_DIR = PROJECT_ROOT / "missions"
 
 SOURCE_DIRS: dict[str, Path] = {
     "local": MISSIONS_DIR,

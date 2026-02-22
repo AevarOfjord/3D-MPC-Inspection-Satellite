@@ -8,6 +8,12 @@ import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException
 from fastapi.responses import FileResponse
 
+from satellite_control.config.paths import (
+    ASSET_MODEL_FILES_ROOT,
+    LEGACY_ASSET_MODEL_FILES_ROOT,
+    normalize_repo_relative_str,
+    resolve_repo_path,
+)
 from satellite_control.dashboard.models import (
     CompileScanProjectRequestModel,
     MeshScanConfigModel,
@@ -43,11 +49,7 @@ def set_dependencies(project_root: Path, model_allowed_roots: tuple) -> None:
 
 def _resolve_allowed_model_path(path_value: str) -> Path:
     """Resolve a model path while restricting access to known model roots."""
-    candidate = Path(path_value)
-    if not candidate.is_absolute():
-        candidate = _project_root / candidate
-
-    resolved = candidate.resolve()
+    resolved = resolve_repo_path(path_value).resolve()
     for allowed_root in _model_allowed_roots:
         if resolved == allowed_root or allowed_root in resolved.parents:
             return resolved
@@ -59,10 +61,7 @@ def _resolve_allowed_model_path(path_value: str) -> Path:
 
 
 def _normalize_model_path_for_storage(path_value: Path) -> str:
-    try:
-        return str(path_value.relative_to(_project_root))
-    except ValueError:
-        return str(path_value)
+    return normalize_repo_relative_str(path_value)
 
 
 # --- Model file routes ---
@@ -88,14 +87,21 @@ async def serve_model_file(path: str):
 async def list_model_files():
     """List available OBJ models in the repository."""
     search_dirs = [
-        _project_root / "assets" / "model_files",
-        _project_root / "assets" / "model_files" / "uploads",
+        ASSET_MODEL_FILES_ROOT,
+        LEGACY_ASSET_MODEL_FILES_ROOT,
+        ASSET_MODEL_FILES_ROOT / "uploads",
+        LEGACY_ASSET_MODEL_FILES_ROOT / "uploads",
     ]
     models: list[dict[str, str]] = []
+    seen_paths: set[Path] = set()
     for base in search_dirs:
         if not base.exists():
             continue
         for obj_file in sorted(base.rglob("*.obj")):
+            resolved_obj = obj_file.resolve()
+            if resolved_obj in seen_paths:
+                continue
+            seen_paths.add(resolved_obj)
             try:
                 rel_path = obj_file.relative_to(_project_root)
             except ValueError:
@@ -146,7 +152,7 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
     except Exception:
         aiofiles = None
 
-    upload_dir = Path("assets/model_files/uploads")
+    upload_dir = ASSET_MODEL_FILES_ROOT / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = Path(filename).name
@@ -159,7 +165,11 @@ async def upload_object(file: bytes = File(...), filename: str = Form(...)):
         async with aiofiles.open(file_path, "wb") as out_file:
             await out_file.write(file)
 
-    return {"status": "success", "path": str(file_path), "filename": safe_name}
+    return {
+        "status": "success",
+        "path": normalize_repo_relative_str(file_path),
+        "filename": safe_name,
+    }
 
 
 # --- Trajectory preview ---
@@ -233,12 +243,13 @@ async def preview_trajectory(config: MeshScanConfigModel):
         level_spacing: float | None,
         fallback: int,
         pass_cfg: dict,
+        obj_path: str,
     ) -> int:
         levels = int(max(1, fallback))
         if not level_spacing or level_spacing <= 0:
             return levels
         try:
-            vertices = load_obj_vertices(config.obj_path)
+            vertices = load_obj_vertices(obj_path)
             (
                 region_center,
                 region_size,
@@ -270,12 +281,14 @@ async def preview_trajectory(config: MeshScanConfigModel):
 
     def build_one_pass(
         pass_cfg: dict,
+        obj_path: str,
     ) -> tuple[list[tuple[float, float, float]], float, int]:
         levels = compute_levels_for(
             pass_cfg["scan_axis"],
             pass_cfg.get("level_spacing"),
             int(pass_cfg["levels"]),
             pass_cfg,
+            obj_path,
         )
         axis = str(pass_cfg["scan_axis"]).upper().strip()
         (
@@ -288,7 +301,7 @@ async def preview_trajectory(config: MeshScanConfigModel):
         dt = 0.1
         if str(pass_cfg["pattern"]).lower() == "spiral":
             path, _, path_length = build_mesh_spiral_trajectory(
-                obj_path=config.obj_path,
+                obj_path=obj_path,
                 standoff=float(pass_cfg["standoff"]),
                 levels=levels,
                 points_per_circle=int(pass_cfg["points_per_circle"]),
@@ -307,7 +320,7 @@ async def preview_trajectory(config: MeshScanConfigModel):
             )
         else:
             path, _, path_length = build_mesh_scan_trajectory(
-                obj_path=config.obj_path,
+                obj_path=obj_path,
                 standoff=float(pass_cfg["standoff"]),
                 levels=levels,
                 points_per_circle=int(pass_cfg["points_per_circle"]),
@@ -345,6 +358,8 @@ async def preview_trajectory(config: MeshScanConfigModel):
         return out
 
     try:
+        resolved_obj_path = _resolve_allowed_model_path(config.obj_path)
+        resolved_obj_path_str = str(resolved_obj_path)
         pass_summaries: list[dict] = []
         path: list[tuple[float, float, float]] = []
         total_length = 0.0
@@ -382,7 +397,9 @@ async def preview_trajectory(config: MeshScanConfigModel):
             ]
 
         for idx, pass_cfg in enumerate(passes):
-            pass_path, pass_len, pass_levels = build_one_pass(pass_cfg)
+            pass_path, pass_len, pass_levels = build_one_pass(
+                pass_cfg, resolved_obj_path_str
+            )
             if not pass_path:
                 continue
             if path:
@@ -539,6 +556,10 @@ async def create_path_asset(request: PathAssetSaveRequest):
     """Save a path asset for reuse in missions."""
     try:
         payload = request.model_dump()
+        obj_path = str(payload.get("obj_path") or "").strip()
+        if obj_path:
+            resolved_obj = _resolve_allowed_model_path(obj_path)
+            payload["obj_path"] = _normalize_model_path_for_storage(resolved_obj)
         asset = save_path_asset(payload)
         return asset
     except Exception as e:

@@ -16,12 +16,27 @@ from typing import Any
 
 import numpy as np
 
+from satellite_control.config.paths import (
+    ASSET_PATHS_ROOT,
+    LEGACY_ASSET_PATHS_ROOT,
+    normalize_repo_relative_str,
+)
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+PATH_ASSET_DIR = ASSET_PATHS_ROOT
 
 
-PATH_ASSET_DIR = _repo_root() / "assets" / "paths"
+def _scan_asset_dirs() -> tuple[Path, ...]:
+    roots = [PATH_ASSET_DIR, LEGACY_ASSET_PATHS_ROOT]
+    unique: list[Path] = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved in unique:
+            continue
+        if root.exists():
+            unique.append(resolved)
+    if not unique:
+        unique.append(PATH_ASSET_DIR.resolve())
+    return tuple(unique)
 
 
 def _ensure_dir() -> None:
@@ -69,7 +84,8 @@ def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Path asset name is required")
 
     asset_id = str(data.get("id") or _safe_id(name))
-    obj_path = str(data.get("obj_path") or "")
+    obj_path_raw = str(data.get("obj_path") or "")
+    obj_path = normalize_repo_relative_str(obj_path_raw) if obj_path_raw else ""
     path = data.get("path") or []
     if not isinstance(path, list) or not path:
         raise ValueError("Path asset requires a non-empty 'path' list")
@@ -104,33 +120,44 @@ def load_path_asset(asset_id: str) -> dict[str, Any]:
     _ensure_dir()
     asset_path = _asset_path(asset_id)
     if asset_path.exists():
-        return json.loads(asset_path.read_text())
+        loaded = json.loads(asset_path.read_text())
+        if loaded.get("obj_path"):
+            loaded["obj_path"] = normalize_repo_relative_str(str(loaded["obj_path"]))
+        return loaded
 
     # Fallback: scan for matching name/id in files
-    for candidate in PATH_ASSET_DIR.rglob("*.json"):
-        try:
-            data = json.loads(candidate.read_text())
-        except Exception:
-            continue
-        if data.get("id") == asset_id or data.get("name") == asset_id:
-            return data
+    for root in _scan_asset_dirs():
+        for candidate in root.rglob("*.json"):
+            try:
+                data = json.loads(candidate.read_text())
+            except Exception:
+                continue
+            if data.get("id") == asset_id or data.get("name") == asset_id:
+                if data.get("obj_path"):
+                    data["obj_path"] = normalize_repo_relative_str(
+                        str(data["obj_path"])
+                    )
+                return data
     raise FileNotFoundError(f"Path asset not found: {asset_id}")
 
 
 def list_path_assets() -> list[dict[str, Any]]:
     """Return summary metadata for all saved path assets."""
     _ensure_dir()
-    assets: list[dict[str, Any]] = []
-    for asset_file in sorted(PATH_ASSET_DIR.rglob("*.json")):
-        try:
-            data = json.loads(asset_file.read_text())
-        except Exception:
-            continue
-        assets.append(
-            {
-                "id": data.get("id", asset_file.stem),
+    assets_by_id: dict[str, dict[str, Any]] = {}
+    for root in _scan_asset_dirs():
+        for asset_file in sorted(root.rglob("*.json")):
+            try:
+                data = json.loads(asset_file.read_text())
+            except Exception:
+                continue
+            asset_id = str(data.get("id", asset_file.stem))
+            assets_by_id[asset_id] = {
+                "id": asset_id,
                 "name": data.get("name", asset_file.stem),
-                "obj_path": data.get("obj_path", ""),
+                "obj_path": normalize_repo_relative_str(str(data.get("obj_path", "")))
+                if data.get("obj_path")
+                else "",
                 "points": int(data.get("points") or len(data.get("path") or [])),
                 "path_length": float(data.get("path_length") or 0.0),
                 "open": bool(data.get("open", True)),
@@ -138,5 +165,5 @@ def list_path_assets() -> list[dict[str, Any]]:
                 "created_at": data.get("created_at"),
                 "updated_at": data.get("updated_at"),
             }
-        )
+    assets = [assets_by_id[key] for key in sorted(assets_by_id)]
     return assets

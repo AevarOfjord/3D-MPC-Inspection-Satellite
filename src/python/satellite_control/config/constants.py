@@ -77,9 +77,9 @@ ConversionConstants = _ConversionConstants()
 class _DataConstants:
     """Read-only data path constants."""
 
-    DATA_DIR: str = "Data"
-    LINEARIZED_DATA_DIR: str = os.path.join("Data", "Linearized")
-    THRUSTER_DATA_DIR: str = os.path.join("Data", "Thruster_Data")
+    DATA_DIR: str = os.path.join("data", "simulation_data")
+    LINEARIZED_DATA_DIR: str = os.path.join("data", "linearized")
+    THRUSTER_DATA_DIR: str = os.path.join("data", "thruster_data")
     CSV_TIMESTAMP_FORMAT: str = "%d-%m-%Y_%H-%M-%S"
 
 

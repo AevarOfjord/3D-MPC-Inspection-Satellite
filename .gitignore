@@ -1,5 +1,16 @@
 # User Data and Artifacts
-Data/
+data/simulation_data/
+data/dashboard/
+data/linearized/
+data/thruster_data/
+Data/simulation_data/
+Data/dashboard/
+Data/linearized/
+Data/thruster_data/
+Data/Simulation/
+Data/Dashboard/
+src/Data/
+ui/src/data/
 logs/
 *.log
 tmp/

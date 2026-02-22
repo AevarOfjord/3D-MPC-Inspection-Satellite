@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from satellite_control.dashboard.app import app
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCAN_PROJECT_DIR = PROJECT_ROOT / "assets" / "scan_projects"
+from satellite_control.mission.scan_projects import SCAN_PROJECT_DIR
 
 
 def _safe_id(name: str) -> str:
@@ -22,7 +19,7 @@ def _default_scan_project(name: str) -> dict:
     return {
         "schema_version": 1,
         "name": name,
-        "obj_path": "assets/model_files/ISS/ISS.obj",
+        "obj_path": "data/assets/model_files/ISS/ISS.obj",
         "path_density_multiplier": 1.0,
         "scans": [
             {

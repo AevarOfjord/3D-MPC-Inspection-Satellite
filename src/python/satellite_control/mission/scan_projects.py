@@ -12,6 +12,11 @@ from typing import Any
 
 import numpy as np
 
+from satellite_control.config.paths import (
+    ASSET_SCAN_PROJECTS_ROOT,
+    LEGACY_ASSET_SCAN_PROJECTS_ROOT,
+    normalize_repo_relative_str,
+)
 from satellite_control.mission.mesh_scan import compute_mesh_bounds, load_obj_vertices
 
 try:
@@ -38,14 +43,23 @@ AXIS_TO_FRAME: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {
     ),
 }
 
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
-
-
-SCAN_PROJECT_DIR = _repo_root() / "assets" / "scan_projects"
+SCAN_PROJECT_DIR = ASSET_SCAN_PROJECTS_ROOT
 PATH_DENSITY_MIN = 0.25
 PATH_DENSITY_MAX = 20.0
+
+
+def _scan_project_dirs() -> tuple[Path, ...]:
+    roots = [SCAN_PROJECT_DIR, LEGACY_ASSET_SCAN_PROJECTS_ROOT]
+    unique: list[Path] = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved in unique:
+            continue
+        if root.exists():
+            unique.append(resolved)
+    if not unique:
+        unique.append(SCAN_PROJECT_DIR.resolve())
+    return tuple(unique)
 
 
 def _ensure_dir() -> None:
@@ -151,7 +165,9 @@ def save_scan_project(data: dict[str, Any]) -> dict[str, Any]:
         "schema_version": max(2, int(data.get("schema_version") or 0)),
         "id": project_id,
         "name": name,
-        "obj_path": str(data.get("obj_path") or ""),
+        "obj_path": normalize_repo_relative_str(str(data.get("obj_path") or ""))
+        if data.get("obj_path")
+        else "",
         "path_density_multiplier": _coerce_density_multiplier(
             data.get("path_density_multiplier", 1.0)
         ),
@@ -171,6 +187,8 @@ def load_scan_project(project_id: str) -> dict[str, Any]:
     path = _project_path(project_id)
     if path.exists():
         loaded = json.loads(path.read_text())
+        if loaded.get("obj_path"):
+            loaded["obj_path"] = normalize_repo_relative_str(str(loaded["obj_path"]))
         if "path_density_multiplier" not in loaded:
             loaded["path_density_multiplier"] = 1.0
         else:
@@ -180,42 +198,50 @@ def load_scan_project(project_id: str) -> dict[str, Any]:
         return loaded
 
     # Fallback by id/name in file contents.
-    for candidate in SCAN_PROJECT_DIR.rglob("*.json"):
-        try:
-            data = json.loads(candidate.read_text())
-        except Exception:
-            continue
-        if data.get("id") == project_id or data.get("name") == project_id:
-            if "path_density_multiplier" not in data:
-                data["path_density_multiplier"] = 1.0
-            else:
-                data["path_density_multiplier"] = _coerce_density_multiplier(
-                    data.get("path_density_multiplier", 1.0)
-                )
-            return data
+    for root in _scan_project_dirs():
+        for candidate in root.rglob("*.json"):
+            try:
+                data = json.loads(candidate.read_text())
+            except Exception:
+                continue
+            if data.get("id") == project_id or data.get("name") == project_id:
+                if data.get("obj_path"):
+                    data["obj_path"] = normalize_repo_relative_str(
+                        str(data["obj_path"])
+                    )
+                if "path_density_multiplier" not in data:
+                    data["path_density_multiplier"] = 1.0
+                else:
+                    data["path_density_multiplier"] = _coerce_density_multiplier(
+                        data.get("path_density_multiplier", 1.0)
+                    )
+                return data
 
     raise FileNotFoundError(f"Scan project not found: {project_id}")
 
 
 def list_scan_projects() -> list[dict[str, Any]]:
     _ensure_dir()
-    out: list[dict[str, Any]] = []
-    for project_file in sorted(SCAN_PROJECT_DIR.rglob("*.json")):
-        try:
-            data = json.loads(project_file.read_text())
-        except Exception:
-            continue
-        out.append(
-            {
-                "id": data.get("id", project_file.stem),
+    projects_by_id: dict[str, dict[str, Any]] = {}
+    for root in _scan_project_dirs():
+        for project_file in sorted(root.rglob("*.json")):
+            try:
+                data = json.loads(project_file.read_text())
+            except Exception:
+                continue
+            project_id = str(data.get("id", project_file.stem))
+            projects_by_id[project_id] = {
+                "id": project_id,
                 "name": data.get("name", project_file.stem),
-                "obj_path": data.get("obj_path", ""),
+                "obj_path": normalize_repo_relative_str(str(data.get("obj_path", "")))
+                if data.get("obj_path")
+                else "",
                 "scans": int(len(data.get("scans") or [])),
                 "connectors": int(len(data.get("connectors") or [])),
                 "created_at": data.get("created_at"),
                 "updated_at": data.get("updated_at"),
             }
-        )
+    out = [projects_by_id[key] for key in sorted(projects_by_id)]
     return out
 
 
