@@ -66,9 +66,8 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
         .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
 
-        // Collision avoidance
-        .def_readwrite("enable_collision_avoidance", &MPCParams::enable_collision_avoidance)
-        .def_readwrite("obstacle_margin", &MPCParams::obstacle_margin)
+        .def_readwrite("enable_gyro_jacobian", &MPCParams::enable_gyro_jacobian)
+        .def_readwrite("enable_auto_state_bounds", &MPCParams::enable_auto_state_bounds)
         // Path following (general MPCC)
         .def_readwrite("Q_contour", &MPCParams::Q_contour)
         .def_readwrite("Q_progress", &MPCParams::Q_progress)
@@ -160,8 +159,6 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("get_control_action", &satellite_control::MPCControllerCpp::get_control_action,
              py::arg("x_current"),
              "Compute optimal control action")
-        .def("set_obstacles", &satellite_control::MPCControllerCpp::set_obstacles, "Set obstacles for collision avoidance")
-        .def("clear_obstacles", &satellite_control::MPCControllerCpp::clear_obstacles, "Clear all obstacles")
         .def("set_warm_start_control", &satellite_control::MPCControllerCpp::set_warm_start_control,
              py::arg("u_prev"),
              "Provide a warm-start control guess")

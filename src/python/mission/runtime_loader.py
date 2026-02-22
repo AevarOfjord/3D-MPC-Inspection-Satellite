@@ -15,7 +15,6 @@ from core.v6_controller_runtime import (
     MissionRuntimePlanV6,
     compile_mission_runtime_plan_v6,
 )
-from mission.mission_types import Obstacle
 from mission.path_assets import load_path_asset
 from mission.unified_compiler import compile_unified_mission_path
 from mission.unified_mission import MissionDefinition, SegmentType
@@ -207,8 +206,6 @@ def compile_unified_mission_runtime(
     runtime_path_speed = float(runtime_plan_v6.path_speed_mps)
     sim_config.app_config.mpc.path_speed = runtime_path_speed
     mission_state = sim_config.mission_state
-    mission_state.obstacles = _to_runtime_obstacles(mission.obstacles)
-    mission_state.obstacles_enabled = bool(mission_state.obstacles)
     mission_state.path_waypoints = path
     mission_state.path_length = float(path_length)
     mission_state.path_speed = runtime_path_speed
@@ -277,20 +274,6 @@ def compile_unified_mission_runtime(
         end_pos=end_pos,
         runtime_plan_v6=runtime_plan_v6,
     )
-
-
-def _to_runtime_obstacles(
-    obstacles: Sequence[Any],
-) -> list[Obstacle]:
-    runtime_obstacles: list[Obstacle] = []
-    for obstacle in obstacles:
-        runtime_obstacles.append(
-            Obstacle(
-                position=np.array(obstacle.position, dtype=float),
-                radius=float(obstacle.radius),
-            )
-        )
-    return runtime_obstacles
 
 
 def _normalize_frame(frame: Any) -> str:

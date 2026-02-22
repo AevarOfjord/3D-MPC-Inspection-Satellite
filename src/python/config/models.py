@@ -384,17 +384,6 @@ class MPCParams(BaseModel):
         description="Enable verbose MPC solver output",
     )
 
-    obstacle_margin: float = Field(
-        constants.Constants.OBSTACLE_SAFETY_MARGIN,
-        ge=0.0,
-        le=5.0,
-        description="Safety margin around obstacles in meters",
-    )
-    enable_collision_avoidance: bool = Field(
-        constants.Constants.ENABLE_COLLISION_AVOIDANCE,
-        description="Enable online MPC obstacle constraints",
-    )
-
     # Path Following. - General Path MPCC
     path_speed: float = Field(
         timing.DEFAULT_PATH_SPEED,
@@ -490,9 +479,7 @@ class MPCParams(BaseModel):
         "progress_reward",
         "max_linear_velocity",
         "max_angular_velocity",
-        "obstacle_margin",
         "enable_auto_state_bounds",
-        "enable_collision_avoidance",
         "thruster_type",
         "solver_type",
         "enable_delta_u_coupling",

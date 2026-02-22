@@ -53,8 +53,15 @@ class MPCRunner:
 
         # Internal state management
         default_thruster_count = THRUSTER_COUNT
-        if self.config is not None:
-            default_thruster_count = len(self.config.physics.thruster_positions)
+        # config may be an AppConfig or a SimulationConfig; physics lives at
+        # app_config.physics in a SimulationConfig.
+        physics_cfg = getattr(
+            self.config,
+            "physics",
+            getattr(getattr(self.config, "app_config", None), "physics", None),
+        )
+        if physics_cfg is not None:
+            default_thruster_count = len(physics_cfg.thruster_positions)
         self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)

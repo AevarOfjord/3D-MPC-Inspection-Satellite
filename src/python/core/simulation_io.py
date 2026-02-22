@@ -164,25 +164,6 @@ class SimulationIO:
             except Exception as exc:
                 logger.warning(f"Failed to serialize planned_path for metadata: {exc}")
 
-        mission_obstacles = getattr(mission_state, "obstacles", None) or []
-        serialized_obstacles: list[dict[str, Any]] = []
-        for obs in mission_obstacles:
-            try:
-                position_raw = getattr(obs, "position", None)
-                radius_raw = getattr(obs, "radius", None)
-                if position_raw is None or radius_raw is None:
-                    continue
-                position = [
-                    float(position_raw[0]),
-                    float(position_raw[1]),
-                    float(position_raw[2]),
-                ]
-                radius = float(radius_raw)
-                serialized_obstacles.append({"position": position, "radius": radius})
-            except Exception:
-                continue
-        metadata["obstacles"] = serialized_obstacles
-
         metadata_path = self.sim.data_save_path / "mission_metadata.json"
         try:
             metadata_path.write_text(json.dumps(metadata, indent=2))
@@ -688,9 +669,6 @@ class SimulationIO:
                 "max_angular_rate_time_s": 0.0,
                 "linear_speed_violation_count": 0,
                 "angular_rate_violation_count": 0,
-                "obstacle_margin_breach_count": 0,
-                "obstacle_min_clearance_m": None,
-                "obstacle_breach_events": [],
             }
 
         sim_config = getattr(self.sim, "simulation_config", None)
@@ -702,10 +680,6 @@ class SimulationIO:
         angular_limit = (
             float(getattr(mpc_cfg, "max_angular_velocity", 0.0)) if mpc_cfg else 0.0
         )
-        obstacle_margin = (
-            float(getattr(mpc_cfg, "obstacle_margin", 0.0)) if mpc_cfg else 0.0
-        )
-        obstacles = self._normalized_obstacles()
 
         physics_steps = 0
         max_linear_speed_mps = 0.0
@@ -714,19 +688,12 @@ class SimulationIO:
         max_angular_rate_time_s = 0.0
         linear_speed_violation_count = 0
         angular_rate_violation_count = 0
-        obstacle_margin_breach_count = 0
-        obstacle_min_clearance_m: float | None = None
-        obstacle_breach_events: list[dict[str, Any]] = []
-        max_logged_obstacle_events = 50
 
         with physics_csv.open("r", encoding="utf-8", newline="") as src:
             reader = csv.DictReader(src)
             for row in reader:
                 physics_steps += 1
                 t = self._to_float(row.get("Time"))
-                x = self._to_float(row.get("Current_X"))
-                y = self._to_float(row.get("Current_Y"))
-                z = self._to_float(row.get("Current_Z"))
                 vx = self._to_float(row.get("Current_VX"))
                 vy = self._to_float(row.get("Current_VY"))
                 vz = self._to_float(row.get("Current_VZ"))
@@ -748,29 +715,6 @@ class SimulationIO:
                 if angular_limit > 0.0 and angular_rate > angular_limit:
                     angular_rate_violation_count += 1
 
-                if obstacles:
-                    for idx, obs in enumerate(obstacles):
-                        ox, oy, oz = obs["position"]
-                        clearance = self._vector_norm3(x - ox, y - oy, z - oz) - float(
-                            obs["radius"]
-                        )
-                        if (
-                            obstacle_min_clearance_m is None
-                            or clearance < obstacle_min_clearance_m
-                        ):
-                            obstacle_min_clearance_m = clearance
-                        if clearance < obstacle_margin:
-                            obstacle_margin_breach_count += 1
-                            if len(obstacle_breach_events) < max_logged_obstacle_events:
-                                obstacle_breach_events.append(
-                                    {
-                                        "time_s": t,
-                                        "obstacle_index": idx,
-                                        "clearance_m": clearance,
-                                        "required_margin_m": obstacle_margin,
-                                    }
-                                )
-
         return {
             "physics_steps": physics_steps,
             "max_linear_speed_mps": max_linear_speed_mps,
@@ -779,9 +723,6 @@ class SimulationIO:
             "max_angular_rate_time_s": max_angular_rate_time_s,
             "linear_speed_violation_count": linear_speed_violation_count,
             "angular_rate_violation_count": angular_rate_violation_count,
-            "obstacle_margin_breach_count": obstacle_margin_breach_count,
-            "obstacle_min_clearance_m": obstacle_min_clearance_m,
-            "obstacle_breach_events": obstacle_breach_events,
         }
 
     def _collect_mission_stats(self) -> dict[str, Any]:
@@ -923,9 +864,6 @@ class SimulationIO:
         angular_limit = (
             float(getattr(mpc_cfg, "max_angular_velocity", 0.0)) if mpc_cfg else 0.0
         )
-        obstacle_margin = (
-            float(getattr(mpc_cfg, "obstacle_margin", 0.0)) if mpc_cfg else 0.0
-        )
         solver_time_limit_s = (
             float(getattr(mpc_cfg, "solver_time_limit", 0.0)) if mpc_cfg else 0.0
         )
@@ -979,20 +917,6 @@ class SimulationIO:
                 }
             )
 
-        obstacle_count = int(physics_stats.get("obstacle_margin_breach_count", 0))
-        if obstacle_count > 0:
-            violations.append(
-                {
-                    "type": "obstacle_margin_breach",
-                    "count": obstacle_count,
-                    "required_margin_m": obstacle_margin,
-                    "minimum_clearance_m": physics_stats.get(
-                        "obstacle_min_clearance_m"
-                    ),
-                    "sample_events": physics_stats.get("obstacle_breach_events", []),
-                }
-            )
-
         return {
             "schema_version": "constraint_violations_v1",
             "run_id": run_dir.name,
@@ -1001,7 +925,6 @@ class SimulationIO:
             "limits": {
                 "max_linear_velocity_mps": linear_limit,
                 "max_angular_velocity_radps": angular_limit,
-                "obstacle_margin_m": obstacle_margin,
                 "solver_time_limit_s": solver_time_limit_s,
             },
             "violations": violations,
@@ -1073,15 +996,6 @@ class SimulationIO:
                     "time_s": max_lin_t,
                     "event": "max_linear_speed",
                     "details": {"value_mps": max_lin_v},
-                }
-            )
-
-        for breach in physics_stats.get("obstacle_breach_events", []):
-            events.append(
-                {
-                    "time_s": breach.get("time_s", 0.0),
-                    "event": "obstacle_margin_breach",
-                    "details": breach,
                 }
             )
 

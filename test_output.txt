@@ -1,0 +1,70 @@
+SKBUILD_EDITABLE_SKIP="/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/build/cp311-cp311-macosx_26_0_arm64" PYTHONPATH="/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/python${PYTHONPATH:+:$PYTHONPATH}" .venv311/bin/python -m pytest -q --tb=short
+................................s....................................... [ 61%]
+..........................FFFFFF..............                           [100%]
+=================================== FAILURES ===================================
+______ test_compile_unified_mission_path_ignores_obstacles_for_generation ______
+tests/test_unified_compiler.py:89: in test_compile_unified_mission_path_ignores_obstacles_for_generation
+    unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:883: in compile_unified_mission_path
+    path, path_length, _ = _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:583: in _build_compiled_path_and_spans
+    seg_path = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+___ test_compile_unified_mission_path_scales_transfer_step_size_with_density ___
+tests/test_unified_compiler.py:123: in test_compile_unified_mission_path_scales_transfer_step_size_with_density
+    unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:883: in compile_unified_mission_path
+    path, path_length, _ = _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:583: in _build_compiled_path_and_spans
+    seg_path = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+_______ test_compile_unified_mission_path_scales_asset_scan_path_density _______
+tests/test_unified_compiler.py:167: in test_compile_unified_mission_path_scales_asset_scan_path_density
+    path, _length, _speed, _origin = unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:883: in compile_unified_mission_path
+    path, path_length, _ = _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:690: in _build_compiled_path_and_spans
+    connect = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+________ test_compile_unified_mission_path_emits_segment_pointing_spans ________
+tests/test_unified_compiler.py:216: in test_compile_unified_mission_path_emits_segment_pointing_spans
+    unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:826: in compile_unified_mission_path
+    _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:583: in _build_compiled_path_and_spans
+    seg_path = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+_ test_compile_unified_mission_path_transfer_after_last_scan_uses_previous_axis _
+tests/test_unified_compiler.py:275: in test_compile_unified_mission_path_transfer_after_last_scan_uses_previous_axis
+    unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:826: in compile_unified_mission_path
+    _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:583: in _build_compiled_path_and_spans
+    seg_path = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+_____ test_compile_unified_mission_path_manual_path_remaps_pointing_spans ______
+tests/test_unified_compiler.py:341: in test_compile_unified_mission_path_manual_path_remaps_pointing_spans
+    unified_compiler.compile_unified_mission_path(
+src/python/mission/unified_compiler.py:826: in compile_unified_mission_path
+    _build_compiled_path_and_spans(
+src/python/mission/unified_compiler.py:583: in _build_compiled_path_and_spans
+    seg_path = _build_segment_path(
+E   TypeError: _build_segment_path() missing 1 required positional argument: 'margin'
+
+----------------------------------------------- benchmark: 1 tests ----------------------------------------------
+Name (time in ms)           Min      Max     Mean  StdDev   Median     IQR  Outliers      OPS  Rounds  Iterations
+-----------------------------------------------------------------------------------------------------------------
+test_mpc_solve_time     35.0822  35.1614  35.1230  0.0231  35.1214  0.0377       9;0  28.4714      29           1
+-----------------------------------------------------------------------------------------------------------------
+
+Legend:
+  Outliers: 1 Standard Deviation from Mean; 1.5 IQR (InterQuartile Range) from 1st Quartile and 3rd Quartile.
+  OPS: Operations Per Second, computed as 1 / Mean
+=========================== short test summary info ============================
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_ignores_obstacles_for_generation
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_scales_transfer_step_size_with_density
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_scales_asset_scan_path_density
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_emits_segment_pointing_spans
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_transfer_after_last_scan_uses_previous_axis
+FAILED tests/test_unified_compiler.py::test_compile_unified_mission_path_manual_path_remaps_pointing_spans
+make: *** [test] Error 1

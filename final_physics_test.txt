@@ -1,0 +1,13 @@
+SKBUILD_EDITABLE_SKIP="/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/build/cp311-cp311-macosx_26_0_arm64" PYTHONPATH="/Users/aevar/Desktop/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/src/python${PYTHONPATH:+:$PYTHONPATH}" .venv311/bin/python -m pytest -q --tb=short
+................................s....................................... [ 61%]
+..............................................                           [100%]
+
+----------------------------------------------- benchmark: 1 tests ----------------------------------------------
+Name (time in ms)           Min      Max     Mean  StdDev   Median     IQR  Outliers      OPS  Rounds  Iterations
+-----------------------------------------------------------------------------------------------------------------
+test_mpc_solve_time     35.0730  35.1674  35.1213  0.0247  35.1233  0.0397       9;0  28.4728      29           1
+-----------------------------------------------------------------------------------------------------------------
+
+Legend:
+  Outliers: 1 Standard Deviation from Mean; 1.5 IQR (InterQuartile Range) from 1st Quartile and 3rd Quartile.
+  OPS: Operations Per Second, computed as 1 / Mean

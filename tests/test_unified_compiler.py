@@ -5,7 +5,6 @@ from mission import unified_compiler
 from mission.unified_mission import (
     Frame,
     MissionDefinition,
-    MissionObstacle,
     MissionOverrides,
     Pose,
     ScanConfig,
@@ -68,8 +67,8 @@ def test_compile_unified_mission_path_prefers_manual_path_override():
 def test_compile_unified_mission_path_ignores_obstacles_for_generation(monkeypatch):
     captured = {"obstacles": None}
 
-    def _fake_builder(waypoints, obstacles, step_size=0.1, safety_margin=0.0):
-        captured["obstacles"] = obstacles
+    def _fake_builder(waypoints, step_size=0.1):
+        captured["obstacles"] = []
         return [tuple(map(float, p)) for p in waypoints]
 
     monkeypatch.setattr(unified_compiler, "build_point_to_point_path", _fake_builder)
@@ -83,7 +82,6 @@ def test_compile_unified_mission_path_ignores_obstacles_for_generation(monkeypat
                 end_pose=Pose(frame=Frame.ECI, position=[5.0, 0.0, 0.0]),
             )
         ],
-        obstacles=[MissionObstacle(position=[1.0, 0.0, 0.0], radius=1.0)],
     )
     sim_cfg = SimulationConfig.create_default()
 
@@ -95,7 +93,6 @@ def test_compile_unified_mission_path_ignores_obstacles_for_generation(monkeypat
         )
     )
 
-    assert captured["obstacles"] in ([], ())
     assert path[-1] == (5.0, 0.0, 0.0)
 
 
@@ -104,7 +101,7 @@ def test_compile_unified_mission_path_scales_transfer_step_size_with_density(
 ):
     captured_step_sizes: list[float] = []
 
-    def _fake_builder(waypoints, obstacles, step_size=0.1, safety_margin=0.0):
+    def _fake_builder(waypoints, step_size=0.1):
         captured_step_sizes.append(float(step_size))
         return [tuple(map(float, p)) for p in waypoints]
 
@@ -146,9 +143,7 @@ def test_compile_unified_mission_path_scales_asset_scan_path_density(monkeypatch
     monkeypatch.setattr(
         unified_compiler,
         "build_point_to_point_path",
-        lambda waypoints, obstacles, step_size=0.1, safety_margin=0.0: [
-            tuple(map(float, p)) for p in waypoints
-        ],
+        lambda waypoints, step_size=0.1: [tuple(map(float, p)) for p in waypoints],
     )
 
     mission = MissionDefinition(
@@ -184,9 +179,7 @@ def test_compile_unified_mission_path_emits_segment_pointing_spans(monkeypatch):
     monkeypatch.setattr(
         unified_compiler,
         "build_point_to_point_path",
-        lambda waypoints, obstacles, step_size=0.1, safety_margin=0.0: [
-            tuple(map(float, p)) for p in waypoints
-        ],
+        lambda waypoints, step_size=0.1: [tuple(map(float, p)) for p in waypoints],
     )
     monkeypatch.setattr(
         unified_compiler,
@@ -239,9 +232,7 @@ def test_compile_unified_mission_path_transfer_after_last_scan_uses_previous_axi
     monkeypatch.setattr(
         unified_compiler,
         "build_point_to_point_path",
-        lambda waypoints, obstacles, step_size=0.1, safety_margin=0.0: [
-            tuple(map(float, p)) for p in waypoints
-        ],
+        lambda waypoints, step_size=0.1: [tuple(map(float, p)) for p in waypoints],
     )
     monkeypatch.setattr(
         unified_compiler,
@@ -297,9 +288,7 @@ def test_compile_unified_mission_path_manual_path_remaps_pointing_spans(monkeypa
     monkeypatch.setattr(
         unified_compiler,
         "build_point_to_point_path",
-        lambda waypoints, obstacles, step_size=0.1, safety_margin=0.0: [
-            tuple(map(float, p)) for p in waypoints
-        ],
+        lambda waypoints, step_size=0.1: [tuple(map(float, p)) for p in waypoints],
     )
     monkeypatch.setattr(
         unified_compiler,

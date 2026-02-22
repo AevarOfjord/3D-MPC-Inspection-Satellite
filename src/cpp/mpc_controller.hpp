@@ -11,8 +11,7 @@
 #include <chrono>
 #include "osqp.h"
 #include "linearizer.hpp"
-#include "obstacle.hpp"
-
+#include "linearizer.hpp"
 namespace satellite_control {
 
 using Eigen::VectorXd;
@@ -56,9 +55,6 @@ struct MPCParams {
 
 
 
-    // Collision avoidance
-    bool enable_collision_avoidance = false; ///< Enable obstacle avoidance
-    double obstacle_margin = 0.5;            ///< Safety margin for obstacles [m]
 
     // Path following (general MPCC)
     double path_speed = 0.1;           ///< Path speed along reference [m/s]
@@ -137,18 +133,6 @@ public:
      */
     ControlResult get_control_action(const VectorXd& x_current);
 
-    // -- Collision Avoidance --
-
-    /**
-     * @brief Set the set of obstacles for collision avoidance.
-     * @param obstacles Set of obstacle objects.
-     */
-    void set_obstacles(const ObstacleSet& obstacles);
-
-    /**
-     * @brief Clear all obstacles.
-     */
-    void clear_obstacles();
 
     // -- Accessors --
     int num_controls() const { return nu_; }
@@ -253,6 +237,11 @@ private:
     void build_A_matrix(std::vector<Eigen::Triplet<double>>& triplets);
 
     /**
+     * @brief Compute exactly stabilizing DARE terminal costs for the nominal state.
+     */
+    VectorXd compute_dare_terminal_cost(const VectorXd& Q_diag, const VectorXd& R_diag);
+
+    /**
      * @brief Configure and load OSQP settings and data.
      * @param n_vars Number of variables.
      * @param n_constraints Number of constraints.
@@ -269,23 +258,17 @@ private:
 
     // -- Index Maps for Fast Updates --
 
-    /// Maps [row][col] -> index in A_data_ for B matrix entries (actuator dynamics).
-    std::vector<std::vector<int>> B_idx_map_;
+    /// Maps [step][row][col] -> index in A_data_ for B matrix entries (actuator dynamics).
+    std::vector<std::vector<std::vector<int>>> B_idx_map_;
 
-    /// Maps [row][col] -> index in A_data_ for quaternion dynamics entries.
-    std::vector<std::vector<int>> A_idx_map_;
+    /// Maps [step][row][col] -> index in A_data_ for quaternion dynamics entries.
+    std::vector<std::vector<std::vector<int>>> A_idx_map_;
 
-    /// Maps [row][col] -> index in A_data_ for orbital/velocity dynamics updates (rows 7-9, cols 0-9).
-    std::vector<std::vector<int>> A_orbital_idx_map_;
-    /// Maps [row][col] -> index in A_data_ for angular dynamics updates (rows 10-12, cols 10-12).
-    std::vector<std::vector<int>> A_angvel_idx_map_;
+    /// Maps [step][row][col] -> index in A_data_ for orbital/velocity dynamics updates (rows 7-9, cols 0-9).
+    std::vector<std::vector<std::vector<int>>> A_orbital_idx_map_;
+    /// Maps [step][row][col] -> index in A_data_ for angular dynamics updates (rows 10-12, cols 10-12).
+    std::vector<std::vector<std::vector<int>>> A_angvel_idx_map_;
 
-    // -- Collision Avoidance Internals --
-    ObstacleSet obstacles_;
-    int n_obs_constraints_ = 0;
-    int obs_per_step_ = 0;
-    int obs_row_start_ = 0;
-    std::vector<std::array<int, 3>> obs_A_indices_; // Map[row] -> A index for x,y,z
 
     // Map [step][0..2] -> Index in P_data_ for (x,s), (y,s), (z,s) cross terms
     std::vector<std::vector<int>> path_P_indices_;
@@ -334,10 +317,10 @@ private:
     double max_angular_velocity_bound_ = 0.0;
 
     // -- Runtime Methods --
-    void update_dynamics(const VectorXd& x_current);
+    void update_dynamics(const std::vector<VectorXd>& x_traj);
     void update_cost();
     void update_constraints(const VectorXd& x_current);
-    void update_obstacle_constraints(const VectorXd& x_current);
+
     void update_path_cost(const VectorXd& x_current); // Path following linearization
     double compute_dynamic_vs_min(double s_curr) const;
 

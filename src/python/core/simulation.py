@@ -484,14 +484,6 @@ class SatelliteMPCLinearizedSimulation:
         self.visualizer.sync_from_controller()
         self.visualizer.draw_simulation()
 
-    def _draw_obstacles(self) -> None:
-        """Draw configured obstacles on the visualization (delegated)."""
-        self.visualizer._draw_obstacles()
-
-    def _draw_obstacle_avoidance_waypoints(self) -> None:
-        """Draw obstacle avoidance waypoints for point-to-point modes."""
-        self.visualizer._draw_obstacle_avoidance_waypoints()
-
     def _draw_satellite_elements(self) -> None:
         """Draw satellite elements manually to avoid conflicts (delegated)."""
         self.visualizer._draw_satellite_elements()
