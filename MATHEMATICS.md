@@ -1,197 +1,269 @@
-# Mathematics Behind the MPC Controller
+# Mathematics Behind the Implemented MPC/MPCC Controller
 
-This document describes the math implemented in the project MPC core (`src/cpp/mpc_controller.cpp`, `src/cpp/linearizer.cpp`, `src/cpp/orbital_dynamics.cpp`).
+This document describes the *actual equations implemented today* in:
 
-## 1. State, control, and horizon
+- `src/cpp/mpc_controller.cpp`
+- `src/cpp/linearizer.cpp`
+- `src/cpp/orbital_dynamics.cpp`
 
-The controller solves a finite-horizon QP at each control step.
+It is intentionally implementation-aligned (not a generic MPC textbook derivation).
 
-- Prediction horizon: `N`
-- Time step: `dt`
-- Augmented state dimension: `nx = 17`
-- Control dimension: `nu = num_rw + num_thrusters + 1`
+## 1) Decision variables and dimensions
 
-State at stage `k`:
+At each control step, the solver uses a finite-horizon QP with:
 
-```text
-x_k = [ p_k(3), q_k(4), v_k(3), w_k(3), wr_k(3), s_k(1) ]
-```
+- Horizon: `N`
+- Control period: `dt`
+- Augmented state size: `nx = 17`
+- Control size: `nu = n_rw + n_thr + 1`
 
-- `p_k`: relative position
-- `q_k`: attitude quaternion `[qw, qx, qy, qz]`
-- `v_k`: linear velocity
-- `w_k`: angular velocity
-- `wr_k`: reaction wheel speeds
-- `s_k`: path progress (arc-length-like path parameter)
-
-Control at stage `k`:
+Stage state:
 
 ```text
-u_k = [ tau_rw,k(3), u_thr,k(n_thr), v_s,k(1) ]
+x_k = [p_k, q_k, v_k, w_k, w_rw,k, s_k]
 ```
 
-- `tau_rw,k`: normalized reaction wheel commands
-- `u_thr,k`: thruster duty / command (bounded in `[0,1]`)
-- `v_s,k`: virtual path-speed control for progress dynamics
+with blocks:
 
-## 2. Dynamics model used by MPC
+- `p_k in R^3` position
+- `q_k in R^4` quaternion `[qw, qx, qy, qz]`
+- `v_k in R^3` linear velocity
+- `w_k in R^3` angular velocity
+- `w_rw,k in R^3` wheel speeds
+- `s_k in R` path progress
 
-The physical part is linearized online each step:
+Stage control:
+
+```text
+u_k = [tau_rw,k, u_thr,k, v_s,k]
+```
+
+- `tau_rw,k` reaction-wheel torque commands (normalized to `[-1, 1]`)
+- `u_thr,k` thruster commands (`[0, 1]`)
+- `v_s,k` virtual path-speed control
+
+The QP decision vector is stacked as:
+
+```text
+z = [x_0, ..., x_N, u_0, ..., u_{N-1}]
+```
+
+## 2) Dynamics model used inside MPC
+
+The 16 physical states (all except `s`) are linearized online:
 
 ```text
 x_phys,k+1 = A_k x_phys,k + B_k u_phys,k + a_k
 ```
 
-with `x_phys` being the first 16 states (everything except `s`) and `u_phys` being all controls except `v_s`.
+where `u_phys` excludes `v_s`.
 
-The path progress state is appended as:
+Progress-state augmentation is exact linear:
 
 ```text
 s_{k+1} = s_k + dt * v_s,k
 ```
 
-So the MPC equality constraints are affine, stage by stage:
+So each stage equality in the QP is:
 
 ```text
 x_{k+1} - Ahat_k x_k - Bhat_k u_k = ahat_k
 ```
 
-where `Ahat_k`, `Bhat_k`, `ahat_k` include both physical dynamics and the `s` dynamics row.
+with `Ahat_k, Bhat_k, ahat_k` built from the 16-state linearization plus the `s` row.
 
-### 2.1 Quaternion kinematics linearization
+### 2.1 Quaternion kinematics block
 
-Quaternion update uses the standard small-step linearized form:
-
-```text
-q_{k+1} ~= q_k + 0.5 * G(q_k) * w_k * dt
-```
-
-which appears in the Jacobian block `d q / d w`.
-
-### 2.2 Orbital dynamics terms
-
-Two orbital models are supported:
-
-1. CW / Hill linearized dynamics (if selected)
-2. Two-body gravity differential model (default path)
-
-Two-body model uses:
+In `linearizer.cpp`, quaternion dynamics are linearized as:
 
 ```text
-a(r) = -mu / ||r||^3 * r
+q_{k+1} approx q_k + 0.5 * G(q_k) * w_k * dt
 ```
 
-and linearizes differential gravity via Jacobian
+with:
 
 ```text
-J = -mu * ( I/||r||^3 - 3 rr^T/||r||^5 )
+G(q) = [ -qx  -qy  -qz
+          qw  -qz   qy
+          qz   qw  -qx
+         -qy   qx   qw ]
 ```
 
-which is injected into velocity-position coupling (`A` block), with remaining nonlinear residual sent into affine term `a_k`.
+and quaternion normalized before Jacobian evaluation.
 
-### 2.3 Actuator mapping
+### 2.2 Orbital terms
 
-- Reaction wheel torque contributes to body angular acceleration and wheel speed dynamics.
-- Thruster forces are rotated from body to world for translational acceleration.
-- Thruster moment arms contribute to angular acceleration.
-
-## 3. QP solved each step
-
-Decision vector stacks all states and controls:
+Two-body mode (default in current setup):
 
 ```text
-z = [x_0, x_1, ..., x_N, u_0, ..., u_{N-1}]
+a(r) = -mu * r / |r|^3
 ```
 
-OSQP form:
+For relative dynamics, the gravity-gradient Jacobian is:
 
 ```text
-min   0.5 z^T P z + q^T z
-s.t.  l <= A z <= u
+J = -mu * ( I/|r|^3 - 3 rr^T/|r|^5 )
 ```
 
-## 4. Objective function terms
+and applied to velocity-position coupling (`A(7:9,0:2)`), with residual in affine term:
 
-## 4.1 MPCC contouring + lag cost
+```text
+a_k(vel) = dt * (a_rel - J * r_rel)
+```
 
-At each stage, path reference is built from current `s` linearization point `s_bar`:
+CW mode is also supported via Hill/Clohessy-Wiltshire terms.
+
+### 2.3 Angular-rate gyroscopic Jacobian
+
+When enabled:
+
+```text
+I w_dot + w x (I w) = tau
+```
+
+is linearized around current `w`, adding a Jacobian block to `A(10:12,10:12)`.
+
+### 2.4 Input matrix mapping
+
+- RW torque contributes to body angular acceleration and wheel-speed dynamics:
+  - `w_dot += -I^{-1}(axis_i * tau_max_i * u_i)`
+  - `w_rw_dot += (tau_max_i / I_rw_i) * u_i`
+- Thrusters:
+  - body force `F_body = f_i * d_i`
+  - world force `F_world = R(q) F_body`
+  - `v_dot += F_world / m`
+  - `w_dot += I^{-1} (r_i x F_body)`
+
+## 3) QP form and variable scaling
+
+OSQP solves:
+
+```text
+min (1/2) z^T P z + q^T z
+s.t. l <= A z <= u
+```
+
+The implementation optionally solves in scaled coordinates:
+
+```text
+z = S * z_tilde
+```
+
+with per-variable scales (`state_var_scale_`, `control_var_scale_`), and matrix entries assembled/updated directly in scaled form.
+
+## 4) Objective function terms (implemented)
+
+The cost is stage-wise MPCC plus regularization/effort terms.
+
+## 4.1 Contouring + lag (path geometry)
+
+At each stage `k`, with linearization point `s_bar`:
 
 - `p_ref = p(s_bar)`
-- `t_ref = dp/ds |_{s_bar}` (unit tangent)
+- `t_ref = dp/ds |_(s_bar)` (unit tangent)
 
-Path position is linearized:
-
-```text
-p(s) ~= p_ref + t_ref * (s - s_bar)
-```
-
-Contouring error:
+Linearized path point:
 
 ```text
-e_c = p - p(s)
+p(s) approx p_ref + t_ref * (s - s_bar)
 ```
 
-Lag component (along tangent) is also weighted via `t_ref t_ref^T` terms.
-
-This expansion creates:
-
-- Quadratic terms in `p` and `s`
-- Cross terms `(p_i, s)`
-- Linear terms in `p` and `s`
-
-These are exactly the `P` and `q` updates in `update_path_cost()`.
-
-## 4.2 Progress control term
-
-For the virtual speed control `v_s,k`, the stage term is:
+Contouring uses the expansion of:
 
 ```text
-Q_progress * (v_s,k - v_ref)^2
+||p - p(s)||^2
 ```
 
-or reward mode:
+which yields:
+
+- position diagonal terms
+- `(p_i, s)` cross terms
+- `s` diagonal terms
+- linear terms in `p` and `s`
+
+Lag is implemented through a tangent projector contribution (`t_ref t_ref^T`) on position block and matching linear term.
+
+## 4.2 Velocity alignment term
+
+Velocity tracking along tangent:
 
 ```text
-- 2 * progress_reward * v_s,k
+Q_v * ||v - v_ref * t_ref||^2
 ```
 
-with bounds on `v_s,k` from config and endpoint-aware dynamic lower-bound relaxation.
+implemented as velocity Hessian diagonals and linear term toward `t_ref`.
 
-## 4.3 Velocity alignment term
+## 4.3 Progress term (`v_s`)
 
-Velocity is softly aligned with path tangent using:
+In speed-tracking mode:
 
 ```text
-Q_velocity_align * || v_k - v_ref * t_ref ||^2
+Q_progress * (v_s - v_ref)^2
 ```
 
-implemented as diagonal velocity Hessian entries plus linear term toward tangent direction.
-
-## 4.4 Attitude and angular-rate regularization
-
-- Quaternion tracking toward reference quaternion `q_ref(s)` weighted by `Q_attitude + Q_axis_align`
-- Angular velocity damping weighted by `Q_angvel`
-
-The reference attitude is path/scan-mode dependent.
-
-## 4.5 Control effort, smoothness, and fuel bias
-
-- Base effort: `R_rw` for reaction wheels, `R_thrust` for thrusters
-- Smoothness:
+or, when `progress_reward > 0`, linear reward:
 
 ```text
-Q_smooth * sum_{k=1..N-1} ||u_k - u_{k-1}||^2
+-2 * progress_reward * v_s
 ```
 
-with optional cross-stage Hessian coupling enabled by `enable_delta_u_coupling`.
+In `error_priority` mode:
 
-- Opposing thruster pair penalty (per pair):
+- progress quadratic is reduced to tiny regularization (`1e-4` on `v_s`)
+- linear progress drive is removed
+- velocity-align and `s`-anchor terms are disabled
+
+so path-error reduction dominates.
+
+## 4.4 Attitude and angular-rate terms
+
+Quaternion tracking:
+
+```text
+Q_att * ||q - q_ref||^2
+```
+
+where `Q_att = Q_attitude + Q_axis_align` and `q_ref` is built from path tangent plus scan-frame logic.
+
+Additional quaternion regularizer is implemented as:
+
+```text
+Q_quat_norm * ||q - q_current||^2
+```
+
+(implemented through diagonal + linear terms around current quaternion).
+
+Angular velocity damping:
+
+```text
+Q_angvel * ||w||^2
+```
+
+with runtime mode scaling.
+
+## 4.5 Control effort and shaping
+
+Base effort:
+
+```text
+R_rw * ||tau_rw||^2 + R_thr * ||u_thr||^2 + Q_progress * v_s^2
+```
+
+Smoothness:
+
+```text
+Q_smooth * sum_{k=1}^{N-1} ||u_k - u_{k-1}||^2
+```
+
+with optional explicit cross-stage Hessian coupling (`enable_delta_u_coupling`).
+
+Opposing-thruster cofire penalty (per pair):
 
 ```text
 w_pair * (u_i + u_j)^2
 ```
 
-- Optional linear thruster L1-like bias:
+Fuel/coasting bias:
 
 ```text
 thrust_l1_weight * sum_i u_thr,i
@@ -199,55 +271,101 @@ thrust_l1_weight * sum_i u_thr,i
 
 ## 4.6 Terminal terms
 
-Terminal stage (`k=N`) scales major tracking terms and adds endpoint pull:
+Terminal stage receives:
 
-- position toward final path point
-- progress toward full path length
+- endpoint position pull to final path point
+- endpoint progress pull to total path length
+- DARE-based terminal physics cost (see next section)
 
-with mode-dependent multipliers.
+plus mode-dependent scaling (SETTLE/HOLD/COMPLETE can increase terminal stabilization emphasis).
 
-## 5. Constraints
+## 5) DARE terminal cost (implemented)
 
-The constraint matrix includes:
+For the 16 physical states, a discrete Riccati iteration computes `P` from local linearization:
 
-1. Dynamics equalities for all stages
-2. Initial state equality (`x_0 = x_current`)
-3. State bounds for all stages
-4. Control bounds for all control stages
-5. Control horizon tying (`u_k = u_{M-1}` for `k >= M` if control horizon `M < N`)
+```text
+S = R + B^T P B
+K = S^{-1} B^T P A
+P_next = Q + (A-BK)^T P (A-BK) + K^T R K
+```
 
-## 5.1 Typical bounds
+This terminal `P` is used as:
 
-- Thrusters: `[0, 1]`
-- Reaction wheels: `[-1, 1]` command domain
-- Wheel speeds: bounded by configured wheel speed limits
-- Optional velocity / angular velocity bounds
-- Path progress `s`: bounded to path range with margin
+- diagonal-only (default `diagonal` profile), or
+- with added dense off-diagonal terminal couplings (`dense_terminal`)
 
-Note: obstacle linear constraints were removed from the active MPC formulation in the current V6 code path.
+Online periodic updates can refresh this terminal block around the latest predicted tail state.
 
-## 6. Runtime adaptation policies
+## 6) Constraints
 
-The cost is mode-scaled (`TRACK`, `RECOVER`, `SETTLE`, `HOLD`, `COMPLETE`) by changing effective weights (contour, lag, progress, attitude, terminal terms, angular-rate damping, etc.).
+The QP constraint matrix includes:
 
-Additional runtime policies:
+1. Dynamics equalities for `k=0..N-1`
+2. Initial-state equality (`x_0 = x_current`)
+3. State bounds for all `k=0..N`
+4. Control bounds for all `k=0..N-1`
+5. Control-horizon tying (`u_k = u_{M-1}` for `k >= M` when `M < N`)
 
-- Warm starts for control/state solution
-- Dynamic `v_s` minimum relaxation near end of path
-- Solver fallback: reuse last feasible control, then decay to zero using configured hold/decay/zero-after timing
+Typical bounds:
 
-## 7. Solver settings relevant to math behavior
+- RW commands in `[-1, 1]`
+- Thrusters in `[0, 1]`
+- wheel speeds bounded by configured limits
+- optional velocity and angular-rate bounds
+- progress state `s` bounded to path range (with startup margin)
+- `v_s` bounded by `[path_speed_min, path_speed_max]` (runtime-adjusted)
 
-QP is solved with OSQP using warm start and a strict per-step time budget capped relative to `dt`.
+## 7) Progress-bound adaptation and endpoint behavior
 
-This gives deterministic convex optimization behavior each step with online relinearization of dynamics and path costs.
+Near path end, minimum `v_s` is relaxed to allow stop:
 
-## 8. Advanced runtime options (speed/robustness)
+```text
+if remaining_distance <= horizon_min_distance: v_s_min = 0
+```
 
-- **Terminal cost profile**
-  - `diagonal`: terminal DARE contributes diagonal-only physics terms (fast default).
-  - `dense_terminal`: adds off-diagonal terminal coupling terms from DARE in the terminal block (accuracy-oriented).
-- **Online terminal DARE refresh**
-  - Optional periodic DARE recomputation around the local trajectory tail, then terminal diagonal update in-place.
-- **Robust scaffold mode (`tube`)**
-  - Applies configurable constraint tightening to state/control bounds for margin against modeling/state-estimation errors.
+In `error_priority` mode, upper speed cap is reduced by path error:
+
+```text
+v_s_max_adaptive = v_s_max / (1 + gain * path_error^2)
+```
+
+and lower bound is clamped to `max(base_min, error_priority_min_vs)` (except endpoint relaxation above).
+
+## 8) Runtime mode scaling (TRACK/RECOVER/SETTLE/HOLD/COMPLETE)
+
+Mode changes rescale major weights:
+
+- contour/lag/progress/attitude
+- terminal position/attitude
+- velocity alignment and angular-rate damping
+- smoothness and thruster-pair penalties
+- control horizon length (shorter in some modes)
+
+This is done by updating effective weights and rebuilding/updating QP terms accordingly.
+
+## 9) Robust scaffold (`tube` mode)
+
+Two mechanisms are implemented:
+
+1. **Constraint tightening**
+   - state/control bounds contracted by a configured fraction.
+2. **Ancillary feedback correction**
+   - after nominal MPC solve:
+
+```text
+u_phys <- u_phys - alpha * K * (x - x_nom)
+```
+
+with `K` from local DARE/LQR and correction clipped per channel.
+
+## 10) Solver and fallback behavior
+
+OSQP is used with warm-start and bounded solve time.
+
+If non-success status occurs, control fallback is:
+
+1. hold last feasible command for `T_hold`
+2. linearly decay over `T_decay`
+3. force zero after `T_zero`
+
+This preserves bounded, graceful behavior under solver failures/timeouts.
