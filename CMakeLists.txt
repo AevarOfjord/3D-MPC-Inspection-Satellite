@@ -38,7 +38,6 @@ add_library(_cpp_mpc MODULE
     src/cpp/bindings.cpp
     src/cpp/linearizer.cpp
     src/cpp/mpc_controller.cpp
-    src/cpp/obstacle.cpp
     src/cpp/orbital_dynamics.cpp
 )
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)

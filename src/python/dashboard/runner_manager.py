@@ -276,12 +276,6 @@ class RunnerManager:
         return actuator
 
     @staticmethod
-    def _merge_dict(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
-        merged = dict(target)
-        merged.update(source)
-        return merged
-
-    @staticmethod
     def _extract_runtime_overrides(
         payload: dict[str, Any] | None,
     ) -> dict[str, Any]:

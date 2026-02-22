@@ -42,7 +42,7 @@ class MissionState:
     """
     Mission state tracking for runtime execution.
 
-    Composes path-following and obstacle runtime state.
+    Composes path-following runtime state.
     """
 
     path: PathFollowingState = field(default_factory=PathFollowingState)
@@ -114,47 +114,6 @@ class MissionState:
     def path_speed(self, value: float):
         self.path.path_speed = value
 
-    # --- Methods ---
-
-    def reset(self) -> None:
-        """Reset all mission state to defaults."""
-        self.path = PathFollowingState()
-        self.path_hold_end = DEFAULT_PATH_HOLD_END_S
-        self.path_tracking_center = None
-        self.path_tracking_base_shape = []
-        self.path_tracking_phase = "POSITIONING"
-        self.path_tracking_closest_point_index = 0
-        self.path_tracking_estimated_duration = 0.0
-        self.path_tracking_mission_start_time = None
-        self.path_tracking_tracking_start_time = None
-        self.path_tracking_positioning_start_time = None
-        self.path_tracking_stabilization_start_time = None
-        self.path_tracking_current_target_position = None
-        self.path_tracking_final_position = None
-        self.path_tracking_target_start_distance = 0.0
-        self.path_tracking_has_return = False
-        self.path_tracking_return_position = None
-        self.path_tracking_return_angle = (0.0, 0.0, 0.0)
-        self.path_tracking_trajectory = None
-        self.path_tracking_trajectory_dt = timing.CONTROL_DT
-        self.path_frame = "LVLH"
-        self.scan_attitude_center = None
-        self.scan_attitude_axis = None
-        self.scan_attitude_direction = "CW"
-        self.pointing_path_spans = []
-        self.scan_axis_migration_notices = []
-
-    def get_current_mission_type(self) -> str:
-        """
-        Get the currently active mission type.
-
-        Returns:
-            PATH_FOLLOWING or NONE
-        """
-        if self.path_waypoints:
-            return "PATH_FOLLOWING"
-        return "NONE"
-
     def get_resolved_path_waypoints(self) -> list[tuple[float, float, float]]:
         """Return canonical mission path waypoints."""
         return self.path.waypoints
@@ -194,20 +153,3 @@ def create_mission_state() -> MissionState:
         MissionState initialized to defaults
     """
     return MissionState()
-
-
-def print_mission_state(state: MissionState) -> None:
-    """Print current mission state."""
-    print("=" * 80)
-    print("MISSION STATE")
-    print("=" * 80)
-
-    mission_type = state.get_current_mission_type()
-    print(f"\nMission: {mission_type}")
-
-    if state.path_waypoints:
-        print("\nPath Following:")
-        print(f"  Points: {len(state.path_waypoints)}")
-        print(f"  Length: {state.path_length:.2f} m")
-
-    print("=" * 80)

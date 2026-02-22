@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { StarlinkModel } from '../StarlinkModel';
 import { ISSModel } from '../ISSModel';
 import { ORBIT_SCALE, EARTH_RADIUS_M, orbitSnapshot } from '../../data/orbitSnapshot';
-import { computeFacingEuler } from './ObjModelLoader';
+import { computeFacingEuler } from './modelPreviewUtils';
 
 const EarthModelLayer = lazy(() =>
   import('./EarthModelLayer').then((m) => ({ default: m.EarthModelLayer }))

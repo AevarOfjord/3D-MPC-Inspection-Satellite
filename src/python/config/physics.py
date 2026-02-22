@@ -27,14 +27,11 @@ Key features:
 - Integration with testing_environment physics
 """
 
-import logging
 from dataclasses import dataclass
 
 import numpy as np
 
 from .constants import Constants
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,7 +44,8 @@ class PhysicsConfig:
         moment_of_inertia: Rotational inertia in kg·m²
         satellite_size: Characteristic dimension in meters
         com_offset: Center of mass offset [x, y, z] in meters
-        thruster_positions: Dict mapping thruster ID (1-6) to (x, y, z) position in meters
+        thruster_positions: Dict mapping thruster ID (1-6)
+            to (x, y, z) position in meters
         thruster_directions: Dict mapping thruster ID to unit direction vector
         thruster_forces: Dict mapping thruster ID to force magnitude in Newtons
         use_realistic_physics: Enable realistic physics modeling
@@ -121,7 +119,8 @@ THRUSTER_POSITIONS = {
     6: (0.0, 0.0, -HALF_SIZE),  # -Z face
 }
 
-# Thrust direction is the force direction on the satellite (points toward center).
+# Thrust direction is the force direction on the satellite
+# (points toward center).
 THRUSTER_DIRECTIONS = {
     1: np.array([-1.0, 0.0, 0.0]),
     2: np.array([1.0, 0.0, 0.0]),
@@ -187,119 +186,3 @@ def get_physics_params() -> PhysicsConfig:
         disturbance_force_std=0.0,
         disturbance_torque_std=0.0,
     )
-
-
-def set_thruster_force(thruster_id: int, force: float) -> None:
-    """
-    Set individual thruster force for calibration.
-
-    Args:
-        thruster_id: Thruster ID in configured set
-        force: Force magnitude in Newtons
-
-    Raises:
-        ValueError: If thruster_id invalid or force non-positive
-    """
-    if thruster_id not in THRUSTER_IDS:
-        raise ValueError(f"Thruster ID must be in {THRUSTER_IDS}, got {thruster_id}")
-    if force <= 0:
-        raise ValueError(f"Force must be positive, got {force}")
-
-    THRUSTER_FORCES[thruster_id] = force
-    logger.info(f"Thruster {thruster_id} force set to {force:.3f} N")
-
-
-def set_all_thruster_forces(force: float) -> None:
-    """
-    Set all thruster forces to the same value.
-
-    Args:
-        force: Force magnitude in Newtons for all thrusters
-
-    Raises:
-        ValueError: If force is non-positive
-    """
-    if force <= 0:
-        raise ValueError(f"Force must be positive, got {force}")
-
-    for thruster_id in THRUSTER_IDS:
-        THRUSTER_FORCES[thruster_id] = force
-    logger.info(f"All thruster forces set to {force:.3f} N")
-
-
-def get_thruster_force(thruster_id: int) -> float:
-    """
-    Get individual thruster force.
-
-    Args:
-        thruster_id: Thruster ID in configured set
-
-    Returns:
-        Force magnitude in Newtons
-
-    Raises:
-        ValueError: If thruster_id is invalid
-    """
-    if thruster_id not in THRUSTER_IDS:
-        raise ValueError(f"Thruster ID must be in {THRUSTER_IDS}, got {thruster_id}")
-    return THRUSTER_FORCES[thruster_id]
-
-
-def print_thruster_forces() -> None:
-    """Print current thruster force configuration."""
-    logger.info("CURRENT THRUSTER FORCE CONFIGURATION:")
-    for thruster_id in THRUSTER_IDS:
-        force = THRUSTER_FORCES[thruster_id]
-        logger.info(f"  Thruster {thruster_id}: {force:.3f} N")
-
-
-def validate_physics_params(config: PhysicsConfig) -> bool:
-    """
-    Validate physical parameters for consistency.
-
-    Args:
-        config: PhysicsConfig to validate
-
-    Returns:
-        True if valid, False otherwise
-    """
-    issues = []
-
-    # Mass validation
-    if config.total_mass <= 0:
-        issues.append(f"Invalid mass: {config.total_mass}")
-
-    # Inertia validation
-    if config.moment_of_inertia <= 0:
-        issues.append(f"Invalid moment of inertia: {config.moment_of_inertia}")
-
-    # Thruster configuration validation
-    if len(config.thruster_positions) != THRUSTER_COUNT:
-        issues.append(
-            f"Expected {THRUSTER_COUNT} thrusters, got {len(config.thruster_positions)}"
-        )
-
-    if len(config.thruster_directions) != THRUSTER_COUNT:
-        issues.append(
-            "Expected "
-            f"{THRUSTER_COUNT} thruster directions, got {len(config.thruster_directions)}"
-        )
-
-    if len(config.thruster_forces) != THRUSTER_COUNT:
-        issues.append(
-            f"Expected {THRUSTER_COUNT} thruster forces, got {len(config.thruster_forces)}"
-        )
-
-    # Validate thruster force values are positive
-    for thruster_id, force in config.thruster_forces.items():
-        if force <= 0:
-            issues.append(f"Thruster {thruster_id} force must be positive, got {force}")
-
-    # Report validation results
-    if issues:
-        logger.warning("Physics parameter validation failed:")
-        for issue in issues:
-            logger.warning(f"  - {issue}")
-        return False
-
-    return True

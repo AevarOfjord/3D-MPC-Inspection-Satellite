@@ -12,12 +12,12 @@ export interface PathAssetSummary {
   updated_at?: string;
 }
 
-export interface PathAsset extends PathAssetSummary {
+interface PathAsset extends PathAssetSummary {
   path: [number, number, number][];
   notes?: string | null;
 }
 
-export interface PathAssetSaveRequest {
+interface PathAssetSaveRequest {
   name: string;
   obj_path: string;
   path: [number, number, number][];

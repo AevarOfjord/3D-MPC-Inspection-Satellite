@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 
-export type TransformMode = 'translate' | 'rotate';
+type TransformMode = 'translate' | 'rotate';
 
 interface HistoryAdapter {
   set: (next: [number, number, number][]) => void;

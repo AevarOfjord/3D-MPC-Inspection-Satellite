@@ -103,7 +103,6 @@ public:
     /**
      * @brief Get current target velocity
      */
-    Eigen::Vector3d get_target_velocity() const { return target_vel_; }
 
 private:
     double mu_;           // Gravitational parameter

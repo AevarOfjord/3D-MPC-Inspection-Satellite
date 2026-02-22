@@ -37,7 +37,7 @@ export interface MeshScanPass {
   plane_offset_max?: number;
 }
 
-export interface PreviewResponse {
+interface PreviewResponse {
   status: string;
   path: [number, number, number][]; // List of points
   points: number;
@@ -54,7 +54,7 @@ export interface PreviewResponse {
   }>;
 }
 
-export interface UploadResponse {
+interface UploadResponse {
     status: string;
     path: string;
     filename: string;
@@ -66,7 +66,7 @@ export interface ModelInfo {
   path: string;
 }
 
-export interface ModelBounds {
+interface ModelBounds {
   center: [number, number, number];
   min_bounds: [number, number, number];
   max_bounds: [number, number, number];

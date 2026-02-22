@@ -26,16 +26,6 @@ def _fmt_position_mm(state: np.ndarray) -> str:
     return f"[x:{x_mm:.0f}, y:{y_mm:.0f}, z:{z_mm:.0f}]mm"
 
 
-def _fmt_angles_deg(state: np.ndarray) -> str:
-    """Format quaternion from state as Euler angles in degrees."""
-    q = np.array(state[3:7], dtype=float)
-    if q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] == 0:
-        q = np.array([1.0, 0.0, 0.0, 0.0])
-    roll, pitch, yaw = quat_wxyz_to_euler_xyz(q)
-    roll_deg, pitch_deg, yaw_deg = np.degrees([roll, pitch, yaw])
-    return f"[Yaw:{yaw_deg:.1f}, Roll:{roll_deg:.1f}, Pitch:{pitch_deg:.1f}]°"
-
-
 def _unwrap_euler_deg(
     curr_deg: np.ndarray, prev_unwrapped_deg: np.ndarray | None
 ) -> np.ndarray:

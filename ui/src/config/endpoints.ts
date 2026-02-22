@@ -16,9 +16,9 @@ const rawWsBase =
   DEFAULT_WS_BASE;
 
 export const API_BASE_URL = normalizeBase(rawApiBase);
-export const WS_BASE_URL = normalizeBase(rawWsBase);
+const WS_BASE_URL = normalizeBase(rawWsBase);
 
-export const apiUrl = (path: string) =>
+const apiUrl = (path: string) =>
   `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
 export const wsUrl = (path: string) =>

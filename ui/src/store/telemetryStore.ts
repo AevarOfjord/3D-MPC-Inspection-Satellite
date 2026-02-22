@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { TelemetryData } from '../services/telemetry';
 
-export type EventLevel = 'info' | 'warn' | 'error';
+type EventLevel = 'info' | 'warn' | 'error';
 
-export interface TelemetryEvent {
+interface TelemetryEvent {
   id: string;
   level: EventLevel;
   message: string;
@@ -11,7 +11,7 @@ export interface TelemetryEvent {
   simTime?: number;
 }
 
-export interface TelemetrySample {
+interface TelemetrySample {
   time: number;
   posError: number;
   angError: number;

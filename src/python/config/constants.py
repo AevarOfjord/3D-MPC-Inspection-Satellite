@@ -28,12 +28,6 @@ class _UIConstants:
 
     WINDOW_WIDTH: int = 700
     WINDOW_HEIGHT: int = 600
-    SUBPLOT_CONFIG: int = 111
-    OVERLAY_HEIGHT: int = 32
-    ARROW_X_OFFSET: float = 0.08
-    ARROW_Y_OFFSET: float = 0.08
-    ARROW_WIDTH: float = 0.05
-    SLEEP_CONTROL_DT: float = 0.9
 
 
 UIConstants = _UIConstants()
@@ -49,41 +43,6 @@ HEADLESS_MODE: bool = os.environ.get("SATELLITE_HEADLESS", "1").lower() in (
     "yes",
 )
 """Headless mode (no GUI windows). Set SATELLITE_HEADLESS=0 to enable GUI."""
-
-
-# ============================================================================
-# Unit Conversions
-# ============================================================================
-
-
-@dataclass(frozen=True)
-class _ConversionConstants:
-    """Read-only unit conversion constants."""
-
-    DEG_PER_CIRCLE: int = 360
-    RAD_TO_DEG: float = 180.0 / np.pi
-    DEG_TO_RAD: float = np.pi / 180.0
-
-
-ConversionConstants = _ConversionConstants()
-
-
-# ============================================================================
-# Data Management
-# ============================================================================
-
-
-@dataclass(frozen=True)
-class _DataConstants:
-    """Read-only data path constants."""
-
-    DATA_DIR: str = os.path.join("data", "simulation_data")
-    LINEARIZED_DATA_DIR: str = os.path.join("data", "linearized")
-    THRUSTER_DATA_DIR: str = os.path.join("data", "thruster_data")
-    CSV_TIMESTAMP_FORMAT: str = "%d-%m-%Y_%H-%M-%S"
-
-
-DataConstants = _DataConstants()
 
 
 # ============================================================================
@@ -106,9 +65,6 @@ def _detect_ffmpeg_path() -> str:
 class _FFmpegConstants:
     """Read-only FFmpeg path constants."""
 
-    FFMPEG_PATH_WINDOWS: str = r"C:\Program Files\ffmpeg\bin\ffmpeg.exe"
-    FFMPEG_PATH_MACOS: str = "/opt/homebrew/bin/ffmpeg"
-    FFMPEG_PATH_LINUX: str = "ffmpeg"
     FFMPEG_PATH: str = _detect_ffmpeg_path()
 
 
@@ -160,28 +116,6 @@ ToleranceConstants = _ToleranceConstants()
 
 
 # ============================================================================
-# Obstacle Avoidance
-# ============================================================================
-
-
-@dataclass(frozen=True)
-class _ObstacleConstants:
-    """Read-only obstacle avoidance constants."""
-
-    DEFAULT_OBSTACLE_RADIUS: float = 0.5
-    OBSTACLE_SAFETY_MARGIN: float = 0.1
-    MIN_OBSTACLE_DISTANCE: float = 0.5
-    OBSTACLE_PATH_RESOLUTION: float = 0.1
-    OBSTACLE_WAYPOINT_STABILIZATION_TIME: float = 0.5
-    OBSTACLE_FLYTHROUGH_TOLERANCE: float = 0.15
-    OBSTACLE_AVOIDANCE_SAFETY_MARGIN: float = 0.25
-    OBSTACLE_TURNING_MARGIN: float = 0.2
-
-
-ObstacleConstants = _ObstacleConstants()
-
-
-# ============================================================================
 # MPC Defaults
 # ============================================================================
 
@@ -213,7 +147,6 @@ class _MPCDefaults:
     R_RW_TORQUE: float = 0.003
     THRUST_L1_WEIGHT: float = 0.0
     THRUST_PAIR_WEIGHT: float = 0.8
-    ENABLE_COLLISION_AVOIDANCE: bool = False
     MAX_LINEAR_VELOCITY: float = 0.0
     MAX_ANGULAR_VELOCITY: float = 0.0
     ENABLE_DELTA_U_COUPLING: bool = False
@@ -306,29 +239,9 @@ class Constants:
     # UI
     WINDOW_WIDTH = UIConstants.WINDOW_WIDTH
     WINDOW_HEIGHT = UIConstants.WINDOW_HEIGHT
-    SUBPLOT_CONFIG = UIConstants.SUBPLOT_CONFIG
-    OVERLAY_HEIGHT = UIConstants.OVERLAY_HEIGHT
-    ARROW_X_OFFSET = UIConstants.ARROW_X_OFFSET
-    ARROW_Y_OFFSET = UIConstants.ARROW_Y_OFFSET
-    ARROW_WIDTH = UIConstants.ARROW_WIDTH
-    SLEEP_CONTROL_DT = UIConstants.SLEEP_CONTROL_DT
     HEADLESS_MODE = HEADLESS_MODE
 
-    # Conversions
-    DEG_PER_CIRCLE = ConversionConstants.DEG_PER_CIRCLE
-    RAD_TO_DEG = ConversionConstants.RAD_TO_DEG
-    DEG_TO_RAD = ConversionConstants.DEG_TO_RAD
-
-    # Data
-    DATA_DIR = DataConstants.DATA_DIR
-    LINEARIZED_DATA_DIR = DataConstants.LINEARIZED_DATA_DIR
-    THRUSTER_DATA_DIR = DataConstants.THRUSTER_DATA_DIR
-    CSV_TIMESTAMP_FORMAT = DataConstants.CSV_TIMESTAMP_FORMAT
-
     # FFmpeg
-    FFMPEG_PATH_WINDOWS = FFmpegConstants.FFMPEG_PATH_WINDOWS
-    FFMPEG_PATH_MACOS = FFmpegConstants.FFMPEG_PATH_MACOS
-    FFMPEG_PATH_LINUX = FFmpegConstants.FFMPEG_PATH_LINUX
     FFMPEG_PATH = FFmpegConstants.FFMPEG_PATH
     # Mission defaults
     DEFAULT_START_POS = MissionDefaults.DEFAULT_START_POS
@@ -341,20 +254,6 @@ class Constants:
     ANGLE_TOLERANCE = ToleranceConstants.ANGLE_TOLERANCE
     VELOCITY_TOLERANCE = ToleranceConstants.VELOCITY_TOLERANCE
     ANGULAR_VELOCITY_TOLERANCE = ToleranceConstants.ANGULAR_VELOCITY_TOLERANCE
-
-    # Obstacles
-    DEFAULT_OBSTACLE_RADIUS = ObstacleConstants.DEFAULT_OBSTACLE_RADIUS
-    OBSTACLE_SAFETY_MARGIN = ObstacleConstants.OBSTACLE_SAFETY_MARGIN
-    MIN_OBSTACLE_DISTANCE = ObstacleConstants.MIN_OBSTACLE_DISTANCE
-    OBSTACLE_PATH_RESOLUTION = ObstacleConstants.OBSTACLE_PATH_RESOLUTION
-    OBSTACLE_WAYPOINT_STABILIZATION_TIME = (
-        ObstacleConstants.OBSTACLE_WAYPOINT_STABILIZATION_TIME
-    )
-    OBSTACLE_FLYTHROUGH_TOLERANCE = ObstacleConstants.OBSTACLE_FLYTHROUGH_TOLERANCE
-    OBSTACLE_AVOIDANCE_SAFETY_MARGIN = (
-        ObstacleConstants.OBSTACLE_AVOIDANCE_SAFETY_MARGIN
-    )
-    OBSTACLE_TURNING_MARGIN = ObstacleConstants.OBSTACLE_TURNING_MARGIN
 
     # MPC
     MPC_PREDICTION_HORIZON = MPCDefaults.MPC_PREDICTION_HORIZON
@@ -380,7 +279,6 @@ class Constants:
     R_RW_TORQUE = MPCDefaults.R_RW_TORQUE
     THRUST_L1_WEIGHT = MPCDefaults.THRUST_L1_WEIGHT
     THRUST_PAIR_WEIGHT = MPCDefaults.THRUST_PAIR_WEIGHT
-    ENABLE_COLLISION_AVOIDANCE = MPCDefaults.ENABLE_COLLISION_AVOIDANCE
     MAX_LINEAR_VELOCITY = MPCDefaults.MAX_LINEAR_VELOCITY
     MAX_ANGULAR_VELOCITY = MPCDefaults.MAX_ANGULAR_VELOCITY
     ENABLE_DELTA_U_COUPLING = MPCDefaults.ENABLE_DELTA_U_COUPLING

@@ -107,7 +107,6 @@ def to_legacy_payload(
             _strip_v2_segment_fields(segment)
             for segment in mission_dict.get("segments", [])
         ],
-        "obstacles": mission_dict.get("obstacles", []),
         "overrides": mission_dict.get("overrides"),
     }
 
@@ -152,7 +151,6 @@ def migrate_legacy_payload(
         "start_pose": legacy["start_pose"],
         "start_target_id": payload.get("start_target_id"),
         "segments": segment_payloads,
-        "obstacles": legacy.get("obstacles", []),
         "overrides": legacy.get("overrides"),
         "metadata": {
             "version": int(metadata.get("version") or 1),

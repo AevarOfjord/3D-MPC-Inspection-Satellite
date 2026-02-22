@@ -164,11 +164,6 @@ class UnifiedVisualizationGenerator:
         self.reference_color = "red"
         self.trajectory_color = "cyan"
 
-        if mission_state and hasattr(mission_state, "obstacles"):
-            self.obstacles = mission_state.obstacles
-        else:
-            self.obstacles = []
-
         # Get thruster positions and forces from app_config if available
         self.thrusters = {}
         if app_config and app_config.physics:
@@ -1161,9 +1156,6 @@ class UnifiedVisualizationGenerator:
             active_thrusters,
         )
 
-        # Draw obstacles
-        self.draw_obstacles()
-
         # Add legend
         self.ax_main.legend(loc="upper right", fontsize=9)
 
@@ -1189,24 +1181,6 @@ class UnifiedVisualizationGenerator:
 
         video_renderer = self._get_video_renderer()
         video_renderer.generate_animation(output_filename)
-
-    def _progress_callback(self, current_frame: int, total_frames: int) -> None:
-        """Progress callback for animation saving with visual progress bar.
-
-        Args:
-            current_frame: Current frame being processed
-            total_frames: Total number of frames
-        """
-        progress = (current_frame / total_frames) * 100
-        bar_length = 40
-        filled = int(bar_length * current_frame / total_frames)
-        bar = "█" * filled + "░" * (bar_length - filled)
-
-        print(
-            f"\rAnimating: |{bar}| {progress:.1f}% ({current_frame}/{total_frames} frames)",
-            end="",
-            flush=True,
-        )
 
     def _get_plot_generator(self):
         """Get or create PlotGenerator instance (lazy initialization)."""

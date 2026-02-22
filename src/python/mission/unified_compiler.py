@@ -38,15 +38,6 @@ def _resolve_target_obj_path(target_id: str) -> Path | None:
     return None
 
 
-def _axis_to_scan_axis(axis: str) -> str:
-    axis = axis.upper()
-    if "X" in axis:
-        return "X"
-    if "Y" in axis:
-        return "Y"
-    return "Z"
-
-
 def _parse_axis(axis: str) -> tuple[str, int]:
     axis = axis.strip().upper()
     sign = -1 if axis.startswith("-") else 1

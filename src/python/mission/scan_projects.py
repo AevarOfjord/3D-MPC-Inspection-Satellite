@@ -255,26 +255,6 @@ def _to_vec3(value: Any, fallback: tuple[float, float, float]) -> np.ndarray:
         return np.array(fallback, dtype=float)
 
 
-def _resample_polyline(
-    path: list[list[float]], target_points: int
-) -> list[list[float]]:
-    if len(path) < 2 or target_points <= len(path):
-        return [[float(p[0]), float(p[1]), float(p[2])] for p in path]
-
-    arr = np.asarray(path, dtype=float)
-    seg = np.linalg.norm(arr[1:] - arr[:-1], axis=1)
-    total = float(np.sum(seg))
-    if total < 1e-9:
-        return [[float(arr[0, 0]), float(arr[0, 1]), float(arr[0, 2])]] * target_points
-
-    cum = np.concatenate(([0.0], np.cumsum(seg)))
-    targets = np.linspace(0.0, total, target_points)
-    x = np.interp(targets, cum, arr[:, 0])
-    y = np.interp(targets, cum, arr[:, 1])
-    z = np.interp(targets, cum, arr[:, 2])
-    return [[float(xi), float(yi), float(zi)] for xi, yi, zi in zip(x, y, z)]
-
-
 def _interpolate_key_level(levels: list[dict[str, Any]], t: float) -> dict[str, float]:
     if not levels:
         return {

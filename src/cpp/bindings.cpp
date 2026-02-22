@@ -4,16 +4,12 @@
 #include <pybind11/stl.h>
 #include "linearizer.hpp"
 #include "mpc_controller.hpp"
-#include "obstacle.hpp"
 
 namespace py = pybind11;
 using satellite_control::ControlResult;
 using satellite_control::Linearizer;
 using satellite_control::MPCControllerCpp;
 using satellite_control::MPCParams;
-using satellite_control::Obstacle;
-using satellite_control::ObstacleSet;
-using satellite_control::ObstacleType;
 using satellite_control::SatelliteParams;
 
 PYBIND11_MODULE(_cpp_mpc, m) {
@@ -172,28 +168,6 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("t_matrix_update_s", &ControlResult::t_matrix_update_s)
         .def_readwrite("t_warmstart_s", &ControlResult::t_warmstart_s)
         .def_readwrite("t_solve_only_s", &ControlResult::t_solve_only_s);
-
-    // Obstacle Types
-    py::enum_<satellite_control::ObstacleType>(m, "ObstacleType")
-        .value("SPHERE", satellite_control::ObstacleType::SPHERE)
-        .value("CYLINDER", satellite_control::ObstacleType::CYLINDER)
-        .value("BOX", satellite_control::ObstacleType::BOX)
-        .export_values();
-
-    py::class_<satellite_control::Obstacle>(m, "Obstacle")
-        .def(py::init<>())
-        .def_readwrite("type", &Obstacle::type)
-        .def_readwrite("position", &Obstacle::position)
-        .def_readwrite("radius", &Obstacle::radius)
-        .def_readwrite("size", &Obstacle::size)
-        .def_readwrite("axis", &Obstacle::axis)
-        .def_readwrite("name", &Obstacle::name);
-
-    py::class_<satellite_control::ObstacleSet>(m, "ObstacleSet")
-        .def(py::init<>())
-        .def("add", &ObstacleSet::add)
-        .def("clear", &ObstacleSet::clear)
-        .def("size", &ObstacleSet::size);
 
     // MPC Controller
     py::class_<satellite_control::MPCControllerCpp>(m, "MPCControllerCpp")

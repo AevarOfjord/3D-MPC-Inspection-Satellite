@@ -170,9 +170,6 @@ class MissionReportGenerator:
         initial_state = state_history[0]
         self._write_path_config(f, initial_state, reference_state)
 
-        # Obstacle configuration
-        self._write_obstacle_configuration(f)
-
     def _write_path_config(
         self, f, initial_state: np.ndarray, reference_state: np.ndarray
     ) -> None:
@@ -220,26 +217,6 @@ class MissionReportGenerator:
         if hold_end > 0.0:
             f.write(f"  End Hold Time:           {hold_end:.1f} s\n")
         f.write("\n")
-
-    def _write_obstacle_configuration(self, f) -> None:
-        """Write obstacle configuration."""
-        if self.mission_state.obstacles_enabled and self.mission_state.obstacles:
-            f.write("OBSTACLE CONFIGURATION:\n")
-            f.write("  Obstacle Avoidance:      ENABLED\n")
-            f.write(f"  Number of Obstacles:     {len(self.mission_state.obstacles)}\n")
-            for i, obs in enumerate(self.mission_state.obstacles, 1):
-                if hasattr(obs, "position"):
-                    ox, oy, oz = obs.position
-                    orad = obs.radius
-                else:
-                    ox, oy, oz, orad = obs
-                f.write(
-                    f"  Obstacle {i}:              ({ox:.3f}, {oy:.3f}, {oz:.3f}) m, radius {orad:.3f} m\n"
-                )
-            f.write("\n")
-        else:
-            f.write("OBSTACLE CONFIGURATION:\n")
-            f.write("  Obstacle Avoidance:      DISABLED\n\n")
 
     def _write_controller_configuration(self, f) -> None:
         """Write controller configuration section."""
@@ -469,83 +446,6 @@ class MissionReportGenerator:
         except Exception:
             return {}
 
-    def _extract_obstacles(self) -> list[tuple[np.ndarray, float]]:
-        """Extract configured obstacles as (center, radius)."""
-        if not getattr(self.mission_state, "obstacles_enabled", False):
-            return []
-        obstacles = getattr(self.mission_state, "obstacles", None) or []
-        normalized: list[tuple[np.ndarray, float]] = []
-        for obs in obstacles:
-            try:
-                if hasattr(obs, "position"):
-                    center = np.array(obs.position, dtype=float)
-                    radius = float(obs.radius)
-                else:
-                    ox, oy, oz, radius = obs
-                    center = np.array([ox, oy, oz], dtype=float)
-                if center.size >= 3 and radius >= 0.0:
-                    normalized.append((center[:3], radius))
-            except Exception:
-                continue
-        return normalized
-
-    def _compute_obstacle_clearance(
-        self,
-        state_history: list[np.ndarray],
-        control_time: float,
-    ) -> dict[str, Any]:
-        """Compute obstacle clearance metrics from sampled state history."""
-        obstacles = self._extract_obstacles()
-        if not obstacles or not state_history:
-            return {}
-
-        min_clearance = float("inf")
-        min_clearance_idx = 0
-        min_clearance_obs = -1
-        min_clearance_per_step: list[float] = []
-
-        for idx, state in enumerate(state_history):
-            pos = np.array(state[:3], dtype=float)
-            step_min = float("inf")
-            step_obs_idx = -1
-            for obs_idx, (center, radius) in enumerate(obstacles):
-                clearance = float(np.linalg.norm(pos - center) - radius)
-                if clearance < step_min:
-                    step_min = clearance
-                    step_obs_idx = obs_idx
-            min_clearance_per_step.append(step_min)
-            if step_min < min_clearance:
-                min_clearance = step_min
-                min_clearance_idx = idx
-                min_clearance_obs = step_obs_idx
-
-        step_dt = 0.0
-        if control_time > 0.0 and len(state_history) > 1:
-            step_dt = control_time / float(len(state_history) - 1)
-
-        obstacle_margin = float(getattr(self.app_config.mpc, "obstacle_margin", 0.0))
-        margin_breach_count = int(
-            sum(
-                1 for clearance in min_clearance_per_step if clearance < obstacle_margin
-            )
-        )
-        collision_count = int(
-            sum(1 for clearance in min_clearance_per_step if clearance < 0.0)
-        )
-
-        return {
-            "obstacle_count": len(obstacles),
-            "minimum_clearance_m": min_clearance,
-            "minimum_clearance_time_s": min_clearance_idx * step_dt,
-            "minimum_clearance_obstacle_index": min_clearance_obs + 1
-            if min_clearance_obs >= 0
-            else None,
-            "required_margin_m": obstacle_margin,
-            "minimum_margin_delta_m": min_clearance - obstacle_margin,
-            "margin_breach_count": margin_breach_count,
-            "collision_count": collision_count,
-        }
-
     def _compute_actuator_tracking_summary(self, run_dir: Path) -> dict[str, Any]:
         """Estimate command-vs-valve tracking quality from physics CSV logs."""
         physics_csv = run_dir / "physics_data.csv"
@@ -732,11 +632,9 @@ class MissionReportGenerator:
             if limits:
                 lin_lim = float(limits.get("max_linear_velocity_mps", 0.0) or 0.0)
                 ang_lim = float(limits.get("max_angular_velocity_radps", 0.0) or 0.0)
-                margin = float(limits.get("obstacle_margin_m", 0.0) or 0.0)
                 solve_lim = float(limits.get("solver_time_limit_s", 0.0) or 0.0)
                 f.write(f"Max Linear Velocity:       {lin_lim:.3f} m/s\n")
                 f.write(f"Max Angular Velocity:      {np.degrees(ang_lim):.2f}°/s\n")
-                f.write(f"Obstacle Margin:           {margin:.3f} m\n")
                 f.write(f"Solver Time Limit:         {solve_lim * 1000.0:.1f} ms\n")
             for item in violations:
                 vtype = str(item.get("type", "unknown"))
@@ -749,45 +647,6 @@ class MissionReportGenerator:
         f.write("Constraints Pass:          n/a (artifact not available yet)\n")
         f.write(f"Timing Violations:         {timing_violations}\n")
         f.write(f"Solver Limit Exceeded:     {solver_limit_exceeded}\n")
-
-    def _write_obstacle_clearance_summary(
-        self,
-        f,
-        state_history: list[np.ndarray],
-        control_time: float,
-    ) -> None:
-        """Write minimum clearance and margin-breach summary."""
-        f.write("\nOBSTACLE CLEARANCE SUMMARY\n")
-        f.write("-" * 50 + "\n")
-        clearance = self._compute_obstacle_clearance(
-            state_history=state_history,
-            control_time=control_time,
-        )
-        if not clearance:
-            f.write(
-                "Obstacle Data:             n/a (obstacles disabled or unavailable)\n"
-            )
-            return
-
-        f.write(f"Obstacle Count:            {int(clearance['obstacle_count'])}\n")
-        f.write(
-            f"Min Clearance:             {float(clearance['minimum_clearance_m']):.4f} m\n"
-        )
-        f.write(
-            f"Min Clearance Time:        {float(clearance['minimum_clearance_time_s']):.3f} s\n"
-        )
-        obs_idx = clearance.get("minimum_clearance_obstacle_index")
-        f.write(
-            f"Closest Obstacle Index:    {obs_idx if obs_idx is not None else 'n/a'}\n"
-        )
-        f.write(
-            f"Required Margin:           {float(clearance['required_margin_m']):.4f} m\n"
-        )
-        f.write(
-            f"Clearance-Margin Delta:    {float(clearance['minimum_margin_delta_m']):.4f} m\n"
-        )
-        f.write(f"Margin Breach Samples:     {int(clearance['margin_breach_count'])}\n")
-        f.write(f"Collision Samples:         {int(clearance['collision_count'])}\n")
 
     def _write_actuator_tracking_summary(self, f, run_dir: Path) -> None:
         """Write command-vs-actual actuator tracking quality metrics."""
@@ -1101,11 +960,6 @@ class MissionReportGenerator:
             run_dir=run_dir,
             timing_violations=timing_violations,
             solver_limit_exceeded=solver_limit_exceeded,
-        )
-        self._write_obstacle_clearance_summary(
-            f,
-            state_history=state_history,
-            control_time=control_time,
         )
         self._write_actuator_tracking_summary(f, run_dir=run_dir)
         self._write_artifact_index(f, run_dir=run_dir)

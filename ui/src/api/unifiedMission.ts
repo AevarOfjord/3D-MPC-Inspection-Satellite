@@ -20,12 +20,6 @@ export interface SplineControl {
   weight?: number;
 }
 
-export interface SegmentBase {
-  segment_id: string;
-  title?: string | null;
-  notes?: string | null;
-}
-
 export interface TransferSegment {
   segment_id: string;
   title?: string | null;

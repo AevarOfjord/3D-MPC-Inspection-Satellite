@@ -64,11 +64,8 @@ def test_compile_unified_mission_path_prefers_manual_path_override():
     assert path_speed == float(sim_cfg.app_config.mpc.path_speed)
 
 
-def test_compile_unified_mission_path_ignores_obstacles_for_generation(monkeypatch):
-    captured = {"obstacles": None}
-
+def test_compile_unified_mission_path_uses_direct_builder_for_generation(monkeypatch):
     def _fake_builder(waypoints, step_size=0.1):
-        captured["obstacles"] = []
         return [tuple(map(float, p)) for p in waypoints]
 
     monkeypatch.setattr(unified_compiler, "build_point_to_point_path", _fake_builder)
