@@ -7,10 +7,10 @@ Consolidates `simulation/test_cpp_sim.py`, `integration/test_orbital.py`, and `i
 
 import numpy as np
 import pytest
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.control.mpc_controller import MPCController
-from satellite_control.core.cpp_satellite import CppSatelliteSimulator
-from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
+from config.simulation_config import SimulationConfig
+from control.mpc_controller import MPCController
+from core.cpp_satellite import CppSatelliteSimulator
+from core.simulation import SatelliteMPCLinearizedSimulation
 
 
 class TestCPPEngine:
@@ -18,7 +18,7 @@ class TestCPPEngine:
 
     def test_cpp_mpc_params_v6_fallback_fields(self):
         """C++ MPCParams binding should expose V6 bounded fallback policy fields."""
-        cpp_mpc = pytest.importorskip("satellite_control.cpp._cpp_mpc")
+        cpp_mpc = pytest.importorskip("cpp._cpp_mpc")
         params = cpp_mpc.MPCParams()
 
         params.solver_fallback_hold_s = 0.4

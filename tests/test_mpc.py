@@ -7,9 +7,9 @@ Consolidates `test_mpc_controller.py` and `test_mpc_controller_path.py`.
 
 import numpy as np
 import pytest
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.control.mpc_controller import MPCController
-from satellite_control.core.mpc_runner import MPCRunner
+from config.simulation_config import SimulationConfig
+from control.mpc_controller import MPCController
+from core.mpc_runner import MPCRunner
 
 
 class TestMPCController:
@@ -112,7 +112,7 @@ class TestMPCController:
 
     def test_cpp_binding_exposes_v6_mode_profile_fields(self):
         """C++ binding should expose V6 mode profile params and runtime mode setter."""
-        from satellite_control.cpp import _cpp_mpc
+        from cpp import _cpp_mpc
 
         params = _cpp_mpc.MPCParams()
         assert hasattr(params, "recover_contour_scale")

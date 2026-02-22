@@ -84,6 +84,6 @@ ui/public/model_files/**/*.usdz
 docs/_build/
 docs/_static/
 site/
-src/python/satellite_control/cpp/*.so
-src/python/satellite_control/cpp/*.pyd
-src/python/satellite_control/cpp/*.dylib
+src/python/cpp/*.so
+src/python/cpp/*.pyd
+src/python/cpp/*.dylib

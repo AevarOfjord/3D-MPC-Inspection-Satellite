@@ -7,7 +7,7 @@ Tests thruster management, PWM vs continuous modes, and realistic physics artifa
 
 import numpy as np
 import pytest
-from satellite_control.core.thruster_manager import ThrusterManager
+from core.thruster_manager import ThrusterManager
 
 
 class TestThrusterLogic:

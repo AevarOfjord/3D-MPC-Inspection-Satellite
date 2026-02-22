@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
+from dashboard.app import app
 from fastapi.testclient import TestClient
-from satellite_control.dashboard.app import app
-from satellite_control.mission.scan_projects import SCAN_PROJECT_DIR
+from mission.scan_projects import SCAN_PROJECT_DIR
 
 
 def _safe_id(name: str) -> str:

@@ -45,7 +45,7 @@ target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3:
 target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
 target_compile_features(_cpp_mpc PRIVATE cxx_std_17)
 set_target_properties(_cpp_mpc PROPERTIES PREFIX "")
-install(TARGETS _cpp_mpc DESTINATION satellite_control/cpp)
+install(TARGETS _cpp_mpc DESTINATION cpp)
 
 # Helper macro for future modules
 macro(add_satellite_module name sources)
@@ -53,7 +53,7 @@ macro(add_satellite_module name sources)
     target_link_libraries(${name} PRIVATE pybind11::headers Python3::Module Eigen3::Eigen)
     target_compile_features(${name} PRIVATE cxx_std_17)
     set_target_properties(${name} PROPERTIES PREFIX "")
-    install(TARGETS ${name} DESTINATION satellite_control/cpp)
+    install(TARGETS ${name} DESTINATION cpp)
 endmacro()
 
 # Module: _cpp_sim

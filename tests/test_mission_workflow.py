@@ -8,8 +8,8 @@ Combines `test_mission_state_refactor.py` and `test_unified_mission_workflow.py`
 import json
 from dataclasses import asdict
 
-from satellite_control.config.mission_state import MissionState, PathFollowingState
-from satellite_control.mission import repository as mission_repo
+from config.mission_state import MissionState, PathFollowingState
+from mission import repository as mission_repo
 
 
 class TestMissionState:

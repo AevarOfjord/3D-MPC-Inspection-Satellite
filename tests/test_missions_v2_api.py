@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from dashboard import mission_v2_service
+from dashboard.app import app
 from fastapi.testclient import TestClient
-from satellite_control.dashboard import mission_v2_service
-from satellite_control.dashboard.app import app
-from satellite_control.mission import path_assets
-from satellite_control.mission import repository as mission_repo
+from mission import path_assets
+from mission import repository as mission_repo
 
 
 def _sample_mission_payload(*, mission_id: str = "mission_test") -> dict[str, Any]:

@@ -44,7 +44,7 @@ def main() -> int:
     cmd = [
         str(python_exec),
         "-m",
-        "satellite_control.cli",
+        "cli",
         "serve",
         "--host",
         args.host,

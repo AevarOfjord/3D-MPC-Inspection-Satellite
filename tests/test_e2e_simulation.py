@@ -9,9 +9,9 @@ import json
 import os
 
 import pytest
-from satellite_control.config.simulation_config import SimulationConfig
-from satellite_control.core.simulation import SatelliteMPCLinearizedSimulation
-from satellite_control.core.simulation_loop import SimulationLoop
+from config.simulation_config import SimulationConfig
+from core.simulation import SatelliteMPCLinearizedSimulation
+from core.simulation_loop import SimulationLoop
 
 
 @pytest.mark.slow

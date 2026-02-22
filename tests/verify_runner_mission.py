@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from satellite_control.dashboard.runner_manager import RunnerManager
+from dashboard.runner_manager import RunnerManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

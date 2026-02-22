@@ -44,7 +44,7 @@ def main() -> int:
         ).start()
 
     uvicorn.run(
-        "satellite_control.dashboard.app:app",
+        "dashboard.app:app",
         host=args.host,
         port=args.port,
         reload=False,

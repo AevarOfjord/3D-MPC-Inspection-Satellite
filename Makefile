@@ -72,7 +72,7 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
 LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
-TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=src/python/satellite_control --cov-report=term-missing --cov-fail-under=30
+TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=src/python --cov-report=term-missing --cov-fail-under=30
 
 # ============================================================================
 # Help
@@ -149,7 +149,7 @@ run: stop
 stop:
 	@echo "Stopping any existing process on port 8000 (Backend)..."
 	@$(KILL_BACKEND)
-	@pkill -f "satellite_control.cli serve" || true
+	@pkill -f "cli serve" || true
 	@echo "Stopping any existing process on port 5173 (Frontend)..."
 	@$(KILL_FRONTEND)
 
@@ -161,7 +161,7 @@ backend:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli serve --dev
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve --dev
 
 # Start backend in packaged-app mode (no Vite, serves ui/dist on :8000).
 backend-prod:
@@ -176,7 +176,7 @@ backend-prod:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli serve
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve
 
 # Install frontend dependencies only when lockfiles change.
 $(UI_DEPS_STAMP): $(UI_LOCKFILES)
@@ -204,7 +204,7 @@ run-app: stop backend-prod
 # Create a distributable app bundle with prebuilt UI and current runtime env.
 package-app: ui-build
 	@$(MAKE) venv
-	@if ! $(VENV_PY) -c "import satellite_control, fastapi, uvicorn" >/dev/null 2>&1; then \
+	@if ! $(VENV_PY) -c "import cli, fastapi, uvicorn" >/dev/null 2>&1; then \
 		echo "Runtime deps missing in $(VENV_DIR); running 'make install' first..."; \
 		$(MAKE) install || exit $$?; \
 	fi
@@ -270,7 +270,7 @@ package-clean:
 # Build OS-native PyInstaller bundle and archive.
 package-pyinstaller: ui-build
 	@$(MAKE) venv
-	@if ! $(VENV_PY) -c "import satellite_control, fastapi, uvicorn" >/dev/null 2>&1; then \
+	@if ! $(VENV_PY) -c "import cli, fastapi, uvicorn" >/dev/null 2>&1; then \
 		echo "Runtime deps missing in $(VENV_DIR); running 'make install' first..."; \
 		$(MAKE) install || exit $$?; \
 	fi
@@ -321,7 +321,7 @@ sim:
 		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
 		*) echo "Skipping tests."; ;; \
 	esac
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m satellite_control.cli run
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli run
 
 # ============================================================================
 # Build targets
@@ -372,7 +372,7 @@ install: venv check-cmake
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
 		$(VENV_PY) -m pip install --no-build-isolation -e ".[dev]"
-	@$(VENV_PY) -c "from satellite_control.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
+	@$(VENV_PY) -c "from cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 # ============================================================================
 # Quality targets
@@ -431,7 +431,7 @@ lint: lint-backend lint-ui
 # Remove local build, venv, and cache artifacts.
 clean:
 	@rm -rf $(VENV_DIR) build dist src/lib
-	@rm -f src/python/satellite_control/cpp/*$(EXT_SUFFIX)
+	@rm -f src/python/cpp/*$(EXT_SUFFIX)
 	@rm -rf ui/node_modules/.vite
 	@rm -rf .pytest_cache .ruff_cache
 	@echo "Cleaned."

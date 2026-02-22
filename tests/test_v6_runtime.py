@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
-from satellite_control.core.simulation_reference import update_path_reference_state
-from satellite_control.core.v6_controller_runtime import (
+from core.simulation_reference import update_path_reference_state
+from core.v6_controller_runtime import (
     ActuatorPolicyV6,
     ControllerModeManagerV6,
     PointingGuardrailV6,

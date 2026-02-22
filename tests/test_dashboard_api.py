@@ -8,8 +8,8 @@ Combines `test_dashboard.py` and `test_mission_saving.py`.
 import json
 
 import pytest
+from dashboard.app import app
 from fastapi.testclient import TestClient
-from satellite_control.dashboard.app import app
 
 
 class TestDashboardAPI:
