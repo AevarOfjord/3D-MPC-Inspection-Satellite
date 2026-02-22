@@ -577,14 +577,6 @@ class VideoRenderer:
             "reference_color": self.reference_color,
             "trajectory_color": self.trajectory_color,
             "thrusters": self.thrusters,
-            "obstacles_enabled": (
-                self.mission_state.obstacles_enabled if self.mission_state else False
-            ),
-            "obstacles_list": (
-                list(self.mission_state.obstacles)
-                if self.mission_state and self.mission_state.obstacles
-                else []
-            ),
             "data_directory": str(
                 getattr(self.data_accessor, "data_directory", Path("."))
             ),

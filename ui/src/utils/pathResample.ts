@@ -1,6 +1,6 @@
 import { CatmullRomCurve3, Vector3 } from 'three';
 
-export type Vec3 = [number, number, number];
+type Vec3 = [number, number, number];
 
 export function downsamplePath(points: Vec3[], targetCount: number): Vec3[] {
   if (!points || points.length === 0) return [];

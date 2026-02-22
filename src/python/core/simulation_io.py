@@ -1552,38 +1552,6 @@ class SimulationIO:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    def _normalized_obstacles(self) -> list[dict[str, Any]]:
-        """Extract obstacle list from mission state in uniform shape."""
-        mission_state = getattr(self.sim, "mission_state", None)
-        if mission_state is None and getattr(self.sim, "simulation_config", None):
-            mission_state = getattr(self.sim.simulation_config, "mission_state", None)
-        if mission_state is None:
-            return []
-
-        if not getattr(mission_state, "obstacles_enabled", False):
-            return []
-
-        normalized: list[dict[str, Any]] = []
-        for obs in getattr(mission_state, "obstacles", []) or []:
-            try:
-                if isinstance(obs, dict):
-                    pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
-                    rad = float(obs.get("radius", 0.0))
-                elif isinstance(obs, list | tuple) and len(obs) >= 4:
-                    pos = [float(obs[0]), float(obs[1]), float(obs[2])]
-                    rad = float(obs[3])
-                else:
-                    pos_raw = getattr(obs, "position", None)
-                    rad_raw = getattr(obs, "radius", None)
-                    if pos_raw is None or rad_raw is None:
-                        continue
-                    pos = [float(v) for v in pos_raw]
-                    rad = float(rad_raw)
-                normalized.append({"position": pos, "radius": rad})
-            except Exception:
-                continue
-        return normalized
-
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         """Write JSON atomically via temporary file replacement."""
         tmp = path.with_suffix(path.suffix + ".tmp")

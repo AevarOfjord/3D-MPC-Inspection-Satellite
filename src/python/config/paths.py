@@ -15,13 +15,10 @@ def _resolve_project_root() -> Path:
 
 PROJECT_ROOT = _resolve_project_root()
 
-SRC_ROOT = PROJECT_ROOT / "src"
-SRC_PYTHON_ROOT = SRC_ROOT / "python"
-SRC_CPP_ROOT = SRC_ROOT / "cpp"
+SRC_PYTHON_ROOT = PROJECT_ROOT / "src" / "python"
 
-UI_ROOT = PROJECT_ROOT / "ui"
-UI_DIST_DIR = UI_ROOT / "dist"
-UI_PUBLIC_MODEL_FILES_ROOT = UI_ROOT / "public" / "model_files"
+UI_DIST_DIR = PROJECT_ROOT / "ui" / "dist"
+UI_PUBLIC_MODEL_FILES_ROOT = PROJECT_ROOT / "ui" / "public" / "model_files"
 
 DATA_ROOT = PROJECT_ROOT / "data"
 ASSETS_ROOT = DATA_ROOT / "assets"
@@ -36,7 +33,6 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 LEGACY_DATA_ROOT = PROJECT_ROOT / "Data"
 LEGACY_SIMULATION_DATA_ROOT = LEGACY_DATA_ROOT / "Simulation"
-LEGACY_DASHBOARD_DATA_ROOT = LEGACY_DATA_ROOT / "Dashboard"
 LEGACY_ASSETS_ROOT = PROJECT_ROOT / "assets"
 LEGACY_ASSET_MODEL_FILES_ROOT = LEGACY_ASSETS_ROOT / "model_files"
 LEGACY_ASSET_PATHS_ROOT = LEGACY_ASSETS_ROOT / "paths"
@@ -44,7 +40,7 @@ LEGACY_ASSET_SCAN_PROJECTS_ROOT = LEGACY_ASSETS_ROOT / "scan_projects"
 
 
 def canonicalize_repo_relative(path_value: str | Path) -> Path:
-    """Normalize legacy top-level path aliases to canonical repo-relative paths."""
+    """Normalize legacy top-level aliases to canonical repo-relative paths."""
     raw = str(path_value).replace("\\", "/").strip()
     while raw.startswith("./"):
         raw = raw[2:]
@@ -111,5 +107,10 @@ def resolve_repo_path(path_value: str | Path, *, prefer_canonical: bool = True) 
 
 def ensure_runtime_data_dirs() -> None:
     """Create canonical runtime data directories."""
-    for path in (DATA_ROOT, ASSETS_ROOT, SIMULATION_DATA_ROOT, DASHBOARD_DATA_ROOT):
+    for path in (
+        DATA_ROOT,
+        ASSETS_ROOT,
+        SIMULATION_DATA_ROOT,
+        DASHBOARD_DATA_ROOT,
+    ):
         path.mkdir(parents=True, exist_ok=True)

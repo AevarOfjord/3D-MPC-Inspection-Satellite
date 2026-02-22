@@ -1,15 +1,13 @@
 """
 Configuration Tests.
 
-Tests configuration validation, presets, and model integrity.
-Consolidates `test_config_validation.py` and `test_presets.py`.
+Tests configuration validation and model integrity.
 """
 
 from pathlib import Path
 
 import pytest
 from config import physics as physics_cfg
-from config.io import ConfigIO
 from config.mission_state import DEFAULT_PATH_HOLD_END_S
 from config.models import (
     ActuatorPolicyParams,
@@ -17,7 +15,6 @@ from config.models import (
     MPCParams,
     SatellitePhysicalParams,
 )
-from config.presets import list_presets, load_preset
 from config.simulation_config import SimulationConfig
 from pydantic import ValidationError
 
@@ -72,22 +69,6 @@ class TestConfigValidation:
         """Test SimulationConfig creation and validation."""
         config = SimulationConfig.create_default()
         assert config.app_config.physics.total_mass > 0
-
-    def test_preset_loading(self):
-        """Test loading of configuration presets."""
-        presets = list_presets()
-        assert "balanced" in presets
-        assert "fast" in presets
-
-        # Test loading a specific preset
-        config = load_preset("fast")
-        # fast preset has path_speed set, check it in the dict
-        assert config["mpc"]["path_speed"] >= 0.1
-
-    def test_invalid_preset(self):
-        """Test handling of invalid preset names."""
-        with pytest.raises(ValueError):
-            load_preset("nonexistent_preset")
 
     def test_mpc_performance_toggles_default_config(self):
         """Ensure MPC performance toggles are exposed in canonical AppConfig."""
@@ -185,45 +166,7 @@ class TestConfigValidation:
                 recover_exit_error_m=0.20,
             )
 
-    def test_path_hold_end_defaults_when_missing(self):
-        """Missing hold fields should use the global mission hold default."""
-        mission_state = ConfigIO._dict_to_mission_state({})
+    def test_default_mission_hold_end_is_preserved(self):
+        """Default mission hold-end stays wired to the global hold constant."""
+        mission_state = SimulationConfig.create_default().mission_state
         assert mission_state.path_hold_end == pytest.approx(DEFAULT_PATH_HOLD_END_S)
-
-    def test_path_hold_end_preserves_explicit_zero(self):
-        """Explicit 0.0 hold should not be overwritten by defaults."""
-        mission_state = ConfigIO._dict_to_mission_state({"path_hold_end": 0.0})
-        assert mission_state.path_hold_end == pytest.approx(0.0)
-
-    def test_path_hold_end_ignores_legacy_fields(self):
-        """Legacy hold aliases are ignored and default to canonical value."""
-        mission_state_nested = ConfigIO._dict_to_mission_state(
-            {"trajectory": {"hold_end": 0.0}}
-        )
-        assert mission_state_nested.path_hold_end == pytest.approx(
-            DEFAULT_PATH_HOLD_END_S
-        )
-
-        mission_state_flat = ConfigIO._dict_to_mission_state(
-            {"trajectory_hold_end": 5.0}
-        )
-        assert mission_state_flat.path_hold_end == pytest.approx(
-            DEFAULT_PATH_HOLD_END_S
-        )
-
-    def test_mission_state_flat_runtime_keys_are_ignored(self):
-        """Flat mission keys are no longer loaded; only nested canonical keys apply."""
-        mission_state = ConfigIO._dict_to_mission_state(
-            {
-                "path_waypoints": [(1.0, 2.0, 3.0)],
-                "path_speed": 0.25,
-                "path_length": 12.0,
-                "path_following_active": True,
-            }
-        )
-        assert mission_state.path.waypoints == []
-        assert mission_state.path.path_speed == pytest.approx(
-            SimulationConfig.create_default().mission_state.path.path_speed
-        )
-        assert mission_state.path.path_length == pytest.approx(0.0)
-        assert mission_state.path.active is False

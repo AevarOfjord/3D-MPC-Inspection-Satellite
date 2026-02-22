@@ -9,7 +9,6 @@ and disturbances.
 Simulation features:
 - Linearized dynamics with A, B matrices around equilibrium
 - Eight-thruster configuration with individual force calibration
-- Collision avoidance with spherical obstacles
 - Mission execution (waypoint, shape following)
 - Sensor noise and disturbance simulation
 - Real-time visualization with matplotlib
@@ -55,9 +54,6 @@ from utils.navigation_utils import (
     angle_difference,
     normalize_angle,
     point_to_line_distance,
-)
-from utils.orientation_utils import (
-    quat_wxyz_from_basis,  # noqa: F401 – re-exported for downstream compatibility
 )
 
 # Set up logger with simple format for clean output (console only)

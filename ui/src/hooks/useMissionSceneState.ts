@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { orbitSnapshot } from '../data/orbitSnapshot';
 
-export type TransformMode = 'translate' | 'rotate';
-export type SelectionType =
+type TransformMode = 'translate' | 'rotate';
+type SelectionType =
   | 'satellite'
   | 'reference'
   | `obstacle-${number}`

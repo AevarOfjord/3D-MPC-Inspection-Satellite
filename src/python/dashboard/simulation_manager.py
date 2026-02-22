@@ -184,17 +184,6 @@ class SimulationManager:
             self.sim_instance, "last_control_output", np.zeros(num_thrusters + 3)
         )
 
-        obstacles = []
-        if (
-            hasattr(self.sim_instance, "simulation_config")
-            and hasattr(self.sim_instance.simulation_config, "mission_state")
-            and self.sim_instance.simulation_config.mission_state.obstacles
-        ):
-            obstacles = [
-                {"position": list(o.position), "radius": o.radius}
-                for o in self.sim_instance.simulation_config.mission_state.obstacles
-            ]
-
         frame = "LVLH"
         frame_origin: list[float] | None = None
         mission_state = getattr(
@@ -311,7 +300,6 @@ class SimulationManager:
             "reference_quaternion": ref_quat,
             "thrusters": last_output[:num_thrusters],
             "rw_torque": last_output[num_thrusters:],
-            "obstacles": obstacles,
             "planned_path": getattr(self.sim_instance, "planned_path", []),
             "paused": self.paused,
             "sim_speed": self.simulation_speed,

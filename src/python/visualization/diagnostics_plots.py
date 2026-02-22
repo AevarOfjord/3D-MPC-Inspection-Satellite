@@ -339,135 +339,20 @@ def generate_timing_intervals_plot(plot_gen: Any, plot_dir: Path) -> None:
     PlotStyle.save_figure(fig, plot_dir / "timing_intervals.png")
 
 
-def _extract_obstacles(plot_gen: Any) -> list[dict[str, Any]]:
-    """Return normalized obstacle descriptors with position/radius."""
-    mission_state = getattr(plot_gen.data_accessor, "mission_state", None)
-    if mission_state is None or not getattr(mission_state, "obstacles_enabled", False):
-        return []
-
-    result: list[dict[str, Any]] = []
-    for obs in getattr(mission_state, "obstacles", []) or []:
-        try:
-            if hasattr(obs, "position") and hasattr(obs, "radius"):
-                pos = [float(v) for v in obs.position]
-                radius = float(obs.radius)
-            elif isinstance(obs, dict):
-                pos = [float(v) for v in obs.get("position", [0.0, 0.0, 0.0])]
-                radius = float(obs.get("radius", 0.0))
-            elif isinstance(obs, list | tuple) and len(obs) >= 4:
-                pos = [float(obs[0]), float(obs[1]), float(obs[2])]
-                radius = float(obs[3])
-            else:
-                continue
-            result.append({"position": pos, "radius": radius})
-        except Exception:
-            continue
-    return result
-
-
-def generate_obstacle_clearance_over_time_plot(plot_gen: Any, plot_dir: Path) -> None:
-    """Generate obstacle clearance over time with configured safety margin."""
+def generate_path_shaping_note_plot(plot_gen: Any, plot_dir: Path) -> None:
+    """Render compatibility panel for manual path shaping."""
     fig, ax = plt.subplots(1, 1, figsize=PlotStyle.FIGSIZE_SINGLE)
-
-    obstacles = _extract_obstacles(plot_gen)
-    if not obstacles:
-        ax.text(
-            0.5,
-            0.5,
-            "No obstacles configured\nfor this run",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-            fontsize=PlotStyle.ANNOTATION_SIZE,
-        )
-        ax.set_title(f"Obstacle Clearance - {plot_gen.system_title}")
-        PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
-        return
-
-    if (
-        hasattr(plot_gen.data_accessor, "_data_backend")
-        and plot_gen.data_accessor._data_backend == "pandas"
-        and getattr(plot_gen.data_accessor, "data", None) is not None
-    ):
-        phys_df = plot_gen.data_accessor.data
-        cols = phys_df.columns
-    else:
-        phys_df = None
-        cols = []
-
-    if phys_df is not None and all(
-        c in cols for c in ("Current_X", "Current_Y", "Current_Z")
-    ):
-        x = np.array(phys_df["Current_X"].values, dtype=float)
-        y = np.array(phys_df["Current_Y"].values, dtype=float)
-        z = np.array(phys_df["Current_Z"].values, dtype=float)
-        if "Time" in cols:
-            time = np.array(phys_df["Time"].values, dtype=float)
-        else:
-            time = np.arange(len(x)) * float(plot_gen.dt)
-    else:
-        x = np.array(plot_gen._col("Current_X"), dtype=float)
-        y = np.array(plot_gen._col("Current_Y"), dtype=float)
-        z = np.array(plot_gen._col("Current_Z"), dtype=float)
-        n = min(len(x), len(y), len(z))
-        x, y, z = x[:n], y[:n], z[:n]
-        time = np.arange(n) * float(plot_gen.dt)
-
-    if len(time) == 0:
-        ax.text(
-            0.5,
-            0.5,
-            "Position data unavailable",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-            fontsize=PlotStyle.ANNOTATION_SIZE,
-        )
-        ax.set_title(f"Obstacle Clearance - {plot_gen.system_title}")
-        PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
-        return
-
-    min_clearance = np.full(len(time), np.inf, dtype=float)
-    for idx, obs in enumerate(obstacles, start=1):
-        ox, oy, oz = obs["position"]
-        radius = float(obs["radius"])
-        clearance = np.sqrt((x - ox) ** 2 + (y - oy) ** 2 + (z - oz) ** 2) - radius
-        min_clearance = np.minimum(min_clearance, clearance)
-        ax.plot(
-            time,
-            clearance,
-            linewidth=1.2,
-            alpha=0.8,
-            label=f"Obs {idx}",
-        )
-
-    safety_margin = 0.0
-    if plot_gen.app_config and getattr(plot_gen.app_config, "mpc", None):
-        safety_margin = float(getattr(plot_gen.app_config.mpc, "obstacle_margin", 0.0))
-    if safety_margin > 0.0:
-        ax.axhline(
-            y=safety_margin,
-            color=PlotStyle.COLOR_THRESHOLD,
-            linestyle="--",
-            linewidth=1.5,
-            label=f"Safety Margin ({safety_margin:.2f}m)",
-        )
-
-    ax.plot(
-        time,
-        min_clearance,
-        color="black",
-        linewidth=2.0,
-        label="Min Clearance",
-        zorder=5,
+    ax.text(
+        0.5,
+        0.5,
+        "Manual path shaping active\n(no autonomous avoidance)",
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        fontsize=PlotStyle.ANNOTATION_SIZE,
     )
-    ax.set_xlabel("Time (s)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-    ax.set_ylabel("Clearance (m)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
-    ax.set_title(f"Obstacle Clearance Over Time - {plot_gen.system_title}")
-    ax.grid(True, alpha=PlotStyle.GRID_ALPHA)
-    ax.legend(fontsize=max(8, PlotStyle.LEGEND_SIZE - 2), ncol=2)
-
-    PlotStyle.save_figure(fig, plot_dir / "obstacle_clearance_over_time.png")
+    ax.set_title(f"Path Shaping Note - {plot_gen.system_title}")
+    PlotStyle.save_figure(fig, plot_dir / "path_shaping_note.png")
 
 
 def generate_solver_iterations_and_status_timeline_plot(

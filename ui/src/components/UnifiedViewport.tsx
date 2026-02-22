@@ -12,7 +12,8 @@ import type { useMissionBuilder } from '../hooks/useMissionBuilder';
 import { ORBIT_SCALE, EARTH_RADIUS_M, orbitSnapshot } from '../data/orbitSnapshot';
 import { HudPanel } from './HudComponents';
 import { LiveObstaclesRender } from './viewport/LiveObstacles';
-import { ObjWithMtl, resolvePreviewModel } from './viewport/ObjModelLoader';
+import { ObjWithMtl } from './viewport/ObjModelLoader';
+import { resolvePreviewModel } from './viewport/modelPreviewUtils';
 import { OrbitObjectsLayer, OrbitRingsLayer, EarthLayer } from './viewport/OrbitLayers';
 import { SatellitePreview, ReferenceModelFallback } from './viewport/SatellitePreview';
 

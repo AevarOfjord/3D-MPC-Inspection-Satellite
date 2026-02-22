@@ -3,7 +3,7 @@ import { wsUrl } from '../config/endpoints';
 
 type RunsEventType = 'runs_snapshot' | 'runs_updated';
 
-export interface RunsEvent {
+interface RunsEvent {
   type: RunsEventType;
   runs: SimulationRun[];
   latest_run_id?: string | null;

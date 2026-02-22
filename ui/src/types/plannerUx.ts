@@ -1,5 +1,3 @@
-import type { PlannerStep } from '../utils/plannerValidation';
-
 export type PlannerStepStatus = 'locked' | 'ready' | 'complete' | 'error';
 export type PlannerFlowStepStatus = PlannerStepStatus;
 
@@ -17,7 +15,6 @@ export interface SpiralEndpointRef {
 }
 
 export type TransferTargetRef = SpiralEndpointRef | null;
-export type PathPairId = string;
 
 export type CoachmarkId =
   | 'step_rail'
@@ -26,15 +23,6 @@ export type CoachmarkId =
   | 'save'
   | 'validation'
   | 'save_launch';
-
-export interface PlannerStepStatusMap {
-  target: PlannerStepStatus;
-  segments: PlannerStepStatus;
-  scan_definition: PlannerStepStatus;
-  constraints: PlannerStepStatus;
-  validate: PlannerStepStatus;
-  save_launch: PlannerStepStatus;
-}
 
 export interface PlannerFlowStepStatusMap {
   path_maker: PlannerFlowStepStatus;
@@ -46,15 +34,6 @@ export interface PlannerFlowStepStatusMap {
 
 export const PLANNER_FLOW_STATE_STORAGE_KEY = 'mission_control_planner_flow_v5_state_v1';
 export const PLANNER_COACHMARKS_STORAGE_KEY = 'mission_control_coachmarks_v1';
-
-export const PLANNER_STEP_ORDER: PlannerStep[] = [
-  'target',
-  'segments',
-  'scan_definition',
-  'constraints',
-  'validate',
-  'save_launch',
-];
 
 export const PLANNER_FLOW_STEP_ORDER_V5: PlannerFlowStepV5[] = [
   'path_maker',

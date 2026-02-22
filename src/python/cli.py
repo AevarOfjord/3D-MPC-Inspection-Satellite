@@ -163,7 +163,6 @@ def run(
 
         path = build_point_to_point_path(
             waypoints=[sim_start_pos, sim_end_pos],
-            obstacles=None,
             step_size=0.1,
         )
         path_length = 0.0

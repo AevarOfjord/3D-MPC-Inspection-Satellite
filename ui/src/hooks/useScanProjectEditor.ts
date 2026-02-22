@@ -27,14 +27,7 @@ export type {
   SelectedConnectorControl,
   ConnectEndpoint,
   SelectedKeyLevelHandle,
-  CompileScanOptions,
 } from './scanEditor/scanEditorTypes';
-export {
-  buildAutoConnectorControls,
-  resolveBodyAxisVector,
-  resolveScanFrameAxes,
-  projectPointToAxisThrough,
-} from './scanEditor/scanEditorGeometry';
 
 import type {
   SelectedProjectPlaneHandle,

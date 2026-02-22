@@ -10,11 +10,11 @@ export interface SimulationRun {
   duration?: number;
 }
 
-export interface SimulationListResponse {
+interface SimulationListResponse {
   runs: SimulationRun[];
 }
 
-export interface SimulationTelemetryResponse {
+interface SimulationTelemetryResponse {
   run_id: string;
   telemetry: TelemetryData[];
   planned_path?: [number, number, number][];

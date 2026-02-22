@@ -13,7 +13,7 @@ export function makeId(prefix: string): string {
   return `${prefix}_${idCounter.toString().padStart(6, '0')}`;
 }
 
-export function createDefaultKeyLevels(): ScanKeyLevel[] {
+function createDefaultKeyLevels(): ScanKeyLevel[] {
   return [
     {
       id: makeId('kl'),

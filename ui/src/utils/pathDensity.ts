@@ -1,6 +1,6 @@
-export const PATH_DENSITY_MIN = 0.25;
-export const PATH_DENSITY_MAX = 20.0;
-export const PATH_DENSITY_STEP = 0.05;
+const PATH_DENSITY_MIN = 0.25;
+const PATH_DENSITY_MAX = 20.0;
+const PATH_DENSITY_STEP = 0.05;
 
 export function clampPathDensityMultiplier(value: number): number {
   if (!Number.isFinite(value)) return 1.0;

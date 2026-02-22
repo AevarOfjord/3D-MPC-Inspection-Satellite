@@ -1,11 +1,11 @@
 import { API_BASE_URL } from '../config/endpoints';
 import type { UnifiedMission } from './unifiedMission';
 
-export interface SavedMissionsResponse {
+interface SavedMissionsResponse {
   missions: string[];
 }
 
-export interface MissionSummaryV2 {
+interface MissionSummaryV2 {
   name: string;
   mission_id: string;
   updated_at?: string | null;
@@ -59,7 +59,7 @@ export interface MissionDraftResponse {
   mission: UnifiedMission;
 }
 
-export interface MissionDraftListResponse {
+interface MissionDraftListResponse {
   draft_ids: string[];
 }
 

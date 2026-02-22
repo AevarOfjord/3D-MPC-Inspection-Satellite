@@ -457,7 +457,6 @@ def _create_manual_scurve_mission(path: Path) -> None:
             "orientation": None,
         },
         "segments": [],
-        "obstacles": [],
         "overrides": {
             "spline_controls": [],
             "manual_path": manual_path,

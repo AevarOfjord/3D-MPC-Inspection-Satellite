@@ -5,11 +5,6 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class ObstacleModel(BaseModel):
-    position: list[float]
-    radius: float
-
-
 class MeshScanConfigModel(BaseModel):
     obj_path: str
     standoff: float = 0.5
@@ -399,7 +394,6 @@ class UnifiedMissionModel(BaseModel):
     start_pose: PoseModel
     start_target_id: str | None = None
     segments: list[MissionSegmentModel]
-    obstacles: list[ObstacleModel] = Field(default_factory=list)
     overrides: MissionOverridesModel | None = None
 
 
@@ -484,7 +478,6 @@ class UnifiedMissionV2Model(BaseModel):
     start_pose: PoseModel
     start_target_id: str | None = None
     segments: list[MissionSegmentV2Model]
-    obstacles: list[ObstacleModel] = Field(default_factory=list)
     overrides: MissionOverridesModel | None = None
     metadata: MissionMetadataV2Model = Field(default_factory=MissionMetadataV2Model)
 

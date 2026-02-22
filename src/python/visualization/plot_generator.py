@@ -29,13 +29,10 @@ from visualization.actuator_plots import (
 from visualization.command_utils import (
     get_thruster_count as infer_thruster_count,
 )
-from visualization.command_utils import (
-    parse_command_vector as parse_command_vector_with_context,
-)
 from visualization.diagnostics_plots import (
     generate_error_vs_solve_time_scatter_plot,
     generate_mpc_performance_plot,
-    generate_obstacle_clearance_over_time_plot,
+    generate_path_shaping_note_plot,
     generate_solver_health_plot,
     generate_solver_iterations_and_status_timeline_plot,
     generate_timing_intervals_plot,
@@ -218,7 +215,7 @@ class PlotGenerator:
             grouped_dirs["diagnostics"]
         )
         self.generate_waypoint_progress_plot(grouped_dirs["diagnostics"])
-        self.generate_obstacle_clearance_over_time_plot(grouped_dirs["diagnostics"])
+        self.generate_path_shaping_note_plot(grouped_dirs["diagnostics"])
         self.generate_error_vs_solve_time_scatter_plot(grouped_dirs["diagnostics"])
         self.generate_timing_intervals_plot(grouped_dirs["diagnostics"])
 
@@ -648,19 +645,6 @@ class PlotGenerator:
         """Determine thruster count based on available data or config."""
         return infer_thruster_count(self.data_accessor, self.app_config)
 
-    def _parse_command_vector(self, command_str: Any) -> np.ndarray:
-        """Parse command vector string to numpy array.
-
-        Args:
-            command_str: String representation of command vector (or any type)
-
-        Returns:
-            numpy array of thruster commands
-        """
-        return parse_command_vector_with_context(
-            command_str, self.data_accessor, self.app_config
-        )
-
     def generate_control_effort_plot(self, plot_dir: Path) -> None:
         """Generate control effort plot."""
         generate_control_effort_plot(self, plot_dir)
@@ -709,9 +693,9 @@ class PlotGenerator:
         """Generate waypoint/mission phase progress plot."""
         generate_waypoint_progress_plot(self, plot_dir)
 
-    def generate_obstacle_clearance_over_time_plot(self, plot_dir: Path) -> None:
-        """Generate obstacle clearance over time plot."""
-        generate_obstacle_clearance_over_time_plot(self, plot_dir)
+    def generate_path_shaping_note_plot(self, plot_dir: Path) -> None:
+        """Generate manual path shaping note plot."""
+        generate_path_shaping_note_plot(self, plot_dir)
 
     def generate_velocity_tracking_plot(self, plot_dir: Path) -> None:
         """Generate velocity tracking over time plot."""

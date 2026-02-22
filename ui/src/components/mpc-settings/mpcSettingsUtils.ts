@@ -8,7 +8,7 @@ export function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-export function stripRemovedMpcFields(
+function stripRemovedMpcFields(
   mpc: Record<string, unknown> | null | undefined
 ): Record<string, unknown> {
   const source = mpc ?? {};
@@ -171,7 +171,6 @@ export function buildV3Envelope(config: SettingsConfig): Record<string, unknown>
   };
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const MPC_SETTINGS_TESTING = {
   normalizeConfig,
   buildV3Envelope,
@@ -186,7 +185,7 @@ export function deepCloneConfig(config: SettingsConfig): SettingsConfig {
   return JSON.parse(JSON.stringify(config)) as SettingsConfig;
 }
 
-export function parseApiErrorText(payload: string): string {
+function parseApiErrorText(payload: string): string {
   if (!payload) return '';
   try {
     const parsed = JSON.parse(payload) as Record<string, unknown>;
