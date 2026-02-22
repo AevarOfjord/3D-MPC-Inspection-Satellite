@@ -26,13 +26,30 @@ export function useMissionDraftState({
   };
 
   const saveMissionDraft = async (mission: UnifiedMission) => {
-    const draft = await saveDraft(mission, {
-      draft_id: draftId ?? undefined,
-      base_revision: draftRevision ?? undefined,
-    });
-    setDraftMetadata(draft.draft_id, draft.revision, draft.saved_at);
-    window.localStorage.setItem(storageKey, draft.draft_id);
-    return draft;
+    try {
+      const draft = await saveDraft(mission, {
+        draft_id: draftId ?? undefined,
+        base_revision: draftRevision ?? undefined,
+      });
+      setDraftMetadata(draft.draft_id, draft.revision, draft.saved_at);
+      window.localStorage.setItem(storageKey, draft.draft_id);
+      return draft;
+    } catch (err: unknown) {
+      // On a 409 revision conflict the server has a newer revision than we know about.
+      // Re-try once with no base_revision so we force-overwrite with the latest client state.
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('409') || message.toLowerCase().includes('conflict')) {
+        const draft = await saveDraft(mission, {
+          draft_id: draftId ?? undefined,
+          // omit base_revision → server skips the conflict check
+          base_revision: undefined,
+        });
+        setDraftMetadata(draft.draft_id, draft.revision, draft.saved_at);
+        window.localStorage.setItem(storageKey, draft.draft_id);
+        return draft;
+      }
+      throw err;
+    }
   };
 
   return {
