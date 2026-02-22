@@ -168,6 +168,11 @@ class MPCController(Controller):
             self.tube_feedback_max_correction
         )
         mpc_params.enable_variable_scaling = bool(self.enable_variable_scaling)
+        mpc_params.progress_policy = str(self.progress_policy)
+        mpc_params.error_priority_min_vs = float(self.error_priority_min_vs)
+        mpc_params.error_priority_error_speed_gain = float(
+            self.error_priority_error_speed_gain
+        )
 
         self._cpp_controller = MPCControllerCpp(sat_params, mpc_params)
 
@@ -627,6 +632,11 @@ class MPCController(Controller):
         self.tube_feedback_gain_scale = float(mpc.tube_feedback_gain_scale)
         self.tube_feedback_max_correction = float(mpc.tube_feedback_max_correction)
         self.enable_variable_scaling = bool(mpc.enable_variable_scaling)
+        self.progress_policy = str(mpc.progress_policy)
+        self.error_priority_min_vs = float(mpc.error_priority_min_vs)
+        self.error_priority_error_speed_gain = float(
+            mpc.error_priority_error_speed_gain
+        )
 
         # Path Following. - General Path MPCC
         self.Q_contour = mpc.Q_contour

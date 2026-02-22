@@ -63,6 +63,9 @@ struct MPCParams {
     double tube_feedback_gain_scale = 0.15; ///< Ancillary tube-feedback gain scale [0..1]
     double tube_feedback_max_correction = 0.25; ///< Max absolute tube correction per control channel
     bool enable_variable_scaling = true; ///< Solve in scaled decision coordinates for better conditioning
+    std::string progress_policy = "speed_tracking"; ///< speed_tracking|error_priority
+    double error_priority_min_vs = 0.01; ///< Minimum forward progress speed in error-priority mode
+    double error_priority_error_speed_gain = 8.0; ///< How strongly path error reduces max progress speed
 
 
 
