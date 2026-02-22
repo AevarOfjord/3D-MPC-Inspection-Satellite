@@ -267,28 +267,15 @@ class ConfigIO:
 
     @staticmethod
     def _dict_to_mission_state(mission_state_dict: dict[str, Any]) -> MissionState:
-        """Convert dictionary to MissionState, handling nested and flat path keys."""
+        """Convert dictionary to MissionState using canonical runtime fields."""
         from .mission_state import (
             MissionState,
             ObstacleState,
             PathFollowingState,
         )
 
-        def _pick_first_non_none(*values: Any) -> Any:
-            for value in values:
-                if value is not None:
-                    return value
-            return None
-
-        def _resolve_path_hold_end(
-            trajectory_dict: dict[str, Any] | None = None,
-        ) -> float:
-            trajectory_dict = trajectory_dict or {}
-            hold_raw = _pick_first_non_none(
-                mission_state_dict.get("path_hold_end"),
-                trajectory_dict.get("hold_end"),
-                mission_state_dict.get("trajectory_hold_end"),
-            )
+        def _resolve_path_hold_end() -> float:
+            hold_raw = mission_state_dict.get("path_hold_end")
             if hold_raw is None:
                 return float(DEFAULT_PATH_HOLD_END_S)
             return float(hold_raw)
@@ -318,39 +305,13 @@ class ConfigIO:
                     setattr(ms, key, mission_state_dict[key])
             return ms
 
-        # 1. Attempt to load as new nested structure first
-        if any(
-            key in mission_state_dict
-            for key in ("path", "obstacle_state", "scan", "trajectory")
-        ):
-            trajectory_dict = mission_state_dict.get("trajectory", {})
-            ms = MissionState(
-                path=PathFollowingState(**mission_state_dict.get("path", {})),
-                obstacle_state=ObstacleState(
-                    **mission_state_dict.get("obstacle_state", {})
-                ),
-                path_hold_end=_resolve_path_hold_end(trajectory_dict),
-            )
-            return _apply_path_tracking_fields(ms)
-
-        # 2. Fallback: Map flat path/obstacle keys to structure
-        ms = MissionState()
-
-        # Path Following (path-only)
-        path_points = mission_state_dict.get("path_waypoints", [])
-        if path_points:
-            ms.path.waypoints = path_points
-        ms.path.path_speed = mission_state_dict.get("path_speed", ms.path.path_speed)
-        ms.path.path_length = mission_state_dict.get("path_length", ms.path.path_length)
-        ms.path.active = mission_state_dict.get("path_following_active", ms.path.active)
-        if path_points and "path_following_active" not in mission_state_dict:
-            ms.path.active = True
-
-        # Obstacles
-        ms.obstacle_state.enabled = mission_state_dict.get("obstacles_enabled", False)
-        ms.obstacle_state.obstacles = mission_state_dict.get("obstacles", [])
-        ms.path_hold_end = _resolve_path_hold_end()
-
+        ms = MissionState(
+            path=PathFollowingState(**mission_state_dict.get("path", {})),
+            obstacle_state=ObstacleState(
+                **mission_state_dict.get("obstacle_state", {})
+            ),
+            path_hold_end=_resolve_path_hold_end(),
+        )
         return _apply_path_tracking_fields(ms)
 
     @staticmethod

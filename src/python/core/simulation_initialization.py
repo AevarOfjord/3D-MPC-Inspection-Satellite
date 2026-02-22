@@ -161,7 +161,7 @@ class SimulationInitializer:
 
         # Configure Path for Path-Following Mode (Always Active)
         if (
-            not getattr(mission_state, "path_waypoints", None)
+            not mission_state.path_waypoints
             and start_pos is not None
             and path_end_pos is not None
         ):
@@ -170,9 +170,7 @@ class SimulationInitializer:
             )
 
             obstacles = (
-                mission_state.obstacles
-                if getattr(mission_state, "obstacles_enabled", False)
-                else None
+                mission_state.obstacles if mission_state.obstacles_enabled else None
             )
             path = build_point_to_point_path(
                 waypoints=[tuple(start_pos), tuple(path_end_pos)],
@@ -193,60 +191,45 @@ class SimulationInitializer:
             mission_state.path_length = path_length
             mission_state.path_speed = float(app_config.mpc.path_speed)
 
-        if (
-            hasattr(self.simulation.mpc_controller, "set_path")
-            and hasattr(mission_state, "path_waypoints")
-            and mission_state.path_waypoints
-        ):
+        if mission_state.path_waypoints:
             logger.info(
                 "Configuring MPC Controller with path data for path-following..."
             )
             self.simulation.mpc_controller.set_path(mission_state.path_waypoints)
             self.simulation.planned_path = list(mission_state.path_waypoints)
 
-        if hasattr(self.simulation.mpc_controller, "set_obstacles"):
-            if getattr(mission_state, "obstacles_enabled", False) and getattr(
-                mission_state, "obstacles", None
-            ):
-                self.simulation.mpc_controller.set_obstacles(
-                    list(mission_state.obstacles)
-                )
-            elif hasattr(self.simulation.mpc_controller, "clear_obstacles"):
-                self.simulation.mpc_controller.clear_obstacles()
+        if mission_state.obstacles_enabled and mission_state.obstacles:
+            self.simulation.mpc_controller.set_obstacles(list(mission_state.obstacles))
+        else:
+            self.simulation.mpc_controller.clear_obstacles()
 
-        # Configure optional scan attitude context from mission runtime metadata.
-        if hasattr(self.simulation.mpc_controller, "set_scan_attitude_context"):
-            self.simulation.mpc_controller.set_scan_attitude_context(
-                getattr(mission_state, "scan_attitude_center", None),
-                getattr(mission_state, "scan_attitude_axis", None),
-                getattr(mission_state, "scan_attitude_direction", "CW"),
-            )
+        # Configure scan attitude context from mission runtime metadata.
+        self.simulation.mpc_controller.set_scan_attitude_context(
+            mission_state.scan_attitude_center,
+            mission_state.scan_attitude_axis,
+            mission_state.scan_attitude_direction,
+        )
 
         # Align initial attitude so body +X starts along the first path segment.
-        if getattr(mission_state, "path_waypoints", None):
+        if mission_state.path_waypoints:
             aligned_start_angle = self._align_start_angle_to_path(
                 start_angle=start_angle,
                 path_waypoints=list(mission_state.path_waypoints),
                 start_pos=np.array(start_pos, dtype=float),
-                frame_origin=np.array(
-                    getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0)),
-                    dtype=float,
-                ),
+                frame_origin=np.array(mission_state.frame_origin, dtype=float),
                 scan_center=np.array(
-                    getattr(mission_state, "scan_attitude_center", np.zeros(3)),
+                    mission_state.scan_attitude_center,
                     dtype=float,
                 )
-                if getattr(mission_state, "scan_attitude_center", None) is not None
+                if mission_state.scan_attitude_center is not None
                 else None,
                 scan_axis=np.array(
-                    getattr(mission_state, "scan_attitude_axis", np.zeros(3)),
+                    mission_state.scan_attitude_axis,
                     dtype=float,
                 )
-                if getattr(mission_state, "scan_attitude_axis", None) is not None
+                if mission_state.scan_attitude_axis is not None
                 else None,
-                scan_direction=str(
-                    getattr(mission_state, "scan_attitude_direction", "CW")
-                ),
+                scan_direction=str(mission_state.scan_attitude_direction),
             )
             if aligned_start_angle != start_angle:
                 logger.info(
@@ -351,36 +334,28 @@ class SimulationInitializer:
 
         # Prefer C++ reference frame so startup orientation matches MPC attitude
         # target exactly (single source of truth).
-        if (
-            hasattr(self.simulation, "mpc_controller")
-            and hasattr(self.simulation.mpc_controller, "get_path_reference_state")
-            and hasattr(self.simulation.mpc_controller, "_cpp_controller")
-            and hasattr(
-                self.simulation.mpc_controller._cpp_controller, "get_reference_at_s"
+        try:
+            q_start = euler_xyz_to_quat_wxyz(start_angle)
+            _, _, q_ref = self.simulation.mpc_controller.get_path_reference_state(
+                s_query=0.0, q_current=q_start
             )
-        ):
-            try:
-                q_start = euler_xyz_to_quat_wxyz(start_angle)
-                _, _, q_ref = self.simulation.mpc_controller.get_path_reference_state(
-                    s_query=0.0, q_current=q_start
-                )
-                q_ref_arr = np.array(q_ref, dtype=float).reshape(-1)
-                if q_ref_arr.size >= 4:
-                    q_ref_arr = q_ref_arr[:4]
-                    q_norm = float(np.linalg.norm(q_ref_arr))
-                    if q_norm > 1e-9:
-                        q_ref_arr = q_ref_arr / q_norm
-                        euler_xyz = quat_wxyz_to_euler_xyz(q_ref_arr)
-                        return (
-                            float(euler_xyz[0]),
-                            float(euler_xyz[1]),
-                            float(euler_xyz[2]),
-                        )
-            except Exception:
-                logger.debug(
-                    "C++ startup reference query failed, using Python frame fallback",
-                    exc_info=True,
-                )
+            q_ref_arr = np.array(q_ref, dtype=float).reshape(-1)
+            if q_ref_arr.size >= 4:
+                q_ref_arr = q_ref_arr[:4]
+                q_norm = float(np.linalg.norm(q_ref_arr))
+                if q_norm > 1e-9:
+                    q_ref_arr = q_ref_arr / q_norm
+                    euler_xyz = quat_wxyz_to_euler_xyz(q_ref_arr)
+                    return (
+                        float(euler_xyz[0]),
+                        float(euler_xyz[1]),
+                        float(euler_xyz[2]),
+                    )
+        except Exception:
+            logger.debug(
+                "C++ startup reference query failed, using Python frame fallback",
+                exc_info=True,
+            )
 
         z_axis: np.ndarray
         y_axis: np.ndarray
@@ -710,7 +685,7 @@ class SimulationInitializer:
         """Initialize MPC controller."""
         logger.info("Initializing MPC Controller (Mode: PWM/OSQP)...")
 
-        # If we have an override cfg (legacy/manual), use it
+        # If the simulation object carries an explicit AppConfig override, prefer it.
         cfg_override = getattr(self.simulation, "cfg", None)
         if isinstance(cfg_override, AppConfig):
             self.simulation.mpc_controller = MPCController(cfg=cfg_override)

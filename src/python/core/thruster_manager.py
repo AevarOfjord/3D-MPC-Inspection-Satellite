@@ -128,7 +128,7 @@ class ThrusterManager:
                 if old_command <= 0.01:
                     self.thruster_open_command_time[i] = simulation_time
             else:  # OFF command
-                # Always update close time for off commands to match legacy behavior
+                # Always update close time for off commands.
                 self.thruster_close_command_time[i] = simulation_time
 
             self.thruster_last_command[i] = new_command
@@ -292,18 +292,11 @@ class ThrusterManager:
         previous_active = set(satellite.active_thrusters)
         satellite.active_thrusters.clear()
 
-        # Cache capability check (once per satellite instance)
-        has_set_level = getattr(self, "_sat_has_set_level", None)
-        if has_set_level is None:
-            has_set_level = hasattr(satellite, "set_thruster_level")
-            self._sat_has_set_level = has_set_level
-
         for i, output in enumerate(self.thruster_actual_output):
             thruster_id = i + 1  # Thrusters are 1-indexed
 
             # Apply level to satellite physics
-            if has_set_level:
-                satellite.set_thruster_level(thruster_id, output)
+            satellite.set_thruster_level(thruster_id, output)
 
             if output > 0.01:  # Threshold for activation
                 satellite.active_thrusters.add(thruster_id)

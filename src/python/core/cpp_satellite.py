@@ -13,22 +13,16 @@ _CPP_SIM_IMPORT_ERROR: ImportError | None = None
 try:
     from cpp._cpp_sim import SatelliteParams, SimulationEngine
 except ImportError as exc_src:
-    try:
-        from cpp._cpp_sim import SatelliteParams, SimulationEngine
-    except ImportError as exc_installed:
-        _CPP_SIM_IMPORT_ERROR = (
-            exc_src if "Python version mismatch" in str(exc_src) else exc_installed
-        )
-        # Allow import without compiled module for typing/testing if optional
-        SimulationEngine = None  # type: ignore
-        SatelliteParams = None  # type: ignore
+    _CPP_SIM_IMPORT_ERROR = exc_src
+    # Allow import without compiled module for typing/testing if optional.
+    SimulationEngine = None  # type: ignore
+    SatelliteParams = None  # type: ignore
 except Exception as exc:  # pragma: no cover - import-time runtime mismatch details
     _CPP_SIM_IMPORT_ERROR = ImportError(str(exc))
     SimulationEngine = None  # type: ignore
     SatelliteParams = None  # type: ignore
 
 from config.orbital_config import OrbitalConfig
-from config.timing import SIMULATION_DT
 from utils.orientation_utils import (
     euler_xyz_to_quat_wxyz,
     quat_wxyz_to_euler_xyz,
@@ -60,9 +54,9 @@ def _raise_cpp_sim_binding_import_error() -> None:
 class CppSatelliteSimulator:
     """
     Python wrapper for the C++ Simulation Engine.
-    Mimics the legacy Python simulator interface for seamless drop-in replacement.
+    Implements the Python simulator interface for seamless drop-in replacement.
 
-    Faster than the legacy Python physics backend for orbital dynamics simulation.
+    Faster than the Python physics backend for orbital dynamics simulation.
     """
 
     def __init__(self, app_config: AppConfig):
@@ -76,13 +70,7 @@ class CppSatelliteSimulator:
             _raise_cpp_sim_binding_import_error()
 
         self.app_config = app_config
-        # Get physics dt from simulation config (preferred) then mpc, then fallback
-        if hasattr(app_config, "simulation") and hasattr(app_config.simulation, "dt"):
-            self.dt = app_config.simulation.dt
-        elif hasattr(app_config, "mpc") and hasattr(app_config.mpc, "dt"):
-            self.dt = app_config.mpc.dt
-        else:
-            self.dt = SIMULATION_DT  # Single source of truth from timing.py
+        self.dt = app_config.simulation.dt
 
         self.simulation_time = 0.0
 
@@ -97,17 +85,15 @@ class CppSatelliteSimulator:
 
         self.engine = SimulationEngine(self._cpp_params, orbital_mean_motion)
 
-        # Local state cache to match legacy access patterns if needed,
-        # or just fetch from engine on demand.
-        # But setters need to update engine.
+        # Local state cache (setters invalidate the cache).
 
-        # Store for visualizations compatibility
+        # Store for visualization integration.
         self.ax = None
         self.fig = None
         self.thruster_colors = {}
         self.force_history = []
 
-        # Thruster state tracking (for ThrusterManager compatibility)
+        # Thruster state tracking for ThrusterManager integration.
         self.active_thrusters = set()
         self.thruster_activation_time = {}
         self.thruster_deactivation_time = {}
@@ -179,28 +165,13 @@ class CppSatelliteSimulator:
         params.thruster_directions = dir_list
         params.thruster_forces = force_list
 
-        # Reaction Wheels (if config has them)
-        params.num_rw = 0
-        params.rw_torque_limits = []
-
-        # Check if cfg has vehicle attribute (DictConfig) or we are using AppConfig
-        if hasattr(cfg, "reaction_wheels") and cfg.reaction_wheels:
-            rws = cfg.reaction_wheels
-            params.num_rw = len(rws)
-            params.rw_torque_limits = [float(rw.max_torque) for rw in rws]
-            params.rw_inertia = [
-                float(rw.inertia) if hasattr(rw, "inertia") else 0.001 for rw in rws
-            ]
-            if hasattr(params, "rw_speed_limits"):
-                params.rw_speed_limits = [
-                    float(getattr(rw, "max_speed", 0.0)) for rw in rws
-                ]
-        elif hasattr(cfg, "mpc") and hasattr(cfg.mpc, "r_rw_torque"):
-            # Basic fallback if needed, but safe to leave 0
-            pass
-        else:
-            if hasattr(params, "rw_speed_limits"):
-                params.rw_speed_limits = []
+        # Reaction Wheels.
+        rws = list(cfg.physics.reaction_wheels)
+        params.num_rw = len(rws)
+        params.rw_torque_limits = [float(rw.max_torque) for rw in rws]
+        params.rw_inertia = [float(rw.inertia) for rw in rws]
+        if hasattr(params, "rw_speed_limits"):
+            params.rw_speed_limits = [float(rw.max_speed) for rw in rws]
 
         params.com_offset = np.array(cfg.physics.com_offset)
 

@@ -4,7 +4,7 @@
 #include "orbital_dynamics.hpp"
 
 namespace py = pybind11;
-using namespace satellite_control;
+using satellite_control::CWDynamics;
 
 PYBIND11_MODULE(_cpp_physics, m) {
     m.doc() = "C++ backend for Satellite Physics (Orbital Dynamics)";

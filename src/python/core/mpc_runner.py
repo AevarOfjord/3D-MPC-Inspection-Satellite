@@ -53,23 +53,15 @@ class MPCRunner:
 
         # Internal state management
         default_thruster_count = THRUSTER_COUNT
-        if self.config is not None and hasattr(self.config, "physics"):
-            try:
-                default_thruster_count = len(self.config.physics.thruster_positions)
-            except Exception:
-                logger.debug("Failed to read thruster count from config")
-                default_thruster_count = THRUSTER_COUNT
+        if self.config is not None:
+            default_thruster_count = len(self.config.physics.thruster_positions)
         self.thruster_count = getattr(self.mpc, "num_thrusters", default_thruster_count)
         self.rw_axes = getattr(self.mpc, "num_rw_axes", 0)
         self.previous_thrusters = np.zeros(self.thruster_count, dtype=np.float64)
         if self.actuator_policy is None:
-            cfg_mpc = (
-                getattr(self.config, "mpc", None) if self.config is not None else None
-            )
+            cfg_mpc = self.config.mpc if self.config is not None else None
             cfg_actuator = (
-                getattr(self.config, "actuator_policy", None)
-                if self.config is not None
-                else None
+                self.config.actuator_policy if self.config is not None else None
             )
             self.actuator_policy = ActuatorPolicyV6(
                 enable_thruster_hysteresis=bool(
@@ -154,23 +146,17 @@ class MPCRunner:
         start_compute_time = time.perf_counter()
         mpc_info: dict[str, Any] = {}
         mode_name = self._current_mode_name()
-        if hasattr(self.mpc, "set_runtime_mode"):
-            try:
-                self.mpc.set_runtime_mode(mode_name)
-            except Exception:
-                logger.debug(
-                    "Failed to forward runtime mode to MPC controller", exc_info=True
-                )
+        try:
+            self.mpc.set_runtime_mode(mode_name)
+        except Exception:
+            logger.debug(
+                "Failed to forward runtime mode to MPC controller", exc_info=True
+            )
 
         try:
             control_action, mpc_info = self.mpc.get_control_action(
                 x_current=measured_state,
                 previous_thrusters=previous_thrusters,
-            )
-        except TypeError:
-            logger.warning("Controller signature mismatch; falling back.")
-            control_action, mpc_info = self.mpc.get_control_action(
-                measured_state, previous_thrusters
             )
         except Exception:
             logger.exception(
@@ -209,13 +195,7 @@ class MPCRunner:
             if control_action.ndim == 2:
                 control_action = control_action[0, :]
 
-            if hasattr(self.mpc, "split_control"):
-                rw_torque, thruster_action = self.mpc.split_control(control_action)
-            elif self.rw_axes and control_action.size >= self.rw_axes:
-                rw_torque = control_action[: self.rw_axes]
-                thruster_action = control_action[self.rw_axes :]
-            else:
-                thruster_action = control_action
+            rw_torque, thruster_action = self.mpc.split_control(control_action)
 
             # Validate size - must match configured thruster count
             if len(thruster_action) != self.thruster_count:

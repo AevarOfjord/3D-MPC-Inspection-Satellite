@@ -7,7 +7,6 @@
 #include <memory>
 #include <tuple>
 #include <string>
-#include <algorithm>
 #include <limits>
 #include <chrono>
 #include "osqp.h"
@@ -57,11 +56,11 @@ struct MPCParams {
 
 
 
-    // Collision avoidance (V3.0.0)
+    // Collision avoidance
     bool enable_collision_avoidance = false; ///< Enable obstacle avoidance
     double obstacle_margin = 0.5;            ///< Safety margin for obstacles [m]
 
-    // Path Following (V4.0.0) - General Path MPCC
+    // Path following (general MPCC)
     double path_speed = 0.1;           ///< Path speed along reference [m/s]
     double path_speed_min = 0.01;      ///< Minimum path speed [m/s]
     double path_speed_max = 0.1;       ///< Maximum path speed [m/s]
@@ -235,9 +234,6 @@ private:
     VectorXd control_lower_;
     VectorXd control_upper_;
 
-    // State tracking
-    Eigen::Vector4d prev_quat_;
-
     // -- Initialization Helpers --
     /**
      * @brief Initialize the OSQP solver, matrices, and settings.
@@ -355,7 +351,7 @@ private:
     bool fallback_active_ = false;
     std::chrono::steady_clock::time_point fallback_started_at_{};
 
-    // -- General Path Data (V4.0.1) --
+    // General path data
     // Path is defined as a list of (s, x, y, z) samples
     // where s is the arc-length parameter
     std::vector<double> path_s_;              // Arc-length samples [0, total_length]
@@ -367,8 +363,6 @@ private:
     bool scan_center_valid_ = false;
     Eigen::Vector3d scan_axis_ = Eigen::Vector3d(0.0, 0.0, 1.0);
     bool scan_direction_cw_ = true;
-    std::vector<Eigen::Vector4d> scan_q_ref_traj_; // Predicted quaternion reference (k=0..N)
-    bool scan_q_ref_valid_ = false;
     mutable bool ref_frame_initialized_ = false;
     mutable Eigen::Vector3d ref_prev_x_axis_ = Eigen::Vector3d::Zero();
     mutable Eigen::Vector3d ref_prev_y_axis_ = Eigen::Vector3d::Zero();

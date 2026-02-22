@@ -11,6 +11,8 @@ from config.simulation_config import SimulationConfig
 from control.mpc_controller import MPCController
 from core.mpc_runner import MPCRunner
 
+import cpp
+
 
 class TestMPCController:
     """Tests for the MPC Controller."""
@@ -174,6 +176,34 @@ class TestMPCController:
         t /= np.linalg.norm(t)
         assert np.dot(t, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.999
 
+    def test_cpp_loader_uses_only_canonical_namespace(self, monkeypatch):
+        """cpp extension loader should only probe the canonical cpp.* namespace."""
+        attempted: list[str] = []
+
+        def _fake_import(module_name: str):
+            attempted.append(module_name)
+            raise ImportError("not found")
+
+        monkeypatch.setattr(cpp.importlib, "import_module", _fake_import)
+        assert cpp._load_extension("_not_a_real_extension") is None
+        assert attempted == ["cpp._not_a_real_extension"]
+
+    def test_get_control_action_no_legacy_two_arg_fallback(self):
+        """Wrapper should not retry legacy two-arg C++ get_control_action signature."""
+        cfg = SimulationConfig.create_default()
+        controller = MPCController(cfg.app_config)
+
+        class _StrictCpp:
+            def get_control_action(self, x_input):
+                raise TypeError("signature mismatch")
+
+        controller._cpp_controller = _StrictCpp()
+
+        x_current = np.zeros(16, dtype=np.float64)
+        x_current[3] = 1.0
+        with pytest.raises(TypeError):
+            controller.get_control_action(x_current)
+
 
 class _DummyMPCController:
     def __init__(self, next_action: np.ndarray):
@@ -196,6 +226,9 @@ class _DummyMPCController:
 
     def get_control_action(self, x_current, previous_thrusters=None):
         return self._next_action.copy(), dict(self._next_info)
+
+    def split_control(self, control: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return np.zeros(0, dtype=np.float64), np.array(control, dtype=np.float64)
 
 
 class TestMPCRunnerHysteresis:

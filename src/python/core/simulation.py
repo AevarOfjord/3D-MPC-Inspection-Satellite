@@ -107,13 +107,13 @@ class SatelliteMPCLinearizedSimulation:
     - SimulationLoop: Handles main loop execution
     - Various managers: MPC, Mission, Thruster, etc.
 
-    The public API remains unchanged for backward compatibility.
+    Public API orchestrator over modular runtime components.
     """
 
     def __init__(
         self,
         cfg: AppConfig | Any | None = None,
-        # Legacy/Testing overrides (kept for compatibility but preferred is cfg=AppConfig)
+        # Optional runtime overrides.
         start_pos: tuple[float, ...] | None = None,
         end_pos: tuple[float, ...] | None = None,
         start_angle: tuple[float, float, float] | None = None,
@@ -139,7 +139,7 @@ class SatelliteMPCLinearizedSimulation:
             start_vz: Initial Z velocity.
             start_omega: Initial angular velocity.
             simulation_config: Optional SimulationConfig object (overrides cfg).
-            config_overrides: Optional SimulationConfig overrides (legacy compatibility).
+            config_overrides: Optional SimulationConfig overrides.
         """
         self.cfg = cfg
 
@@ -186,7 +186,7 @@ class SatelliteMPCLinearizedSimulation:
         """Get current satellite state [pos(3), quat(4), vel(3), ang_vel(3), wheel(3)]."""
         s = self.satellite
         # Pre-allocated buffer avoids np.concatenate allocation each call
-        if not hasattr(self, "_state_buffer"):
+        if getattr(self, "_state_buffer", None) is None:
             self._state_buffer = np.empty(16, dtype=np.float64)
         buf = self._state_buffer
         buf[0:3] = s.position
@@ -257,7 +257,7 @@ class SatelliteMPCLinearizedSimulation:
         """Safely get mission state from simulation config."""
         if self.simulation_config is None:
             return None
-        return getattr(self.simulation_config, "mission_state", None)
+        return self.simulation_config.mission_state
 
     def _get_mission_path_waypoints(self) -> list:
         """Get mission path waypoints using canonical mission-state accessors."""
@@ -270,16 +270,15 @@ class SatelliteMPCLinearizedSimulation:
 
     def _get_mission_path_length(self, compute_if_missing: bool = False) -> float:
         """Get best-available path length (MPC cache first, then mission state)."""
-        if hasattr(self, "mpc_controller") and self.mpc_controller is not None:
-            if hasattr(self.mpc_controller, "_path_length"):
-                try:
-                    path_len = float(
-                        getattr(self.mpc_controller, "_path_length", 0.0) or 0.0
-                    )
-                    if path_len > 0.0:
-                        return path_len
-                except (TypeError, ValueError):
-                    pass
+        if self.mpc_controller is not None:
+            try:
+                path_len = float(
+                    getattr(self.mpc_controller, "_path_length", 0.0) or 0.0
+                )
+                if path_len > 0.0:
+                    return path_len
+            except (TypeError, ValueError):
+                pass
 
         mission_state = self._get_mission_state()
         if mission_state is None:
@@ -321,10 +320,9 @@ class SatelliteMPCLinearizedSimulation:
             return
 
         stride = int(getattr(self, "physics_log_stride", 1) or 1)
-        if not hasattr(self, "_physics_log_counter"):
-            self._physics_log_counter = 0
-        self._physics_log_counter += 1
-        if stride > 1 and (self._physics_log_counter % stride) != 0:
+        physics_log_counter = int(getattr(self, "_physics_log_counter", 0)) + 1
+        self._physics_log_counter = physics_log_counter
+        if stride > 1 and (physics_log_counter % stride) != 0:
             return
 
         current_state = self.get_current_state()
@@ -335,7 +333,7 @@ class SatelliteMPCLinearizedSimulation:
         )
 
         # Delegate to SimulationLogger
-        if not hasattr(self, "physics_logger_helper"):
+        if getattr(self, "physics_logger_helper", None) is None:
             from core.simulation_logger import (
                 SimulationLogger,
             )
@@ -344,13 +342,14 @@ class SatelliteMPCLinearizedSimulation:
 
         mission_state = self._get_mission_state()
         frame_origin = None
-        if mission_state and hasattr(mission_state, "frame_origin"):
+        if mission_state is not None:
             frame_origin = np.array(mission_state.frame_origin, dtype=float)
 
         # Get RW torque if available
         rw_torque = np.zeros(3)
-        if hasattr(self.satellite, "_current_rw_torques"):
-            rw_torque = self.satellite._current_rw_torques.copy()
+        sat_rw_torques = getattr(self.satellite, "_current_rw_torques", None)
+        if sat_rw_torques is not None:
+            rw_torque = np.array(sat_rw_torques, dtype=float).copy()
 
         self.physics_logger_helper.log_physics_step(
             simulation_time=self.simulation_time,
@@ -456,7 +455,6 @@ class SatelliteMPCLinearizedSimulation:
         mpc_computation_time: float | None = None,
         control_loop_duration: float | None = None,
         rw_torque: np.ndarray | None = None,
-        **legacy_kwargs: Any,
     ) -> None:
         """Log simulation step data to CSV and terminal output."""
         log_simulation_step_impl(
@@ -470,7 +468,6 @@ class SatelliteMPCLinearizedSimulation:
             mpc_computation_time=mpc_computation_time,
             control_loop_duration=control_loop_duration,
             rw_torque=rw_torque,
-            **legacy_kwargs,
         )
 
     def check_path_complete(self) -> bool:
@@ -540,7 +537,7 @@ class SatelliteMPCLinearizedSimulation:
         logger.info("Resetting simulation...")
 
         # 1. Reset Physics State
-        if hasattr(self, "satellite") and hasattr(self, "initial_start_pos"):
+        if getattr(self, "satellite", None) is not None:
             self.satellite.position = self.initial_start_pos.copy()
             self.satellite.velocity = np.zeros(3)
             self.satellite.angle = self.initial_start_angle
@@ -561,10 +558,10 @@ class SatelliteMPCLinearizedSimulation:
         self.last_solve_time = 0.0
         self.last_pos_error = 0.0
         self.last_ang_error = 0.0
-        if hasattr(self, "_ref_prev_y_axis"):
-            delattr(self, "_ref_prev_y_axis")
-        if hasattr(self, "_ref_prev_z_axis"):
-            delattr(self, "_ref_prev_z_axis")
+        if getattr(self, "_ref_prev_y_axis", None) is not None:
+            del self._ref_prev_y_axis
+        if getattr(self, "_ref_prev_z_axis", None) is not None:
+            del self._ref_prev_z_axis
 
         # 5. Visualizer Reset
         self.visualizer.sync_from_controller()
@@ -599,7 +596,7 @@ class SatelliteMPCLinearizedSimulation:
         Execute a single simulation step.
         v4.0.0: Expose stepping for external runners (e.g. Dashboard).
         """
-        if not hasattr(self, "loop"):
+        if getattr(self, "loop", None) is None:
             # Lazy init of loop helper
             from core.simulation_loop import SimulationLoop
 
@@ -609,7 +606,7 @@ class SatelliteMPCLinearizedSimulation:
             self.is_running = True
 
             # Context setup
-            if not hasattr(self, "context"):
+            if getattr(self, "context", None) is None:
                 from core.simulation_context import (
                     SimulationContext,
                 )
@@ -621,9 +618,7 @@ class SatelliteMPCLinearizedSimulation:
         self.loop.update_step(None)
 
     def update_simulation(self, frame: int | None = None) -> None:
-        """
-        Legacy alias for step() to maintain compatibility with older tests/tools.
-        """
+        """Alias for step()."""
         self.step()
 
     def is_complete(self) -> bool:
@@ -647,11 +642,13 @@ class SatelliteMPCLinearizedSimulation:
         _get_plt().close("all")
 
         # Close visualizer if it supports it
-        if hasattr(self, "visualizer") and hasattr(self.visualizer, "close"):
-            self.visualizer.close()
+        visualizer = getattr(self, "visualizer", None)
+        if visualizer is not None and callable(getattr(visualizer, "close", None)):
+            visualizer.close()
 
         # Close satellite resources if accessible
-        if hasattr(self, "satellite") and hasattr(self.satellite, "close"):
-            self.satellite.close()
+        satellite = getattr(self, "satellite", None)
+        if satellite is not None and callable(getattr(satellite, "close", None)):
+            satellite.close()
 
         logger.info("Simulation closed.")

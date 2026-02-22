@@ -1,6 +1,5 @@
 
 #include "linearizer.hpp"
-#include <cmath>
 
 namespace satellite_control {
 

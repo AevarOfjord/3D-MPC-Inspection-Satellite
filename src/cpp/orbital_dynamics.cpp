@@ -121,7 +121,6 @@ Eigen::Vector3d TwoBodyDynamics::compute_acceleration(const Eigen::Vector3d& abs
 
 Eigen::Vector3d TwoBodyDynamics::compute_relative_acceleration(
     const Eigen::Vector3d& rel_position,
-    const Eigen::Vector3d& rel_velocity,
     const Eigen::Vector3d& target_pos
 ) const {
     // Inspector absolute position = target + relative
@@ -132,9 +131,6 @@ Eigen::Vector3d TwoBodyDynamics::compute_relative_acceleration(
     Eigen::Vector3d a_target = compute_acceleration(target_pos);
 
     // Relative acceleration (differential gravity)
-    // Note: rel_velocity is unused here but kept for interface consistency
-    (void)rel_velocity;
-
     return a_inspector - a_target;
 }
 

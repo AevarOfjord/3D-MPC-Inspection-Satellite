@@ -111,23 +111,6 @@ class PointingGuardrailStatusV6:
 
 
 @dataclass
-class ControlResultV6:
-    """Normalized control-step result contract emitted by MPC runtime."""
-
-    controller_core: str
-    solver_backend: str
-    solver_status: int | None
-    solver_success: bool
-    solver_fallback: bool
-    solver_fallback_reason: str | None
-    solve_time_s: float
-    timeout: bool
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass
 class QualityContractReportV6:
     """Serializable contract report payload for quality harness outputs."""
 
@@ -191,9 +174,10 @@ def _angle_between_deg(a: np.ndarray, b: np.ndarray) -> float:
 
 def _extract_mission_state(sim: Any) -> Any:
     mission_state = None
-    if hasattr(sim, "_get_mission_state"):
+    mission_state_getter = getattr(sim, "_get_mission_state", None)
+    if callable(mission_state_getter):
         try:
-            mission_state = sim._get_mission_state()
+            mission_state = mission_state_getter()
         except Exception:
             mission_state = None
     if mission_state is None:

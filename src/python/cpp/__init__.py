@@ -19,17 +19,10 @@ def _inject_local_build_paths() -> None:
 
 def _load_extension(name: str):
     _inject_local_build_paths()
-    candidates = (
-        f"cpp.{name}",
-        name,  # flat install fallback
-        f"satellite_control.cpp.{name}",  # legacy editable layout
-    )
-    for module_name in candidates:
-        try:
-            return importlib.import_module(module_name)
-        except Exception:
-            continue
-    return None
+    try:
+        return importlib.import_module(f"cpp.{name}")
+    except Exception:
+        return None
 
 
 for _mod in ("_cpp_mpc", "_cpp_sim", "_cpp_physics"):

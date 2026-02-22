@@ -35,7 +35,6 @@ Eigen::Vector3d SimulationEngine::get_rw_speeds() const {
 
 void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) {
     if (thruster_cmds.size() != params_.num_thrusters) {
-        // Just warning or throw? Throw for safety
         throw std::invalid_argument("Thruster commands size mismatch");
     }
 
@@ -98,12 +97,9 @@ void SimulationEngine::step(double dt, const std::vector<double>& thruster_cmds,
     // Re-normalize quaternion
     state_.segment<4>(3).normalize();
 
-    // Propagate target orbit (for nonlinear dynamics)
     if (use_nonlinear_) {
         two_body_dynamics_.propagate_target(dt);
     }
-
-    // Reaction Wheel Speed Accel: update internal state via derivative now
 }
 
 void SimulationEngine::step_batch(int steps, double dt, const std::vector<double>& thruster_cmds, const std::vector<double>& rw_torques) {
@@ -150,7 +146,7 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     if (use_nonlinear_) {
         // Full two-body (nonlinear) gravity
         Eigen::Vector3d target_pos = two_body_dynamics_.get_target_position();
-        grav_acc = two_body_dynamics_.compute_relative_acceleration(r, v, target_pos);
+        grav_acc = two_body_dynamics_.compute_relative_acceleration(r, target_pos);
     } else {
         // Linear CW approximation
         grav_acc = cw_dynamics_.compute_acceleration(r, v);
@@ -185,7 +181,8 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
     // 5. Wheel Speed Derivative: T_rw / I_rw
     // RW speeds are at indices 13-15
     for(int i=0; i<3; ++i) {
-        double inertia = 0.001; // Default fallback
+        constexpr double kFallbackRwInertia = 1e-3;
+        double inertia = kFallbackRwInertia;
         if (i < params_.rw_inertia.size() && params_.rw_inertia[i] > 1e-6) {
             inertia = params_.rw_inertia[i];
         }

@@ -125,23 +125,8 @@ class PerformanceMetrics:
         if timing_violation:
             self.timing_violations += 1
 
-    @property
-    def mpc_solve_timeouts(self) -> int:
-        """Compatibility alias for timeout count."""
-        return self.mpc_timeout_count
-
-    @property
-    def mpc_solve_failures(self) -> int:
-        """Compatibility alias for failure count."""
-        return self.mpc_failure_count
-
-    @property
-    def control_timing_violations(self) -> int:
-        """Compatibility alias for timing violations."""
-        return self.timing_violations
-
     def calculate_metrics(self) -> None:
-        """Compute summary metrics (compatibility with legacy tests)."""
+        """Compute summary metrics."""
         if self.mpc_solve_times:
             self.mpc_mean_solve_time = float(np.mean(self.mpc_solve_times))
             self.mpc_p50_solve_time = float(np.percentile(self.mpc_solve_times, 50))
@@ -538,7 +523,7 @@ class PerformanceMonitor:
         print(self.metrics.get_summary_string())
 
     def get_summary(self) -> dict[str, Any]:
-        """Return a compatibility summary dictionary."""
+        """Return a summary dictionary."""
         self.metrics.calculate_metrics()
         return {
             "mpc_solves": self.metrics.mpc_solve_count,
@@ -548,7 +533,7 @@ class PerformanceMonitor:
             "mpc_timing_contract_passed": self.metrics.mpc_timing_contract_passed,
             "physics_avg_ms": self.metrics.physics_avg_ms,
             "control_loop_avg_ms": self.metrics.control_loop_avg_ms,
-            "timing_violations": self.metrics.control_timing_violations,
+            "timing_violations": self.metrics.timing_violations,
         }
 
     def check_thresholds(

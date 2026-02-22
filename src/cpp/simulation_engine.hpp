@@ -2,15 +2,10 @@
 
 #include <Eigen/Dense>
 #include <vector>
-#include <random>
 #include "satellite_params.hpp"
 #include "orbital_dynamics.hpp"
 
 namespace satellite_control {
-
-// Using directives not needed since we are in the same namespace now
-// using namespace satellite_dt;
-// using namespace satellite_control; // for CWDynamics
 
 class __attribute__((visibility("default"))) SimulationEngine {
 public:
@@ -76,8 +71,6 @@ private:
     // State vector: [x, y, z, qw, qx, qy, qz, vx, vy, vz, wx, wy, wz, wrx, wry, wrz] (16)
     // Note: Quaternions are stored [w, x, y, z] to match customized layout
     Eigen::VectorXd state_;
-
-    // rw_speeds_ integrated into state_ (indices 13-15)
 
     // Dynamics
     Eigen::VectorXd compute_state_derivative(const Eigen::VectorXd& x, const Eigen::Vector3d& total_force, const Eigen::Vector3d& total_torque, const Eigen::Vector3d& total_rw_torque);

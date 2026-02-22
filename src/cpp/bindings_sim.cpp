@@ -4,7 +4,8 @@
 #include "simulation_engine.hpp"
 
 namespace py = pybind11;
-using namespace satellite_control;
+using satellite_control::SatelliteParams;
+using satellite_control::SimulationEngine;
 
 PYBIND11_MODULE(_cpp_sim, m) {
     m.doc() = "C++ backend for Satellite Simulation Engine";
@@ -45,7 +46,7 @@ PYBIND11_MODULE(_cpp_sim, m) {
              py::arg("steps"), py::arg("dt"), py::arg("thruster_cmds"), py::arg("rw_torques"),
              "Advance simulation by multiple steps with constant inputs")
         .def("get_state", &SimulationEngine::get_state,
-             "Get current state vector [13]")
+             "Get current state vector [16]")
         .def("get_rw_speeds", &SimulationEngine::get_rw_speeds,
              "Get reaction wheel speeds [3]");
 }
