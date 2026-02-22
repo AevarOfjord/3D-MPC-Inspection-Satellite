@@ -234,10 +234,6 @@ class ConfigIO:
                 "path_speed": float(mission_state.path.path_speed),
                 "path_length": float(mission_state.path.path_length),
             },
-            "obstacle_state": {
-                "enabled": bool(mission_state.obstacle_state.enabled),
-                "obstacles": list(mission_state.obstacle_state.obstacles),
-            },
             "path_hold_end": float(mission_state.path_hold_end),
         }
 
@@ -270,7 +266,6 @@ class ConfigIO:
         """Convert dictionary to MissionState using canonical runtime fields."""
         from .mission_state import (
             MissionState,
-            ObstacleState,
             PathFollowingState,
         )
 
@@ -307,9 +302,6 @@ class ConfigIO:
 
         ms = MissionState(
             path=PathFollowingState(**mission_state_dict.get("path", {})),
-            obstacle_state=ObstacleState(
-                **mission_state_dict.get("obstacle_state", {})
-            ),
             path_hold_end=_resolve_path_hold_end(),
         )
         return _apply_path_tracking_fields(ms)

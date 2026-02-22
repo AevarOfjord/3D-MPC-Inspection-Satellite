@@ -38,14 +38,6 @@ class PathFollowingState:
 
 
 @dataclass
-class ObstacleState:
-    """State for obstacle avoidance."""
-
-    enabled: bool = False
-    obstacles: list[Any] = field(default_factory=list)
-
-
-@dataclass
 class MissionState:
     """
     Mission state tracking for runtime execution.
@@ -54,7 +46,6 @@ class MissionState:
     """
 
     path: PathFollowingState = field(default_factory=PathFollowingState)
-    obstacle_state: ObstacleState = field(default_factory=ObstacleState)
     path_hold_end: float = DEFAULT_PATH_HOLD_END_S
     # Path tracking runtime fields.
     path_tracking_center: tuple[float, float, float] | None = None
@@ -123,29 +114,11 @@ class MissionState:
     def path_speed(self, value: float):
         self.path.path_speed = value
 
-    # --- Obstacles ---
-    @property
-    def obstacles_enabled(self) -> bool:
-        return self.obstacle_state.enabled
-
-    @obstacles_enabled.setter
-    def obstacles_enabled(self, value: bool):
-        self.obstacle_state.enabled = value
-
-    @property
-    def obstacles(self) -> list[Any]:
-        return self.obstacle_state.obstacles
-
-    @obstacles.setter
-    def obstacles(self, value: list[Any]):
-        self.obstacle_state.obstacles = value
-
     # --- Methods ---
 
     def reset(self) -> None:
         """Reset all mission state to defaults."""
         self.path = PathFollowingState()
-        self.obstacle_state = ObstacleState()
         self.path_hold_end = DEFAULT_PATH_HOLD_END_S
         self.path_tracking_center = None
         self.path_tracking_base_shape = []

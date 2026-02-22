@@ -96,7 +96,6 @@ def create_default_app_config() -> AppConfig:
         thrust_pair_weight=constants.Constants.THRUST_PAIR_WEIGHT,
         thruster_type=constants.Constants.THRUSTER_TYPE,
         verbose_mpc=False,
-        enable_collision_avoidance=constants.Constants.ENABLE_COLLISION_AVOIDANCE,
         max_linear_velocity=constants.Constants.MAX_LINEAR_VELOCITY,
         max_angular_velocity=constants.Constants.MAX_ANGULAR_VELOCITY,
         enable_delta_u_coupling=constants.Constants.ENABLE_DELTA_U_COUPLING,

@@ -44,22 +44,6 @@ class SpiralAxis(StrEnum):
 
 
 @dataclass
-class MissionObstacle:
-    position: list[float]
-    radius: float
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"position": list(self.position), "radius": float(self.radius)}
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MissionObstacle:
-        return cls(
-            position=list(data.get("position", [0.0, 0.0, 0.0])),
-            radius=float(data.get("radius", 0.5)),
-        )
-
-
-@dataclass
 class Pose:
     frame: Frame
     position: list[float]
@@ -300,7 +284,6 @@ class MissionDefinition:
     epoch: str
     start_pose: Pose
     segments: list[Segment] = field(default_factory=list)
-    obstacles: list[MissionObstacle] = field(default_factory=list)
     overrides: MissionOverrides = field(default_factory=MissionOverrides)
 
     def to_dict(self) -> dict[str, Any]:
@@ -308,7 +291,6 @@ class MissionDefinition:
             "epoch": self.epoch,
             "start_pose": self.start_pose.to_dict(),
             "segments": [segment.to_dict() for segment in self.segments],
-            "obstacles": [o.to_dict() for o in self.obstacles],
             "overrides": self.overrides.to_dict(),
         }
 
@@ -327,13 +309,9 @@ class MissionDefinition:
                 raise ValueError(f"Unknown segment type: {seg_type}")
 
         overrides = MissionOverrides.from_dict(data.get("overrides") or {})
-        obstacles = [
-            MissionObstacle.from_dict(o) for o in (data.get("obstacles") or [])
-        ]
         return cls(
             epoch=str(data["epoch"]),
             start_pose=Pose.from_dict(data["start_pose"]),
             segments=segments,
-            obstacles=obstacles,
             overrides=overrides,
         )

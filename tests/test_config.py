@@ -215,8 +215,6 @@ class TestConfigValidation:
                 "path_speed": 0.25,
                 "path_length": 12.0,
                 "path_following_active": True,
-                "obstacles_enabled": True,
-                "obstacles": [{"position": (0.0, 0.0, 0.0), "radius": 1.0}],
             }
         )
         assert mission_state.path.waypoints == []
@@ -225,5 +223,3 @@ class TestConfigValidation:
         )
         assert mission_state.path.path_length == pytest.approx(0.0)
         assert mission_state.path.active is False
-        assert mission_state.obstacle_state.enabled is False
-        assert mission_state.obstacle_state.obstacles == []

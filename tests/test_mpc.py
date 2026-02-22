@@ -89,29 +89,6 @@ class TestMPCController:
         assert "solver_status" in info
         assert isinstance(info["timeout"], bool)
 
-    def test_obstacle_constraint_api(self, controller):
-        """Controller accepts obstacle updates and still computes controls."""
-        if not hasattr(controller, "set_obstacles"):
-            pytest.skip("Obstacle APIs not available in this build")
-
-        controller.set_obstacles([(1.0, 0.0, 0.0, 0.5), (2.0, 0.0, 0.0, 0.25)])
-        x_current = np.zeros(16)
-        x_current[3] = 1.0
-        u, info = controller.get_control_action(x_current)
-        assert u is not None
-        assert isinstance(info.get("status"), int)
-
-        if hasattr(controller, "clear_obstacles"):
-            controller.clear_obstacles()
-
-    def test_collision_avoidance_flag_passthrough(self):
-        """MPC config flag should propagate into the controller wrapper."""
-        cfg = SimulationConfig.create_with_overrides(
-            {"mpc": {"enable_collision_avoidance": True}}
-        )
-        controller = MPCController(cfg.app_config)
-        assert controller.enable_collision_avoidance is True
-
     def test_cpp_binding_exposes_v6_mode_profile_fields(self):
         """C++ binding should expose V6 mode profile params and runtime mode setter."""
         from cpp import _cpp_mpc

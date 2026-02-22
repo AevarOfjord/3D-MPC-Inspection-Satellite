@@ -167,7 +167,6 @@ void MPCControllerCpp::rebuild_solver() {
 
 void MPCControllerCpp::init_solver() {
     int n_vars = (N_ + 1) * nx_ + N_ * nu_;
-    obs_per_step_ = static_cast<int>(obstacles_.size());
 
     // 1. Build P matrix (Cost)
     std::vector<Eigen::Triplet<double>> P_triplets;
@@ -189,55 +188,34 @@ void MPCControllerCpp::init_solver() {
 
     // Count constraints based on structure:
     // Dynamics (N*nx) + Initial (nx) + State Bounds ((N+1)*nx) + Control Bounds (N*nu)
-    // + Control Horizon ((N-M)*nu) + Obstacles (N * num_obs)
+    // + Control Horizon ((N-M)*nu)
     n_dyn_ = N_ * nx_;
     n_init_ = nx_;
     n_bounds_x_ = (N_ + 1) * nx_;
     n_bounds_u_ = N_ * nu_;
     n_control_horizon_constraints_ = (control_horizon_ < N_) ? (N_ - control_horizon_) * nu_ : 0;
-    n_obs_constraints_ = (obs_per_step_ > 0) ? (N_ * obs_per_step_) : 0;
-    int n_constraints = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_ + n_obs_constraints_;
+    int n_constraints = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_;
 
     A_.resize(n_constraints, n_vars);
     A_.setFromTriplets(A_triplets.begin(), A_triplets.end());
     A_.makeCompressed();
 
-    // 3. Build index maps for fast updates
+    // Copy to OSQP flat arrays
+    P_data_.assign(P_.valuePtr(), P_.valuePtr() + P_.nonZeros());
+    P_indices_.assign(P_.innerIndexPtr(), P_.innerIndexPtr() + P_.nonZeros());
+    P_indptr_.assign(P_.outerIndexPtr(), P_.outerIndexPtr() + P_.outerSize() + 1);
 
-    // A. Obstacle update indices
-    // Row layout: [dyn, init, bounds_x, bounds_u, ctrl_horizon, obs]
-    obs_row_start_ = n_dyn_ + n_init_ + n_bounds_x_ + n_bounds_u_ + n_control_horizon_constraints_;
-    obs_A_indices_.clear();
-    if (n_obs_constraints_ > 0) {
-        obs_A_indices_.resize(n_obs_constraints_);
-        for (int row_local = 0; row_local < n_obs_constraints_; ++row_local) {
-            obs_A_indices_[row_local] = { -1, -1, -1 };
-            int row = obs_row_start_ + row_local;
-            int k = row_local / obs_per_step_;
-            int x_k_idx = k * nx_;
-            for (int i = 0; i < 3; ++i) {
-                int col = x_k_idx + i;
-                bool found = false;
-                // Search in column 'col' for row 'row' in CSC matrix
-                for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
-                    if (A_.innerIndexPtr()[idx] == row) {
-                        obs_A_indices_[row_local][i] = idx;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    std::cerr << "[MPC] Error: Could not find obstacle constraint entry at row="
-                              << row_local << ", i=" << i << std::endl;
-                }
-            }
-        }
-    }
+    A_data_.assign(A_.valuePtr(), A_.valuePtr() + A_.nonZeros());
+    A_indices_.assign(A_.innerIndexPtr(), A_.innerIndexPtr() + A_.nonZeros());
+    A_indptr_.assign(A_.outerIndexPtr(), A_.outerIndexPtr() + A_.outerSize() + 1);
 
     // B. Actuator dynamics index map (B matrix updates)
-    B_idx_map_.resize(nx_ * nu_);
-    for (auto &v : B_idx_map_) {
-        v.clear();
+    B_idx_map_.resize(N_);
+    for (int k = 0; k < N_; ++k) {
+        B_idx_map_[k].resize(nx_ * nu_);
+        for (auto &v : B_idx_map_[k]) {
+            v.clear();
+        }
     }
     int u_start_idx = (N_ + 1) * nx_;
     for (int k = 0; k < N_; ++k) {
@@ -248,7 +226,7 @@ void MPCControllerCpp::init_solver() {
                 // Find index in CSC format
                 for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
                     if (A_.innerIndexPtr()[idx] == current_row_base + r) {
-                        B_idx_map_[r * nu_ + c].push_back(idx);
+                        B_idx_map_[k][r * nu_ + c].push_back(idx);
                     }
                 }
             }
@@ -257,9 +235,12 @@ void MPCControllerCpp::init_solver() {
 
     // C. Quaternion dynamics index map (A matrix updates for G-block)
     // A_dyn rows 3-6, cols 10-12
-    A_idx_map_.resize(4 * 3);
-    for (auto &v : A_idx_map_) {
-        v.clear();
+    A_idx_map_.resize(N_);
+    for (int k = 0; k < N_; ++k) {
+        A_idx_map_[k].resize(4 * 3);
+        for (auto &v : A_idx_map_[k]) {
+            v.clear();
+        }
     }
     for (int k = 0; k < N_; ++k) {
         int row_base = k * nx_;
@@ -272,7 +253,7 @@ void MPCControllerCpp::init_solver() {
 
                 for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
                     if (A_.innerIndexPtr()[idx] == row) {
-                        A_idx_map_[qr * 3 + oc].push_back(idx);
+                        A_idx_map_[k][qr * 3 + oc].push_back(idx);
                     }
                 }
             }
@@ -280,49 +261,60 @@ void MPCControllerCpp::init_solver() {
     }
 
     // D. Orbital/velocity dynamics index map (rows 7-9, cols 0-9)
-    A_orbital_idx_map_.resize(3 * 10);
-    for (auto &v : A_orbital_idx_map_) {
-        v.clear();
+    A_orbital_idx_map_.resize(N_);
+    for (int k = 0; k < N_; ++k) {
+        A_orbital_idx_map_[k].resize(3 * 10);
+        for (auto &v : A_orbital_idx_map_[k]) {
+            v.clear();
+        }
     }
     for (int k = 0; k < N_; ++k) {
         int row_base = k * nx_;
         int col_base = k * nx_;
-        for (int vr = 0; vr < 3; ++vr) {
-            for (int vc = 0; vc < 10; ++vc) {
+
+        for (int vr = 0; vr < 3; ++vr) {      // Relative rows 7-9
+            for (int vc = 0; vc < 10; ++vc) { // Relative cols 0-9
                 int row = row_base + 7 + vr;
                 int col = col_base + vc;
+
                 for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
                     if (A_.innerIndexPtr()[idx] == row) {
-                        A_orbital_idx_map_[vr * 10 + vc].push_back(idx);
+                        A_orbital_idx_map_[k][vr * 10 + vc].push_back(idx);
                     }
                 }
             }
         }
     }
 
-    // E. Angular dynamics index map (rows 10-12, cols 10-12)
-    A_angvel_idx_map_.clear();
-    if (mpc_params_.enable_gyro_jacobian) {
-        A_angvel_idx_map_.resize(3 * 3);
-        for (auto &v : A_angvel_idx_map_) {
+    // E. Angular Velocity dynamics index map (rows 10-12, cols 10-12)
+    A_angvel_idx_map_.resize(N_);
+    for (int k = 0; k < N_; ++k) {
+        A_angvel_idx_map_[k].resize(3 * 3);
+        for (auto &v : A_angvel_idx_map_[k]) {
             v.clear();
         }
+    }
+    if (mpc_params_.enable_gyro_jacobian) {
         for (int k = 0; k < N_; ++k) {
             int row_base = k * nx_;
             int col_base = k * nx_;
-            for (int wr = 0; wr < 3; ++wr) {
-                for (int wc = 0; wc < 3; ++wc) {
+
+            for (int wr = 0; wr < 3; ++wr) {      // Relative rows 10-12
+                for (int wc = 0; wc < 3; ++wc) { // Relative cols 10-12
                     int row = row_base + 10 + wr;
                     int col = col_base + 10 + wc;
+
                     for (int idx = A_.outerIndexPtr()[col]; idx < A_.outerIndexPtr()[col + 1]; ++idx) {
                         if (A_.innerIndexPtr()[idx] == row) {
-                            A_angvel_idx_map_[wr * 3 + wc].push_back(idx);
+                            A_angvel_idx_map_[k][wr * 3 + wc].push_back(idx);
                         }
                     }
                 }
             }
         }
     }
+
+
 
     // F. Path Following P-matrix index map
     // We need to find the indices in P_data_ for the cross terms (0,16), (1,16), (2,16)
@@ -535,6 +527,57 @@ void MPCControllerCpp::init_solver() {
     setup_osqp_workspace(n_vars, n_constraints);
 }
 
+VectorXd MPCControllerCpp::compute_dare_terminal_cost(const VectorXd& Q_diag, const VectorXd& R_diag) {
+    // The linearizer operates on the 16-state physics space (no path augmentation).
+    // We solve DARE in that space using physics Q/R, then embed back to nx_=17.
+    int nx_phys = 16;
+    int nu_phys = nu_ - 1; // exclude v_s virtual control
+
+    auto [A_phys, B_phys] = linearizer_->linearize(VectorXd::Zero(nx_phys));
+
+    if (A_phys.rows() != nx_phys || A_phys.cols() != nx_phys
+        || B_phys.rows() != nx_phys || B_phys.cols() != nu_phys) {
+        return Q_diag * 10.0;
+    }
+
+    // Extract physics portion of the weight vectors
+    VectorXd Q_phys_vec = Q_diag.head(nx_phys);
+    VectorXd R_phys_vec = R_diag.head(nu_phys);
+
+    MatrixXd Q_phys = Q_phys_vec.asDiagonal();
+    MatrixXd R_phys = R_phys_vec.asDiagonal();
+
+    // Regularize R to ensure PD (v_s cost may be very small)
+    R_phys.diagonal() = R_phys.diagonal().cwiseMax(1e-6);
+
+    MatrixXd P = Q_phys;
+    int max_iter = 500;
+    double tol = 1e-4;
+
+    for (int i = 0; i < max_iter; ++i) {
+        MatrixXd S = R_phys + B_phys.transpose() * P * B_phys;
+        // Riccati iteration: P_new = Q + A'PA - A'PB inv(S) B'PA
+        MatrixXd K = S.llt().solve(B_phys.transpose() * P * A_phys);
+        MatrixXd P_next = Q_phys + A_phys.transpose() * P * A_phys
+            - B_phys.transpose().transpose() /* = B_phys */ .eval() .transpose() * K;
+        // Simplified form: P_next = Q + (A - B*K)'*P*(A - B*K) + K'*R*K (algebraically equivalent)
+        MatrixXd AminBK = A_phys - B_phys * K;
+        P_next = Q_phys + AminBK.transpose() * P * AminBK + K.transpose() * R_phys * K;
+
+        if ((P_next - P).norm() < tol) {
+            P = P_next;
+            break;
+        }
+        P = P_next;
+    }
+
+    // Embed physics DARE diagonal back to full augmented state (nx_=17)
+    // Path param s (index 16) gets the same terminal cost as the stage cost (Q_diag(16))
+    VectorXd result = Q_diag * 10.0; // default fallback for augmented entries
+    result.head(nx_phys) = P.diagonal();
+    return result;
+}
+
 void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& triplets, int n_vars) {
     VectorXd P_diag(n_vars);
 
@@ -542,8 +585,9 @@ void MPCControllerCpp::build_P_matrix(std::vector<Eigen::Triplet<double>>& tripl
     for (int k = 0; k < N_; ++k) {
         P_diag.segment(k * nx_, nx_) = Q_diag_;
     }
-    // Terminal cost (N) - scaled by 10
-    P_diag.segment(N_ * nx_, nx_) = Q_diag_ * 10.0;
+    // Terminal cost (N) - exact DARE solution diagonal
+    VectorXd P_dare_diag = compute_dare_terminal_cost(Q_diag_, R_diag_);
+    P_diag.segment(N_ * nx_, nx_) = P_dare_diag;
 
     // Control costs (0 to N-1)
     for (int k = 0; k < N_; ++k) {
@@ -725,20 +769,7 @@ void MPCControllerCpp::build_A_matrix(std::vector<Eigen::Triplet<double>>& tripl
         }
     }
 
-    // 6. Obstacle constraints: obs_k^T * p_k >= dist_k
-    // We reserve these rows now and update coefficients dynamically.
-    // Initial coeff is epsilon to prevent pruning.
-    if (obs_per_step_ > 0) {
-        for (int k = 0; k < N_; ++k) {
-            int x_k_idx = k * nx_;
-            for (int o = 0; o < obs_per_step_; ++o) {
-                for (int i = 0; i < 3; ++i) {
-                    triplets.emplace_back(row_idx, x_k_idx + i, 1e-10);
-                }
-                row_idx++;
-            }
-        }
-    }
+
 }
 
 void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
@@ -822,13 +853,6 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
         u_.segment(ctrl_horizon_start, n_control_horizon_constraints_).setZero();
     }
 
-    // 6. Obstacle bounds (initialized to inactive)
-    int obs_idx_start = ctrl_horizon_start + n_control_horizon_constraints_;
-    if (n_obs_constraints_ > 0) {
-        l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
-        u_.segment(obs_idx_start, n_obs_constraints_).setConstant(1e20);
-    }
-
     // Convert to CSC arrays for OSQP
     P_data_.assign(P_.valuePtr(), P_.valuePtr() + P_.nonZeros());
     P_indices_.assign(P_.innerIndexPtr(), P_.innerIndexPtr() + P_.nonZeros());
@@ -880,57 +904,66 @@ void MPCControllerCpp::setup_osqp_workspace(int n_vars, int n_constraints) {
 // Runtime Updates
 // ----------------------------------------------------------------------------
 
-void MPCControllerCpp::update_dynamics(const VectorXd& x_current) {
-    auto [A_dyn, B_dyn] = linearizer_->linearize(x_current);
-    const VectorXd& affine = linearizer_->affine();
-    if (affine.size() == 16) {
-        dyn_affine_.setZero(nx_);
-        dyn_affine_.segment(0, 16) = affine;
-    } else {
-        dyn_affine_.setZero(nx_);
-    }
+void MPCControllerCpp::update_dynamics(const std::vector<VectorXd>& x_traj) {
+    bool linearize_per_step = (x_traj.size() > 0);
+    dyn_affine_.setZero(nx_);
 
-    // Update A-block entries (G matrix: dQuat/dOmega)
-    // A_dyn rows 3-6, cols 10-12
-    for (int qr = 0; qr < 4; ++qr) {
-        for (int oc = 0; oc < 3; ++oc) {
-            double val = -A_dyn(3 + qr, 10 + oc); // Stored as -A
-            for (int idx : A_idx_map_[qr * 3 + oc]) {
-                A_data_[idx] = val;
+    for (int k = 0; k < N_; ++k) {
+        VectorXd x_k = linearize_per_step ?
+            (k < x_traj.size() ? x_traj[k] : x_traj.back()) :
+            (x_traj.empty() ? VectorXd::Zero(nx_) : x_traj[0]);
+
+        auto [A_dyn, B_dyn] = linearizer_->linearize(x_k);
+
+        if (k == 0) {
+            const VectorXd& affine = linearizer_->affine();
+            if (affine.size() == 16) {
+                dyn_affine_.segment(0, 16) = affine;
             }
         }
-    }
 
-    // Update orbital/velocity dynamics block (rows 7-9, cols 0-9)
-    for (int vr = 0; vr < 3; ++vr) {
-        for (int vc = 0; vc < 10; ++vc) {
-            double val = -A_dyn(7 + vr, vc);
-            for (int idx : A_orbital_idx_map_[vr * 10 + vc]) {
-                A_data_[idx] = val;
-            }
-        }
-    }
-
-    // Update angular velocity dynamics block (rows 10-12, cols 10-12)
-    if (mpc_params_.enable_gyro_jacobian) {
-        for (int wr = 0; wr < 3; ++wr) {
-            for (int wc = 0; wc < 3; ++wc) {
-                double val = -A_dyn(10 + wr, 10 + wc);
-                for (int idx : A_angvel_idx_map_[wr * 3 + wc]) {
+        // Update A-block entries (G matrix: dQuat/dOmega)
+        // A_dyn rows 3-6, cols 10-12
+        for (int qr = 0; qr < 4; ++qr) {
+            for (int oc = 0; oc < 3; ++oc) {
+                double val = -A_dyn(3 + qr, 10 + oc); // Stored as -A
+                for (int idx : A_idx_map_[k][qr * 3 + oc]) {
                     A_data_[idx] = val;
                 }
             }
         }
-    }
 
-    // Update B matrix entries (physics-only block)
-    int nx_phys = 16;
-    int nu_phys = nu_ - 1;
-    for (int r = 0; r < nx_phys; ++r) {
-        for (int c = 0; c < nu_phys; ++c) {
-            double val = -B_dyn(r, c);
-            for (int idx : B_idx_map_[r * nu_ + c]) {
-                A_data_[idx] = val;
+        // Update orbital/velocity dynamics block (rows 7-9, cols 0-9)
+        for (int vr = 0; vr < 3; ++vr) {
+            for (int vc = 0; vc < 10; ++vc) {
+                double val = -A_dyn(7 + vr, vc);
+                for (int idx : A_orbital_idx_map_[k][vr * 10 + vc]) {
+                    A_data_[idx] = val;
+                }
+            }
+        }
+
+        // Update angular velocity dynamics block (rows 10-12, cols 10-12)
+        if (mpc_params_.enable_gyro_jacobian) {
+            for (int wr = 0; wr < 3; ++wr) {
+                for (int wc = 0; wc < 3; ++wc) {
+                    double val = -A_dyn(10 + wr, 10 + wc);
+                    for (int idx : A_angvel_idx_map_[k][wr * 3 + wc]) {
+                        A_data_[idx] = val;
+                    }
+                }
+            }
+        }
+
+        // Update B matrix entries (physics-only block)
+        int nx_phys = 16;
+        int nu_phys = nu_ - 1;
+        for (int r = 0; r < nx_phys; ++r) {
+            for (int c = 0; c < nu_phys; ++c) {
+                double val = -B_dyn(r, c);
+                for (int idx : B_idx_map_[k][r * nu_ + c]) {
+                    A_data_[idx] = val;
+                }
             }
         }
     }
@@ -1084,11 +1117,22 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
     }
 
     // Successive Linearization: Update dynamics each step to capture orbital effects
-    update_dynamics(x_curr_aug);
+    // Create a simple trajectory from current state for linearizer
+    // Later this will be updated to use actual trajectory
+    std::vector<VectorXd> x_traj;
+    x_traj.push_back(x_curr_aug);
+    for (int k = 1; k <= N_; ++k) {
+        if (has_warm_start_control_ && warm_start_x_.size() > 0) {
+            VectorXd x_k = warm_start_x_.segment(k * nx_, nx_);
+            x_traj.push_back(x_k);
+        } else {
+            x_traj.push_back(x_curr_aug); // Fallback to current state
+        }
+    }
+    update_dynamics(x_traj);
 
     // update_path_cost updates both P and q; no need for a redundant q reset/update.
     update_path_cost(x_curr_aug);
-    update_obstacle_constraints(x_curr_aug);
     update_constraints(x_curr_aug);
 
     if (A_dirty_) {
@@ -1248,24 +1292,6 @@ ControlResult MPCControllerCpp::get_control_action(const VectorXd& x_current) {
 // Collision Avoidance
 // ----------------------------------------------------------------------------
 
-void MPCControllerCpp::set_obstacles(const ObstacleSet& obstacles) {
-    int previous_count = static_cast<int>(obstacles_.size());
-    obstacles_ = obstacles;
-    mpc_params_.enable_collision_avoidance = (obstacles_.size() > 0);
-    int next_count = static_cast<int>(obstacles_.size());
-    if (previous_count != next_count) {
-        rebuild_solver();
-    }
-}
-
-void MPCControllerCpp::clear_obstacles() {
-    if (obstacles_.size() == 0) {
-        return;
-    }
-    obstacles_.clear();
-    mpc_params_.enable_collision_avoidance = false;
-    rebuild_solver();
-}
 
 void MPCControllerCpp::set_warm_start_control(const VectorXd& u_prev) {
     if (u_prev.size() == 0) {
@@ -1675,13 +1701,13 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
             // Order: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2)
             double vel_weight = 2.0 * Q_v_eff * stage_scale;
             auto &vel_indices = path_vel_P_indices_[k];
-            if (vel_indices.size() == 6) {
-                P_data_[vel_indices[0]] = vel_weight;
-                P_data_[vel_indices[1]] = 0.0;
-                P_data_[vel_indices[2]] = 0.0;
-                P_data_[vel_indices[3]] = vel_weight;
-                P_data_[vel_indices[4]] = 0.0;
-                P_data_[vel_indices[5]] = vel_weight;
+            if (vel_indices.size() >= 6) {
+                if (vel_indices[0] >= 0) P_data_[vel_indices[0]] = vel_weight;
+                if (vel_indices[1] >= 0) P_data_[vel_indices[1]] = 0.0;
+                if (vel_indices[2] >= 0) P_data_[vel_indices[2]] = 0.0;
+                if (vel_indices[3] >= 0) P_data_[vel_indices[3]] = vel_weight;
+                if (vel_indices[4] >= 0) P_data_[vel_indices[4]] = 0.0;
+                if (vel_indices[5] >= 0) P_data_[vel_indices[5]] = vel_weight;
             }
 
             // Linear term encourages velocity along tangent
@@ -1736,73 +1762,6 @@ void MPCControllerCpp::update_path_cost(const VectorXd& x_current) {
     osqp_update_lin_cost(work_, q_.data());
 }
 
-void MPCControllerCpp::update_obstacle_constraints(const VectorXd& x_current) {
-    if (n_obs_constraints_ == 0) {
-        return;
-    }
-
-    int obs_idx_start = obs_row_start_;
-
-    if (!mpc_params_.enable_collision_avoidance || obstacles_.size() == 0) {
-        // Disable all constraints
-        l_.segment(obs_idx_start, n_obs_constraints_).setConstant(-1e20);
-        for (int row_local = 0; row_local < n_obs_constraints_; ++row_local) {
-            for (int i = 0; i < 3; ++i) {
-                int idx = obs_A_indices_[row_local][i];
-                if (idx >= 0) {
-                    A_data_[idx] = 0.0;
-                }
-            }
-        }
-        A_dirty_ = true;
-        return;
-    }
-
-    Eigen::Vector3d p_curr = x_current.segment<3>(0);
-
-    for (int k = 0; k < N_; ++k) {
-        Eigen::Vector3d p_guess = p_curr;
-        if (path_data_valid_) {
-            double s_k = 0.0;
-            if (s_guess_.size() == static_cast<size_t>(N_ + 1)) {
-                s_k = s_guess_[k];
-            } else if (x_current.size() >= 17) {
-                s_k = x_current(16) + static_cast<double>(k) * mpc_params_.path_speed * dt_;
-            }
-            s_k = std::max(0.0, std::min(s_k, path_total_length_));
-            p_guess = get_path_point(s_k);
-        }
-
-        auto constraints = obstacles_.get_linear_constraints(p_guess, mpc_params_.obstacle_margin);
-
-        for (int o = 0; o < obs_per_step_; ++o) {
-            int row_local = k * obs_per_step_ + o;
-            if (o >= static_cast<int>(constraints.size())) {
-                l_(obs_idx_start + row_local) = -1e20;
-                for (int i = 0; i < 3; ++i) {
-                    int idx = obs_A_indices_[row_local][i];
-                    if (idx >= 0) {
-                        A_data_[idx] = 0.0;
-                    }
-                }
-                continue;
-            }
-
-            Eigen::Vector3d normal = constraints[o].first;
-            double bound_val = constraints[o].second;
-
-            for (int i = 0; i < 3; ++i) {
-                int idx = obs_A_indices_[row_local][i];
-                if (idx >= 0) {
-                    A_data_[idx] = normal(i);
-                }
-            }
-            l_(obs_idx_start + row_local) = bound_val;
-        }
-    }
-
-    A_dirty_ = true;
-}
 
 // ============================================================================
 // Path following: general path support

@@ -23,7 +23,6 @@ from mission.path_assets import load_path_asset
 from mission.path_following import build_point_to_point_path
 from mission.unified_mission import (
     MissionDefinition,
-    MissionObstacle,
     SegmentType,
 )
 
@@ -309,15 +308,11 @@ def _compute_path_length(path: list[tuple[float, float, float]]) -> float:
 def _build_segment_path(
     start: np.ndarray,
     end: np.ndarray,
-    obstacles: Sequence[MissionObstacle],
     step_size: float,
-    margin: float,
 ) -> list[tuple[float, float, float]]:
     return build_point_to_point_path(
         waypoints=[tuple(map(float, start)), tuple(map(float, end))],
-        obstacles=obstacles,
         step_size=step_size,
-        safety_margin=margin,
     )
 
 
@@ -546,7 +541,6 @@ def _build_compiled_path_and_spans(
     frame_mode: str,
     origin: np.ndarray,
     path_density_multiplier: float,
-    margin: float,
     include_pointing_spans: bool,
 ) -> tuple[
     list[tuple[float, float, float]],
@@ -565,8 +559,6 @@ def _build_compiled_path_and_spans(
         return path, 0.0, []
 
     current = np.array(path[-1], dtype=float)
-    # Planner policy: obstacles are diagnostics only and do not alter geometry.
-    obstacles: Sequence[MissionObstacle] = ()
     cumulative_s = 0.0
     pointing_spans: list[dict[str, Any]] = []
     scan_contexts = _build_scan_contexts(
@@ -588,9 +580,7 @@ def _build_compiled_path_and_spans(
             seg_path = _build_segment_path(
                 start=current,
                 end=end,
-                obstacles=obstacles,
                 step_size=step_size,
-                margin=margin,
             )
             added_length = _compute_path_length(seg_path) if seg_path else 0.0
             if seg_path:
@@ -697,9 +687,7 @@ def _build_compiled_path_and_spans(
                 connect = _build_segment_path(
                     start=start_p,
                     end=end_p,
-                    obstacles=obstacles,
                     step_size=step_size_conn,
-                    margin=margin,
                 )
                 added_connect_length = _compute_path_length(connect) if connect else 0.0
                 if connect:
@@ -837,7 +825,6 @@ def compile_unified_mission_path(
                 frame_mode=frame_mode,
                 origin=origin,
                 path_density_multiplier=path_density_multiplier,
-                margin=float(sim_config.app_config.mpc.obstacle_margin),
                 include_pointing_spans=True,
             )
         )
@@ -895,7 +882,6 @@ def compile_unified_mission_path(
         frame_mode=frame_mode,
         origin=origin,
         path_density_multiplier=path_density_multiplier,
-        margin=float(sim_config.app_config.mpc.obstacle_margin),
         include_pointing_spans=False,
     )
     return path, path_length, path_speed, tuple(origin)

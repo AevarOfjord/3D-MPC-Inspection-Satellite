@@ -927,53 +927,6 @@ class UnifiedVisualizationGenerator:
                 label="Trajectory",
             )
 
-    def draw_obstacles(self, mission_state: MissionState | None = None) -> None:
-        """Draw obstacles if they are configured.
-
-        Args:
-            mission_state: Optional MissionState to get obstacles from (v4.0.0).
-                          If None, uses self.mission_state if available. No fallback.
-        """
-        assert self.ax_main is not None, "ax_main must be initialized"
-
-        obstacles_enabled = False
-        obstacles = []
-        state_to_use = mission_state or self.mission_state
-        if state_to_use:
-            obstacles_enabled = state_to_use.obstacles_enabled
-            obstacles = list(state_to_use.obstacles) if state_to_use.obstacles else []
-
-        if obstacles_enabled and obstacles:
-            for i, (obs_x, obs_y, obs_z, obs_radius) in enumerate(obstacles, 1):
-                # Draw obstacle as a wireframe sphere
-                u = np.linspace(0, 2 * np.pi, 18)
-                v = np.linspace(0, np.pi, 10)
-                xs = obs_x + obs_radius * np.outer(np.cos(u), np.sin(v))
-                ys = obs_y + obs_radius * np.outer(np.sin(u), np.sin(v))
-                zs = obs_z + obs_radius * np.outer(np.ones_like(u), np.cos(v))
-                self.ax_main.plot_wireframe(
-                    xs,
-                    ys,
-                    zs,
-                    color="red",
-                    alpha=0.35,
-                    linewidth=0.6,
-                )
-
-                # Add obstacle label
-                self.ax_main.text(
-                    obs_x,
-                    obs_y,
-                    obs_z,
-                    f"O{i}",
-                    fontsize=8,
-                    color="white",
-                    ha="center",
-                    va="center",
-                    fontweight="bold",
-                    zorder=16,
-                )
-
     def update_info_panel(self, step: int, current_data: Any) -> None:
         """Update information panel with current data using professional styling.
 

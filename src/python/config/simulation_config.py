@@ -180,8 +180,6 @@ class SimulationConfig:
             "settings": {
                 "dt": mpc.dt,
                 "thruster_type": mpc.thruster_type,
-                "enable_collision_avoidance": mpc.enable_collision_avoidance,
-                "obstacle_margin": mpc.obstacle_margin,
                 "max_linear_velocity": mpc.max_linear_velocity,
                 "max_angular_velocity": mpc.max_angular_velocity,
                 "enable_delta_u_coupling": mpc.enable_delta_u_coupling,

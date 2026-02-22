@@ -136,8 +136,6 @@ class RunnerManager:
             "thrust_l1_weight",
             "thrust_pair_weight",
             "thruster_type",
-            "obstacle_margin",
-            "enable_collision_avoidance",
             "path_speed",
             "path_speed_min",
             "path_speed_max",
@@ -188,8 +186,6 @@ class RunnerManager:
             settings_map = {
                 "dt": "dt",
                 "thruster_type": "thruster_type",
-                "enable_collision_avoidance": "enable_collision_avoidance",
-                "obstacle_margin": "obstacle_margin",
                 "max_linear_velocity": "max_linear_velocity",
                 "max_angular_velocity": "max_angular_velocity",
                 "enable_delta_u_coupling": "enable_delta_u_coupling",

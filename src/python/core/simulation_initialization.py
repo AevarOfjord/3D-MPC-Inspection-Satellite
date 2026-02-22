@@ -169,14 +169,9 @@ class SimulationInitializer:
                 build_point_to_point_path,
             )
 
-            obstacles = (
-                mission_state.obstacles if mission_state.obstacles_enabled else None
-            )
             path = build_point_to_point_path(
                 waypoints=[tuple(start_pos), tuple(path_end_pos)],
-                obstacles=obstacles,
                 step_size=0.1,
-                safety_margin=float(app_config.mpc.obstacle_margin),
             )
             path_length = float(
                 np.sum(
@@ -197,11 +192,6 @@ class SimulationInitializer:
             )
             self.simulation.mpc_controller.set_path(mission_state.path_waypoints)
             self.simulation.planned_path = list(mission_state.path_waypoints)
-
-        if mission_state.obstacles_enabled and mission_state.obstacles:
-            self.simulation.mpc_controller.set_obstacles(list(mission_state.obstacles))
-        else:
-            self.simulation.mpc_controller.clear_obstacles()
 
         # Configure scan attitude context from mission runtime metadata.
         self.simulation.mpc_controller.set_scan_attitude_context(
@@ -881,11 +871,6 @@ class SimulationInitializer:
             logger.info(f"WARNING: - Angle noise: {angle_noise_deg:.2f}° std")
         else:
             logger.info("INFO: Idealized physics (no delays, noise, or damping)")
-
-        # Apply obstacle avoidance based on mode
-        mission_state = self.simulation_config.mission_state
-        if mission_state.obstacles_enabled and mission_state.obstacles:
-            logger.info("Obstacle avoidance enabled.")
 
         # Initialize visualization manager
         from visualization.simulation_visualization import (
