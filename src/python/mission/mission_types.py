@@ -8,6 +8,8 @@ Defines the core mission types for orbital inspection:
 - Inspection: Multi-point detailed inspection
 """
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
 from enum import Enum
@@ -55,7 +57,7 @@ class Waypoint:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Waypoint":
+    def from_dict(cls, data: dict) -> Waypoint:
         return cls(
             position=np.array(data["position"]),
             hold_time=data.get("hold_time", 0.0),
@@ -80,7 +82,7 @@ class MissionPhase:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "MissionPhase":
+    def from_dict(cls, data: dict) -> MissionPhase:
         return cls(
             name=data["name"],
             waypoints=[Waypoint.from_dict(wp) for wp in data.get("waypoints", [])],
@@ -153,7 +155,7 @@ class Mission:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Mission":
+    def from_dict(cls, data: dict) -> Mission:
         return cls(
             name=data["name"],
             mission_type=MissionType(data["mission_type"]),
@@ -170,7 +172,7 @@ class Mission:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def load(cls, filepath: Path) -> "Mission":
+    def load(cls, filepath: Path) -> Mission:
         """Load mission from JSON file."""
         with open(filepath) as f:
             return cls.from_dict(json.load(f))

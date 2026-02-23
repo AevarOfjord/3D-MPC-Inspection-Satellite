@@ -15,6 +15,8 @@ Usage:
         raise ValueError("Configuration validation failed")
 """
 
+from __future__ import annotations
+
 from config.models import AppConfig
 
 

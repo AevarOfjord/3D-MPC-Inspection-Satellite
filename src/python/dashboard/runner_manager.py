@@ -668,7 +668,7 @@ class RunnerManager:
         self._log_history.clear()
         self._current_run_dir = None
 
-        cmd_args = [str(SIMULATION_SCRIPT)]
+        cmd_args = [str(SIMULATION_SCRIPT), "run"]
         resolved_mission_path: str | None = None
         if mission_name:
             try:

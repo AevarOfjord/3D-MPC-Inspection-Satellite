@@ -56,7 +56,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/ws': {
+      '/runner/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+      },
+      '/simulations/runs/ws': {
         target: 'ws://localhost:8000',
         ws: true,
       },
