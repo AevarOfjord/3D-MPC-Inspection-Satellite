@@ -830,6 +830,11 @@ class MPCCoreParams(BaseModel):
         pattern="^(OSQP)$",
         description="Certified V6 solver backend.",
     )
+    controller_backend: str = Field(
+        "v2",
+        pattern="^(v1|v2)$",
+        description="Controller backend: 'v1' (legacy C++ MPC) or 'v2' (CasADi SQP).",
+    )
     recover_contour_scale: float = Field(
         constants.Constants.V6_RECOVER_CONTOUR_SCALE,
         ge=0.0,

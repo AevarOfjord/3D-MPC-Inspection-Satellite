@@ -51,6 +51,7 @@ dependencies = [
 
     # Optimization
     "osqp>=0.6.0",
+    "casadi>=3.6.0",
 
     # Web dashboard
     "uvicorn>=0.20.0",

@@ -15,6 +15,9 @@ def _inject_local_build_paths() -> None:
         build_path = str(build_dir.resolve())
         if build_path not in sys.path:
             sys.path.insert(0, build_path)
+        # Also add to package __path__ so importlib finds submodules
+        if build_path not in __path__:
+            __path__.append(build_path)
 
 
 def _load_extension(name: str):
