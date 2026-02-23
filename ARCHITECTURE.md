@@ -40,12 +40,12 @@ Result: a validated runtime mission representation with path/reference context a
 ## 2.2 Controller and Simulation Initialization
 
 - High-level simulation object:
-  - `src/python/core/simulation.py`
+  - `src/python/simulation/engine.py`
 - Init wiring:
-  - `src/python/core/simulation_initialization.py`
-  - `src/python/core/cpp_satellite.py`
+  - `src/python/simulation/initialization.py`
+  - `src/python/simulation/cpp_backend.py`
   - `src/python/control/mpc_controller.py`
-  - `src/python/core/v6_controller_runtime.py`
+  - `src/python/runtime/v6_policy.py`
 
 Python wrapper `MPCController` loads C++ extension `cpp._cpp_mpc` (RTI-SQP backend) and passes:
 
@@ -60,10 +60,10 @@ injected into the C++ SQP controller, which builds and solves the QP via OSQP.
 
 Main loop modules:
 
-- `src/python/core/simulation_loop.py`
-- `src/python/core/control_loop.py`
-- `src/python/core/mpc_runner.py`
-- `src/python/core/thruster_manager.py`
+- `src/python/simulation/loop.py`
+- `src/python/runtime/control_loop.py`
+- `src/python/runtime/mpc_runner.py`
+- `src/python/runtime/thruster_manager.py`
 
 Per control step:
 
@@ -77,24 +77,24 @@ Per control step:
 ## 2.4 C++ Core Responsibilities
 
 - MPC RTI-SQP solver (CasADi Jacobians + OSQP QP):
-  - `src/cpp/mpc_v2/sqp_controller.cpp`
-  - `src/cpp/mpc_v2/sqp_controller.hpp`
-  - `src/cpp/mpc_v2/sqp_types.cpp`
-  - `src/cpp/mpc_v2/sqp_types.hpp`
+  - `src/cpp/mpc/sqp_controller.cpp`
+  - `src/cpp/mpc/sqp_controller.hpp`
+  - `src/cpp/mpc/sqp_types.cpp`
+  - `src/cpp/mpc/sqp_types.hpp`
 - CasADi symbolic dynamics and cost codegen (Python-side):
   - `src/python/control/codegen/satellite_dynamics.py`
   - `src/python/control/codegen/cost_functions.py`
   - `src/python/control/codegen/generate.py`
 - Orbital dynamics:
-  - `src/cpp/orbital_dynamics.cpp`
-  - `src/cpp/orbital_dynamics.hpp`
+  - `src/cpp/sim/orbital_dynamics.cpp`
+  - `src/cpp/sim/orbital_dynamics.hpp`
 - Simulation engine:
-  - `src/cpp/simulation_engine.cpp`
-  - `src/cpp/simulation_engine.hpp`
+  - `src/cpp/sim/simulation_engine.cpp`
+  - `src/cpp/sim/simulation_engine.hpp`
 - Python bindings:
-  - `src/cpp/mpc_v2/bindings_v2.cpp` (MPC module `_cpp_mpc`)
-  - `src/cpp/bindings_sim.cpp`
-  - `src/cpp/bindings_physics.cpp`
+  - `src/cpp/mpc/bindings.cpp` (MPC module `_cpp_mpc`)
+  - `src/cpp/sim/bindings_sim.cpp`
+  - `src/cpp/sim/bindings_physics.cpp`
 
 ## 2.5 Dashboard and UI Flow
 
@@ -160,12 +160,11 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 ├── src/
 │   ├── python/
 │   │   ├── cli.py
+│   │   ├── exceptions.py
 │   │   ├── config/
 │   │   │   ├── constants.py
 │   │   │   ├── defaults.py
 │   │   │   ├── models.py
-│   │   │   ├── mission_state.py
-│   │   │   ├── orbital_config.py
 │   │   │   ├── paths.py
 │   │   │   ├── physics.py
 │   │   │   ├── reaction_wheel_config.py
@@ -176,29 +175,10 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │   │   ├── base.py
 │   │   │   ├── mpc_controller.py
 │   │   │   └── codegen/
-│   │   │       ├── __init__.py
 │   │   │       ├── satellite_dynamics.py
 │   │   │       ├── cost_functions.py
 │   │   │       └── generate.py
-│   │   ├── core/
-│   │   │   ├── backend.py
-│   │   │   ├── control_loop.py
-│   │   │   ├── cpp_satellite.py
-│   │   │   ├── exceptions.py
-│   │   │   ├── model.py
-│   │   │   ├── mpc_runner.py
-│   │   │   ├── path_completion.py
-│   │   │   ├── performance_monitor.py
-│   │   │   ├── simulation.py
-│   │   │   ├── simulation_context.py
-│   │   │   ├── simulation_initialization.py
-│   │   │   ├── simulation_io.py
-│   │   │   ├── simulation_loop.py
-│   │   │   ├── simulation_logger.py
-│   │   │   ├── simulation_reference.py
-│   │   │   ├── simulation_step_logging.py
-│   │   │   ├── thruster_manager.py
-│   │   │   └── v6_controller_runtime.py
+│   │   ├── core/           (empty stub — all content migrated)
 │   │   ├── cpp/
 │   │   │   └── __init__.py
 │   │   ├── dashboard/
@@ -222,17 +202,36 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │   │   ├── repository.py
 │   │   │   ├── runtime_loader.py
 │   │   │   ├── scan_projects.py
+│   │   │   ├── state.py
 │   │   │   ├── trajectory_utils.py
 │   │   │   ├── unified_compiler.py
 │   │   │   └── unified_mission.py
 │   │   ├── physics/
+│   │   │   ├── orbital_config.py
 │   │   │   └── orbital_dynamics.py
-│   │   ├── utils/
+│   │   ├── runtime/
+│   │   │   ├── control_loop.py
+│   │   │   ├── mpc_runner.py
+│   │   │   ├── path_completion.py
+│   │   │   ├── performance_monitor.py
+│   │   │   ├── thruster_manager.py
+│   │   │   └── v6_policy.py
+│   │   ├── simulation/
+│   │   │   ├── context.py
+│   │   │   ├── cpp_backend.py
 │   │   │   ├── data_logger.py
+│   │   │   ├── engine.py
+│   │   │   ├── initialization.py
+│   │   │   ├── io.py
+│   │   │   ├── logger.py
+│   │   │   ├── loop.py
+│   │   │   ├── reference.py
+│   │   │   ├── state_validator.py
+│   │   │   └── step_logging.py
+│   │   ├── utils/
 │   │   │   ├── logging_config.py
 │   │   │   ├── navigation_utils.py
-│   │   │   ├── orientation_utils.py
-│   │   │   └── simulation_state_validator.py
+│   │   │   └── orientation_utils.py
 │   │   └── visualization/
 │   │       ├── actuator_plots.py
 │   │       ├── command_utils.py
@@ -246,19 +245,20 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │       ├── unified_visualizer.py
 │   │       └── video_renderer.py
 │   └── cpp/
-│       ├── mpc_v2/
-│       │   ├── bindings_v2.cpp
+│       ├── satellite_params.hpp
+│       ├── mpc/
+│       │   ├── bindings.cpp
 │       │   ├── sqp_controller.cpp
 │       │   ├── sqp_controller.hpp
 │       │   ├── sqp_types.cpp
 │       │   └── sqp_types.hpp
-│       ├── bindings_sim.cpp
-│       ├── bindings_physics.cpp
-│       ├── orbital_dynamics.cpp
-│       ├── orbital_dynamics.hpp
-│       ├── satellite_params.hpp
-│       ├── simulation_engine.cpp
-│       └── simulation_engine.hpp
+│       └── sim/
+│           ├── bindings_physics.cpp
+│           ├── bindings_sim.cpp
+│           ├── orbital_dynamics.cpp
+│           ├── orbital_dynamics.hpp
+│           ├── simulation_engine.cpp
+│           └── simulation_engine.hpp
 ├── ui/
 │   ├── src/
 │   │   ├── main.tsx
@@ -317,6 +317,7 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   ├── dashboard/
 │   └── simulation_data/
 ├── ARCHITECTURE.md
+├── CLAUDE.md
 ├── MATHEMATICS.md
 ├── PHYSICS-ENGINE.md
 ├── README.md

@@ -4,8 +4,8 @@ This document describes the *actual equations implemented today* in:
 
 - `src/python/control/codegen/satellite_dynamics.py` (CasADi symbolic dynamics)
 - `src/python/control/codegen/cost_functions.py` (CasADi symbolic cost terms)
-- `src/cpp/mpc_v2/sqp_controller.cpp` (RTI-SQP solver, OSQP backend)
-- `src/cpp/orbital_dynamics.cpp`
+- `src/cpp/mpc/sqp_controller.cpp` (RTI-SQP solver, OSQP backend)
+- `src/cpp/sim/orbital_dynamics.cpp`
 
 The MPC uses CasADi automatic differentiation for exact Jacobians and Hessians,
 injected into a C++ RTI-SQP (Real-Time Iteration Sequential Quadratic Programming)
