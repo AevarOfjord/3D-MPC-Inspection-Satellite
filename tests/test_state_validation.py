@@ -8,7 +8,7 @@ Trims down `test_simulation_state_validator.py`.
 import numpy as np
 import pytest
 from config.constants import Constants
-from utils.simulation_state_validator import (
+from simulation.state_validator import (
     create_state_validator_from_config,
 )
 

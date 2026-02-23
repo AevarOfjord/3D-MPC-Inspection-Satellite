@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from config.simulation_config import SimulationConfig
 from control.mpc_controller import MPCController
-from core.mpc_runner import MPCRunner
+from runtime.mpc_runner import MPCRunner
 
 import cpp
 

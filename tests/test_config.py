@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 from config import physics as physics_cfg
-from config.mission_state import DEFAULT_PATH_HOLD_END_S
 from config.models import (
     ActuatorPolicyParams,
     ControllerContractsParams,
@@ -16,6 +15,7 @@ from config.models import (
     SatellitePhysicalParams,
 )
 from config.simulation_config import SimulationConfig
+from mission.state import DEFAULT_PATH_HOLD_END_S
 from pydantic import ValidationError
 
 

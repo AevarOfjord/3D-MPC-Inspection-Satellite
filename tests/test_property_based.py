@@ -93,7 +93,7 @@ class TestStateInvariants:
     def test_state_validator_completeness(self, x, y, z):
         """Validator should handle any finite float input without crashing."""
         from config.simulation_config import SimulationConfig
-        from utils.simulation_state_validator import (
+        from simulation.state_validator import (
             create_state_validator_from_config,
         )
 

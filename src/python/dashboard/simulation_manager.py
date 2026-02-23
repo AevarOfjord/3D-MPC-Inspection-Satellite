@@ -10,10 +10,10 @@ from typing import Any
 import numpy as np
 from config.simulation_config import SimulationConfig
 from config.timing import SIMULATION_DT
-from core.simulation import SatelliteMPCLinearizedSimulation
 from fastapi import WebSocket
 from mission.runtime_loader import compile_unified_mission_runtime
 from mission.unified_mission import MissionDefinition
+from simulation.engine import SatelliteMPCLinearizedSimulation
 from utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 logger = logging.getLogger("dashboard")

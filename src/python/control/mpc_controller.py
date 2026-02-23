@@ -659,7 +659,7 @@ class MPCController(Controller):
         self.solver_fallback_zero_after_s = contracts.solver_fallback_zero_after_s
 
         try:
-            from config.orbital_config import OrbitalConfig
+            from physics.orbital_config import OrbitalConfig
 
             orb = OrbitalConfig()
             self.orbital_mu = float(orb.mu)

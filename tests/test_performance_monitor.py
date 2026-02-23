@@ -3,7 +3,7 @@
 import json
 
 from config.simulation_config import SimulationConfig
-from core.performance_monitor import PerformanceMonitor
+from runtime.performance_monitor import PerformanceMonitor
 
 
 def test_default_simulation_timing_contract_config() -> None:

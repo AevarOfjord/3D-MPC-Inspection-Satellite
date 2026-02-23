@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from config.simulation_config import SimulationConfig
 from control.mpc_controller import MPCController
-from core.cpp_satellite import CppSatelliteSimulator
+from simulation.cpp_backend import CppSatelliteSimulator
 
 
 @pytest.mark.slow

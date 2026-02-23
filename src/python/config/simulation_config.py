@@ -23,8 +23,9 @@ Usage:
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from mission.state import MissionState, create_mission_state
+
 from .defaults import create_default_app_config
-from .mission_state import MissionState, create_mission_state
 from .models import AppConfig
 
 

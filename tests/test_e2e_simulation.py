@@ -10,8 +10,8 @@ import os
 
 import pytest
 from config.simulation_config import SimulationConfig
-from core.simulation import SatelliteMPCLinearizedSimulation
-from core.simulation_loop import SimulationLoop
+from simulation.engine import SatelliteMPCLinearizedSimulation
+from simulation.loop import SimulationLoop
 
 
 @pytest.mark.slow

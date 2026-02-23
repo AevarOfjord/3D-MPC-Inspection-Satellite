@@ -28,7 +28,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from config.constants import Constants
-from config.mission_state import MissionState
 from config.models import AppConfig
 from config.paths import (
     LEGACY_SIMULATION_DATA_ROOT,
@@ -40,6 +39,7 @@ from config.simulation_config import SimulationConfig
 from cycler import cycler
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from mission.state import MissionState
 from visualization.plot_style import PlotStyle
 
 matplotlib.use("Agg")  # Use non-interactive backend

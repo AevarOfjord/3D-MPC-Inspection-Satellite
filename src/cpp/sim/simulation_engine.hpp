@@ -2,7 +2,7 @@
 
 #include <Eigen/Dense>
 #include <vector>
-#include "satellite_params.hpp"
+#include "../satellite_params.hpp"
 #include "orbital_dynamics.hpp"
 
 namespace satellite_control {

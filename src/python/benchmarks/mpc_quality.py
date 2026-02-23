@@ -21,7 +21,7 @@ from config.paths import (
     SIMULATION_DATA_ROOT,
     resolve_repo_path,
 )
-from core.v6_controller_runtime import QualityContractReportV6
+from runtime.v6_policy import QualityContractReportV6
 
 DATA_SIM_DIR = SIMULATION_DATA_ROOT
 SIM_RUNNER = SCRIPTS_DIR / "run_simulation.py"
