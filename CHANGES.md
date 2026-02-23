@@ -25,9 +25,9 @@ All obstacle-avoidance code has been stripped from the codebase.
 
 - `src/python/mission/unified_compiler.py` — removed `margin`/`obstacles` args from `_build_segment_path` and `_build_compiled_path_and_spans`
 - `src/python/mission/runtime_loader.py` — removed `mission_state.obstacles`, `obstacles_enabled`, and `_to_runtime_obstacles()`
-- `src/python/core/simulation_initialization.py` — removed obstacle log block
-- `src/python/core/simulation_io.py` — removed obstacle telemetry, breach tracking, and margin calculations
-- `src/python/core/mpc_runner.py` — fixed `SimulationConfig` vs `AppConfig` physics attribute resolution
+- `src/python/simulation/initialization.py` — removed obstacle log block
+- `src/python/simulation/io.py` — removed obstacle telemetry, breach tracking, and margin calculations
+- `src/python/runtime/mpc_runner.py` — fixed `SimulationConfig` vs `AppConfig` physics attribute resolution
 
 **Tests:**
 
@@ -65,6 +65,6 @@ This computes once at controller construction — **zero runtime overhead**.
 ## Test Results
 
 ```
-96 passed, 1 skipped
+132 passed, 1 skipped
 MPC solve time: ~35ms (unchanged)
 ```

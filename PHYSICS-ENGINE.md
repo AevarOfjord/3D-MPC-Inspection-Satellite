@@ -2,10 +2,10 @@
 
 This document describes the physics that is currently implemented in:
 
-- `src/cpp/simulation_engine.cpp`
-- `src/cpp/orbital_dynamics.cpp`
-- `src/python/core/thruster_manager.py`
-- `src/python/core/cpp_satellite.py`
+- `src/cpp/sim/simulation_engine.cpp`
+- `src/cpp/sim/orbital_dynamics.cpp`
+- `src/python/runtime/thruster_manager.py`
+- `src/python/simulation/cpp_backend.py`
 
 It is intentionally implementation-specific.
 
