@@ -77,54 +77,48 @@ with `Ahat_k, Bhat_k, ahat_k` built from the 16-state linearization plus the `s`
 
 ### 2.1 Quaternion kinematics block
 
-In `satellite_dynamics.py`, quaternion dynamics are linearized (via CasADi AD) from the continuous kinematic relation:
+In `satellite_dynamics.py`, quaternion dynamics are propagated (via CasADi AD) from the continuous kinematic relation:
 
 ```text
-q_{k+1} approx q_k + 0.5 * G(q_k) * w_k * dt
+q_dot = 0.5 * Xi(q) * w
 ```
 
-with:
+with `Xi(q)` (4×3 matrix, scalar-first convention):
 
 ```text
-G(q) = [ -qx  -qy  -qz
-          qw  -qz   qy
-          qz   qw  -qx
-         -qy   qx   qw ]
+Xi(q) = [ -qx  -qy  -qz
+           qw  -qz   qy
+           qz   qw  -qx
+          -qy   qx   qw ]
 ```
 
-and quaternion normalized before Jacobian evaluation.
+The full nonlinear dynamics are propagated by RK4, and CasADi computes the exact discrete Jacobians `A_k = df/dx` and `B_k = df/du` via automatic differentiation.
 
 ### 2.2 Orbital terms
 
-Two-body mode (default in current setup):
+The MPC dynamics model uses Clohessy-Wiltshire (CW/Hill's) linearised gravity in the LVLH frame. Mean motion: `n = sqrt(mu / R^3)`.
+
+CW accelerations:
 
 ```text
-a(r) = -mu * r / |r|^3
+ax =  3n^2 x + 2n vy   (radial)
+ay = -2n vx             (along-track)
+az = -n^2 z             (cross-track)
 ```
 
-For relative dynamics, the gravity-gradient Jacobian is:
+These are exact linear functions of position and velocity and appear directly in the `A` matrix without a residual term.
+
+Note: the simulation engine (`PHYSICS-ENGINE.md`) propagates the plant with nonlinear two-body differential gravity. The MPC intentionally uses the simpler CW model for real-time linearization.
+
+### 2.3 Angular-rate gyroscopic term
+
+Euler's rotational equation including reaction-wheel angular momentum:
 
 ```text
-J = -mu * ( I/|r|^3 - 3 rr^T/|r|^5 )
+I w_dot + w x (I w + h_rw) = tau
 ```
 
-and applied to velocity-position coupling (`A(7:9,0:2)`), with residual in affine term:
-
-```text
-a_k(vel) = dt * (a_rel - J * r_rel)
-```
-
-CW mode is also supported via Hill/Clohessy-Wiltshire terms.
-
-### 2.3 Angular-rate gyroscopic Jacobian
-
-When enabled:
-
-```text
-I w_dot + w x (I w) = tau
-```
-
-is linearized around current `w`, adding a Jacobian block to `A(10:12,10:12)`.
+where `h_rw = sum_i axis_i * I_rw,i * w_rw,i` is the total wheel angular momentum in the body frame. This is linearized around current `w` and `w_rw`, adding a Jacobian block to `A(10:12, 10:15)`.
 
 ### 2.4 Input matrix mapping
 
@@ -132,12 +126,12 @@ is linearized around current `w`, adding a Jacobian block to `A(10:12,10:12)`.
   - `w_dot += -I^{-1}(axis_i * tau_max_i * u_i)`
   - `w_rw_dot += (tau_max_i / I_rw_i) * u_i`
 - Thrusters:
-  - body force `F_body = f_i * d_i`
-  - world force `F_world = R(q) F_body`
+  - body force `F_i = d_i * F_max_i * u_i`
+  - world force `F_world = R(q) sum_i F_i`
   - `v_dot += F_world / m`
-  - `w_dot += I^{-1} (r_i x F_body)`
+  - `w_dot += I^{-1} sum_i (r_i x F_i)`
 
-## 3) QP form and variable scaling
+## 3) QP form
 
 OSQP solves:
 
@@ -146,13 +140,7 @@ min (1/2) z^T P z + q^T z
 s.t. l <= A z <= u
 ```
 
-The implementation optionally solves in scaled coordinates:
-
-```text
-z = S * z_tilde
-```
-
-with per-variable scales (`state_var_scale_`, `control_var_scale_`), and matrix entries assembled/updated directly in scaled form.
+`P` is assembled as an upper-triangular sparse matrix with pre-allocated sparsity for diagonal state/control costs, smoothness cross-terms `(u_k, u_{k-1})`, and opposing-thruster pair cross-terms.
 
 ## 4) Objective function terms (implemented)
 
@@ -160,67 +148,67 @@ The cost is stage-wise MPCC plus regularization/effort terms.
 
 ## 4.1 Contouring + lag (path geometry)
 
-At each stage `k`, with linearization point `s_bar`:
+At each stage `k`, the path reference is evaluated at the current progress estimate `s_k`:
 
-- `p_ref = p(s_bar)`
-- `t_ref = dp/ds |_(s_bar)` (unit tangent)
+- `p_ref = p(s_k)` (reference position)
+- `t_ref = dp/ds |_(s_k)` (unit tangent)
 
-Linearized path point:
-
-```text
-p(s) approx p_ref + t_ref * (s - s_bar)
-```
-
-Contouring uses the expansion of:
+The cross-track (contouring) and along-track (lag) errors are:
 
 ```text
-||p - p(s)||^2
+e_c = (p - p_ref) - [(p - p_ref) . t_ref] t_ref   (perpendicular to tangent)
+e_l = (p - p_ref) . t_ref                           (along tangent)
 ```
 
-which yields:
-
-- position diagonal terms
-- `(p_i, s)` cross terms
-- `s` diagonal terms
-- linear terms in `p` and `s`
-
-Lag is implemented through a tangent projector contribution (`t_ref t_ref^T`) on position block and matching linear term.
-
-## 4.2 Velocity alignment term
-
-Velocity tracking along tangent:
+Costs:
 
 ```text
-Q_v * ||v - v_ref * t_ref||^2
+Q_contour * ||e_c||^2  +  Q_lag * e_l^2
 ```
 
-implemented as velocity Hessian diagonals and linear term toward `t_ref`.
+In the C++ QP builder these are combined into a single diagonal position quadratic:
 
-## 4.3 Progress term (`v_s`)
+```text
+(Q_contour + Q_lag) * ||p - p_ref||^2
+```
 
-In speed-tracking mode:
+with linear term `q_pos = -2*(Q_contour + Q_lag)*p_ref`. The progress state `s` is anchored separately (§4.3).
+
+## 4.2 Velocity damping
+
+The C++ QP builder penalises velocity magnitude:
+
+```text
+Q_v * ||v||^2
+```
+
+The CasADi symbolic cost function (`velocity_alignment_cost`) implements a full tangent-tracking term `Q_v * ||v - v_ref * t_ref||^2`, which is used for gradient/Hessian export but the runtime C++ QP builder uses the simpler damping form.
+
+## 4.3 Progress term (`v_s`) and path anchor
+
+Progress tracking:
 
 ```text
 Q_progress * (v_s - v_ref)^2
 ```
 
-or, when `progress_reward > 0`, linear reward:
+or, when `progress_reward > 0`, an added linear incentive:
 
 ```text
--2 * progress_reward * v_s
+q[v_s] -= progress_reward
 ```
 
-In `error_priority` mode:
+Path progress anchor (keeps `s` near its current estimate):
 
-- progress quadratic is reduced to tiny regularization (`1e-4` on `v_s`)
-- linear progress drive is removed
-- velocity-align and `s`-anchor terms are disabled
+```text
+Q_s_anchor * (s - s_ref)^2
+```
 
-so path-error reduction dominates.
+In `error_priority` progress policy, the upper speed bound is reduced by path error (see §7); cost weights are not modified.
 
 ## 4.4 Attitude and angular-rate terms
 
-Quaternion tracking:
+Quaternion tracking (4-component, in C++ QP builder):
 
 ```text
 Q_att * ||q - q_ref||^2
@@ -228,13 +216,13 @@ Q_att * ||q - q_ref||^2
 
 where `Q_att = Q_attitude + Q_axis_align` and `q_ref` is built from path tangent plus scan-frame logic.
 
-Additional quaternion regularizer is implemented as:
+Additional quaternion regularizer:
 
 ```text
 Q_quat_norm * ||q - q_current||^2
 ```
 
-(implemented through diagonal + linear terms around current quaternion).
+(diagonal + linear terms around current quaternion).
 
 Angular velocity damping:
 
@@ -249,18 +237,18 @@ with runtime mode scaling.
 Base effort:
 
 ```text
-R_rw * ||tau_rw||^2 + R_thr * ||u_thr||^2 + Q_progress * v_s^2
+R_rw * ||tau_rw||^2 + R_thr * ||u_thr||^2
 ```
 
-Smoothness:
+Smoothness (cross-stage control increment):
 
 ```text
 Q_smooth * sum_{k=1}^{N-1} ||u_k - u_{k-1}||^2
 ```
 
-with optional explicit cross-stage Hessian coupling (`enable_delta_u_coupling`).
+Cross-stage Hessian entries `(u_{k-1}, u_k)` are pre-allocated in the sparsity pattern.
 
-Opposing-thruster cofire penalty (per pair):
+Opposing-thruster cofire penalty (per pair `(i, j)`):
 
 ```text
 w_pair * (u_i + u_j)^2
@@ -274,30 +262,29 @@ thrust_l1_weight * sum_i u_thr,i
 
 ## 4.6 Terminal terms
 
-Terminal stage receives:
+The terminal stage (`k = N`) applies a 10× scale on position, attitude, velocity, and angular-velocity costs relative to the stage cost. Additionally:
 
-- endpoint position pull to final path point
-- endpoint progress pull to total path length
-- DARE-based terminal physics cost (see next section)
+- `Q_terminal_vel` added to velocity diagonal
+- `Q_terminal_s` added to `s` anchor diagonal
+- DARE-based terminal diagonal (see §5)
 
-plus mode-dependent scaling (SETTLE/HOLD/COMPLETE can increase terminal stabilization emphasis).
+## 5) Terminal cost approximation
 
-## 5) DARE terminal cost (implemented)
-
-For the 16 physical states, a discrete Riccati iteration computes `P` from local linearization:
+For the 16 physical states, `compute_dare_terminal_diag()` computes a diagonal terminal cost using a heuristic scaling that approximates an infinite-horizon LQR cost-to-go:
 
 ```text
-S = R + B^T P B
-K = S^{-1} B^T P A
-P_next = Q + (A-BK)^T P (A-BK) + K^T R K
+P_ii = Q_ii * N * dt * factor_i
 ```
 
-This terminal `P` is used as:
+where `factor_i` is state-dependent (0.5 for position, 0.3 for quaternion/angular velocity, 0.2 for linear velocity, 0.01 for wheel speeds). This approximates the steady-state Riccati solution without an explicit Riccati iteration.
 
-- diagonal-only (default `diagonal` profile), or
-- with added dense off-diagonal terminal couplings (`dense_terminal`)
+The result is added to the terminal stage diagonal:
 
-Online periodic updates can refresh this terminal block around the latest predicted tail state.
+```text
+P[x_N_offset + i, x_N_offset + i] += dare_diag[i]   for i = 0..15
+```
+
+Online updates refresh this block every `dare_update_period_steps` control steps.
 
 ## 6) Constraints
 
@@ -314,19 +301,19 @@ Typical bounds:
 - RW commands in `[-1, 1]`
 - Thrusters in `[0, 1]`
 - wheel speeds bounded by configured limits
-- optional velocity and angular-rate bounds
-- progress state `s` bounded to path range (with startup margin)
+- optional velocity and angular-rate bounds (exponentially tightened over the horizon; k=0 is unconstrained since the initial-state equality pins it)
+- progress state `s` bounded to `[0, path_length]`
 - `v_s` bounded by `[path_speed_min, path_speed_max]` (runtime-adjusted)
 
 ## 7) Progress-bound adaptation and endpoint behavior
 
-Near path end, minimum `v_s` is relaxed to allow stop:
+Near path end (`s_runtime > 0.9 * total_length`), minimum `v_s` is relaxed to allow stopping:
 
 ```text
-if remaining_distance <= horizon_min_distance: v_s_min = 0
+vs_min = 0
 ```
 
-In `error_priority` mode, upper speed cap is reduced by path error:
+In `error_priority` progress policy, the upper speed cap is reduced by path error:
 
 ```text
 v_s_max_adaptive = v_s_max / (1 + gain * path_error^2)
@@ -342,26 +329,10 @@ Mode changes rescale major weights:
 - terminal position/attitude
 - velocity alignment and angular-rate damping
 - smoothness and thruster-pair penalties
-- control horizon length (shorter in some modes)
 
-This is done by updating effective weights and rebuilding/updating QP terms accordingly.
+This is done by `apply_mode_scaling()` updating cached effective weight scalars; QP matrices are rebuilt from these on the next `update_cost()` call.
 
-## 9) Robust scaffold (`tube` mode)
-
-Two mechanisms are implemented:
-
-1. **Constraint tightening**
-   - state/control bounds contracted by a configured fraction.
-2. **Ancillary feedback correction**
-   - after nominal MPC solve:
-
-```text
-u_phys <- u_phys - alpha * K * (x - x_nom)
-```
-
-with `K` from local DARE/LQR and correction clipped per channel.
-
-## 10) Solver and fallback behavior
+## 9) Solver and fallback behavior
 
 OSQP is used with warm-start and bounded solve time.
 
@@ -369,6 +340,6 @@ If non-success status occurs, control fallback is:
 
 1. hold last feasible command for `T_hold`
 2. linearly decay over `T_decay`
-3. force zero after `T_zero`
+3. force zero after `T_hold + T_decay`
 
 This preserves bounded, graceful behavior under solver failures/timeouts.
