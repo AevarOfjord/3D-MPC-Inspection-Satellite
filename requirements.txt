@@ -18,6 +18,7 @@ imageio>=2.30.0
 imageio-ffmpeg>=0.4.9
 shapely>=1.8.0
 osqp>=0.6.0
+casadi>=3.6.0
 uvicorn>=0.20.0
 fastapi>=0.100.0
 websockets>=10.0.0

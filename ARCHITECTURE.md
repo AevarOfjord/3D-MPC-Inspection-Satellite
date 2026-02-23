@@ -47,11 +47,14 @@ Result: a validated runtime mission representation with path/reference context a
   - `src/python/control/mpc_controller.py`
   - `src/python/core/v6_controller_runtime.py`
 
-Python wrapper `MPCController` loads C++ extension `cpp._cpp_mpc` and passes:
+Python wrapper `MPCController` loads C++ extension `cpp._cpp_mpc` (RTI-SQP backend) and passes:
 
 - physical parameters (mass, inertia, thruster geometry, RW config),
 - MPC parameters (weights, horizons, bounds, policies),
 - path samples for MPCC.
+
+At each solve step, CasADi-generated exact Jacobians are computed in Python and
+injected into the C++ SQP controller, which builds and solves the QP via OSQP.
 
 ## 2.3 Runtime Control Loop
 
@@ -73,12 +76,15 @@ Per control step:
 
 ## 2.4 C++ Core Responsibilities
 
-- MPC QP builder/solver (OSQP):
-  - `src/cpp/mpc_controller.cpp`
-  - `src/cpp/mpc_controller.hpp`
-- Dynamics linearization:
-  - `src/cpp/linearizer.cpp`
-  - `src/cpp/linearizer.hpp`
+- MPC RTI-SQP solver (CasADi Jacobians + OSQP QP):
+  - `src/cpp/mpc_v2/sqp_controller.cpp`
+  - `src/cpp/mpc_v2/sqp_controller.hpp`
+  - `src/cpp/mpc_v2/sqp_types.cpp`
+  - `src/cpp/mpc_v2/sqp_types.hpp`
+- CasADi symbolic dynamics and cost codegen (Python-side):
+  - `src/python/control/codegen/satellite_dynamics.py`
+  - `src/python/control/codegen/cost_functions.py`
+  - `src/python/control/codegen/generate.py`
 - Orbital dynamics:
   - `src/cpp/orbital_dynamics.cpp`
   - `src/cpp/orbital_dynamics.hpp`
@@ -86,7 +92,7 @@ Per control step:
   - `src/cpp/simulation_engine.cpp`
   - `src/cpp/simulation_engine.hpp`
 - Python bindings:
-  - `src/cpp/bindings.cpp`
+  - `src/cpp/mpc_v2/bindings_v2.cpp` (MPC module `_cpp_mpc`)
   - `src/cpp/bindings_sim.cpp`
   - `src/cpp/bindings_physics.cpp`
 
@@ -168,7 +174,12 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │   │   └── validator.py
 │   │   ├── control/
 │   │   │   ├── base.py
-│   │   │   └── mpc_controller.py
+│   │   │   ├── mpc_controller.py
+│   │   │   └── codegen/
+│   │   │       ├── __init__.py
+│   │   │       ├── satellite_dynamics.py
+│   │   │       ├── cost_functions.py
+│   │   │       └── generate.py
 │   │   ├── core/
 │   │   │   ├── backend.py
 │   │   │   ├── control_loop.py
@@ -235,13 +246,14 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │       ├── unified_visualizer.py
 │   │       └── video_renderer.py
 │   └── cpp/
-│       ├── bindings.cpp
-│       ├── bindings_physics.cpp
+│       ├── mpc_v2/
+│       │   ├── bindings_v2.cpp
+│       │   ├── sqp_controller.cpp
+│       │   ├── sqp_controller.hpp
+│       │   ├── sqp_types.cpp
+│       │   └── sqp_types.hpp
 │       ├── bindings_sim.cpp
-│       ├── linearizer.cpp
-│       ├── linearizer.hpp
-│       ├── mpc_controller.cpp
-│       ├── mpc_controller.hpp
+│       ├── bindings_physics.cpp
 │       ├── orbital_dynamics.cpp
 │       ├── orbital_dynamics.hpp
 │       ├── satellite_params.hpp

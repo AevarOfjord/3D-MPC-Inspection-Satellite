@@ -33,15 +33,17 @@ message(STATUS "Python3_EXECUTABLE: ${Python3_EXECUTABLE}")
 message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 find_package(pybind11 CONFIG REQUIRED)
 
-# --- Module: _cpp_mpc ---
+# --- Module: _cpp_mpc (RTI-SQP, CasADi + OSQP) ---
 add_library(_cpp_mpc MODULE
-    src/cpp/bindings.cpp
-    src/cpp/linearizer.cpp
-    src/cpp/mpc_controller.cpp
-    src/cpp/orbital_dynamics.cpp
+    src/cpp/mpc_v2/bindings_v2.cpp
+    src/cpp/mpc_v2/sqp_controller.cpp
+    src/cpp/mpc_v2/sqp_types.cpp
 )
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)
-target_include_directories(_cpp_mpc PRIVATE ${osqp_SOURCE_DIR}/include)
+target_include_directories(_cpp_mpc PRIVATE
+    ${osqp_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/cpp          # for satellite_params.hpp
+)
 target_compile_features(_cpp_mpc PRIVATE cxx_std_17)
 set_target_properties(_cpp_mpc PROPERTIES PREFIX "")
 install(TARGETS _cpp_mpc DESTINATION cpp)

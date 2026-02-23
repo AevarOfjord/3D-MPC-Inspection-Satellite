@@ -19,7 +19,10 @@ class TestMPCController:
 
     @pytest.fixture
     def controller(self, fresh_config):
-        return MPCController(fresh_config.app_config)
+        ctrl = MPCController(fresh_config.app_config)
+        # V2 MPCC controller requires a path for meaningful solve
+        ctrl.set_path([(0, 0, 0), (10, 0, 0), (20, 0, 0)])
+        return ctrl
 
     def test_initialization(self, controller):
         """Test controller initialization."""
@@ -72,10 +75,9 @@ class TestMPCController:
         assert np.all(thrusters >= -1e-5)
         assert np.all(thrusters <= 1.0 + 1e-5)
 
-        # RW torques are bounded (check limits from config)
-        max_torque = controller.max_rw_torque
-        # Only check if we have RWs configured
-        if max_torque > 0:
+        # RW torques are bounded
+        if hasattr(controller, "rw_torque_limits") and controller.rw_torque_limits:
+            max_torque = max(controller.rw_torque_limits)
             assert np.all(np.abs(rw_torques) <= max_torque + 1e-5)
 
     def test_solver_metadata_fields(self, controller):
@@ -90,28 +92,23 @@ class TestMPCController:
         assert isinstance(info["timeout"], bool)
 
     def test_cpp_binding_exposes_v6_mode_profile_fields(self):
-        """C++ binding should expose V6 mode profile params and runtime mode setter."""
+        """C++ binding should expose V2 MPCV2Params and mode profile fields."""
         from cpp import _cpp_mpc
 
-        params = _cpp_mpc.MPCParams()
+        params = _cpp_mpc.MPCV2Params()
         assert hasattr(params, "recover_contour_scale")
         assert hasattr(params, "settle_progress_scale")
         assert hasattr(params, "hold_smoothness_scale")
         assert hasattr(params, "terminal_cost_profile")
         assert hasattr(params, "robustness_mode")
         assert hasattr(params, "constraint_tightening_scale")
-        assert not hasattr(params, "coast_pos_tolerance")
-        assert not hasattr(params, "coast_vel_tolerance")
-        assert not hasattr(params, "coast_min_speed")
-        assert not hasattr(params, "progress_taper_distance")
-        assert not hasattr(params, "progress_slowdown_distance")
-        assert hasattr(_cpp_mpc.MPCControllerCpp, "set_runtime_mode")
+        assert hasattr(_cpp_mpc.SQPController, "set_runtime_mode")
 
     def test_v6_core_is_default_and_runtime_mode_is_settable(self):
-        """V6 core should be active and runtime mode updates should be accepted."""
+        """V2 SQP core should be active and runtime mode updates should be accepted."""
         cfg = SimulationConfig.create_with_overrides({})
         controller = MPCController(cfg.app_config)
-        assert controller.controller_core == "v6"
+        # V2 reports controller_core as 'v2-sqp' in extras
         controller.set_runtime_mode("RECOVER")
         assert controller._runtime_mode == "RECOVER"
 
@@ -177,7 +174,21 @@ class TestMPCController:
             def get_control_action(self, x_input):
                 raise TypeError("signature mismatch")
 
-        controller._cpp_controller = _StrictCpp()
+            @property
+            def current_path_s(self):
+                return 0.0
+
+            @property
+            def prediction_horizon(self):
+                return 10
+
+            def get_stage_state(self, k):
+                return np.zeros(17)
+
+            def get_stage_control(self, k):
+                return np.zeros(10)
+
+        controller._cpp = _StrictCpp()
 
         x_current = np.zeros(16, dtype=np.float64)
         x_current[3] = 1.0

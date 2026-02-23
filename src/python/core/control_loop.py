@@ -365,9 +365,13 @@ def update_mpc_control_step(sim: Any) -> None:
         sim.last_solve_time = mpc_info.get("solve_time", 0.0)
 
     rw_torque_cmd = np.zeros(3, dtype=np.float64)
-    max_rw_torque = getattr(sim.mpc_controller, "max_rw_torque", 0.0)
-    if rw_torque_norm is not None and max_rw_torque:
-        rw_torque_cmd[: len(rw_torque_norm)] = rw_torque_norm * max_rw_torque
+    # Per-wheel denormalization: each MPC output in [-1,1] is scaled by
+    # that wheel's tau_max (matching the CasADi dynamics model).
+    rw_limits = getattr(sim.mpc_controller, "rw_torque_limits", None)
+    if rw_torque_norm is not None and rw_limits and len(rw_limits) > 0:
+        n = min(len(rw_torque_norm), len(rw_limits), 3)
+        for i in range(n):
+            rw_torque_cmd[i] = rw_torque_norm[i] * rw_limits[i]
     sim.satellite.set_reaction_wheel_torque(rw_torque_cmd)
 
     # Update simulation state

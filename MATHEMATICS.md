@@ -2,11 +2,14 @@
 
 This document describes the *actual equations implemented today* in:
 
-- `src/cpp/mpc_controller.cpp`
-- `src/cpp/linearizer.cpp`
+- `src/python/control/codegen/satellite_dynamics.py` (CasADi symbolic dynamics)
+- `src/python/control/codegen/cost_functions.py` (CasADi symbolic cost terms)
+- `src/cpp/mpc_v2/sqp_controller.cpp` (RTI-SQP solver, OSQP backend)
 - `src/cpp/orbital_dynamics.cpp`
 
-It is intentionally implementation-aligned (not a generic MPC textbook derivation).
+The MPC uses CasADi automatic differentiation for exact Jacobians and Hessians,
+injected into a C++ RTI-SQP (Real-Time Iteration Sequential Quadratic Programming)
+loop that solves the resulting QP via OSQP at each control step.
 
 ## 1) Decision variables and dimensions
 
@@ -74,7 +77,7 @@ with `Ahat_k, Bhat_k, ahat_k` built from the 16-state linearization plus the `s`
 
 ### 2.1 Quaternion kinematics block
 
-In `linearizer.cpp`, quaternion dynamics are linearized as:
+In `satellite_dynamics.py`, quaternion dynamics are linearized (via CasADi AD) from the continuous kinematic relation:
 
 ```text
 q_{k+1} approx q_k + 0.5 * G(q_k) * w_k * dt
