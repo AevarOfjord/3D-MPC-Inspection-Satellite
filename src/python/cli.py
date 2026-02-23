@@ -285,7 +285,7 @@ def run(
 
     # Initialize Simulation (Pydantic config only - no Hydra)
     try:
-        from core.simulation import (
+        from simulation.engine import (
             SatelliteMPCLinearizedSimulation,
         )
 

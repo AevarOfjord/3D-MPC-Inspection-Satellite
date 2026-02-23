@@ -11,10 +11,10 @@ import logging
 import math
 from typing import Any, ClassVar
 
+from mission.state import DEFAULT_PATH_HOLD_END_S
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import constants, physics, timing
-from .mission_state import DEFAULT_PATH_HOLD_END_S
 from .reaction_wheel_config import ReactionWheelParams as RWConfigParams
 
 _RW_DEFAULT = RWConfigParams()

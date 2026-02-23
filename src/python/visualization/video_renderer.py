@@ -17,11 +17,11 @@ from typing import Any
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
-from config.mission_state import MissionState
 from config.models import AppConfig
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
+from mission.state import MissionState
 from visualization.plot_style import PlotStyle
 
 # Worker process cache for parallel frame rendering

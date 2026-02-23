@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 from config.simulation_config import SimulationConfig
 from control.mpc_controller import MPCController
-from core.cpp_satellite import CppSatelliteSimulator
-from core.simulation import SatelliteMPCLinearizedSimulation
+from simulation.cpp_backend import CppSatelliteSimulator
+from simulation.engine import SatelliteMPCLinearizedSimulation
 
 
 class TestCPPEngine:

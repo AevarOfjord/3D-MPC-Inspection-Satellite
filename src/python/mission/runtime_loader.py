@@ -11,13 +11,13 @@ from typing import Any
 
 import numpy as np
 from config.simulation_config import SimulationConfig
-from core.v6_controller_runtime import (
-    MissionRuntimePlanV6,
-    compile_mission_runtime_plan_v6,
-)
 from mission.path_assets import load_path_asset
 from mission.unified_compiler import compile_unified_mission_path
 from mission.unified_mission import MissionDefinition, SegmentType
+from runtime.v6_policy import (
+    MissionRuntimePlanV6,
+    compile_mission_runtime_plan_v6,
+)
 
 
 @dataclass

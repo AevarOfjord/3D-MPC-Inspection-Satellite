@@ -15,7 +15,7 @@ where n = √(μ/a³) is the orbital mean motion and a is thrust acceleration.
 from dataclasses import dataclass
 
 import numpy as np
-from config.orbital_config import OrbitalConfig
+from physics.orbital_config import OrbitalConfig
 
 
 @dataclass

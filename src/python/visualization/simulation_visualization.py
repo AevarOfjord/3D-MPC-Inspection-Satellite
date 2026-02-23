@@ -131,8 +131,8 @@ class SimulationVisualizationManager:
             self.app_config = controller.simulation_config.app_config
             self.mission_state = controller.simulation_config.mission_state
         else:
-            from config.mission_state import create_mission_state
             from config.simulation_config import SimulationConfig
+            from mission.state import create_mission_state
 
             default_config = SimulationConfig.create_default()
             self.app_config = default_config.app_config

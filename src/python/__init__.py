@@ -14,7 +14,7 @@ except PackageNotFoundError:  # pragma: no cover – editable / dev installs
 
 # ── Core public classes ──────────────────────────────────────────────
 from config.models import AppConfig  # noqa: F401
-from core.exceptions import (  # noqa: F401
+from exceptions import (  # noqa: F401
     ConfigurationError,
     ControllerError,
     DashboardError,
