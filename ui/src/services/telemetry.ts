@@ -22,7 +22,7 @@ export interface TelemetryData {
   };
   thrusters: number[];
   rw_torque: number[];
-  obstacles: Array<{
+  obstacles?: Array<{
     position: [number, number, number];
     radius: number;
   }>;
@@ -137,7 +137,7 @@ class TelemetryService {
     pushCandidate(data.target_position);
     pushPathSamples(data.planned_path);
     pushCandidate(data.scan_object?.position);
-    if (data.obstacles.length > 0) {
+    if (data.obstacles && data.obstacles.length > 0) {
       pushCandidate(data.obstacles[0].position);
       pushCandidate(data.obstacles[data.obstacles.length - 1].position);
     }
