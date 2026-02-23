@@ -35,9 +35,9 @@ find_package(pybind11 CONFIG REQUIRED)
 
 # --- Module: _cpp_mpc (RTI-SQP, CasADi + OSQP) ---
 add_library(_cpp_mpc MODULE
-    src/cpp/mpc_v2/bindings_v2.cpp
-    src/cpp/mpc_v2/sqp_controller.cpp
-    src/cpp/mpc_v2/sqp_types.cpp
+    src/cpp/mpc/bindings.cpp
+    src/cpp/mpc/sqp_controller.cpp
+    src/cpp/mpc/sqp_types.cpp
 )
 target_link_libraries(_cpp_mpc PRIVATE pybind11::headers Python3::Module Eigen3::Eigen osqpstatic)
 target_include_directories(_cpp_mpc PRIVATE
@@ -59,13 +59,13 @@ endmacro()
 
 # Module: _cpp_sim
 add_satellite_module(_cpp_sim
-    src/cpp/bindings_sim.cpp
-    src/cpp/simulation_engine.cpp
-    src/cpp/orbital_dynamics.cpp
+    src/cpp/sim/bindings_sim.cpp
+    src/cpp/sim/simulation_engine.cpp
+    src/cpp/sim/orbital_dynamics.cpp
 )
 
 # Module: _cpp_physics
 add_satellite_module(_cpp_physics
-    src/cpp/bindings_physics.cpp
-    src/cpp/orbital_dynamics.cpp
+    src/cpp/sim/bindings_physics.cpp
+    src/cpp/sim/orbital_dynamics.cpp
 )
