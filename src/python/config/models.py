@@ -5,6 +5,8 @@ Type-safe configuration models with validation, range checks,
 and descriptive error messages.
 """
 
+from __future__ import annotations
+
 import logging
 import math
 from typing import Any, ClassVar
@@ -99,7 +101,7 @@ class SatellitePhysicalParams(BaseModel):
     )
 
     # Reaction Wheels
-    reaction_wheels: list["ReactionWheelParams"] = Field(
+    reaction_wheels: list[ReactionWheelParams] = Field(
         default_factory=list,
         description="List of reaction wheel configurations",
     )
@@ -653,7 +655,7 @@ class MPCParams(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_weight_balance(self) -> "MPCParams":
+    def validate_weight_balance(self) -> MPCParams:
         """Check that weights are reasonably balanced."""
         total_q = (
             self.Q_contour
@@ -677,7 +679,7 @@ class MPCParams(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_hysteresis_thresholds(self) -> "MPCParams":
+    def validate_hysteresis_thresholds(self) -> MPCParams:
         """Ensure hysteresis thresholds are ordered correctly."""
         if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
             raise ValueError(
@@ -785,7 +787,7 @@ class SimulationParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_mpc_timing_contract(self) -> "SimulationParams":
+    def validate_mpc_timing_contract(self) -> SimulationParams:
         """Ensure timing contract thresholds are internally consistent."""
         if self.mpc_hard_max_solve_time_ms < self.mpc_target_mean_solve_time_ms:
             raise ValueError(
@@ -923,7 +925,7 @@ class ActuatorPolicyParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_hysteresis_thresholds(self) -> "ActuatorPolicyParams":
+    def validate_hysteresis_thresholds(self) -> ActuatorPolicyParams:
         if self.thruster_hysteresis_on <= self.thruster_hysteresis_off:
             raise ValueError(
                 "thruster_hysteresis_on must be greater than thruster_hysteresis_off"
@@ -1018,18 +1020,7 @@ class ControllerContractsParams(BaseModel):
         constants.Constants.V6_POINTING_SCOPE,
         description='Pointing contract scope ("all_missions", "scan_only", "config_toggle").',
     )
-    pointing_axis_priority: str = Field(
-        constants.Constants.V6_POINTING_AXIS_PRIORITY,
-        description='Pointing axis priority policy ("strict_z_lock", "exact_x_tangent", "weighted_compromise").',
-    )
-    pointing_sensor_policy: str = Field(
-        constants.Constants.V6_POINTING_SENSOR_POLICY,
-        description='Sensor-side policy ("auto_both", "force_plus_y", "force_minus_y").',
-    )
-    pointing_transfer_axis_policy: str = Field(
-        constants.Constants.V6_POINTING_TRANSFER_AXIS_POLICY,
-        description='Transfer axis policy ("next_scan", "previous_scan", "blend").',
-    )
+
     scan_axis_source: str = Field(
         constants.Constants.V6_SCAN_AXIS_SOURCE,
         description='Scan axis source policy ("planner", "asset_infer").',
@@ -1064,7 +1055,7 @@ class ControllerContractsParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_recovery_thresholds(self) -> "ControllerContractsParams":
+    def validate_recovery_thresholds(self) -> ControllerContractsParams:
         if self.recover_exit_error_m > self.recover_enter_error_m:
             raise ValueError(
                 "recover_exit_error_m should be <= recover_enter_error_m for hysteresis"
@@ -1077,30 +1068,7 @@ class ControllerContractsParams(BaseModel):
             raise ValueError(
                 "pointing_scope must be one of: all_missions, scan_only, config_toggle"
             )
-        if self.pointing_axis_priority not in {
-            "strict_z_lock",
-            "exact_x_tangent",
-            "weighted_compromise",
-        }:
-            raise ValueError(
-                "pointing_axis_priority must be one of: strict_z_lock, exact_x_tangent, weighted_compromise"
-            )
-        if self.pointing_sensor_policy not in {
-            "auto_both",
-            "force_plus_y",
-            "force_minus_y",
-        }:
-            raise ValueError(
-                "pointing_sensor_policy must be one of: auto_both, force_plus_y, force_minus_y"
-            )
-        if self.pointing_transfer_axis_policy not in {
-            "next_scan",
-            "previous_scan",
-            "blend",
-        }:
-            raise ValueError(
-                "pointing_transfer_axis_policy must be one of: next_scan, previous_scan, blend"
-            )
+
         if self.scan_axis_source not in {"planner", "asset_infer"}:
             raise ValueError("scan_axis_source must be one of: planner, asset_infer")
         return self
@@ -1131,7 +1099,7 @@ class AppConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_timing_consistency(self) -> "AppConfig":
+    def validate_timing_consistency(self) -> AppConfig:
         """Ensure timing parameters are consistent across subsystems."""
         # MPC dt should match simulation control_dt
         if abs(self.mpc.dt - self.simulation.control_dt) > 0.001:
@@ -1154,6 +1122,6 @@ class AppConfig(BaseModel):
         return self.model_dump()
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
+    def from_dict(cls, data: dict[str, Any]) -> AppConfig:
         """Create configuration from dictionary."""
         return cls.model_validate(data)

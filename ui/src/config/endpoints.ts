@@ -1,7 +1,10 @@
+const isDev = import.meta.env.DEV;
 const DEFAULT_HOST = window.location.hostname || 'localhost';
-const DEFAULT_PORT = '8000';
-const DEFAULT_HTTP_BASE = `${window.location.protocol}//${DEFAULT_HOST}:${DEFAULT_PORT}`;
-const DEFAULT_WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${DEFAULT_HOST}:${DEFAULT_PORT}`;
+const DEFAULT_PORT = isDev ? '8000' : window.location.port;
+const _portStr = DEFAULT_PORT ? `:${DEFAULT_PORT}` : '';
+
+const DEFAULT_HTTP_BASE = `${window.location.protocol}//${DEFAULT_HOST}${_portStr}`;
+const DEFAULT_WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${DEFAULT_HOST}${_portStr}`;
 
 const normalizeBase = (value: string) => (value.endsWith('/') ? value.slice(0, -1) : value);
 

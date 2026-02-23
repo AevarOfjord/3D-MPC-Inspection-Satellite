@@ -142,8 +142,6 @@ THRUSTER_FORCES = {
 THRUSTER_IDS = tuple(sorted(THRUSTER_POSITIONS.keys()))
 THRUSTER_COUNT = len(THRUSTER_IDS)
 
-GRAVITY_M_S2 = Constants.GRAVITY_M_S2
-
 
 def calculate_com_offset() -> np.ndarray:
     """
