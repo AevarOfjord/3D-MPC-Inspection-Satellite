@@ -289,10 +289,25 @@ export function useMissionHydration({
     const missionDensity = normalizePathDensityMultiplier(
       mission.overrides?.path_density_multiplier ?? 1.0
     );
-    setScanProject((prev) => ({
-      ...prev,
-      path_density_multiplier: missionDensity,
-    }));
+    const hydratedScanSegments = hydratedSegments.filter(
+      (seg): seg is ScanSegment => seg.type === 'scan'
+    );
+    setScanProject((prev) => {
+      if (hydratedScanSegments.length === 0) {
+        return { ...prev, path_density_multiplier: missionDensity };
+      }
+      // Sync scan project scans' axis from the loaded mission's scan segments.
+      // Without this, relaunching a loaded draft overrides the pair axis with the
+      // stale in-memory scan project state (which defaults to 'Z').
+      const nextScans = hydratedScanSegments.map((seg, idx) => {
+        const base = prev.scans[idx] ?? prev.scans[0] ?? { id: `scan-${idx + 1}` };
+        const rawAxis = String(seg.scan?.axis ?? '');
+        const letter = rawAxis.replace(/^[+-]/, '');
+        const axis = (['X', 'Y', 'Z'].includes(letter) ? letter : (base.axis ?? 'Z')) as 'X' | 'Y' | 'Z';
+        return { ...base, axis };
+      });
+      return { ...prev, path_density_multiplier: missionDensity, scans: nextScans };
+    });
 
     if (migrated && !migrationToastByMissionRef.current.has(resolvedMissionId)) {
       migrationToastByMissionRef.current.add(resolvedMissionId);

@@ -248,6 +248,7 @@ class _MPCTuningDefaults:
         0.0  # additional terminal position weight (0 = use stage scaling only)
     )
     Q_TERMINAL_S: float = 0.0  # additional terminal progress weight
+    Q_TERMINAL_VEL: float = 0.0  # additional terminal velocity weight — penalises residual speed at endpoint
 
     # ----- Attitude -----
     Q_ATTITUDE: float = 3500.0  # attitude tracking ||q - q_ref||²
@@ -480,6 +481,7 @@ class Constants:
     Q_VELOCITY_ALIGN = MPCTuningDefaults.Q_VELOCITY_ALIGN
     Q_TERMINAL_POS = MPCTuningDefaults.Q_TERMINAL_POS
     Q_TERMINAL_S = MPCTuningDefaults.Q_TERMINAL_S
+    Q_TERMINAL_VEL = MPCTuningDefaults.Q_TERMINAL_VEL
     Q_S_ANCHOR = MPCTuningDefaults.Q_S_ANCHOR
     PATH_SPEED_MIN = MPCVueMechanicsDefaults.PATH_SPEED_MIN
     PATH_SPEED_MAX = MPCVueMechanicsDefaults.PATH_SPEED_MAX

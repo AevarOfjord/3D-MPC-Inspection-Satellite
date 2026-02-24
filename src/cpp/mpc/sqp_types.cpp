@@ -6,6 +6,7 @@
 #include "sqp_types.hpp"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace satellite_control {
 namespace v2 {
@@ -48,7 +49,12 @@ Vector3d PathData::get_tangent(double s_query) const {
             seg = points[idx + 2] - points[idx];
             seg_norm = seg.norm();
         }
-        if (seg_norm < 1e-12) return Vector3d::UnitX();
+        if (seg_norm < 1e-12) {
+            std::cerr << "[PathData] WARNING: all path segments near s="
+                      << s_query << " are degenerate (<1e-12 m); "
+                      << "falling back to UnitX tangent. Check path waypoints.\n";
+            return Vector3d::UnitX();
+        }
     }
     return seg / seg_norm;
 }
