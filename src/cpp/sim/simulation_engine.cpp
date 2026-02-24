@@ -1,5 +1,7 @@
 #include "simulation_engine.hpp"
 
+#include <iostream>
+
 namespace satellite_control {
 
 SimulationEngine::SimulationEngine(const SatelliteParams& params, double mean_motion,
@@ -180,11 +182,18 @@ Eigen::VectorXd SimulationEngine::compute_state_derivative(const Eigen::VectorXd
 
     // 5. Wheel Speed Derivative: T_rw / I_rw
     // RW speeds are at indices 13-15
+    constexpr double kFallbackRwInertia = 1e-3;  // kg·m² — used when config omits RW inertia
+    constexpr double kMinRwInertia = 1e-6;        // kg·m² — minimum physically plausible inertia
     for(int i=0; i<3; ++i) {
-        constexpr double kFallbackRwInertia = 1e-3;
-        double inertia = kFallbackRwInertia;
-        if (i < params_.rw_inertia.size() && params_.rw_inertia[i] > 1e-6) {
+        double inertia;
+        if (i < static_cast<int>(params_.rw_inertia.size()) && params_.rw_inertia[i] > kMinRwInertia) {
             inertia = params_.rw_inertia[i];
+        } else {
+            std::cerr << "[SimEngine] WARNING: RW " << i
+                      << " inertia missing or <= " << kMinRwInertia
+                      << " kg·m²; using fallback " << kFallbackRwInertia
+                      << " kg·m². Check SatelliteParams.rw_inertia.\n";
+            inertia = kFallbackRwInertia;
         }
 
         // omega_dot = T_rw / I_rw

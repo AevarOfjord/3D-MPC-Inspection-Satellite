@@ -201,8 +201,6 @@ class _MPCVueMechanicsDefaults:
     ERROR_PRIORITY_ERROR_SPEED_GAIN: float = 8.0  # gain k: v_s_max → v_s_max/(1 + k*e²)
     # higher = more aggressive speed reduction
 
-    ROBUSTNESS_MODE: str = "none"  # reserved; tube-mode not currently implemented
-
 
 @dataclass(frozen=True)
 class _MPCTuningDefaults:
@@ -313,15 +311,6 @@ class _MPCAdaptiveDefaults:
         True  # add DARE-approximated diagonal to terminal stage
     )
     TERMINAL_COST_PROFILE: str = "diagonal"  # only "diagonal" is implemented
-
-    # ----- Tube / robustness scaffold (NOT currently implemented) -----
-    CONSTRAINT_TIGHTENING_SCALE: float = (
-        0.0  # fraction to contract bounds (0 = disabled)
-    )
-    TUBE_FEEDBACK_GAIN_SCALE: float = 0.15  # ancillary feedback gain (dead — no-op)
-    TUBE_FEEDBACK_MAX_CORRECTION: float = (
-        0.25  # max correction magnitude (dead — no-op)
-    )
 
     # ----- Variable scaling (NOT currently implemented in C++) -----
     ENABLE_VARIABLE_SCALING: bool = True  # reserved; has no effect on the QP solver
@@ -513,10 +502,6 @@ class Constants:
     ENABLE_ONLINE_DARE_TERMINAL = MPCAdaptiveDefaults.ENABLE_ONLINE_DARE_TERMINAL
     DARE_UPDATE_PERIOD_STEPS = MPCTimingDefaults.DARE_UPDATE_PERIOD_STEPS
     TERMINAL_COST_PROFILE = MPCAdaptiveDefaults.TERMINAL_COST_PROFILE
-    ROBUSTNESS_MODE = MPCVueMechanicsDefaults.ROBUSTNESS_MODE
-    CONSTRAINT_TIGHTENING_SCALE = MPCAdaptiveDefaults.CONSTRAINT_TIGHTENING_SCALE
-    TUBE_FEEDBACK_GAIN_SCALE = MPCAdaptiveDefaults.TUBE_FEEDBACK_GAIN_SCALE
-    TUBE_FEEDBACK_MAX_CORRECTION = MPCAdaptiveDefaults.TUBE_FEEDBACK_MAX_CORRECTION
     ENABLE_VARIABLE_SCALING = MPCAdaptiveDefaults.ENABLE_VARIABLE_SCALING
     PROGRESS_POLICY = MPCVueMechanicsDefaults.PROGRESS_POLICY
     ERROR_PRIORITY_MIN_VS = MPCVueMechanicsDefaults.ERROR_PRIORITY_MIN_VS

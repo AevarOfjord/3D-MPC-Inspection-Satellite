@@ -100,8 +100,6 @@ class TestMPCController:
         assert hasattr(params, "settle_progress_scale")
         assert hasattr(params, "hold_smoothness_scale")
         assert hasattr(params, "terminal_cost_profile")
-        assert hasattr(params, "robustness_mode")
-        assert hasattr(params, "constraint_tightening_scale")
         assert hasattr(_cpp_mpc.SQPController, "set_runtime_mode")
 
     def test_core_is_default_and_runtime_mode_is_settable(self):

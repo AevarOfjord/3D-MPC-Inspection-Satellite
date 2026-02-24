@@ -89,12 +89,6 @@ struct MPCV2Params {
     int dare_update_period_steps = 8;
     std::string terminal_cost_profile = "diagonal";
 
-    // Robustness
-    std::string robustness_mode = "none";
-    double constraint_tightening_scale = 0.0;
-    double tube_feedback_gain_scale = 0.15;
-    double tube_feedback_max_correction = 0.25;
-
     // Velocity bounds
     double max_linear_velocity = 0.0;   // 0 = auto
     double max_angular_velocity = 0.0;  // 0 = auto

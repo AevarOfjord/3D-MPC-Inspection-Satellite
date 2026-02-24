@@ -114,6 +114,17 @@ class MissionState:
     def path_speed(self, value: float):
         self.path.path_speed = value
 
+    def get_current_mission_type(self) -> str:
+        """Return the active mission type as a string."""
+        if self.path.active:
+            return "PATH_FOLLOWING"
+        return "IDLE"
+
+    def reset(self) -> None:
+        """Reset mission state to initial defaults."""
+        self.path.active = False
+        self.path_tracking_phase = "POSITIONING"
+
     def get_resolved_path_waypoints(self) -> list[tuple[float, float, float]]:
         """Return canonical mission path waypoints."""
         return self.path.waypoints

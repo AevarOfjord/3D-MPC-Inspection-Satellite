@@ -300,13 +300,17 @@ class SatelliteMPCLinearizedSimulation:
         return 0.0
 
     def _append_capped_history(self, history: list, item: Any) -> None:
-        """Append to a history list while enforcing retention limits."""
-        history.append(item)
+        """Append to a history list while enforcing retention limits.
+
+        Removes the oldest entry *before* appending so the list never exceeds
+        max_len, avoiding temporary over-size and the O(n) slice-deletion that
+        would follow.
+        """
         max_len = int(getattr(self, "history_max_steps", 0) or 0)
-        if max_len and len(history) > max_len:
-            overflow = len(history) - max_len
-            del history[:overflow]
+        if max_len and len(history) >= max_len:
+            del history[0]
             self.history_trimmed = True
+        history.append(item)
 
     # OBSTACLE AVOIDANCE METHODS
 
