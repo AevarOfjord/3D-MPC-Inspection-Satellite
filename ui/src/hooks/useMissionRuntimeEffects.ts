@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 import { telemetry } from '../services/telemetry';
 import type { MeshScanConfig } from '../api/trajectory';
 import type { MissionSegment, ScanSegment, TransferSegment } from '../api/unifiedMission';
+import type { ScanProject, BodyAxis } from '../types/scanProject';
 
 interface HistoryAdapter {
   set: (next: [number, number, number][]) => void;
@@ -23,6 +25,7 @@ interface UseMissionRuntimeEffectsArgs {
   setStats: (next: { duration: number; length: number; points: number }) => void;
   loading: boolean;
   handlePreview: () => Promise<void>;
+  setScanProject?: Dispatch<SetStateAction<ScanProject>>;
 }
 
 export function useMissionRuntimeEffects({
@@ -40,6 +43,7 @@ export function useMissionRuntimeEffects({
   setStats,
   loading,
   handlePreview,
+  setScanProject,
 }: UseMissionRuntimeEffectsArgs) {
   useEffect(() => {
     const hasScan = segments.some((segment) => segment.type === 'scan');
@@ -129,6 +133,17 @@ export function useMissionRuntimeEffects({
   useEffect(() => {
     if (prevAxisRef.current === config.scan_axis) return;
     prevAxisRef.current = config.scan_axis;
+
+    // Sync the path-maker scan axis to the default scan project so
+    // buildUnifiedMissionPayload inserts the correct axis into the mission JSON.
+    if (setScanProject) {
+      const newAxis = config.scan_axis as BodyAxis;
+      setScanProject((prev) => ({
+        ...prev,
+        scans: prev.scans.map((scan) => ({ ...scan, axis: newAxis })),
+      }));
+    }
+
     if (!config.obj_path || previewPath.length === 0) return;
     if (loading) return;
     handlePreview().catch((err) => {

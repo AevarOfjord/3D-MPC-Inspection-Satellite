@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 from config.simulation_config import SimulationConfig
+from mission.axis_utils import infer_scan_axis_from_path, snap_axis_if_near_cardinal
 from mission.path_assets import load_path_asset
 from mission.unified_compiler import compile_unified_mission_path
 from mission.unified_mission import MissionDefinition, SegmentType
@@ -345,43 +346,17 @@ def _quat_rotate_vector(quat_wxyz: np.ndarray, vec: np.ndarray) -> np.ndarray:
 
 
 def _infer_axis_from_points(points: np.ndarray) -> np.ndarray | None:
-    """Infer dominant scan-axis direction from asset path samples."""
-    pts = np.asarray(points, dtype=float)
-    if pts.ndim != 2 or pts.shape[1] != 3 or pts.shape[0] < 5:
-        return None
-    centered = pts - np.mean(pts, axis=0)
-    try:
-        _, singular_vals, vt = np.linalg.svd(centered, full_matrices=False)
-    except np.linalg.LinAlgError:
-        return None
-    if singular_vals.size < 2:
-        return None
-    # Require a clear dominant direction; otherwise fall back to mission axis token.
-    if singular_vals[0] <= 1e-9 or singular_vals[0] < 1.10 * singular_vals[1]:
-        return None
-    axis = np.array(vt[0], dtype=float)
-    axis_norm = np.linalg.norm(axis)
-    if axis_norm <= 1e-12:
-        return None
-    return axis / axis_norm
+    """Infer the helix/spiral axis from asset path samples.
+
+    Delegates to axis_utils.infer_scan_axis_from_path which uses the
+    minimum-variance SVD direction (vt[-1]) — the correct helix axis.
+    """
+    return infer_scan_axis_from_path(np.asarray(points, dtype=float))
 
 
 def _snap_axis_if_near_cardinal(axis: np.ndarray) -> np.ndarray:
-    """
-    Snap to nearest +/-X/Y/Z if already very close.
-
-    Keeps mission intent crisp when asset paths have small numerical tilt.
-    """
-    vec = np.array(axis, dtype=float).reshape(-1)
-    if vec.size != 3:
-        return axis
-    mags = np.abs(vec)
-    idx = int(np.argmax(mags))
-    if mags[idx] < 0.98:
-        return axis
-    snapped = np.zeros(3, dtype=float)
-    snapped[idx] = 1.0 if vec[idx] >= 0.0 else -1.0
-    return snapped
+    """Snap to nearest ±X/Y/Z if already very close. Delegates to axis_utils."""
+    return snap_axis_if_near_cardinal(axis)
 
 
 def _resolve_scan_attitude_context(
@@ -427,7 +402,36 @@ def _resolve_scan_attitude_context(
 
         axis_source = str(scan_axis_source).strip().lower()
         asset_id = getattr(segment, "path_asset", None)
-        if axis_source == "asset_infer" and asset_id:
+
+        # Priority 1: explicit scan_axis stored in the path asset (set by
+        # the user in the path-maker UI when the asset was generated).
+        asset_scan_axis_applied = False
+        if asset_id:
+            try:
+                asset = load_path_asset(str(asset_id))
+                stored_axis = asset.get("scan_axis")
+                if stored_axis is not None:
+                    token = str(stored_axis).strip().upper()
+                    if token and token[-1] in ("X", "Y", "Z"):
+                        candidate = _axis_to_vector(f"+{token[-1]}")
+                        # Rotate by target orientation when path is OBJ-relative.
+                        if (
+                            bool(asset.get("relative_to_obj", True))
+                            and target_pose is not None
+                            and getattr(target_pose, "orientation", None) is not None
+                        ):
+                            candidate = _quat_rotate_vector(
+                                np.array(target_pose.orientation, dtype=float),
+                                candidate,
+                            )
+                        candidate = _snap_axis_if_near_cardinal(candidate)
+                        axis_vec = candidate
+                        asset_scan_axis_applied = True
+            except Exception:
+                pass  # Fall through to other strategies.
+
+        # Priority 2: SVD inference from the path geometry (when configured).
+        if not asset_scan_axis_applied and axis_source == "asset_infer" and asset_id:
             try:
                 asset = load_path_asset(str(asset_id))
                 asset_path = np.array(asset.get("path") or [], dtype=float)

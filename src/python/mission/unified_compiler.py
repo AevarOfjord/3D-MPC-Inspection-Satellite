@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 from config.paths import resolve_repo_path
 from config.simulation_config import SimulationConfig
+from mission.axis_utils import infer_scan_axis_from_path, snap_axis_if_near_cardinal
 from mission.mesh_scan import (
     compute_scan_sampling,
     load_obj_vertices,
@@ -401,6 +402,57 @@ def _resolve_scan_pointing_context(
         axis_vec = axis_vec / axis_norm
     else:
         axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
+
+    # Override declared axis with the explicit scan_axis stored in the path
+    # asset (set by the user in the path-maker UI).  Falls back to SVD
+    # inference from the path geometry when no explicit axis is stored.
+    asset_id = getattr(segment, "path_asset", None)
+    asset_axis_applied = False
+    if asset_id:
+        try:
+            asset = load_path_asset(str(asset_id))
+
+            # Priority 1: explicit scan_axis recorded in the path asset.
+            stored_axis = asset.get("scan_axis")
+            if stored_axis is not None:
+                token = str(stored_axis).strip().upper()
+                if token and token[-1] in ("X", "Y", "Z"):
+                    candidate = _axis_token_to_vector(f"+{token[-1]}")
+                    # Rotate by target orientation when the path is OBJ-relative.
+                    if (
+                        bool(asset.get("relative_to_obj", True))
+                        and getattr(segment, "target_pose", None) is not None
+                        and getattr(segment.target_pose, "orientation", None)
+                        is not None
+                    ):
+                        candidate = _quat_rotate(
+                            np.array(segment.target_pose.orientation, dtype=float),
+                            candidate,
+                        )
+                    snapped = snap_axis_if_near_cardinal(candidate)
+                    axis_vec = snapped
+                    asset_axis_applied = True
+
+            # Priority 2: SVD inference from path geometry.
+            if not asset_axis_applied:
+                asset_pts = np.array(asset.get("path") or [], dtype=float)
+                inferred = infer_scan_axis_from_path(asset_pts)
+                if inferred is not None:
+                    if (
+                        bool(asset.get("relative_to_obj", True))
+                        and getattr(segment, "target_pose", None) is not None
+                        and getattr(segment.target_pose, "orientation", None)
+                        is not None
+                    ):
+                        inferred = _quat_rotate(
+                            np.array(segment.target_pose.orientation, dtype=float),
+                            inferred,
+                        )
+                    snapped = snap_axis_if_near_cardinal(inferred)
+                    if float(np.max(np.abs(snapped))) > 0.98:
+                        axis_vec = snapped
+        except Exception:
+            pass  # Fall back to declared axis on any load/compute error.
 
     direction_raw = str(getattr(scan_cfg, "direction", "CW"))
     direction = direction_raw.strip().upper()

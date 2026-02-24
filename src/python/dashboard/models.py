@@ -76,6 +76,9 @@ class PathAssetSaveRequest(BaseModel):
     open: bool = True
     relative_to_obj: bool = True
     notes: str | None = None
+    scan_axis: str | None = (
+        None  # "X", "Y", or "Z" — spiral axis used when generating this path
+    )
 
 
 class ScanKeyLevelModel(BaseModel):

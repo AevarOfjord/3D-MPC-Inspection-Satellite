@@ -95,6 +95,14 @@ def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
     now_iso = datetime.now(UTC).isoformat()
     path_length = _compute_path_length(path)
 
+    # Preserve the scan axis used to generate the path (e.g. "X", "Y", "Z").
+    scan_axis_raw = data.get("scan_axis")
+    scan_axis: str | None = None
+    if scan_axis_raw is not None:
+        token = str(scan_axis_raw).strip().upper()
+        if token in ("X", "Y", "Z"):
+            scan_axis = token
+
     payload: dict[str, Any] = {
         "id": asset_id,
         "name": name,
@@ -103,6 +111,7 @@ def save_path_asset(data: dict[str, Any]) -> dict[str, Any]:
         "open": open_path,
         "relative_to_obj": bool(data.get("relative_to_obj", True)),
         "notes": data.get("notes"),
+        "scan_axis": scan_axis,
         "points": int(len(path)),
         "path_length": float(path_length),
         "created_at": data.get("created_at") or now_iso,
