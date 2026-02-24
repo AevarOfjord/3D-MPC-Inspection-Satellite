@@ -87,7 +87,8 @@ export function ControllerActuatorPanel() {
   const [data, setData] = useState<TelemetryData | null>(null);
 
   useEffect(() => {
-    return telemetry.subscribe(setData);
+    const unsub = telemetry.subscribe(setData);
+    return () => { unsub(); };
   }, []);
 
   if (!data) return null;

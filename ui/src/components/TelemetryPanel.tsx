@@ -32,7 +32,7 @@ export function TelemetryPanel() {
   const [attitude, setAttitude] = useState<[number, number, number]>([0, 0, 0]);
 
   useEffect(() => {
-    return telemetry.subscribe((d) => {
+    const unsub = telemetry.subscribe((d) => {
       setData(d);
       if (d.orientation_unwrapped_deg?.length === 3) {
         setAttitude([
@@ -49,6 +49,7 @@ export function TelemetryPanel() {
         : e.z * (180 / Math.PI);
       setAttitude([e.x * (180 / Math.PI), e.y * (180 / Math.PI), yawDeg]);
     });
+    return () => { unsub(); };
   }, []);
 
   if (!data) return null;

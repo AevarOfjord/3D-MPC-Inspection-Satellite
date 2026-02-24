@@ -102,6 +102,14 @@ export function TelemetryCharts() {
   );
 }
 
+interface ChartSample {
+  time: number;
+  posError: number;
+  angError: number;
+  velocity: number;
+  solveTime: number;
+}
+
 function ChartPane({
   title,
   color,
@@ -115,7 +123,7 @@ function ChartPane({
   dataKey: string;
   icon: string;
   refLines: { y: number; color: string }[];
-  data: { time: number; [key: string]: number }[];
+  data: ChartSample[];
 }) {
   return (
     <div className="flex-1 min-w-[200px] min-h-0 flex flex-col">
