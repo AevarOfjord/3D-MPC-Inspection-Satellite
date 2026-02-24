@@ -15,7 +15,7 @@ const RunnerView = lazy(() =>
   import('./components/RunnerWindow').then((m) => ({ default: m.RunnerView }))
 );
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard } from 'lucide-react';
+import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard, Layers } from 'lucide-react';
 import { useDialog } from './feedback/feedbackContext';
 import { parseStoredAppMode, type AppMode } from './utils/appMode';
 import { type PlannerStep } from './utils/plannerValidation';
@@ -32,6 +32,9 @@ const PlannerModeViewV4 = lazy(() =>
 );
 const ViewerModeView = lazy(() =>
   import('./components/modes/ViewerModeView').then((m) => ({ default: m.ViewerModeView }))
+);
+const MissionStudioLayout = lazy(() =>
+  import('./components/MissionStudio/MissionStudioLayout').then((m) => ({ default: m.MissionStudioLayout }))
 );
 import { ORBIT_SCALE } from './data/orbitSnapshot';
 
@@ -122,6 +125,15 @@ function App() {
       });
   };
 
+  const switchToStudio = () => {
+    preload3DModules();
+    void ensureCanLeaveSettings().then((canLeave) => {
+      if (!canLeave) return;
+      setAppMode('studio');
+      setViewMode('free');
+    });
+  };
+
   const switchToRunner = () => {
       void ensureCanLeaveSettings().then((canLeave) => {
         if (!canLeave) return;
@@ -162,6 +174,13 @@ function App() {
         shortcut: 'Ctrl/Cmd+2',
         keywords: ['mode', 'planner', 'mission'],
         onSelect: switchToPlanner,
+      },
+      {
+        id: 'mode-studio',
+        label: 'Switch to Mission Studio',
+        shortcut: 'Ctrl/Cmd+2.5',
+        keywords: ['mode', 'studio', 'mission'],
+        onSelect: switchToStudio,
       },
       {
         id: 'mode-runner',
@@ -237,7 +256,7 @@ function App() {
       );
     }
     return items;
-  }, [appMode, builder.actions, switchToDataView, switchToPlanner, switchToRunner, switchToSettings, switchToViewer]);
+  }, [appMode, builder.actions, switchToDataView, switchToPlanner, switchToStudio, switchToRunner, switchToSettings, switchToViewer]);
 
   useEffect(() => {
     try {
@@ -315,6 +334,7 @@ function App() {
     shortcutHelpOpen,
     switchToDataView,
     switchToPlanner,
+    switchToStudio,
     switchToRunner,
     switchToSettings,
     switchToViewer,
@@ -418,6 +438,19 @@ function App() {
               >
                 <FileText size={14} />
                 PLANNER
+              </button>
+              <button
+                onClick={switchToStudio}
+                onMouseEnter={preload3DModules}
+                onFocus={preload3DModules}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
+                  appMode === 'studio'
+                    ? 'bg-violet-600/90 text-white shadow-[0_0_10px_rgba(139,92,246,0.3)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Layers size={14} />
+                STUDIO
               </button>
               <button
                 onClick={switchToRunner}
@@ -545,6 +578,11 @@ function App() {
             <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
               <PlannerModeViewV4 viewMode={viewMode} builder={builder} onOpenRunner={switchToRunner} />
             </Suspense>
+        )}
+        {appMode === 'studio' && (
+          <Suspense fallback={<ModeLoading label="Loading Mission Studio..." />}>
+            <MissionStudioLayout />
+          </Suspense>
         )}
         {appMode === 'runner' && (
             <div className="flex-1 relative bg-slate-900">

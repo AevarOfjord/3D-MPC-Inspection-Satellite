@@ -1,4 +1,4 @@
-export type AppMode = 'viewer' | 'planner' | 'runner' | 'data' | 'settings';
+export type AppMode = 'viewer' | 'planner' | 'studio' | 'runner' | 'data' | 'settings';
 
 export function parseStoredAppMode(value: unknown): AppMode | null {
   if (value === 'mission' || value === 'scan') {
@@ -7,6 +7,7 @@ export function parseStoredAppMode(value: unknown): AppMode | null {
   if (
     value === 'viewer' ||
     value === 'planner' ||
+    value === 'studio' ||
     value === 'runner' ||
     value === 'data' ||
     value === 'settings'
