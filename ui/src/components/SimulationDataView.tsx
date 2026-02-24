@@ -51,7 +51,10 @@ export const SimulationDataView: React.FC = () => {
     const loadRuns = () => {
       setRefreshingRuns(true);
       fetch(`${API_BASE_URL}/simulations`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
         .then(data => {
           if (cancelled) return;
           applyRunsUpdate(data.runs || []);
@@ -81,12 +84,11 @@ export const SimulationDataView: React.FC = () => {
     }
 
     fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-          // Flattened list from API, let's keep it simple or tree-ify if needed.
-          // For now, listing flat is okay, but tree is better.
-          // The API returns a flat list of all files/dirs recursively.
-          // Let's just display them as a list for now, maybe sort by path.
           setFiles(data.files || []);
           setCurrentDir('');
       })
@@ -125,17 +127,24 @@ export const SimulationDataView: React.FC = () => {
     } else if (['txt', 'log', 'csv', 'json', 'md', 'py'].includes(ext || '')) {
         setContentType('text');
         setIsLoading(true);
-        fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`)
-            .then(res => res.text())
-            .then(text => {
-                setFileContent(text);
-                setIsLoading(false);
+        setFileContent(null);
+        const controller = new AbortController();
+        fetch(
+          `${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`,
+          { signal: controller.signal }
+        )
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.text();
             })
+            .then(text => setFileContent(text))
             .catch(err => {
+                if (err.name === 'AbortError') return;
                 console.error(err);
-                setFileContent("Error loading file content.");
-                setIsLoading(false);
-            });
+                setFileContent('Error loading file content.');
+            })
+            .finally(() => setIsLoading(false));
+        return () => controller.abort();
     } else {
         setContentType('other');
         setFileContent(null);

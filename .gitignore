@@ -65,6 +65,8 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+# macOS Finder duplicates ("file 2.ext", "file 2.py", etc.)
+* 2.*
 simulation.log
 
 # Node
