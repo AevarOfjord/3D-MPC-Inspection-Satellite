@@ -5,6 +5,7 @@ import { telemetry } from '../../services/telemetry';
 import type { TelemetryData } from '../../services/telemetry';
 import { StarlinkModel } from '../StarlinkModel';
 import { CustomMeshModel } from '../CustomMeshModel';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { lazy } from 'react';
 
 const ReferenceMarker = lazy(() =>
@@ -72,13 +73,15 @@ export function LiveObstaclesRender() {
         </Suspense>
       )}
       {params.scanObject && params.scanObject.type === 'mesh' && params.scanObject.obj_path && (
-        <Suspense fallback={null}>
-          <CustomMeshModel
-            objPath={params.scanObject.obj_path}
-            position={params.scanObject.position}
-            orientation={params.scanObject.orientation}
-          />
-        </Suspense>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <CustomMeshModel
+              objPath={params.scanObject.obj_path}
+              position={params.scanObject.position}
+              orientation={params.scanObject.orientation}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {params.obstacles.map((obs, i) => (

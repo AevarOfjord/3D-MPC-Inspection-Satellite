@@ -12,6 +12,7 @@ export function PlaybackSelector() {
   const [runs, setRuns] = useState<SimulationRun[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [runsError, setRunsError] = useState<string | null>(null);
   const [refreshingRuns, setRefreshingRuns] = useState(false);
   const [lastRunsRefreshAt, setLastRunsRefreshAt] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -58,9 +59,11 @@ export function PlaybackSelector() {
     setRefreshingRuns(true);
     try {
       const response = await simulationsApi.list();
+      setRunsError(null);
       applyRunsUpdate(response.runs);
     } catch (error) {
       console.error(error);
+      setRunsError('Failed to load runs — is the backend running?');
     } finally {
       setRefreshingRuns(false);
     }
@@ -257,9 +260,15 @@ export function PlaybackSelector() {
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] uppercase text-gray-400">Playback</span>
-      <span className="text-[10px] text-gray-500">
-        {refreshingRuns ? 'Refreshing...' : `Updated ${lastRefreshLabel}`}
-      </span>
+      {runsError ? (
+        <span className="text-[10px] text-red-400" title={runsError}>
+          ⚠ {runsError}
+        </span>
+      ) : (
+        <span className="text-[10px] text-gray-500">
+          {refreshingRuns ? 'Refreshing...' : `Updated ${lastRefreshLabel}`}
+        </span>
+      )}
       <select
         className="bg-gray-900 text-gray-200 text-[11px] px-2 py-1 rounded border border-gray-700 focus:outline-none"
         value={selectedId}

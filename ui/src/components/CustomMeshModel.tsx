@@ -20,8 +20,6 @@ export function CustomMeshModel({
   // Construct URL to serve the model via the backend API
   const modelUrl = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(objPath)}`;
 
-  console.log('[CustomMeshModel] Loading model from:', modelUrl);
-
   // Load OBJ
   const obj = useLoader(OBJLoader, modelUrl);
 
