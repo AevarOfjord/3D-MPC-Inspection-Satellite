@@ -1,15 +1,7 @@
 import { Suspense } from 'react';
 import { MissionStudioLeftPanel } from './MissionStudioLeftPanel';
 import { MissionStudioRightPanel } from './MissionStudioRightPanel';
-
-function CanvasPlaceholder() {
-  return (
-    <div className="flex-1 flex items-center justify-center text-slate-500 text-sm select-none"
-         style={{ background: '#070b14' }}>
-      3D Canvas — coming in Task 3
-    </div>
-  );
-}
+import { MissionStudioCanvas } from './MissionStudioCanvas';
 
 export function MissionStudioLayout() {
   return (
@@ -22,8 +14,8 @@ export function MissionStudioLayout() {
 
       {/* 3D Canvas */}
       <div className="flex-1 relative min-w-0">
-        <Suspense fallback={null}>
-          <CanvasPlaceholder />
+        <Suspense fallback={<div style={{ background: '#070b14', width: '100%', height: '100%' }} />}>
+          <MissionStudioCanvas />
         </Suspense>
       </div>
 
