@@ -24,6 +24,7 @@ interface PathAssetSaveRequest {
   open?: boolean;
   relative_to_obj?: boolean;
   notes?: string | null;
+  scan_axis?: 'X' | 'Y' | 'Z' | null;
 }
 
 export const pathAssetsApi = {

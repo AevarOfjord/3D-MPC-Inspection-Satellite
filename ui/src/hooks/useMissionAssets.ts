@@ -160,12 +160,14 @@ export function useMissionAssets({
       path: densePath,
       open: true,
       relative_to_obj: true,
+      scan_axis: config.scan_axis || null,
     };
     const saved = await pathAssetsApi.save(payload);
     await refreshPathAssets();
     return saved;
   }, [
     config.obj_path,
+    config.scan_axis,
     previewPath,
     savePointMultiplier,
     showToast,

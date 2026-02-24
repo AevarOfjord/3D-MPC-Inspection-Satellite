@@ -243,6 +243,7 @@ export function useMissionBuilder() {
     setStats,
     loading,
     handlePreview,
+    setScanProject,
   });
 
   const scanProjectEditor = useScanProjectEditor({
