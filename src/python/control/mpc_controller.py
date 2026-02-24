@@ -12,6 +12,7 @@ straight into MPCRunner / simulation_loop without changes.
 
 import logging
 import sys
+from collections import deque
 from typing import Any
 
 import numpy as np
@@ -20,6 +21,12 @@ from config.models import AppConfig
 from .base import Controller
 
 logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------
+# OSQP solver defaults
+# --------------------------------------------------------------------------
+_OSQP_MAX_ITER_DEFAULT: int = 4000
+_OSQP_EPS_DEFAULT: float = 5e-3
 
 # --------------------------------------------------------------------------
 # C++ backend import
@@ -142,12 +149,6 @@ class MPCController(Controller):
         mpc_p.dare_update_period_steps = int(self.dare_update_period_steps)
         mpc_p.terminal_cost_profile = str(self.terminal_cost_profile)
 
-        # Robustness
-        mpc_p.robustness_mode = str(self.robustness_mode)
-        mpc_p.constraint_tightening_scale = float(self.constraint_tightening_scale)
-        mpc_p.tube_feedback_gain_scale = float(self.tube_feedback_gain_scale)
-        mpc_p.tube_feedback_max_correction = float(self.tube_feedback_max_correction)
-
         # Bounds
         mpc_p.max_linear_velocity = float(self.max_linear_velocity)
         mpc_p.max_angular_velocity = float(self.max_angular_velocity)
@@ -160,9 +161,9 @@ class MPCController(Controller):
         )
 
         # OSQP
-        mpc_p.osqp_max_iter = 4000
-        mpc_p.osqp_eps_abs = 5e-3
-        mpc_p.osqp_eps_rel = 5e-3
+        mpc_p.osqp_max_iter = _OSQP_MAX_ITER_DEFAULT
+        mpc_p.osqp_eps_abs = _OSQP_EPS_DEFAULT
+        mpc_p.osqp_eps_rel = _OSQP_EPS_DEFAULT
         mpc_p.osqp_warm_start = True
 
         # Mode scaling
@@ -204,8 +205,8 @@ class MPCController(Controller):
 
         self._casadi_params = np.array(self._cpp.casadi_params, dtype=float)
 
-        # Tracking
-        self.solve_times: list[float] = []
+        # Tracking (bounded ring-buffer — retains most recent 10 000 solve times)
+        self.solve_times: deque[float] = deque(maxlen=10_000)
         self.s = 0.0
         self._path_data: list[list[float]] = []
         self._path_set = False
@@ -383,7 +384,7 @@ class MPCController(Controller):
         if not self.solve_times:
             return {"solve_count": 0, "average_solve_time": 0.0, "max_solve_time": 0.0}
         return {
-            "solve_times": self.solve_times.copy(),
+            "solve_times": list(self.solve_times),
             "solve_count": len(self.solve_times),
             "average_solve_time": sum(self.solve_times) / len(self.solve_times),
             "max_solve_time": max(self.solve_times),
@@ -611,6 +612,7 @@ class MPCController(Controller):
         _q_lag = mpc.Q_lag
         if _q_lag <= 0.0:
             _q_lag = float(getattr(mpc, "Q_lag_default", 0.0) or 0.0)
+            logger.debug("Q_lag=0 detected; substituting Q_lag_default=%s", _q_lag)
         self.Q_lag = _q_lag
         self.Q_progress = mpc.Q_progress
         self.progress_reward = mpc.progress_reward
@@ -632,10 +634,6 @@ class MPCController(Controller):
         self.enable_online_dare_terminal = mpc.enable_online_dare_terminal
         self.dare_update_period_steps = mpc.dare_update_period_steps
         self.terminal_cost_profile = mpc.terminal_cost_profile
-        self.robustness_mode = mpc.robustness_mode
-        self.constraint_tightening_scale = mpc.constraint_tightening_scale
-        self.tube_feedback_gain_scale = mpc.tube_feedback_gain_scale
-        self.tube_feedback_max_correction = mpc.tube_feedback_max_correction
         self.progress_policy = mpc.progress_policy
         self.error_priority_min_vs = mpc.error_priority_min_vs
         self.error_priority_error_speed_gain = mpc.error_priority_error_speed_gain
@@ -667,6 +665,11 @@ class MPCController(Controller):
             self.orbital_mean_motion = float(orb.mean_motion)
             self.use_two_body = True
         except Exception:
+            logger.warning(
+                "OrbitalConfig load failed; using hardcoded Earth defaults "
+                "(mu=3.986e14, r=6.778e6 m). Check physics.orbital_config.",
+                exc_info=True,
+            )
             self.orbital_mu = 3.986004418e14
             self.orbital_radius = 6.778e6
             self.orbital_mean_motion = 0.0

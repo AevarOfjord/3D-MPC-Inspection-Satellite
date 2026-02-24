@@ -90,17 +90,21 @@ class TestConfigValidation:
             MPCParams(thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007)
         with pytest.raises(ValidationError):
             MPCParams(terminal_cost_profile="not_valid")
-        with pytest.raises(ValidationError):
-            MPCParams(robustness_mode="not_valid")
 
     def test_removed_mpc_dead_knobs_absent_from_schema(self):
-        """Removed legacy cleanup knobs should not exist in canonical MPC schema."""
+        """Removed legacy and unimplemented knobs must not exist in canonical MPC schema."""
         removed = {
+            # Legacy cleanup knobs
             "coast_pos_tolerance",
             "coast_vel_tolerance",
             "coast_min_speed",
             "progress_taper_distance",
             "progress_slowdown_distance",
+            # Hollow tube-robustness fields (removed; never implemented in C++)
+            "robustness_mode",
+            "constraint_tightening_scale",
+            "tube_feedback_gain_scale",
+            "tube_feedback_max_correction",
         }
         assert removed.isdisjoint(MPCParams.model_fields.keys())
 

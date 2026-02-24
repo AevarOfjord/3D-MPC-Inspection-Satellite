@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 from runtime.policy import (
@@ -65,6 +68,7 @@ def _set_runtime_pointing_context(
                 reference_quat_wxyz=np.array(q_ref, dtype=float),
             )
     except Exception:
+        logger.warning("Pointing context resolution failed", exc_info=True)
         x_error_deg = None
         z_error_deg = None
 

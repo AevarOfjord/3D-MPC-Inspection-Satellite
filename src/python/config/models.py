@@ -468,28 +468,6 @@ class MPCParams(BaseModel):
         constants.Constants.TERMINAL_COST_PROFILE,
         description='Terminal cost profile ("diagonal" or "dense_terminal")',
     )
-    robustness_mode: str = Field(
-        constants.Constants.ROBUSTNESS_MODE,
-        description='Robustness scaffold mode ("none" or "tube")',
-    )
-    constraint_tightening_scale: float = Field(
-        constants.Constants.CONSTRAINT_TIGHTENING_SCALE,
-        ge=0.0,
-        le=0.3,
-        description="Constraint tightening fraction for robust scaffold",
-    )
-    tube_feedback_gain_scale: float = Field(
-        constants.Constants.TUBE_FEEDBACK_GAIN_SCALE,
-        ge=0.0,
-        le=1.0,
-        description="Ancillary tube feedback gain scale",
-    )
-    tube_feedback_max_correction: float = Field(
-        constants.Constants.TUBE_FEEDBACK_MAX_CORRECTION,
-        ge=0.0,
-        le=1.0,
-        description="Maximum absolute tube feedback correction per control channel",
-    )
     enable_variable_scaling: bool = Field(
         constants.Constants.ENABLE_VARIABLE_SCALING,
         description="Enable solver-coordinate variable scaling for improved conditioning",
@@ -566,10 +544,6 @@ class MPCParams(BaseModel):
         "enable_online_dare_terminal",
         "dare_update_period_steps",
         "terminal_cost_profile",
-        "robustness_mode",
-        "constraint_tightening_scale",
-        "tube_feedback_gain_scale",
-        "tube_feedback_max_correction",
         "enable_variable_scaling",
         "progress_policy",
         "error_priority_min_vs",
@@ -611,15 +585,6 @@ class MPCParams(BaseModel):
             )
         return normalized
 
-    @field_validator("robustness_mode")
-    @classmethod
-    def validate_robustness_mode(cls, v: str) -> str:
-        """Validate robustness scaffold selector."""
-        normalized = str(v).strip().lower()
-        if normalized not in {"none", "tube"}:
-            raise ValueError("robustness_mode must be 'none' or 'tube'")
-        return normalized
-
     @field_validator("progress_policy")
     @classmethod
     def validate_progress_policy(cls, v: str) -> str:
@@ -646,11 +611,15 @@ class MPCParams(BaseModel):
     @field_validator("solver_time_limit")
     @classmethod
     def check_solver_time_vs_dt(cls, v: float, info) -> float:
-        """Warn if solver time limit exceeds control timestep."""
-        if "dt" in info.data:
-            if v > info.data["dt"]:
-                # This is a warning, not an error - we allow it but note the issue
-                pass
+        """Raise if solver time limit is >= control timestep dt.
+
+        The solver must finish before the next control cycle begins.
+        """
+        if "dt" in info.data and v >= info.data["dt"]:
+            raise ValueError(
+                f"solver_time_limit ({v}s) must be strictly less than dt "
+                f"({info.data['dt']}s); the solver must finish within one control cycle"
+            )
         return v
 
     @model_validator(mode="after")

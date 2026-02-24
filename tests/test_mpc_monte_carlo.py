@@ -18,11 +18,6 @@ def test_mpc_monte_carlo_regression_contracts():
     across CI hardware variance while still catching regressions.
     """
     cfg = SimulationConfig.create_default()
-    cfg.app_config.mpc.robustness_mode = "tube"
-    cfg.app_config.mpc.constraint_tightening_scale = 0.05
-    cfg.app_config.mpc.tube_feedback_gain_scale = 0.15
-    cfg.app_config.mpc.tube_feedback_max_correction = 0.2
-
     controller = MPCController(cfg.app_config)
     # MPCC controller needs a path to follow
     controller.set_path([(0, 0, 0), (10, 0, 0), (20, 0, 0)])

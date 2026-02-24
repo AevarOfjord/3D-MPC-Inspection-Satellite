@@ -15,6 +15,19 @@ from typing import Protocol
 
 import numpy as np
 
+# Sentinel value stored in timing arrays to indicate "not yet set".
+# Must be sufficiently negative that it cannot be confused with a real
+# simulation timestamp (which starts at 0 and is always non-negative).
+_VALVE_TIME_UNSET: float = -1000.0
+
+# Command level (inclusive) above which a thruster is considered active.
+# 0.01 = 1% — below this the valve is treated as an OFF command.
+_THRUSTER_ACTIVE_THRESHOLD: float = 0.01
+
+# Timing tolerance for the "is this a new valve-open event?" check (s).
+# Must be smaller than the physics dt to reliably detect each unique open event.
+_VALVE_TIME_EPSILON: float = 0.001
+
 
 class ThrusterTarget(Protocol):
     """Minimal interface for thruster sink implementations."""
@@ -69,17 +82,17 @@ class ThrusterManager:
 
         # Timing for valve open commands
         self.thruster_open_command_time = np.full(
-            num_thrusters, -1000.0, dtype=np.float64
+            num_thrusters, _VALVE_TIME_UNSET, dtype=np.float64
         )
 
         # Timing for valve close commands
         self.thruster_close_command_time = np.full(
-            num_thrusters, -1000.0, dtype=np.float64
+            num_thrusters, _VALVE_TIME_UNSET, dtype=np.float64
         )
 
         # Actual valve open times (after delay)
         self.thruster_valve_open_time = np.full(
-            num_thrusters, -1000.0, dtype=np.float64
+            num_thrusters, _VALVE_TIME_UNSET, dtype=np.float64
         )
 
         # Actual output level [0, 1] for each thruster
@@ -124,8 +137,8 @@ class ThrusterManager:
             new_command = thruster_pattern[i]
             old_command = self.thruster_last_command[i]
 
-            if new_command > 0.01:  # ON command (PWM/Throttle > 1%)
-                if old_command <= 0.01:
+            if new_command > _THRUSTER_ACTIVE_THRESHOLD:  # ON command
+                if old_command <= _THRUSTER_ACTIVE_THRESHOLD:
                     self.thruster_open_command_time[i] = simulation_time
             else:  # OFF command
                 # Always update close time for off commands.
@@ -222,7 +235,10 @@ class ThrusterManager:
                         time_since_valve_open = simulation_time - valve_open_time
 
                         # Record new opening
-                        if self.thruster_valve_open_time[i] < valve_open_time - 0.001:
+                        if (
+                            self.thruster_valve_open_time[i]
+                            < valve_open_time - _VALVE_TIME_EPSILON
+                        ):
                             self.thruster_valve_open_time[i] = valve_open_time
 
                         if self.use_realistic_physics and self.THRUST_RAMPUP_TIME > 0:

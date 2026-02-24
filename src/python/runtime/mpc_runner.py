@@ -165,7 +165,7 @@ class MPCRunner:
                 x_current=measured_state,
                 previous_thrusters=previous_thrusters,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Controller execution failed; applying zero-command fallback."
             )
@@ -178,6 +178,7 @@ class MPCRunner:
                 "status_name": "FAILED",
                 "solver_fallback": True,
                 "solver_fallback_reason": "controller_exception",
+                "exception_type": type(exc).__name__,
                 "solver_success": False,
                 "solve_time": 0.0,
                 "iterations": None,

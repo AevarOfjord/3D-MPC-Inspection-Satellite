@@ -62,11 +62,6 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("enable_dare_terminal", &MPCV2Params::enable_dare_terminal)
         .def_readwrite("dare_update_period_steps", &MPCV2Params::dare_update_period_steps)
         .def_readwrite("terminal_cost_profile", &MPCV2Params::terminal_cost_profile)
-        // Robustness
-        .def_readwrite("robustness_mode",      &MPCV2Params::robustness_mode)
-        .def_readwrite("constraint_tightening_scale", &MPCV2Params::constraint_tightening_scale)
-        .def_readwrite("tube_feedback_gain_scale",    &MPCV2Params::tube_feedback_gain_scale)
-        .def_readwrite("tube_feedback_max_correction", &MPCV2Params::tube_feedback_max_correction)
         // Velocity bounds
         .def_readwrite("max_linear_velocity",  &MPCV2Params::max_linear_velocity)
         .def_readwrite("max_angular_velocity", &MPCV2Params::max_angular_velocity)
