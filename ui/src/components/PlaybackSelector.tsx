@@ -4,6 +4,8 @@ import { simulationsApi, type SimulationRun } from '../api/simulations';
 import { telemetry, type TelemetryData } from '../services/telemetry';
 import { runEvents } from '../services/runEvents';
 import { useTelemetryStore } from '../store/telemetryStore';
+import { useCameraStore } from '../store/cameraStore';
+import { ORBIT_SCALE } from '../data/orbitSnapshot';
 
 const MAX_PLAYBACK_SAMPLES = 1000000;
 const RUN_LIST_REFRESH_MS = 5000;
@@ -223,6 +225,14 @@ export function PlaybackSelector() {
       if (normalized.length) {
         telemetry.emit(normalized[0]);
         lastEmitRef.current = 0;
+
+        // Auto-focus camera on the satellite's reference position (same as HOME button)
+        const firstFrame = normalized[0];
+        const focusTarget = firstFrame.reference_position ?? firstFrame.position;
+        useCameraStore.getState().requestFocus(
+          [focusTarget[0], focusTarget[1], focusTarget[2]],
+          Math.max(8 * ORBIT_SCALE, 4),
+        );
       }
     } catch (error) {
       console.error(error);
