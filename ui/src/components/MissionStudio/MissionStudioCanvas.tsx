@@ -4,6 +4,7 @@ import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/dr
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import * as THREE from 'three';
 import { useStudioStore } from './useStudioStore';
+import { ScanPassObject } from './ScanPassObject';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -44,6 +45,7 @@ function StudioGrid() {
 
 function SceneContents() {
   const modelUrl = useStudioStore((s) => s.modelUrl);
+  const scanPasses = useStudioStore((s) => s.scanPasses);
 
   return (
     <>
@@ -57,6 +59,8 @@ function SceneContents() {
           <ObjModel url={modelUrl} />
         </Suspense>
       )}
+
+      {scanPasses.map((p) => <ScanPassObject key={p.id} scanId={p.id} />)}
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
