@@ -1,5 +1,5 @@
 """
-CasADi C Code Generator for V2 MPC.
+CasADi C Code Generator for MPC.
 
 Generates C code from CasADi symbolic expressions (dynamics + cost) and
 caches the output in `codegen_cache/`. Re-generates only when the source

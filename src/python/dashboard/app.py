@@ -22,7 +22,7 @@ from config.paths import (
 )
 from dashboard.routes import assets as asset_routes
 from dashboard.routes import missions as mission_routes
-from dashboard.routes import missions_v2 as mission_v2_routes
+from dashboard.routes import missions_api as mission_api_routes
 from dashboard.routes import runner as runner_routes
 from dashboard.routes import simulations as sim_routes
 from dashboard.runner_manager import RunnerManager
@@ -59,9 +59,9 @@ SPA_BLOCKED_PREFIXES = (
     "api",
     "runner",
     "simulations",
-    "mission_v2",
-    "save_mission_v2",
-    "saved_missions_v2",
+    "mission",
+    "save_mission",
+    "saved_missions",
     "path_assets",
     "scan_projects",
     "upload_object",
@@ -119,7 +119,7 @@ runner_routes.set_runner_manager(runner_manager)
 
 app.include_router(sim_routes.router)
 app.include_router(mission_routes.router)
-app.include_router(mission_v2_routes.router)
+app.include_router(mission_api_routes.router)
 app.include_router(asset_routes.router)
 app.include_router(runner_routes.router)
 

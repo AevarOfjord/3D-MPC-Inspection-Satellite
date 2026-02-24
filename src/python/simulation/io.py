@@ -788,7 +788,7 @@ class SimulationIO:
             except Exception:
                 perf_metrics = {}
 
-        solver_health = getattr(self.sim, "v6_solver_health", None)
+        solver_health = getattr(self.sim, "solver_health", None)
         solver_fallback_count = int(getattr(solver_health, "fallback_count", 0))
         solver_hard_limit_breaches = int(
             getattr(solver_health, "hard_limit_breaches", 0)
@@ -1015,8 +1015,8 @@ class SimulationIO:
                 handle.write(json.dumps(event) + "\n")
 
     def _write_mode_timeline(self, run_dir: Path) -> None:
-        """Write V6 mode timeline CSV when runtime mode telemetry is available."""
-        entries = getattr(self.sim, "v6_mode_timeline", None)
+        """Write mode timeline CSV when runtime mode telemetry is available."""
+        entries = getattr(self.sim, "mode_timeline", None)
         if not isinstance(entries, list) or not entries:
             return
 
@@ -1051,8 +1051,8 @@ class SimulationIO:
                 )
 
     def _write_completion_gate_trace(self, run_dir: Path) -> None:
-        """Write V6 completion gate trace CSV for strict termination auditability."""
-        entries = getattr(self.sim, "v6_completion_gate_trace", None)
+        """Write completion gate trace CSV for strict termination auditability."""
+        entries = getattr(self.sim, "completion_gate_trace", None)
         if not isinstance(entries, list) or not entries:
             return
 
@@ -1103,14 +1103,14 @@ class SimulationIO:
                 )
 
     def _write_controller_health(self, run_dir: Path) -> None:
-        """Write V6 controller health summary JSON."""
-        solver_health = getattr(self.sim, "v6_solver_health", None)
-        mode_state = getattr(self.sim, "v6_mode_state", None)
-        completion_gate = getattr(self.sim, "v6_completion_gate", None)
-        pointing_status = getattr(self.sim, "v6_pointing_status", None)
+        """Write controller health summary JSON."""
+        solver_health = getattr(self.sim, "solver_health", None)
+        mode_state = getattr(self.sim, "mode_state", None)
+        completion_gate = getattr(self.sim, "completion_gate", None)
+        pointing_status = getattr(self.sim, "pointing_status", None)
         mpc_controller = getattr(self.sim, "mpc_controller", None)
         payload = {
-            "schema_version": "controller_health_v6",
+            "schema_version": "controller_health",
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "controller_core": str(
                 getattr(self.sim, "controller_core_mode", None)

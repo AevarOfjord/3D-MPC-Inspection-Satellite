@@ -207,15 +207,15 @@ def run(
             console.print(f"[red]{exc}[/red]")
             raise typer.Exit(code=1)
 
-        console.print("[cyan]Detected unified mission format (v2)...[/cyan]")
+        console.print("[cyan]Detected unified mission format...[/cyan]")
         mission_runtime = compile_unified_mission_runtime(
             mission_def,
             simulation_config=simulation_config,
         )
         simulation_config = mission_runtime.simulation_config
-        if mission_runtime.runtime_plan_v6 is not None:
+        if mission_runtime.runtime_plan is not None:
             required_duration_hint = float(
-                mission_runtime.runtime_plan_v6.required_duration_s
+                mission_runtime.runtime_plan.required_duration_s
             )
         sim_start_pos = mission_runtime.start_pos
         sim_end_pos = mission_runtime.end_pos
@@ -224,12 +224,12 @@ def run(
             f"[green]Unified mission path: {len(mission_runtime.path)} points, "
             f"{mission_runtime.path_length:.2f}m[/green]"
         )
-        if mission_runtime.runtime_plan_v6 is not None:
+        if mission_runtime.runtime_plan is not None:
             console.print(
-                "[cyan]V6 runtime plan: speed="
-                f"{mission_runtime.runtime_plan_v6.path_speed_mps:.3f} m/s, "
-                f"ETA={mission_runtime.runtime_plan_v6.estimated_eta_s:.1f}s, "
-                f"required_duration={mission_runtime.runtime_plan_v6.required_duration_s:.1f}s[/cyan]"
+                "[cyan]runtime plan: speed="
+                f"{mission_runtime.runtime_plan.path_speed_mps:.3f} m/s, "
+                f"ETA={mission_runtime.runtime_plan.estimated_eta_s:.1f}s, "
+                f"required_duration={mission_runtime.runtime_plan.required_duration_s:.1f}s[/cyan]"
             )
 
     else:

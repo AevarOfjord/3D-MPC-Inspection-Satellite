@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import numpy as np
 from config.physics import THRUSTER_COUNT
 from control.mpc_controller import MPCController
-from runtime.v6_policy import ActuatorPolicyV6
+from runtime.policy import ActuatorPolicy
 
 if TYPE_CHECKING:
     from config.models import AppConfig
@@ -70,7 +70,7 @@ class MPCRunner:
             cfg_actuator = (
                 self.config.actuator_policy if self.config is not None else None
             )
-            self.actuator_policy = ActuatorPolicyV6(
+            self.actuator_policy = ActuatorPolicy(
                 enable_thruster_hysteresis=bool(
                     getattr(
                         cfg_mpc,
@@ -114,7 +114,7 @@ class MPCRunner:
             )
 
     def set_mode_state(self, mode_state: Any | None) -> None:
-        """Set current V6 mode state (TRACK/RECOVER/SETTLE/HOLD/COMPLETE)."""
+        """Set current mode state (TRACK/RECOVER/SETTLE/HOLD/COMPLETE)."""
         self.mode_state = mode_state
 
     def _current_mode_name(self) -> str:
@@ -226,7 +226,7 @@ class MPCRunner:
                     )
                 except Exception:
                     logger.warning(
-                        "ActuatorPolicyV6 apply failed; using unclipped controller command.",
+                        "ActuatorPolicy apply failed; using unclipped controller command.",
                         exc_info=True,
                     )
                 if self.rw_axes:

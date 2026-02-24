@@ -11,7 +11,6 @@ import logging
 import math
 from typing import Any, ClassVar
 
-from mission.state import DEFAULT_PATH_HOLD_END_S
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import constants, physics, timing
@@ -797,7 +796,7 @@ class SimulationParams(BaseModel):
 
 
 class ReferenceSchedulerParams(BaseModel):
-    """V6 reference scheduler policy and duration feasibility settings."""
+    """Reference scheduler policy and duration feasibility settings."""
 
     speed_policy: str = Field(
         "min_non_hold_segment_speed",
@@ -807,7 +806,7 @@ class ReferenceSchedulerParams(BaseModel):
         ),
     )
     duration_margin_s: float = Field(
-        constants.Constants.V6_DURATION_MARGIN_S,
+        constants.Constants.DURATION_MARGIN_S,
         ge=0.0,
         le=3600.0,
         description="Extra duration margin added on top of ETA + hold contract.",
@@ -823,12 +822,12 @@ class ReferenceSchedulerParams(BaseModel):
 
 
 class MPCCoreParams(BaseModel):
-    """V6 MPC core mode-profile and backend policy."""
+    """MPC core mode-profile and backend policy."""
 
     solver_backend: str = Field(
         "OSQP",
         pattern="^(OSQP)$",
-        description="Certified V6 solver backend.",
+        description="Certified solver backend.",
     )
     controller_backend: str = Field(
         "v2",
@@ -836,67 +835,67 @@ class MPCCoreParams(BaseModel):
         description="Controller backend: 'v1' (legacy C++ MPC) or 'v2' (CasADi SQP).",
     )
     recover_contour_scale: float = Field(
-        constants.Constants.V6_RECOVER_CONTOUR_SCALE,
+        constants.Constants.RECOVER_CONTOUR_SCALE,
         ge=0.0,
         le=100.0,
         description="RECOVER mode contour weight multiplier.",
     )
     recover_lag_scale: float = Field(
-        constants.Constants.V6_RECOVER_LAG_SCALE,
+        constants.Constants.RECOVER_LAG_SCALE,
         ge=0.0,
         le=100.0,
         description="RECOVER mode lag weight multiplier.",
     )
     recover_progress_scale: float = Field(
-        constants.Constants.V6_RECOVER_PROGRESS_SCALE,
+        constants.Constants.RECOVER_PROGRESS_SCALE,
         ge=0.0,
         le=1.0,
         description="RECOVER mode progress weight multiplier.",
     )
     recover_attitude_scale: float = Field(
-        constants.Constants.V6_RECOVER_ATTITUDE_SCALE,
+        constants.Constants.RECOVER_ATTITUDE_SCALE,
         ge=0.0,
         le=10.0,
         description="RECOVER mode attitude weight multiplier.",
     )
     settle_progress_scale: float = Field(
-        constants.Constants.V6_SETTLE_PROGRESS_SCALE,
+        constants.Constants.SETTLE_PROGRESS_SCALE,
         ge=0.0,
         le=1.0,
         description="SETTLE mode progress weight multiplier.",
     )
     settle_terminal_pos_scale: float = Field(
-        constants.Constants.V6_SETTLE_TERMINAL_POS_SCALE,
+        constants.Constants.SETTLE_TERMINAL_POS_SCALE,
         ge=0.0,
         le=100.0,
         description="SETTLE mode terminal position multiplier.",
     )
     settle_terminal_attitude_scale: float = Field(
-        constants.Constants.V6_SETTLE_TERMINAL_ATTITUDE_SCALE,
+        constants.Constants.SETTLE_TERMINAL_ATTITUDE_SCALE,
         ge=0.0,
         le=100.0,
         description="SETTLE mode terminal attitude multiplier.",
     )
     settle_velocity_align_scale: float = Field(
-        constants.Constants.V6_SETTLE_VELOCITY_ALIGN_SCALE,
+        constants.Constants.SETTLE_VELOCITY_ALIGN_SCALE,
         ge=0.0,
         le=100.0,
         description="SETTLE mode velocity alignment multiplier.",
     )
     settle_angular_velocity_scale: float = Field(
-        constants.Constants.V6_SETTLE_ANGULAR_VELOCITY_SCALE,
+        constants.Constants.SETTLE_ANGULAR_VELOCITY_SCALE,
         ge=0.0,
         le=100.0,
         description="SETTLE mode angular-rate damping multiplier.",
     )
     hold_smoothness_scale: float = Field(
-        constants.Constants.V6_HOLD_SMOOTHNESS_SCALE,
+        constants.Constants.HOLD_SMOOTHNESS_SCALE,
         ge=0.0,
         le=100.0,
         description="HOLD mode smoothness multiplier.",
     )
     hold_thruster_pair_scale: float = Field(
-        constants.Constants.V6_HOLD_THRUSTER_PAIR_SCALE,
+        constants.Constants.HOLD_THRUSTER_PAIR_SCALE,
         ge=0.0,
         le=100.0,
         description="HOLD mode opposing-thruster penalty multiplier.",
@@ -904,7 +903,7 @@ class MPCCoreParams(BaseModel):
 
 
 class ActuatorPolicyParams(BaseModel):
-    """V6 actuator shaping policy."""
+    """Actuator shaping policy."""
 
     enable_thruster_hysteresis: bool = Field(
         constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
@@ -923,7 +922,7 @@ class ActuatorPolicyParams(BaseModel):
         description="Thruster off-threshold for hysteresis policy.",
     )
     terminal_bypass_band_m: float = Field(
-        constants.Constants.V6_TERMINAL_BYPASS_BAND_M,
+        constants.Constants.TERMINAL_BYPASS_BAND_M,
         ge=0.0,
         le=5.0,
         description="Endpoint-error band where SETTLE/HOLD bypass hysteresis.",
@@ -939,7 +938,7 @@ class ActuatorPolicyParams(BaseModel):
 
 
 class ControllerContractsParams(BaseModel):
-    """V6 completion and mode-transition contracts."""
+    """Completion and mode-transition contracts."""
 
     position_error_m_max: float = Field(
         constants.Constants.POSITION_TOLERANCE,
@@ -966,49 +965,49 @@ class ControllerContractsParams(BaseModel):
         description="Terminal angular velocity error threshold [deg/s].",
     )
     hold_duration_s: float = Field(
-        DEFAULT_PATH_HOLD_END_S,
+        constants.MissionDefaults.PATH_HOLD_END_S,
         ge=0.0,
         le=3600.0,
         description="Continuous in-threshold hold duration before completion.",
     )
     solver_fallback_hold_s: float = Field(
-        constants.Constants.V6_SOLVER_FALLBACK_HOLD_S,
+        constants.Constants.SOLVER_FALLBACK_HOLD_S,
         ge=0.0,
         le=30.0,
         description="Hold last-feasible command this long after solver non-success.",
     )
     solver_fallback_decay_s: float = Field(
-        constants.Constants.V6_SOLVER_FALLBACK_DECAY_S,
+        constants.Constants.SOLVER_FALLBACK_DECAY_S,
         ge=0.0,
         le=30.0,
         description="Linear decay duration for fallback command after hold.",
     )
     solver_fallback_zero_after_s: float = Field(
-        constants.Constants.V6_SOLVER_FALLBACK_ZERO_AFTER_S,
+        constants.Constants.SOLVER_FALLBACK_ZERO_AFTER_S,
         ge=0.0,
         le=60.0,
         description="Fallback command is forced to zero at/after this age.",
     )
     recover_enter_error_m: float = Field(
-        constants.Constants.V6_RECOVER_ENTER_ERROR_M,
+        constants.Constants.RECOVER_ENTER_ERROR_M,
         gt=0.0,
         le=10.0,
         description="TRACK->RECOVER contour-error threshold [m].",
     )
     recover_enter_hold_s: float = Field(
-        constants.Constants.V6_RECOVER_ENTER_HOLD_S,
+        constants.Constants.RECOVER_ENTER_HOLD_S,
         ge=0.0,
         le=60.0,
         description="TRACK->RECOVER threshold hold time [s].",
     )
     recover_exit_error_m: float = Field(
-        constants.Constants.V6_RECOVER_EXIT_ERROR_M,
+        constants.Constants.RECOVER_EXIT_ERROR_M,
         gt=0.0,
         le=10.0,
         description="RECOVER->TRACK contour-error threshold [m].",
     )
     recover_exit_hold_s: float = Field(
-        constants.Constants.V6_RECOVER_EXIT_HOLD_S,
+        constants.Constants.RECOVER_EXIT_HOLD_S,
         ge=0.0,
         le=60.0,
         description="RECOVER->TRACK threshold hold time [s].",
@@ -1018,42 +1017,42 @@ class ControllerContractsParams(BaseModel):
         description="Allow mission-level contract override fields with audit.",
     )
     enable_pointing_contract: bool = Field(
-        constants.Constants.V6_ENABLE_POINTING_CONTRACT,
-        description="Enable V6 pointing contract (+X path-forward, +Z axis-lock).",
+        constants.Constants.ENABLE_POINTING_CONTRACT,
+        description="Enable pointing contract (+X path-forward, +Z axis-lock).",
     )
     pointing_scope: str = Field(
-        constants.Constants.V6_POINTING_SCOPE,
+        constants.Constants.POINTING_SCOPE,
         description='Pointing contract scope ("all_missions", "scan_only", "config_toggle").',
     )
 
     scan_axis_source: str = Field(
-        constants.Constants.V6_SCAN_AXIS_SOURCE,
+        constants.Constants.SCAN_AXIS_SOURCE,
         description='Scan axis source policy ("planner", "asset_infer").',
     )
     pointing_guardrails_enabled: bool = Field(
-        constants.Constants.V6_POINTING_GUARDRAILS_ENABLED,
+        constants.Constants.POINTING_GUARDRAILS_ENABLED,
         description="Enable pointing guardrail breach monitoring and RECOVER trigger.",
     )
     pointing_z_error_deg_max: float = Field(
-        constants.Constants.V6_POINTING_Z_ERROR_DEG_MAX,
+        constants.Constants.POINTING_Z_ERROR_DEG_MAX,
         gt=0.0,
         le=180.0,
         description="Max allowed +Z axis error before pointing guardrail breach [deg].",
     )
     pointing_x_error_deg_max: float = Field(
-        constants.Constants.V6_POINTING_X_ERROR_DEG_MAX,
+        constants.Constants.POINTING_X_ERROR_DEG_MAX,
         gt=0.0,
         le=180.0,
         description="Max allowed +X axis error before pointing guardrail breach [deg].",
     )
     pointing_breach_hold_s: float = Field(
-        constants.Constants.V6_POINTING_BREACH_HOLD_S,
+        constants.Constants.POINTING_BREACH_HOLD_S,
         ge=0.0,
         le=60.0,
         description="Continuous breach duration required to latch pointing guardrail [s].",
     )
     pointing_clear_hold_s: float = Field(
-        constants.Constants.V6_POINTING_CLEAR_HOLD_S,
+        constants.Constants.POINTING_CLEAR_HOLD_S,
         ge=0.0,
         le=60.0,
         description="Continuous clear duration required to clear latched guardrail [s].",

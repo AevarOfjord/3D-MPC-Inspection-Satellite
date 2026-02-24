@@ -207,10 +207,10 @@ class SimulationManager:
         elif frame != "LVLH":
             frame_origin = None
 
-        mode_state_obj = getattr(self.sim_instance, "v6_mode_state", None)
-        completion_gate_obj = getattr(self.sim_instance, "v6_completion_gate", None)
-        solver_health_obj = getattr(self.sim_instance, "v6_solver_health", None)
-        pointing_status_obj = getattr(self.sim_instance, "v6_pointing_status", None)
+        mode_state_obj = getattr(self.sim_instance, "mode_state", None)
+        completion_gate_obj = getattr(self.sim_instance, "completion_gate", None)
+        solver_health_obj = getattr(self.sim_instance, "solver_health", None)
+        pointing_status_obj = getattr(self.sim_instance, "pointing_status", None)
 
         mode_state = None
         if mode_state_obj is not None:

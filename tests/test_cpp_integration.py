@@ -16,8 +16,8 @@ from simulation.engine import SatelliteMPCLinearizedSimulation
 class TestCPPEngine:
     """Tests for the C++ simulation engine."""
 
-    def test_cpp_mpc_params_v6_fallback_fields(self):
-        """C++ MPCV2Params binding should expose V6 bounded fallback policy fields."""
+    def test_cpp_mpc_params_fallback_fields(self):
+        """C++ MPCV2Params binding should expose bounded fallback policy fields."""
         cpp_mpc = pytest.importorskip("cpp._cpp_mpc")
         params = cpp_mpc.MPCV2Params()
 

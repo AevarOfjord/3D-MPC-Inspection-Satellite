@@ -110,9 +110,7 @@ def log_simulation_step(
 
     # Determine status message (path-only).
     mission_phase = "PATH_FOLLOWING"
-    mode_label = str(
-        getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
-    )
+    mode_label = str(getattr(getattr(sim, "mode_state", None), "current_mode", "TRACK"))
     status_msg = f"Following Path [{mode_label}] (t={sim.simulation_time:.1f}s)"
 
     path_s = getattr(sim.mpc_controller, "s", None)

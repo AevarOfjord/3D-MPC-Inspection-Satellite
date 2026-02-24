@@ -6,10 +6,10 @@ import time
 from typing import Any
 
 import numpy as np
-from runtime.v6_policy import (
+from runtime.policy import (
     compute_pointing_errors_deg,
     resolve_object_visible_side,
-    resolve_pointing_context_v6,
+    resolve_pointing_context,
 )
 
 
@@ -20,7 +20,7 @@ def _set_runtime_pointing_context(
     path_s: float,
 ) -> tuple[Any, float | None, float | None, str | None]:
     """Resolve and forward current pointing context to MPC core."""
-    context = resolve_pointing_context_v6(
+    context = resolve_pointing_context(
         sim=sim,
         current_state=current_state,
         path_s=float(path_s),
@@ -74,9 +74,9 @@ def _set_runtime_pointing_context(
     return context, x_error_deg, z_error_deg, visible_side
 
 
-def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
-    """Refresh V6 controller mode state from latest path/gate metrics."""
-    mode_manager = getattr(sim, "v6_mode_manager", None)
+def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
+    """Refresh controller mode state from latest path/gate metrics."""
+    mode_manager = getattr(sim, "mode_manager", None)
     if mode_manager is None:
         return
 
@@ -95,10 +95,10 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
 
     path_len = float(sim._get_mission_path_length(compute_if_missing=True) or 0.0)
     pos_tol = float(getattr(sim, "position_tolerance", 0.1) or 0.1)
-    gate = getattr(sim, "v6_completion_gate", None)
+    gate = getattr(sim, "completion_gate", None)
     completion_gate_state_ok = bool(getattr(gate, "all_thresholds_ok", False))
-    completion_reached = bool(getattr(sim, "v6_completion_reached", False))
-    solver_health = getattr(sim, "v6_solver_health", None)
+    completion_reached = bool(getattr(sim, "completion_reached", False))
+    solver_health = getattr(sim, "solver_health", None)
     solver_degraded = bool(
         solver_health is not None
         and str(getattr(solver_health, "status", "ok")).lower() != "ok"
@@ -155,7 +155,7 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
     else:
         sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
 
-    pointing_guardrail = getattr(sim, "v6_pointing_guardrail", None)
+    pointing_guardrail = getattr(sim, "pointing_guardrail", None)
     pointing_guardrail_status = None
     if pointing_guardrail is not None and apply_pointing:
         pointing_guardrail_status = pointing_guardrail.update(
@@ -176,7 +176,7 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
         )
     solver_degraded_for_mode = solver_degraded or pointing_guardrail_breached
 
-    sim.v6_pointing_status = {
+    sim.pointing_status = {
         "pointing_context_source": context_source,
         "pointing_axis_world": (
             list(getattr(context, "axis_world", [0.0, 0.0, 1.0]))
@@ -190,7 +190,7 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
         "pointing_guardrail_reason": pointing_reason,
     }
 
-    sim.v6_mode_state = mode_manager.update(
+    sim.mode_state = mode_manager.update(
         sim_time_s=float(sim.simulation_time),
         contour_error_m=contour_error,
         path_s=path_s,
@@ -201,16 +201,16 @@ def _update_v6_mode_state(sim: Any, current_state: np.ndarray) -> None:
         solver_degraded=solver_degraded_for_mode,
         solver_fallback_reason=solver_fallback_reason,
     )
-    sim.v6_mode_profile = mode_manager.profile_for_mode(sim.v6_mode_state.current_mode)
+    sim.mode_profile = mode_manager.profile_for_mode(sim.mode_state.current_mode)
 
-    mode_timeline = getattr(sim, "v6_mode_timeline", None)
+    mode_timeline = getattr(sim, "mode_timeline", None)
     if mode_timeline is not None:
         sim._append_capped_history(
             mode_timeline,
             {
                 "time_s": float(sim.simulation_time),
-                "mode": str(sim.v6_mode_state.current_mode),
-                "time_in_mode_s": float(sim.v6_mode_state.time_in_mode_s),
+                "mode": str(sim.mode_state.current_mode),
+                "time_in_mode_s": float(sim.mode_state.time_in_mode_s),
                 "path_s": float(path_s),
                 "path_error_m": float(contour_error),
                 "endpoint_error_m": (
@@ -234,24 +234,22 @@ def update_mpc_control_step(sim: Any) -> None:
         return
 
     current_state = sim.get_current_state()
-    _update_v6_mode_state(sim, current_state)
-    reference_scheduler = getattr(sim, "v6_reference_scheduler", None)
+    _update_mode_state(sim, current_state)
+    reference_scheduler = getattr(sim, "reference_scheduler", None)
     if reference_scheduler is not None:
         try:
             horizon = int(getattr(sim.mpc_controller, "prediction_horizon", 10))
-            sim.v6_reference_slice = reference_scheduler.build_slice(
+            sim.reference_slice = reference_scheduler.build_slice(
                 sim=sim,
                 current_state=current_state,
                 mode=str(
-                    getattr(
-                        getattr(sim, "v6_mode_state", None), "current_mode", "TRACK"
-                    )
+                    getattr(getattr(sim, "mode_state", None), "current_mode", "TRACK")
                 ),
                 horizon=max(1, horizon),
                 dt=float(sim.control_update_interval),
             )
         except Exception:
-            sim.v6_reference_slice = None
+            sim.reference_slice = None
 
     # Delegate to MPCRunner
     if getattr(sim, "mpc_runner", None) is None:
@@ -262,9 +260,9 @@ def update_mpc_control_step(sim: Any) -> None:
             mpc_controller=sim.mpc_controller,
             config=sim.structured_config,
             state_validator=sim.state_validator,
-            actuator_policy=getattr(sim, "v6_actuator_policy", None),
+            actuator_policy=getattr(sim, "actuator_policy", None),
         )
-    sim.mpc_runner.set_mode_state(getattr(sim, "v6_mode_state", None))
+    sim.mpc_runner.set_mode_state(getattr(sim, "mode_state", None))
 
     mpc_start_sim_time = sim.simulation_time
     mpc_start_wall_time = time.perf_counter()
@@ -281,7 +279,7 @@ def update_mpc_control_step(sim: Any) -> None:
         previous_thrusters=sim.previous_thrusters,
     )
 
-    mode_state = getattr(sim, "v6_mode_state", None)
+    mode_state = getattr(sim, "mode_state", None)
     if mpc_info is None:
         mpc_info = {}
     if mode_state is not None:
@@ -289,8 +287,8 @@ def update_mpc_control_step(sim: Any) -> None:
         mpc_info["mode_time_in_mode_s"] = float(
             getattr(mode_state, "time_in_mode_s", 0.0)
         )
-    mpc_info["controller_core"] = str(getattr(sim, "controller_core_mode", "v6"))
-    gate = getattr(sim, "v6_completion_gate", None)
+    mpc_info["controller_core"] = str(getattr(sim, "controller_core_mode", "sqp"))
+    gate = getattr(sim, "completion_gate", None)
     if gate is not None:
         mpc_info["completion_gate_position_ok"] = bool(
             getattr(gate, "position_ok", False)
@@ -311,7 +309,7 @@ def update_mpc_control_step(sim: Any) -> None:
         mpc_info["completion_gate_last_breach_reason"] = getattr(
             gate, "last_breach_reason", None
         )
-    pointing_status = getattr(sim, "v6_pointing_status", None)
+    pointing_status = getattr(sim, "pointing_status", None)
     if isinstance(pointing_status, dict):
         mpc_info["pointing_context_source"] = pointing_status.get(
             "pointing_context_source"
@@ -331,7 +329,7 @@ def update_mpc_control_step(sim: Any) -> None:
         )
         mpc_info["object_visible_side"] = pointing_status.get("object_visible_side")
 
-    solver_health = getattr(sim, "v6_solver_health", None)
+    solver_health = getattr(sim, "solver_health", None)
     if solver_health is not None:
         fallback_reason = mpc_info.get("solver_fallback_reason")
         solver_health.fallback_active = bool(mpc_info.get("fallback_active", False))

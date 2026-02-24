@@ -263,7 +263,7 @@ def update_path_reference_state(
 
     Sets ``sim.reference_state`` to a 13-element vector that tracks the
     current path position, derives a forward-looking orientation from the
-    path tangent, and mirrors V6 reference-speed ownership from MPC runtime.
+    path tangent, and mirrors reference-speed ownership from MPC runtime.
 
     Args:
         sim: The simulation instance whose ``reference_state`` will be updated.
@@ -343,7 +343,7 @@ def update_path_reference_state(
     path_speed_min = float(getattr(sim, "_ref_path_speed_min", 0.0))
     path_speed_max = float(getattr(sim, "_ref_path_speed_max", 0.0))
     current_mode = str(
-        getattr(getattr(sim, "v6_mode_state", None), "current_mode", "TRACK")
+        getattr(getattr(sim, "mode_state", None), "current_mode", "TRACK")
     ).upper()
 
     v_ref = path_speed
@@ -368,7 +368,7 @@ def update_path_reference_state(
         v_ref = min(v_ref, path_speed_max)
 
     if current_mode in {"SETTLE", "HOLD", "COMPLETE"}:
-        # V6 explicit endpoint behavior: SETTLE/HOLD use zero velocity targets.
+        # Explicit endpoint behavior: SETTLE/HOLD use zero velocity targets.
         v_ref = 0.0
 
     reference_state[7:10] = tangent * v_ref

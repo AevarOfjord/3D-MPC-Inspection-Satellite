@@ -408,14 +408,14 @@ class SimulationLoop:
     def _check_path_following_completion(self) -> bool:
         """Terminate when path progress reaches the end of the path."""
         from runtime.path_completion import get_path_completion_status
-        from runtime.v6_policy import TerminalSupervisorV6
+        from runtime.policy import TerminalSupervisor
 
         mission_state = self._get_mission_state()
-        terminal_supervisor = getattr(self.simulation, "v6_terminal_supervisor", None)
+        terminal_supervisor = getattr(self.simulation, "terminal_supervisor", None)
         if terminal_supervisor is None:
             hold_required = float(mission_state.path_hold_end or 10.0)
-            terminal_supervisor = TerminalSupervisorV6(hold_required_s=hold_required)
-            self.simulation.v6_terminal_supervisor = terminal_supervisor
+            terminal_supervisor = TerminalSupervisor(hold_required_s=hold_required)
+            self.simulation.terminal_supervisor = terminal_supervisor
 
         status = get_path_completion_status(self.simulation)
         hold_required = float(mission_state.path_hold_end or 10.0)
@@ -428,17 +428,15 @@ class SimulationLoop:
             velocity_ok=bool(status.get("velocity_ok", False)),
             angular_velocity_ok=bool(status.get("angular_velocity_ok", False)),
         )
-        self.simulation.v6_completion_gate = gate
-        self.simulation.v6_completion_reached = bool(gate.complete)
+        self.simulation.completion_gate = gate
+        self.simulation.completion_reached = bool(gate.complete)
         self.simulation.trajectory_endpoint_reached_time = (
             terminal_supervisor.hold_started_at_s
             if terminal_supervisor.hold_started_at_s is not None
             else None
         )
 
-        completion_gate_trace = getattr(
-            self.simulation, "v6_completion_gate_trace", None
-        )
+        completion_gate_trace = getattr(self.simulation, "completion_gate_trace", None)
         if completion_gate_trace is not None:
             self.simulation._append_capped_history(
                 completion_gate_trace,
