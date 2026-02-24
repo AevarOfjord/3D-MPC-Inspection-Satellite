@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { orbitSnapshot, ORBIT_SCALE } from '../data/orbitSnapshot';
+import { HudPanel } from './HudComponents';
 
 interface OrbitTargetsPanelProps {
   selectedTargetId?: string | null;
@@ -30,13 +31,15 @@ const formatPosition = (pos: [number, number, number]) =>
   `[${pos.map((v) => v.toFixed(0)).join(', ')}] m`;
 
 export function OrbitTargetsPanel({
-  selectedTargetId,
+  selectedTargetId: selectedTargetIdProp,
   className,
   onSelectTarget,
   ownSatellite,
   onFocusTarget,
   solarBodies,
 }: OrbitTargetsPanelProps) {
+  const [selectedTargetId, setSelectedTargetId] = useState(selectedTargetIdProp ?? null);
+
   const targets = useMemo(
     () =>
       orbitSnapshot.objects.map((obj) => ({
@@ -50,24 +53,21 @@ export function OrbitTargetsPanel({
     []
   );
 
-  const positionClass = className ?? 'fixed left-6 top-20';
-
-  return (
-    <div className={`${positionClass} z-40 w-64 rounded border border-cyan-400/30 bg-slate-900/90 backdrop-blur shadow-[0_0_30px_rgba(15,23,42,0.65)] pointer-events-auto`}>
-      <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-300">
-        Orbital Targets
-      </div>
-      <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
+  // When used standalone (inside Overlay), className is undefined — no wrapper div needed.
+  // When used with a className (legacy placement), wrap in a positioned div.
+  const inner = (
+    <HudPanel title="ORBITAL TARGETS" className={className ? '' : 'min-w-[240px]'}>
+      <div className="flex flex-col gap-0 font-mono text-xs -mx-3 -mb-3">
         {ownSatellite && (
           <button
             onClick={() => onFocusTarget?.(ownSatellite.id ?? 'SATELLITE', ownSatellite.positionScene)}
-            className="w-full text-left px-3 py-2 border-b border-slate-900 transition-colors hover:bg-slate-900/60 text-slate-200"
+            className="w-full text-left px-3 py-2 border-b border-slate-800/60 transition-colors hover:bg-white/5"
           >
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="truncate">{ownSatellite.name ?? 'Satellite'}</span>
-              <span className="text-[10px] uppercase text-slate-400">vehicle</span>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-200 font-semibold truncate">{ownSatellite.name ?? 'Satellite'}</span>
+              <span className="text-[10px] uppercase text-slate-500 ml-2 flex-shrink-0">VEHICLE</span>
             </div>
-            <div className="mt-1 text-[10px] text-slate-400">
+            <div className="mt-0.5 text-[10px] text-slate-500">
               {formatPosition(
                 ownSatellite.positionMeters ?? [
                   ownSatellite.positionScene[0] / ORBIT_SCALE,
@@ -87,37 +87,37 @@ export function OrbitTargetsPanel({
               role="button"
               tabIndex={0}
               onClick={() => {
+                setSelectedTargetId(obj.id);
                 onSelectTarget?.(obj.id, obj.position_m, obj.scenePosition);
                 onFocusTarget?.(obj.id, obj.scenePosition, focusDistance);
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
+                  setSelectedTargetId(obj.id);
                   onSelectTarget?.(obj.id, obj.position_m, obj.scenePosition);
                   onFocusTarget?.(obj.id, obj.scenePosition, focusDistance);
                 }
               }}
-              className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors cursor-pointer ${
-                isSelected ? 'bg-cyan-500/15 text-cyan-200' : 'hover:bg-slate-900/60 text-slate-200'
+              className={`w-full text-left px-3 py-2 border-b border-slate-800/60 transition-colors cursor-pointer ${
+                isSelected ? 'bg-cyan-500/15 text-cyan-200' : 'hover:bg-white/5 text-slate-200'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 text-xs font-semibold">
-                <span className="truncate">{obj.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase text-slate-400">{obj.type}</span>
-                </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold truncate">{obj.name}</span>
+                <span className="text-[10px] uppercase text-slate-500 flex-shrink-0">{obj.type}</span>
               </div>
-              <div className="mt-1 text-[10px] text-slate-400">
+              <div className="mt-0.5 text-[10px] text-slate-500">
                 {formatPosition(obj.position_m)}
               </div>
             </div>
           );
         })}
         {targets.length === 0 && (
-          <div className="px-3 py-3 text-xs text-slate-500">No orbit targets.</div>
+          <div className="px-3 py-3 text-slate-500">No orbit targets.</div>
         )}
         {solarBodies && solarBodies.length > 0 && (
-          <div className="px-3 py-2 border-t border-slate-800 text-[10px] uppercase tracking-widest text-slate-300">
+          <div className="px-3 py-2 border-t border-slate-800/60 text-[10px] uppercase tracking-widest text-slate-500">
             Solar System
           </div>
         )}
@@ -131,13 +131,13 @@ export function OrbitTargetsPanel({
                 body.radiusScene ? Math.max(body.radiusScene * 3, 5) : undefined
               )
             }
-            className="w-full text-left px-3 py-2 border-b border-slate-900 transition-colors hover:bg-slate-900/60 text-slate-200"
+            className="w-full text-left px-3 py-2 border-b border-slate-800/60 transition-colors hover:bg-white/5 text-slate-200"
           >
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="truncate">{body.name}</span>
-              <span className="text-[10px] uppercase text-slate-400">{body.type}</span>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold truncate">{body.name}</span>
+              <span className="text-[10px] uppercase text-slate-500 flex-shrink-0">{body.type}</span>
             </div>
-            <div className="mt-1 text-[10px] text-slate-400">
+            <div className="mt-0.5 text-[10px] text-slate-500">
               {formatPosition(
                 body.positionMeters ?? [
                   body.positionScene[0] / ORBIT_SCALE,
@@ -149,6 +149,11 @@ export function OrbitTargetsPanel({
           </button>
         ))}
       </div>
-    </div>
+    </HudPanel>
   );
+
+  if (className) {
+    return <div className={`${className} z-40 pointer-events-auto`}>{inner}</div>;
+  }
+  return inner;
 }
