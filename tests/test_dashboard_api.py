@@ -129,7 +129,7 @@ class TestDashboardAPI:
         assert reset_cfg.get("config_meta", {}).get("config_version") == "app_config_v3"
 
     def test_runner_config_dual_read_payload_shapes(self, client):
-        """Runner config should accept legacy, v1-flat, and v2 envelope payloads."""
+        """Runner config should accept legacy and various envelope payloads."""
         reset_resp = client.post("/runner/config/reset")
         assert reset_resp.status_code == 200
 
@@ -160,7 +160,7 @@ class TestDashboardAPI:
         v2_resp = client.post(
             "/runner/config",
             json={
-                "schema_version": "app_config_v2",
+                "schema_version": "app_config",
                 "app_config": {
                     "mpc": {"prediction_horizon": 44},
                     "simulation": {"max_duration": 92.0},

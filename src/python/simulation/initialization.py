@@ -25,15 +25,15 @@ from mission.mission_report_generator import (
     create_mission_report_generator,
 )
 from mission.state import DEFAULT_PATH_HOLD_END_S
-from runtime.thruster_manager import ThrusterManager
-from runtime.v6_policy import (
-    ActuatorPolicyV6,
-    ControllerModeManagerV6,
-    PointingGuardrailV6,
-    ReferenceSchedulerV6,
-    SolverHealthV6,
-    TerminalSupervisorV6,
+from runtime.policy import (
+    ActuatorPolicy,
+    ControllerModeManager,
+    PointingGuardrail,
+    ReferenceScheduler,
+    SolverHealth,
+    TerminalSupervisor,
 )
+from runtime.thruster_manager import ThrusterManager
 from scipy.spatial.transform import Rotation
 from simulation.data_logger import create_data_logger
 from simulation.io import SimulationIO
@@ -236,7 +236,7 @@ class SimulationInitializer:
 
         # Initialize state validator
         self._initialize_state_validator()
-        self._initialize_v6_runtime_components(app_config)
+        self._initialize_runtime_components(app_config)
 
         # Initialize IO helper
         self._initialize_io_helper()
@@ -625,9 +625,9 @@ class SimulationInitializer:
         self.simulation.previous_thrusters = np.zeros(
             self.simulation.num_thrusters, dtype=np.float64
         )
-        self.simulation.v6_mode_timeline: list[dict[str, Any]] = []
-        self.simulation.v6_completion_gate_trace: list[dict[str, Any]] = []
-        self.simulation.v6_controller_health: dict[str, Any] = {}
+        self.simulation.mode_timeline: list[dict[str, Any]] = []
+        self.simulation.completion_gate_trace: list[dict[str, Any]] = []
+        self.simulation.controller_health: dict[str, Any] = {}
 
     def _initialize_data_logging(self) -> None:
         """Initialize data loggers."""
@@ -680,14 +680,14 @@ class SimulationInitializer:
         if isinstance(cfg_override, AppConfig):
             self.simulation.mpc_controller = MPCController(cfg=cfg_override)
             self.simulation.controller_core_mode = str(
-                getattr(self.simulation.mpc_controller, "controller_core", "v6")
+                getattr(self.simulation.mpc_controller, "controller_core", "sqp")
             )
             return
 
         # Preferred: Pass AppConfig directly
         self.simulation.mpc_controller = MPCController(cfg=app_config)
         self.simulation.controller_core_mode = str(
-            getattr(self.simulation.mpc_controller, "controller_core", "v6")
+            getattr(self.simulation.mpc_controller, "controller_core", "sqp")
         )
 
     def _initialize_state_validator(self) -> None:
@@ -704,13 +704,13 @@ class SimulationInitializer:
             ),
         )
 
-    def _initialize_v6_runtime_components(self, app_config: Any) -> None:
-        """Initialize V6 mode/gate/scheduler/policy runtime helpers."""
+    def _initialize_runtime_components(self, app_config: Any) -> None:
+        """Initialize mode/gate/scheduler/policy runtime helpers."""
         contracts_cfg = getattr(app_config, "controller_contracts", None)
         mpc_core_cfg = getattr(app_config, "mpc_core", None)
         actuator_cfg = getattr(app_config, "actuator_policy", None)
 
-        self.simulation.v6_mode_manager = ControllerModeManagerV6(
+        self.simulation.mode_manager = ControllerModeManager(
             recover_enter_error_m=float(
                 getattr(contracts_cfg, "recover_enter_error_m", 0.20)
             ),
@@ -755,17 +755,17 @@ class SimulationInitializer:
                 getattr(mpc_core_cfg, "hold_thruster_pair_scale", 1.2)
             ),
         )
-        self.simulation.v6_mode_manager.reset(sim_time_s=0.0)
-        self.simulation.v6_mode_state = self.simulation.v6_mode_manager.state
+        self.simulation.mode_manager.reset(sim_time_s=0.0)
+        self.simulation.mode_state = self.simulation.mode_manager.state
 
         hold_required = float(getattr(contracts_cfg, "hold_duration_s", 10.0))
-        self.simulation.v6_terminal_supervisor = TerminalSupervisorV6(
+        self.simulation.terminal_supervisor = TerminalSupervisor(
             hold_required_s=hold_required
         )
-        self.simulation.v6_completion_gate = None
-        self.simulation.v6_completion_reached = False
+        self.simulation.completion_gate = None
+        self.simulation.completion_reached = False
 
-        self.simulation.v6_actuator_policy = ActuatorPolicyV6(
+        self.simulation.actuator_policy = ActuatorPolicy(
             enable_thruster_hysteresis=bool(
                 getattr(actuator_cfg, "enable_thruster_hysteresis", True)
             ),
@@ -779,10 +779,10 @@ class SimulationInitializer:
                 getattr(actuator_cfg, "terminal_bypass_band_m", 0.20)
             ),
         )
-        self.simulation.v6_reference_scheduler = ReferenceSchedulerV6()
-        self.simulation.v6_reference_slice = None
-        self.simulation.v6_solver_health = SolverHealthV6()
-        self.simulation.v6_pointing_guardrail = PointingGuardrailV6(
+        self.simulation.reference_scheduler = ReferenceScheduler()
+        self.simulation.reference_slice = None
+        self.simulation.solver_health = SolverHealth()
+        self.simulation.pointing_guardrail = PointingGuardrail(
             enabled=bool(getattr(contracts_cfg, "pointing_guardrails_enabled", True)),
             z_error_deg_max=float(
                 getattr(contracts_cfg, "pointing_z_error_deg_max", 4.0)
@@ -793,7 +793,7 @@ class SimulationInitializer:
             breach_hold_s=float(getattr(contracts_cfg, "pointing_breach_hold_s", 0.30)),
             clear_hold_s=float(getattr(contracts_cfg, "pointing_clear_hold_s", 0.80)),
         )
-        self.simulation.v6_pointing_status = {
+        self.simulation.pointing_status = {
             "pointing_context_source": "none",
             "pointing_axis_world": [0.0, 0.0, 1.0],
             "z_axis_error_deg": 0.0,

@@ -328,7 +328,7 @@ class SplineControlModel(BaseModel):
         return value
 
 
-class TransferSegmentModel(BaseModel):
+class SimpleTransferSegmentModel(BaseModel):
     type: Literal["transfer"]
     target_id: str | None = None
     end_pose: PoseModel
@@ -347,7 +347,7 @@ class ScanConfigModel(BaseModel):
     sensor_axis: Literal["+Y", "-Y"] = "+Y"
 
 
-class ScanSegmentModel(BaseModel):
+class SimpleScanSegmentModel(BaseModel):
     type: Literal["scan"]
     target_id: str
     target_pose: PoseModel | None = None
@@ -356,14 +356,14 @@ class ScanSegmentModel(BaseModel):
     constraints: ConstraintsModel | None = None
 
 
-class HoldSegmentModel(BaseModel):
+class SimpleHoldSegmentModel(BaseModel):
     type: Literal["hold"]
     duration: float = 0.0
     constraints: ConstraintsModel | None = None
 
 
-MissionSegmentModel = Annotated[
-    TransferSegmentModel | ScanSegmentModel | HoldSegmentModel,
+SimpleMissionSegmentModel = Annotated[
+    SimpleTransferSegmentModel | SimpleScanSegmentModel | SimpleHoldSegmentModel,
     Field(discriminator="type"),
 ]
 
@@ -389,15 +389,15 @@ class MissionOverridesModel(BaseModel):
         return float(value)
 
 
-class UnifiedMissionModel(BaseModel):
+class SimpleUnifiedMissionModel(BaseModel):
     epoch: str
     start_pose: PoseModel
     start_target_id: str | None = None
-    segments: list[MissionSegmentModel]
+    segments: list[SimpleMissionSegmentModel]
     overrides: MissionOverridesModel | None = None
 
 
-class PreviewUnifiedMissionResponse(BaseModel):
+class SimplePreviewMissionResponse(BaseModel):
     path: list[list[float]]
     path_length: float
     path_speed: float
@@ -412,9 +412,9 @@ class SpeedCommand(BaseModel):
     speed: float
 
 
-class SaveUnifiedMissionRequest(BaseModel):
+class SimpleSaveMissionRequest(BaseModel):
     name: str
-    config: UnifiedMissionModel
+    config: SimpleUnifiedMissionModel
 
 
 class RunMissionRequest(BaseModel):
@@ -422,18 +422,18 @@ class RunMissionRequest(BaseModel):
 
 
 # ============================================================================
-# V2 mission authoring models
+# Mission authoring models
 # ============================================================================
 
 
-class MissionMetadataV2Model(BaseModel):
+class MissionMetadataModel(BaseModel):
     version: int = 1
     created_at: str | None = None
     updated_at: str | None = None
     tags: list[str] = Field(default_factory=list)
 
 
-class TransferSegmentV2Model(BaseModel):
+class TransferSegmentModel(BaseModel):
     segment_id: str
     title: str | None = None
     notes: str | None = None
@@ -443,7 +443,7 @@ class TransferSegmentV2Model(BaseModel):
     constraints: ConstraintsModel | None = None
 
 
-class ScanSegmentV2Model(BaseModel):
+class ScanSegmentModel(BaseModel):
     segment_id: str
     title: str | None = None
     notes: str | None = None
@@ -455,7 +455,7 @@ class ScanSegmentV2Model(BaseModel):
     constraints: ConstraintsModel | None = None
 
 
-class HoldSegmentV2Model(BaseModel):
+class HoldSegmentModel(BaseModel):
     segment_id: str
     title: str | None = None
     notes: str | None = None
@@ -464,25 +464,25 @@ class HoldSegmentV2Model(BaseModel):
     constraints: ConstraintsModel | None = None
 
 
-MissionSegmentV2Model = Annotated[
-    TransferSegmentV2Model | ScanSegmentV2Model | HoldSegmentV2Model,
+MissionSegmentModel = Annotated[
+    TransferSegmentModel | ScanSegmentModel | HoldSegmentModel,
     Field(discriminator="type"),
 ]
 
 
-class UnifiedMissionV2Model(BaseModel):
+class UnifiedMissionModel(BaseModel):
     schema_version: Literal[2] = 2
     mission_id: str
     name: str
     epoch: str
     start_pose: PoseModel
     start_target_id: str | None = None
-    segments: list[MissionSegmentV2Model]
+    segments: list[MissionSegmentModel]
     overrides: MissionOverridesModel | None = None
-    metadata: MissionMetadataV2Model = Field(default_factory=MissionMetadataV2Model)
+    metadata: MissionMetadataModel = Field(default_factory=MissionMetadataModel)
 
     @model_validator(mode="after")
-    def validate_v2_identity(self) -> "UnifiedMissionV2Model":
+    def validate_identity(self) -> "UnifiedMissionModel":
         if not self.mission_id.strip():
             raise ValueError("mission_id is required")
         if not self.name.strip():
@@ -493,13 +493,13 @@ class UnifiedMissionV2Model(BaseModel):
         return self
 
 
-class MissionConstraintSummaryV2Model(BaseModel):
+class MissionConstraintSummaryModel(BaseModel):
     speed_max: float | None = None
     accel_max: float | None = None
     angular_rate_max: float | None = None
 
 
-class ValidationIssueV2Model(BaseModel):
+class ValidationIssueModel(BaseModel):
     code: str
     severity: Literal["error", "warning", "info"] = "error"
     path: str
@@ -507,40 +507,40 @@ class ValidationIssueV2Model(BaseModel):
     suggestion: str | None = None
 
 
-class ValidationSummaryV2Model(BaseModel):
+class ValidationSummaryModel(BaseModel):
     errors: int = 0
     warnings: int = 0
     info: int = 0
 
 
-class ValidationReportV2Model(BaseModel):
+class ValidationReportModel(BaseModel):
     valid: bool
-    issues: list[ValidationIssueV2Model] = Field(default_factory=list)
-    summary: ValidationSummaryV2Model
+    issues: list[ValidationIssueModel] = Field(default_factory=list)
+    summary: ValidationSummaryModel
 
 
-class PreviewMissionV2ResponseModel(BaseModel):
+class PreviewMissionResponseModel(BaseModel):
     path: list[list[float]]
     path_length: float
     path_speed: float
     eta_s: float
     risk_flags: list[str] = Field(default_factory=list)
-    constraint_summary: MissionConstraintSummaryV2Model
+    constraint_summary: MissionConstraintSummaryModel
 
 
-class SaveMissionV2Request(BaseModel):
+class SaveMissionRequest(BaseModel):
     name: str
-    mission: UnifiedMissionV2Model
+    mission: UnifiedMissionModel
 
 
-class SaveMissionV2ResponseModel(BaseModel):
+class SaveMissionResponseModel(BaseModel):
     mission_id: str
     version: int
     saved_at: str
     filename: str
 
 
-class MissionSummaryV2Model(BaseModel):
+class MissionSummaryModel(BaseModel):
     name: str
     mission_id: str
     updated_at: str | None = None
@@ -549,19 +549,19 @@ class MissionSummaryV2Model(BaseModel):
     schema_version: int = 2
 
 
-class MissionDraftSaveRequestV2Model(BaseModel):
+class MissionDraftSaveRequestModel(BaseModel):
     draft_id: str | None = None
     base_revision: int | None = None
-    mission: UnifiedMissionV2Model
+    mission: UnifiedMissionModel
 
 
-class MissionDraftResponseV2Model(BaseModel):
+class MissionDraftResponseModel(BaseModel):
     draft_id: str
     revision: int
     saved_at: str
-    mission: UnifiedMissionV2Model
+    mission: UnifiedMissionModel
 
 
-class LegacyMissionMigrateRequestV2Model(BaseModel):
+class LegacyMissionMigrateRequestModel(BaseModel):
     payload: dict[str, Any]
     name_hint: str | None = None

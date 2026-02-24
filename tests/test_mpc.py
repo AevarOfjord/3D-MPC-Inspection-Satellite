@@ -20,7 +20,7 @@ class TestMPCController:
     @pytest.fixture
     def controller(self, fresh_config):
         ctrl = MPCController(fresh_config.app_config)
-        # V2 MPCC controller requires a path for meaningful solve
+        # MPCC controller requires a path for meaningful solve
         ctrl.set_path([(0, 0, 0), (10, 0, 0), (20, 0, 0)])
         return ctrl
 
@@ -91,8 +91,8 @@ class TestMPCController:
         assert "solver_status" in info
         assert isinstance(info["timeout"], bool)
 
-    def test_cpp_binding_exposes_v6_mode_profile_fields(self):
-        """C++ binding should expose V2 MPCV2Params and mode profile fields."""
+    def test_cpp_binding_exposes_mode_profile_fields(self):
+        """C++ binding should expose MPCV2Params and mode profile fields."""
         from cpp import _cpp_mpc
 
         params = _cpp_mpc.MPCV2Params()
@@ -104,11 +104,11 @@ class TestMPCController:
         assert hasattr(params, "constraint_tightening_scale")
         assert hasattr(_cpp_mpc.SQPController, "set_runtime_mode")
 
-    def test_v6_core_is_default_and_runtime_mode_is_settable(self):
-        """V2 SQP core should be active and runtime mode updates should be accepted."""
+    def test_core_is_default_and_runtime_mode_is_settable(self):
+        """SQP core should be active and runtime mode updates should be accepted."""
         cfg = SimulationConfig.create_with_overrides({})
         controller = MPCController(cfg.app_config)
-        # V2 reports controller_core as 'v2-sqp' in extras
+        # reports controller_core in extras
         controller.set_runtime_mode("RECOVER")
         assert controller._runtime_mode == "RECOVER"
 

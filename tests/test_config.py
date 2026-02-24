@@ -94,7 +94,7 @@ class TestConfigValidation:
             MPCParams(robustness_mode="not_valid")
 
     def test_removed_mpc_dead_knobs_absent_from_schema(self):
-        """Removed V6 cleanup knobs should not exist in canonical MPC schema."""
+        """Removed legacy cleanup knobs should not exist in canonical MPC schema."""
         removed = {
             "coast_pos_tolerance",
             "coast_vel_tolerance",
@@ -128,7 +128,7 @@ class TestConfigValidation:
                 for token in removed:
                     assert token not in text, f"{token} still present in {path}"
 
-    def test_v6_solver_fallback_contract_validation(self):
+    def test_solver_fallback_contract_validation(self):
         """Fallback zero-after threshold must be >= fallback hold threshold."""
         with pytest.raises(ValidationError):
             ControllerContractsParams(
@@ -136,8 +136,8 @@ class TestConfigValidation:
                 solver_fallback_zero_after_s=0.5,
             )
 
-    def test_v6_sections_present_in_default_config(self):
-        """Default AppConfig should include V6 section models for app_config_v3."""
+    def test_sections_present_in_default_config(self):
+        """Default AppConfig should include controller contract section models."""
         config = SimulationConfig.create_default()
         app_cfg = config.app_config
         assert app_cfg.reference_scheduler.speed_policy == "min_non_hold_segment_speed"
@@ -147,8 +147,8 @@ class TestConfigValidation:
             DEFAULT_PATH_HOLD_END_S
         )
 
-    def test_v6_actuator_policy_validation(self):
-        """V6 actuator-policy on-threshold must exceed off-threshold."""
+    def test_actuator_policy_validation(self):
+        """Actuator-policy on-threshold must exceed off-threshold."""
         with pytest.raises(ValidationError):
             ActuatorPolicyParams(
                 thruster_hysteresis_on=0.01, thruster_hysteresis_off=0.01
@@ -158,8 +158,8 @@ class TestConfigValidation:
                 thruster_hysteresis_on=0.005, thruster_hysteresis_off=0.007
             )
 
-    def test_v6_controller_contract_validation(self):
-        """V6 recover-exit threshold must remain <= recover-enter threshold."""
+    def test_controller_contract_validation(self):
+        """Recover-exit threshold must remain <= recover-enter threshold."""
         with pytest.raises(ValidationError):
             ControllerContractsParams(
                 recover_enter_error_m=0.10,

@@ -1,12 +1,12 @@
 """
 MPC Controller — CasADi + OSQP RTI-SQP Backend.
 
-Drop-in replacement for MPCController (V1) that uses:
+Drop-in replacement for MPCController (legacy) that uses:
   - CasADi-generated exact Jacobians for dynamics linearisation
   - CasADi symbolic cost functions with exact Hessians
   - OSQP as the QP back-end inside an RTI-SQP loop
 
-The public interface (Controller ABC) is identical to V1, so it plugs
+The public interface (Controller ABC) is identical to the original, so it plugs
 straight into MPCRunner / simulation_loop without changes.
 """
 
@@ -22,20 +22,20 @@ from .base import Controller
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
-# C++ V2 backend import
+# C++ backend import
 # --------------------------------------------------------------------------
-_V2_IMPORT_ERROR: ImportError | None = None
+_IMPORT_ERROR: ImportError | None = None
 try:
-    from cpp import _cpp_mpc as _v2
+    from cpp import _cpp_mpc as _cpp_module
 
-    SQPControllerCpp = _v2.SQPController
-    SatelliteParamsV2 = _v2.SatelliteParams
-    MPCV2ParamsCpp = _v2.MPCV2Params
+    SQPControllerCpp = _cpp_module.SQPController
+    SatelliteParams = _cpp_module.SatelliteParams
+    MPCParamsCpp = _cpp_module.MPCV2Params
 except ImportError as exc:
-    _V2_IMPORT_ERROR = exc
+    _IMPORT_ERROR = exc
     SQPControllerCpp = None  # type: ignore[assignment]
-    SatelliteParamsV2 = None  # type: ignore[assignment]
-    MPCV2ParamsCpp = None  # type: ignore[assignment]
+    SatelliteParams = None  # type: ignore[assignment]
+    MPCParamsCpp = None  # type: ignore[assignment]
 
 # --------------------------------------------------------------------------
 # CasADi codegen (optional — gracefully skip if not yet generated)
@@ -49,20 +49,20 @@ except ImportError:
     pass
 
 
-def _raise_v2_import_error() -> None:
-    assert _V2_IMPORT_ERROR is not None
+def _raise_import_error() -> None:
+    assert _IMPORT_ERROR is not None
     py_ver = (
         f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     )
     raise RuntimeError(
         f"Failed to import MPC bindings (cpp._cpp_mpc). "
-        f"Python {py_ver}. Original: {_V2_IMPORT_ERROR}"
-    ) from _V2_IMPORT_ERROR
+        f"Python {py_ver}. Original: {_IMPORT_ERROR}"
+    ) from _IMPORT_ERROR
 
 
 class MPCController(Controller):
     """
-    RTI-SQP Satellite MPC Controller (V2, CasADi + OSQP).
+    RTI-SQP Satellite MPC Controller (CasADi + OSQP).
 
     State:  [p(3), q(4), v(3), ω(3), ω_rw(3), s(1)]  (17 elements)
     Control: [τ_rw(3), u_thr(N), v_s(1)]  (num_rw + num_thrusters + 1)
@@ -73,8 +73,8 @@ class MPCController(Controller):
     # ------------------------------------------------------------------
 
     def __init__(self, cfg: AppConfig):
-        if _V2_IMPORT_ERROR is not None:
-            _raise_v2_import_error()
+        if _IMPORT_ERROR is not None:
+            _raise_import_error()
 
         if not isinstance(cfg, AppConfig):
             raise TypeError(
@@ -85,7 +85,7 @@ class MPCController(Controller):
         self._extract_params(cfg)
 
         # Build C++ SatelliteParams (same struct as V1)
-        sat = SatelliteParamsV2()
+        sat = SatelliteParams()
         sat.dt = self._dt
         sat.mass = self.total_mass
         sat.inertia = self.moment_of_inertia
@@ -105,8 +105,8 @@ class MPCController(Controller):
         sat.use_two_body = self.use_two_body
         self._sat_params = sat
 
-        # Build V2 MPC parameters
-        mpc_p = MPCV2ParamsCpp()
+        # Build MPC parameters
+        mpc_p = MPCParamsCpp()
         mpc_p.prediction_horizon = self.N
         mpc_p.control_horizon = self.control_horizon
         mpc_p.dt = self._dt

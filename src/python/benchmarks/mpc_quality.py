@@ -1,4 +1,4 @@
-"""MPC quality harness for V6 contract validation."""
+"""MPC quality harness for contract validation."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from config.paths import (
     SIMULATION_DATA_ROOT,
     resolve_repo_path,
 )
-from runtime.v6_policy import QualityContractReportV6
+from runtime.policy import QualityContractReport
 
 DATA_SIM_DIR = SIMULATION_DATA_ROOT
 SIM_RUNNER = SCRIPTS_DIR / "run_simulation.py"
@@ -318,8 +318,8 @@ def _evaluate_contracts(
     return results, breaches, not breaches
 
 
-class QualityContractEngineV6:
-    """Deterministic contract evaluator and report builder for V6 quality runs."""
+class QualityContractEngine:
+    """Deterministic contract evaluator and report builder for quality runs."""
 
     @staticmethod
     def evaluate(
@@ -339,8 +339,8 @@ class QualityContractEngineV6:
         contracts: dict[str, dict[str, Any]],
         passed: bool,
         breaches: list[str],
-    ) -> QualityContractReportV6:
-        return QualityContractReportV6(
+    ) -> QualityContractReport:
+        return QualityContractReport(
             schema_version="contract_report_v6",
             generated_at=_now_iso(),
             scenario=scenario,
@@ -540,7 +540,7 @@ def _run_scenario(
     combined_output = f"{completed.stdout}\n{completed.stderr}"
     run_dir = _resolve_run_dir(before_run_id, combined_output)
 
-    engine = QualityContractEngineV6()
+    engine = QualityContractEngine()
     metrics: dict[str, Any] = {}
     contract_results: dict[str, dict[str, Any]] = {}
     breaches: list[str] = []
@@ -572,7 +572,7 @@ def _run_scenario(
             passed=passed,
             breaches=breaches,
         )
-        (run_dir / "contract_report_v6.json").write_text(
+        (run_dir / "contract_report.json").write_text(
             json.dumps(report.to_dict(), indent=2),
             encoding="utf-8",
         )

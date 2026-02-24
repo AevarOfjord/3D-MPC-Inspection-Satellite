@@ -1,11 +1,11 @@
-"""Contract and compatibility tests for mission authoring API v2."""
+"""Contract and compatibility tests for mission authoring API."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import pytest
-from dashboard import mission_v2_service
+from dashboard import mission_service
 from dashboard.app import app
 from fastapi.testclient import TestClient
 from mission import path_assets
@@ -80,11 +80,11 @@ def _scan_mission_payload(
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     missions_dir = tmp_path / "missions"
-    drafts_dir = tmp_path / "mission_drafts_v2"
+    drafts_dir = tmp_path / "mission_drafts"
     path_assets_dir = tmp_path / "data" / "assets" / "paths"
     path_assets_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(mission_v2_service, "MISSIONS_DIR", missions_dir)
-    monkeypatch.setattr(mission_v2_service, "DRAFTS_DIR", drafts_dir)
+    monkeypatch.setattr(mission_service, "MISSIONS_DIR", missions_dir)
+    monkeypatch.setattr(mission_service, "DRAFTS_DIR", drafts_dir)
     monkeypatch.setitem(mission_repo.SOURCE_DIRS, "local", missions_dir)
     monkeypatch.setattr(path_assets, "PATH_ASSET_DIR", path_assets_dir)
 
@@ -108,7 +108,7 @@ def client(tmp_path, monkeypatch):
         yield test_client
 
 
-def test_v2_validate_returns_structured_report(client: TestClient):
+def test_validate_returns_structured_report(client: TestClient):
     response = client.post("/api/v2/missions/validate", json=_sample_mission_payload())
     assert response.status_code == 200
     payload = response.json()
@@ -117,7 +117,7 @@ def test_v2_validate_returns_structured_report(client: TestClient):
     assert isinstance(payload["issues"], list)
 
 
-def test_v2_validate_detects_missing_segments(client: TestClient):
+def test_validate_detects_missing_segments(client: TestClient):
     mission = _sample_mission_payload()
     mission["segments"] = []
     response = client.post("/api/v2/missions/validate", json=mission)
@@ -129,7 +129,7 @@ def test_v2_validate_detects_missing_segments(client: TestClient):
     )
 
 
-def test_v2_save_list_and_load_roundtrip(client: TestClient):
+def test_save_list_and_load_roundtrip(client: TestClient):
     mission = _sample_mission_payload(mission_id="mission_roundtrip")
     save = client.post(
         "/api/v2/missions",
@@ -159,7 +159,7 @@ def test_v2_save_list_and_load_roundtrip(client: TestClient):
     assert loaded["segments"][0]["segment_id"] == "seg_hold_001"
 
 
-def test_v2_draft_save_load_and_conflict(client: TestClient):
+def test_draft_save_load_and_conflict(client: TestClient):
     mission = _sample_mission_payload(mission_id="mission_draft")
 
     draft_first = client.post(
@@ -209,7 +209,7 @@ def test_legacy_endpoints_emit_deprecation_headers(client: TestClient):
     assert "deprecation" in (response.headers.get("Link") or "")
 
 
-def test_legacy_save_adapter_persists_v2_payload(client: TestClient):
+def test_legacy_save_adapter_persists_payload(client: TestClient):
     legacy_payload = {
         "epoch": "2026-01-01T00:00:00Z",
         "start_pose": {
@@ -241,7 +241,7 @@ def test_legacy_save_adapter_persists_v2_payload(client: TestClient):
     assert payload["segments"][0]["segment_id"]
 
 
-def test_v2_validate_warns_scan_axis_asset_mismatch(client: TestClient):
+def test_validate_warns_scan_axis_asset_mismatch(client: TestClient):
     response = client.post(
         "/api/v2/missions/validate",
         json=_scan_mission_payload(mission_id="mission_scan_validate", axis="+Z"),
@@ -254,7 +254,7 @@ def test_v2_validate_warns_scan_axis_asset_mismatch(client: TestClient):
     )
 
 
-def test_v2_load_auto_migrates_scan_axis_and_sets_notice_tag(client: TestClient):
+def test_load_auto_migrates_scan_axis_and_sets_notice_tag(client: TestClient):
     mission = _scan_mission_payload(mission_id="mission_scan_load", axis="+Z")
     save = client.post(
         "/api/v2/missions",

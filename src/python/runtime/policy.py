@@ -1,4 +1,4 @@
-"""V6 controller runtime primitives: modes, terminal gate, actuator policy, and speed planning."""
+"""Controller runtime primitives: modes, terminal gate, actuator policy, and speed planning."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ ModeName = Literal["TRACK", "RECOVER", "SETTLE", "HOLD", "COMPLETE"]
 
 
 @dataclass
-class MissionRuntimePlanV6:
-    """Compiled mission runtime metadata for V6 diagnostics and duration policy."""
+class MissionRuntimePlan:
+    """Compiled mission runtime metadata for diagnostics and duration policy."""
 
     path_length_m: float
     path_speed_mps: float
@@ -25,7 +25,7 @@ class MissionRuntimePlanV6:
 
 
 @dataclass
-class ReferenceSliceV6:
+class ReferenceSlice:
     """Reference knot slice for diagnostics/replay (N+1 states)."""
 
     dt: float
@@ -33,8 +33,8 @@ class ReferenceSliceV6:
 
 
 @dataclass
-class ModeProfileV6:
-    """Mode-specific cost profile multipliers used by V6 diagnostics/policy."""
+class ModeProfile:
+    """Mode-specific cost profile multipliers used by diagnostics/policy."""
 
     contour_scale: float = 1.0
     lag_scale: float = 1.0
@@ -49,7 +49,7 @@ class ModeProfileV6:
 
 
 @dataclass
-class ModeStateV6:
+class ModeState:
     """Current controller mode and transition timing."""
 
     current_mode: ModeName = "TRACK"
@@ -58,8 +58,8 @@ class ModeStateV6:
 
 
 @dataclass
-class CompletionGateStatusV6:
-    """Strict terminal gate status for V6 completion contract."""
+class CompletionGateStatus:
+    """Strict terminal gate status for completion contract."""
 
     progress_ok: bool
     position_ok: bool
@@ -75,7 +75,7 @@ class CompletionGateStatusV6:
 
 
 @dataclass
-class SolverHealthV6:
+class SolverHealth:
     """Solver health counters surfaced via telemetry/artifacts."""
 
     status: str = "ok"
@@ -89,7 +89,7 @@ class SolverHealthV6:
 
 
 @dataclass
-class PointingContextV6:
+class PointingContext:
     """Resolved runtime pointing context for the current path region."""
 
     axis_world: np.ndarray
@@ -101,7 +101,7 @@ class PointingContextV6:
 
 
 @dataclass
-class PointingGuardrailStatusV6:
+class PointingGuardrailStatus:
     """Latched guardrail status for pointing contract monitoring."""
 
     breached: bool = False
@@ -111,7 +111,7 @@ class PointingGuardrailStatusV6:
 
 
 @dataclass
-class QualityContractReportV6:
+class QualityContractReport:
     """Serializable contract report payload for quality harness outputs."""
 
     schema_version: str
@@ -187,12 +187,12 @@ def _extract_mission_state(sim: Any) -> Any:
     return mission_state
 
 
-def resolve_pointing_context_v6(
+def resolve_pointing_context(
     *,
     sim: Any,
     current_state: np.ndarray,
     path_s: float,
-) -> PointingContextV6:
+) -> PointingContext:
     """Resolve segment-aware pointing context for the current path arc-length."""
     mission_state = _extract_mission_state(sim)
     spans = list(getattr(mission_state, "pointing_path_spans", []) or [])
@@ -330,7 +330,7 @@ def resolve_pointing_context_v6(
         else int(_safe_float(chosen_span.get("source_segment_index"), -1.0))
     )
 
-    return PointingContextV6(
+    return PointingContext(
         axis_world=np.array(axis_vec, dtype=float),
         center_world=(
             None if center_world is None else np.array(center_world, dtype=float)
@@ -370,7 +370,7 @@ def compute_pointing_errors_deg(
 def resolve_object_visible_side(
     *,
     current_state: np.ndarray,
-    context: PointingContextV6 | None,
+    context: PointingContext | None,
 ) -> str | None:
     """Return which camera side is object-facing (+Y / -Y) when center is available."""
     if context is None or context.center_world is None:
@@ -390,7 +390,7 @@ def resolve_object_visible_side(
     return "+Y" if float(np.dot(curr_y, radial_dir)) >= 0.0 else "-Y"
 
 
-class PointingGuardrailV6:
+class PointingGuardrail:
     """Continuous hold/reset guardrail for pointing-axis error bounds."""
 
     def __init__(
@@ -407,10 +407,10 @@ class PointingGuardrailV6:
         self.x_error_deg_max = max(0.0, float(x_error_deg_max))
         self.breach_hold_s = max(0.0, float(breach_hold_s))
         self.clear_hold_s = max(0.0, float(clear_hold_s))
-        self.status = PointingGuardrailStatusV6()
+        self.status = PointingGuardrailStatus()
 
     def reset(self) -> None:
-        self.status = PointingGuardrailStatusV6()
+        self.status = PointingGuardrailStatus()
 
     def update(
         self,
@@ -418,7 +418,7 @@ class PointingGuardrailV6:
         sim_time_s: float,
         x_error_deg: float | None,
         z_error_deg: float | None,
-    ) -> PointingGuardrailStatusV6:
+    ) -> PointingGuardrailStatus:
         if not self.enabled:
             self.reset()
             return self.status
@@ -460,7 +460,7 @@ class PointingGuardrailV6:
         return self.status
 
 
-class ControllerModeManagerV6:
+class ControllerModeManager:
     """Finite-state mode manager for TRACK/RECOVER/SETTLE/HOLD transitions."""
 
     def __init__(
@@ -501,25 +501,25 @@ class ControllerModeManagerV6:
         self.hold_smoothness_scale = max(0.0, float(hold_smoothness_scale))
         self.hold_thruster_pair_scale = max(0.0, float(hold_thruster_pair_scale))
 
-        self.state = ModeStateV6()
+        self.state = ModeState()
         self._recover_enter_candidate_since: float | None = None
         self._recover_exit_candidate_since: float | None = None
 
     def reset(self, sim_time_s: float = 0.0) -> None:
-        self.state = ModeStateV6(current_mode="TRACK", entered_at_s=float(sim_time_s))
+        self.state = ModeState(current_mode="TRACK", entered_at_s=float(sim_time_s))
         self._recover_enter_candidate_since = None
         self._recover_exit_candidate_since = None
 
-    def profile_for_mode(self, mode: ModeName) -> ModeProfileV6:
+    def profile_for_mode(self, mode: ModeName) -> ModeProfile:
         if mode == "RECOVER":
-            return ModeProfileV6(
+            return ModeProfile(
                 contour_scale=self.recover_contour_scale,
                 lag_scale=self.recover_lag_scale,
                 progress_scale=self.recover_progress_scale,
                 attitude_scale=self.recover_attitude_scale,
             )
         if mode == "SETTLE":
-            return ModeProfileV6(
+            return ModeProfile(
                 progress_scale=self.settle_progress_scale,
                 terminal_pos_scale=self.settle_terminal_pos_scale,
                 terminal_attitude_scale=self.settle_terminal_attitude_scale,
@@ -527,7 +527,7 @@ class ControllerModeManagerV6:
                 angular_velocity_scale=self.settle_angular_velocity_scale,
             )
         if mode == "HOLD":
-            return ModeProfileV6(
+            return ModeProfile(
                 progress_scale=self.settle_progress_scale,
                 terminal_pos_scale=self.settle_terminal_pos_scale,
                 terminal_attitude_scale=self.settle_terminal_attitude_scale,
@@ -536,7 +536,7 @@ class ControllerModeManagerV6:
                 smoothness_scale=self.hold_smoothness_scale,
                 thruster_pair_scale=self.hold_thruster_pair_scale,
             )
-        return ModeProfileV6()
+        return ModeProfile()
 
     def _switch_mode(self, new_mode: ModeName, sim_time_s: float) -> None:
         if self.state.current_mode == new_mode:
@@ -557,7 +557,7 @@ class ControllerModeManagerV6:
         completion_reached: bool,
         solver_degraded: bool = False,
         solver_fallback_reason: str | None = None,
-    ) -> ModeStateV6:
+    ) -> ModeState:
         """Update mode state based on error/progress/gate conditions."""
         sim_time_s = float(sim_time_s)
         contour_error_m = _safe_float(contour_error_m, default=0.0)
@@ -623,7 +623,7 @@ class ControllerModeManagerV6:
         return self.state
 
 
-class TerminalSupervisorV6:
+class TerminalSupervisor:
     """Strict terminal gate supervisor with continuous hold timer."""
 
     def __init__(self, hold_required_s: float = 10.0):
@@ -644,7 +644,7 @@ class TerminalSupervisorV6:
         angle_ok: bool,
         velocity_ok: bool,
         angular_velocity_ok: bool,
-    ) -> CompletionGateStatusV6:
+    ) -> CompletionGateStatus:
         sim_time_s = float(sim_time_s)
         all_thresholds_ok = bool(
             position_ok and angle_ok and velocity_ok and angular_velocity_ok
@@ -674,7 +674,7 @@ class TerminalSupervisorV6:
 
         complete = gate_ok and hold_elapsed >= self.hold_required_s
 
-        return CompletionGateStatusV6(
+        return CompletionGateStatus(
             progress_ok=bool(progress_ok),
             position_ok=bool(position_ok),
             angle_ok=bool(angle_ok),
@@ -689,7 +689,7 @@ class TerminalSupervisorV6:
         )
 
 
-class ActuatorPolicyV6:
+class ActuatorPolicy:
     """Deterministic actuator shaping with hysteresis and terminal bypass band."""
 
     def __init__(
@@ -752,8 +752,8 @@ class ActuatorPolicyV6:
         return self._apply_hysteresis(cmd, previous_thrusters)
 
 
-class ReferenceSchedulerV6:
-    """Reference horizon scheduler used for V6 diagnostics and replay."""
+class ReferenceScheduler:
+    """Reference horizon scheduler used for diagnostics and replay."""
 
     def build_slice(
         self,
@@ -763,7 +763,7 @@ class ReferenceSchedulerV6:
         mode: ModeName,
         horizon: int,
         dt: float,
-    ) -> ReferenceSliceV6:
+    ) -> ReferenceSlice:
         knots: list[dict[str, Any]] = []
 
         try:
@@ -829,7 +829,7 @@ class ReferenceSchedulerV6:
                 }
             knots.append(knot)
 
-        return ReferenceSliceV6(dt=float(dt), knots=knots)
+        return ReferenceSlice(dt=float(dt), knots=knots)
 
 
 def extract_non_hold_speed_caps(mission: Any) -> list[float]:
@@ -870,7 +870,7 @@ def compute_runtime_path_speed(
     path_speed_min: float,
     path_speed_max: float,
 ) -> float:
-    """Apply V6 speed policy: min non-hold cap, then clamp to MPC bounds."""
+    """Apply speed policy: min non-hold cap, then clamp to MPC bounds."""
     speed_candidate = (
         min(non_hold_segment_caps)
         if non_hold_segment_caps
@@ -903,7 +903,7 @@ def estimate_required_duration_s(
     return (path_len / speed) + hold_s + margin
 
 
-def compile_mission_runtime_plan_v6(
+def compile_mission_runtime_plan(
     *,
     mission: Any,
     path_length_m: float,
@@ -912,8 +912,8 @@ def compile_mission_runtime_plan_v6(
     path_speed_max: float,
     hold_duration_s: float,
     margin_s: float = 30.0,
-) -> MissionRuntimePlanV6:
-    """Compile V6 runtime plan metadata from mission and path characteristics."""
+) -> MissionRuntimePlan:
+    """Compile runtime plan metadata from mission and path characteristics."""
     caps = extract_non_hold_speed_caps(mission)
     path_speed = compute_runtime_path_speed(
         non_hold_segment_caps=caps,
@@ -929,7 +929,7 @@ def compile_mission_runtime_plan_v6(
         margin_s=margin_s,
     )
 
-    return MissionRuntimePlanV6(
+    return MissionRuntimePlan(
         path_length_m=max(0.0, float(path_length_m)),
         path_speed_mps=float(path_speed),
         estimated_eta_s=float(eta),

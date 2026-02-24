@@ -22,7 +22,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from config import timing
+from config.timing import CONTROL_DT, DEFAULT_PATH_SPEED
 
 DEFAULT_PATH_HOLD_END_S = 10.0
 
@@ -33,7 +33,7 @@ class PathFollowingState:
 
     active: bool = False
     waypoints: list[tuple[float, float, float]] = field(default_factory=list)
-    path_speed: float = timing.DEFAULT_PATH_SPEED
+    path_speed: float = DEFAULT_PATH_SPEED
     path_length: float = 0.0
 
 
@@ -66,7 +66,7 @@ class MissionState:
     path_tracking_return_position: tuple[float, float, float] | None = None
     path_tracking_return_angle: tuple[float, float, float] = (0.0, 0.0, 0.0)
     path_tracking_trajectory: Any | None = None
-    path_tracking_trajectory_dt: float = timing.CONTROL_DT
+    path_tracking_trajectory_dt: float = CONTROL_DT
     # Origin of the simulation frame in ECI coordinates [x, y, z]
     frame_origin: tuple[float, float, float] = (0.0, 0.0, 0.0)
     # Path frame used for compiled mission waypoints ("ECI" or "LVLH").

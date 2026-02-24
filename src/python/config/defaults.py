@@ -138,31 +138,31 @@ def create_default_app_config() -> AppConfig:
 
     reference_scheduler = ReferenceSchedulerParams(
         speed_policy="min_non_hold_segment_speed",
-        duration_margin_s=constants.Constants.V6_DURATION_MARGIN_S,
+        duration_margin_s=constants.Constants.DURATION_MARGIN_S,
         auto_extend_manual_duration=True,
         enforce_contract_min_duration=True,
     )
 
     mpc_core = MPCCoreParams(
         solver_backend="OSQP",
-        recover_contour_scale=constants.Constants.V6_RECOVER_CONTOUR_SCALE,
-        recover_lag_scale=constants.Constants.V6_RECOVER_LAG_SCALE,
-        recover_progress_scale=constants.Constants.V6_RECOVER_PROGRESS_SCALE,
-        recover_attitude_scale=constants.Constants.V6_RECOVER_ATTITUDE_SCALE,
-        settle_progress_scale=constants.Constants.V6_SETTLE_PROGRESS_SCALE,
-        settle_terminal_pos_scale=constants.Constants.V6_SETTLE_TERMINAL_POS_SCALE,
-        settle_terminal_attitude_scale=constants.Constants.V6_SETTLE_TERMINAL_ATTITUDE_SCALE,
-        settle_velocity_align_scale=constants.Constants.V6_SETTLE_VELOCITY_ALIGN_SCALE,
-        settle_angular_velocity_scale=constants.Constants.V6_SETTLE_ANGULAR_VELOCITY_SCALE,
-        hold_smoothness_scale=constants.Constants.V6_HOLD_SMOOTHNESS_SCALE,
-        hold_thruster_pair_scale=constants.Constants.V6_HOLD_THRUSTER_PAIR_SCALE,
+        recover_contour_scale=constants.Constants.RECOVER_CONTOUR_SCALE,
+        recover_lag_scale=constants.Constants.RECOVER_LAG_SCALE,
+        recover_progress_scale=constants.Constants.RECOVER_PROGRESS_SCALE,
+        recover_attitude_scale=constants.Constants.RECOVER_ATTITUDE_SCALE,
+        settle_progress_scale=constants.Constants.SETTLE_PROGRESS_SCALE,
+        settle_terminal_pos_scale=constants.Constants.SETTLE_TERMINAL_POS_SCALE,
+        settle_terminal_attitude_scale=constants.Constants.SETTLE_TERMINAL_ATTITUDE_SCALE,
+        settle_velocity_align_scale=constants.Constants.SETTLE_VELOCITY_ALIGN_SCALE,
+        settle_angular_velocity_scale=constants.Constants.SETTLE_ANGULAR_VELOCITY_SCALE,
+        hold_smoothness_scale=constants.Constants.HOLD_SMOOTHNESS_SCALE,
+        hold_thruster_pair_scale=constants.Constants.HOLD_THRUSTER_PAIR_SCALE,
     )
 
     actuator_policy = ActuatorPolicyParams(
         enable_thruster_hysteresis=constants.Constants.ENABLE_THRUSTER_HYSTERESIS,
         thruster_hysteresis_on=constants.Constants.THRUSTER_HYSTERESIS_ON,
         thruster_hysteresis_off=constants.Constants.THRUSTER_HYSTERESIS_OFF,
-        terminal_bypass_band_m=constants.Constants.V6_TERMINAL_BYPASS_BAND_M,
+        terminal_bypass_band_m=constants.Constants.TERMINAL_BYPASS_BAND_M,
     )
 
     controller_contracts = ControllerContractsParams(
@@ -175,22 +175,22 @@ def create_default_app_config() -> AppConfig:
             constants.Constants.ANGULAR_VELOCITY_TOLERANCE * 180.0 / 3.141592653589793
         ),
         hold_duration_s=10.0,
-        solver_fallback_hold_s=constants.Constants.V6_SOLVER_FALLBACK_HOLD_S,
-        solver_fallback_decay_s=constants.Constants.V6_SOLVER_FALLBACK_DECAY_S,
-        solver_fallback_zero_after_s=constants.Constants.V6_SOLVER_FALLBACK_ZERO_AFTER_S,
-        recover_enter_error_m=constants.Constants.V6_RECOVER_ENTER_ERROR_M,
-        recover_enter_hold_s=constants.Constants.V6_RECOVER_ENTER_HOLD_S,
-        recover_exit_error_m=constants.Constants.V6_RECOVER_EXIT_ERROR_M,
-        recover_exit_hold_s=constants.Constants.V6_RECOVER_EXIT_HOLD_S,
+        solver_fallback_hold_s=constants.Constants.SOLVER_FALLBACK_HOLD_S,
+        solver_fallback_decay_s=constants.Constants.SOLVER_FALLBACK_DECAY_S,
+        solver_fallback_zero_after_s=constants.Constants.SOLVER_FALLBACK_ZERO_AFTER_S,
+        recover_enter_error_m=constants.Constants.RECOVER_ENTER_ERROR_M,
+        recover_enter_hold_s=constants.Constants.RECOVER_ENTER_HOLD_S,
+        recover_exit_error_m=constants.Constants.RECOVER_EXIT_ERROR_M,
+        recover_exit_hold_s=constants.Constants.RECOVER_EXIT_HOLD_S,
         allow_mission_override=True,
-        enable_pointing_contract=constants.Constants.V6_ENABLE_POINTING_CONTRACT,
-        pointing_scope=constants.Constants.V6_POINTING_SCOPE,
-        scan_axis_source=constants.Constants.V6_SCAN_AXIS_SOURCE,
-        pointing_guardrails_enabled=constants.Constants.V6_POINTING_GUARDRAILS_ENABLED,
-        pointing_z_error_deg_max=constants.Constants.V6_POINTING_Z_ERROR_DEG_MAX,
-        pointing_x_error_deg_max=constants.Constants.V6_POINTING_X_ERROR_DEG_MAX,
-        pointing_breach_hold_s=constants.Constants.V6_POINTING_BREACH_HOLD_S,
-        pointing_clear_hold_s=constants.Constants.V6_POINTING_CLEAR_HOLD_S,
+        enable_pointing_contract=constants.Constants.ENABLE_POINTING_CONTRACT,
+        pointing_scope=constants.Constants.POINTING_SCOPE,
+        scan_axis_source=constants.Constants.SCAN_AXIS_SOURCE,
+        pointing_guardrails_enabled=constants.Constants.POINTING_GUARDRAILS_ENABLED,
+        pointing_z_error_deg_max=constants.Constants.POINTING_Z_ERROR_DEG_MAX,
+        pointing_x_error_deg_max=constants.Constants.POINTING_X_ERROR_DEG_MAX,
+        pointing_breach_hold_s=constants.Constants.POINTING_BREACH_HOLD_S,
+        pointing_clear_hold_s=constants.Constants.POINTING_CLEAR_HOLD_S,
     )
 
     return AppConfig(

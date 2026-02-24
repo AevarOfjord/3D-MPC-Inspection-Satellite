@@ -14,9 +14,9 @@ from config.simulation_config import SimulationConfig
 from mission.path_assets import load_path_asset
 from mission.unified_compiler import compile_unified_mission_path
 from mission.unified_mission import MissionDefinition, SegmentType
-from runtime.v6_policy import (
-    MissionRuntimePlanV6,
-    compile_mission_runtime_plan_v6,
+from runtime.policy import (
+    MissionRuntimePlan,
+    compile_mission_runtime_plan,
 )
 
 
@@ -30,7 +30,7 @@ class UnifiedMissionRuntime:
     path_speed: float
     start_pos: tuple[float, float, float]
     end_pos: tuple[float, float, float]
-    runtime_plan_v6: MissionRuntimePlanV6 | None = None
+    runtime_plan: MissionRuntimePlan | None = None
 
 
 def _axis_token_to_letter(axis_token: Any) -> str | None:
@@ -139,14 +139,12 @@ def parse_unified_mission_payload(payload: Mapping[str, Any]) -> MissionDefiniti
     Parse a unified mission payload.
 
     Raises:
-        ValueError: if the payload does not match the unified mission v2 contract.
+        ValueError: if the payload does not match the unified mission contract.
     """
     if not isinstance(payload, Mapping):
         raise ValueError("Mission payload must be an object.")
     if "segments" not in payload or "start_pose" not in payload:
-        raise ValueError(
-            "Unsupported legacy mission format. Expected unified mission v2."
-        )
+        raise ValueError("Unsupported legacy mission format. Expected unified mission.")
     try:
         return MissionDefinition.from_dict(dict(payload))
     except Exception as exc:
@@ -183,7 +181,7 @@ def compile_unified_mission_runtime(
         )
     )
 
-    runtime_plan_v6 = compile_mission_runtime_plan_v6(
+    runtime_plan = compile_mission_runtime_plan(
         mission=mission,
         path_length_m=float(path_length),
         default_path_speed=float(sim_config.app_config.mpc.path_speed),
@@ -203,14 +201,14 @@ def compile_unified_mission_runtime(
     # This ensures high-precision visualization (no jitter) while avoiding physics singularities.
     sim_config.app_config.physics.use_two_body_gravity = False
 
-    runtime_path_speed = float(runtime_plan_v6.path_speed_mps)
+    runtime_path_speed = float(runtime_plan.path_speed_mps)
     sim_config.app_config.mpc.path_speed = runtime_path_speed
     mission_state = sim_config.mission_state
     mission_state.path_waypoints = path
     mission_state.path_length = float(path_length)
     mission_state.path_speed = runtime_path_speed
     mission_state.path_tracking_estimated_duration = float(
-        runtime_plan_v6.required_duration_s
+        runtime_plan.required_duration_s
     )
     mission_state.frame_origin = origin
     mission_state.path_frame = resolved_output_frame
@@ -238,7 +236,7 @@ def compile_unified_mission_runtime(
     end_pos = tuple(path[-1]) if path else start_pos
 
     sim_max_duration = float(sim_config.app_config.simulation.max_duration or 0.0)
-    required_duration = float(runtime_plan_v6.required_duration_s)
+    required_duration = float(runtime_plan.required_duration_s)
     scheduler_cfg = sim_config.app_config.reference_scheduler
     is_contract_run = os.environ.get("SATCTRL_CONTRACT_SCENARIO", "0").strip() in {
         "1",
@@ -272,7 +270,7 @@ def compile_unified_mission_runtime(
         path_speed=runtime_path_speed,
         start_pos=start_pos,
         end_pos=end_pos,
-        runtime_plan_v6=runtime_plan_v6,
+        runtime_plan=runtime_plan,
     )
 
 

@@ -28,8 +28,8 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 SIMULATION_SCRIPT = SCRIPTS_DIR / "run_simulation.py"
 PRESETS_FILE = DASHBOARD_DATA_ROOT / "runner_presets.json"
 APP_CONFIG_SCHEMA_VERSION = "app_config_v3"
-APP_CONFIG_SCHEMA_VERSION_V2 = "app_config_v2"
-COMPATIBILITY_WINDOW = "v6.x"
+APP_CONFIG_SCHEMA_VERSION_LEGACY = "app_config_v2"
+COMPATIBILITY_WINDOW = "current"
 DISABLE_CONFIG_MIRRORS_ENV = "SATCTRL_DISABLE_CONFIG_MIRRORS"
 REMOVED_MPC_FIELDS = (
     "coast_pos_tolerance",
@@ -84,7 +84,7 @@ class RunnerManager:
                 config = item.get("config")
                 if not isinstance(config, dict):
                     continue
-                envelope = self._normalize_to_v3_envelope(config)
+                envelope = self._normalize_to_envelope(config)
                 if not envelope:
                     continue
                 normalized[name] = {
@@ -225,7 +225,7 @@ class RunnerManager:
     @staticmethod
     def _extract_app_config_sections(payload: dict[str, Any] | None) -> dict[str, Any]:
         """
-        Extract canonical app_config_v3 sections from legacy/v1/v2/v3 payloads.
+        Extract canonical app_config sections from legacy payloads.
 
         Canonical sections:
             physics, reference_scheduler, mpc_core, actuator_policy,
@@ -252,7 +252,7 @@ class RunnerManager:
             if section_payload is not None:
                 sections[section] = section_payload
 
-        # v1/v2 compatibility: map `mpc` to canonical `mpc_core`.
+        # Legacy compatibility: map `mpc` to canonical `mpc_core`.
         if "mpc_core" not in sections:
             mpc_payload = RunnerManager._clone_section(source.get("mpc"))
             if mpc_payload is not None:
@@ -282,7 +282,7 @@ class RunnerManager:
         """
         Extract section dicts supported by SimulationConfig.create_with_overrides.
 
-        Runtime keeps `mpc` as execution config while preserving V6 metadata sections.
+        Runtime keeps `mpc` as execution config while preserving metadata sections.
         """
         sections = RunnerManager._extract_app_config_sections(payload)
         runtime: dict[str, Any] = {}
@@ -322,7 +322,7 @@ class RunnerManager:
 
     @staticmethod
     def _with_response_mirrors(payload: dict[str, Any]) -> dict[str, Any]:
-        """Mirror canonical app_config_v3 sections at top-level for compatibility."""
+        """Mirror canonical app_config sections at top-level for compatibility."""
         mirrors_disabled = str(
             os.environ.get(DISABLE_CONFIG_MIRRORS_ENV, "")
         ).strip().lower() in {"1", "true", "yes", "on"}
@@ -393,7 +393,7 @@ class RunnerManager:
         return normalized
 
     @staticmethod
-    def _build_v3_app_config_payload(
+    def _build_app_config_payload(
         app_config_payload: dict[str, Any],
     ) -> dict[str, Any]:
         app_config: dict[str, Any] = {}
@@ -435,8 +435,8 @@ class RunnerManager:
             app_config["input_file_path"] = app_config_payload.get("input_file_path")
         return app_config
 
-    def _normalize_to_v3_envelope(self, overrides: dict[str, Any]) -> dict[str, Any]:
-        """Convert accepted payload shapes into canonical app_config_v3 envelope."""
+    def _normalize_to_envelope(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Convert accepted payload shapes into canonical app_config envelope."""
         sections = self._normalize_overrides_to_sections(overrides)
         app_config: dict[str, Any] = {}
         for section in (
@@ -480,7 +480,7 @@ class RunnerManager:
 
         # Preserve legacy UI shape while also exposing full AppConfig sections.
         ui_config = config.to_dict()
-        app_config_payload = self._build_v3_app_config_payload(
+        app_config_payload = self._build_app_config_payload(
             config.app_config.model_dump()
         )
         v2_payload = {
@@ -520,7 +520,7 @@ class RunnerManager:
 
     def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
-        normalized = self._normalize_to_v3_envelope(overrides)
+        normalized = self._normalize_to_envelope(overrides)
         self._custom_config = normalized if normalized else None
         self._active_preset_name = active_preset_name if self._custom_config else None
         sections = list(normalized.get("app_config", {}).keys()) if normalized else []
@@ -543,7 +543,7 @@ class RunnerManager:
             config_payload = data.get("config")
             if not isinstance(config_payload, dict):
                 continue
-            envelope = self._normalize_to_v3_envelope(config_payload)
+            envelope = self._normalize_to_envelope(config_payload)
             if not envelope:
                 continue
             listed[name] = {
@@ -561,7 +561,7 @@ class RunnerManager:
         trimmed = name.strip()
         if not trimmed:
             raise ValueError("Preset name cannot be empty")
-        normalized = self._normalize_to_v3_envelope(config)
+        normalized = self._normalize_to_envelope(config)
         if not normalized:
             raise ValueError("Preset config is empty or invalid")
         try:
@@ -573,7 +573,7 @@ class RunnerManager:
                 runtime_overrides,
                 base_config=base,
             )
-            resolved_config = self._build_v3_app_config_payload(
+            resolved_config = self._build_app_config_payload(
                 resolved.app_config.model_dump()
             )
             normalized = {

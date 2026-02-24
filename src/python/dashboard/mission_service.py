@@ -1,8 +1,8 @@
 """
-Mission V2 service helpers.
+Mission service helpers.
 
 Provides:
-- v1 -> v2 mission migration helpers
+- legacy mission migration helpers
 - validation/preview support
 - mission/draft persistence utilities
 - legacy API deprecation header constants
@@ -20,17 +20,17 @@ from typing import Any
 from config.paths import DASHBOARD_DATA_ROOT
 from config.simulation_config import SimulationConfig
 from dashboard.models import (
-    LegacyMissionMigrateRequestV2Model,
-    MissionConstraintSummaryV2Model,
-    MissionDraftResponseV2Model,
-    MissionDraftSaveRequestV2Model,
-    MissionSummaryV2Model,
-    PreviewMissionV2ResponseModel,
-    SaveMissionV2ResponseModel,
-    UnifiedMissionV2Model,
-    ValidationIssueV2Model,
-    ValidationReportV2Model,
-    ValidationSummaryV2Model,
+    LegacyMissionMigrateRequestModel,
+    MissionConstraintSummaryModel,
+    MissionDraftResponseModel,
+    MissionDraftSaveRequestModel,
+    MissionSummaryModel,
+    PreviewMissionResponseModel,
+    SaveMissionResponseModel,
+    UnifiedMissionModel,
+    ValidationIssueModel,
+    ValidationReportModel,
+    ValidationSummaryModel,
 )
 from fastapi import HTTPException
 from mission.repository import (
@@ -44,13 +44,13 @@ from mission.runtime_loader import (
     parse_unified_mission_payload,
 )
 
-DRAFTS_DIR = DASHBOARD_DATA_ROOT / "mission_drafts_v2"
-V2_DOC_LINK = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/docs/V2_MIGRATION.md"
+DRAFTS_DIR = DASHBOARD_DATA_ROOT / "mission_drafts"
+MIGRATION_DOC_LINK = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/docs/MIGRATION.md"
 LEGACY_SUNSET_HTTP = "Mon, 18 May 2026 00:00:00 GMT"
 LEGACY_DEPRECATION_HEADERS: dict[str, str] = {
     "Deprecation": "true",
     "Sunset": LEGACY_SUNSET_HTTP,
-    "Link": f'<{V2_DOC_LINK}>; rel="deprecation"',
+    "Link": f'<{MIGRATION_DOC_LINK}>; rel="deprecation"',
 }
 SCAN_AXIS_ASSET_MISMATCH_CODE = "SCAN_AXIS_ASSET_MISMATCH"
 SCAN_AXIS_MIGRATION_NOTICE_TAG = "migration:scan_axis_asset_mismatch"
@@ -80,7 +80,7 @@ def _default_mission_id(name: str, epoch: str) -> str:
     return f"mission_{safe}_{digest}"
 
 
-def _strip_v2_segment_fields(segment: dict[str, Any]) -> dict[str, Any]:
+def _strip_segment_fields(segment: dict[str, Any]) -> dict[str, Any]:
     payload = dict(segment)
     payload.pop("segment_id", None)
     payload.pop("title", None)
@@ -89,14 +89,14 @@ def _strip_v2_segment_fields(segment: dict[str, Any]) -> dict[str, Any]:
 
 
 def to_legacy_payload(
-    mission: UnifiedMissionV2Model | dict[str, Any],
+    mission: UnifiedMissionModel | dict[str, Any],
 ) -> dict[str, Any]:
     """
     Convert a v2 mission payload to legacy unified mission contract.
     """
     mission_dict = (
         mission.model_dump(mode="json")
-        if isinstance(mission, UnifiedMissionV2Model)
+        if isinstance(mission, UnifiedMissionModel)
         else dict(mission)
     )
     return {
@@ -104,7 +104,7 @@ def to_legacy_payload(
         "start_pose": mission_dict["start_pose"],
         "start_target_id": mission_dict.get("start_target_id"),
         "segments": [
-            _strip_v2_segment_fields(segment)
+            _strip_segment_fields(segment)
             for segment in mission_dict.get("segments", [])
         ],
         "overrides": mission_dict.get("overrides"),
@@ -115,7 +115,7 @@ def migrate_legacy_payload(
     payload: dict[str, Any],
     *,
     name_hint: str | None = None,
-) -> UnifiedMissionV2Model:
+) -> UnifiedMissionModel:
     """
     Migrate a legacy unified mission payload to v2 model.
     """
@@ -159,35 +159,35 @@ def migrate_legacy_payload(
             "tags": metadata.get("tags") or [],
         },
     }
-    return UnifiedMissionV2Model.model_validate(migrated)
+    return UnifiedMissionModel.model_validate(migrated)
 
 
-def ensure_v2_payload(
+def ensure_payload(
     payload: dict[str, Any],
     *,
     name_hint: str | None = None,
-) -> UnifiedMissionV2Model:
+) -> UnifiedMissionModel:
     """
-    Ensure arbitrary mission payload is represented as UnifiedMissionV2Model.
+    Ensure arbitrary mission payload is represented as UnifiedMissionModel.
     """
     if (
         int(payload.get("schema_version") or 0) == 2
         and isinstance(payload.get("mission_id"), str)
         and isinstance(payload.get("metadata"), dict)
     ):
-        return UnifiedMissionV2Model.model_validate(payload)
+        return UnifiedMissionModel.model_validate(payload)
     return migrate_legacy_payload(payload, name_hint=name_hint)
 
 
-def migrate_legacy_request_to_v2(
-    request: LegacyMissionMigrateRequestV2Model,
-) -> UnifiedMissionV2Model:
-    return ensure_v2_payload(request.payload, name_hint=request.name_hint)
+def migrate_legacy_request(
+    request: LegacyMissionMigrateRequestModel,
+) -> UnifiedMissionModel:
+    return ensure_payload(request.payload, name_hint=request.name_hint)
 
 
 def summarize_constraints(
-    mission: UnifiedMissionV2Model,
-) -> MissionConstraintSummaryV2Model:
+    mission: UnifiedMissionModel,
+) -> MissionConstraintSummaryModel:
     speed_values: list[float] = []
     accel_values: list[float] = []
     angular_values: list[float] = []
@@ -201,7 +201,7 @@ def summarize_constraints(
             accel_values.append(float(constraints.accel_max))
         if constraints.angular_rate_max is not None:
             angular_values.append(float(constraints.angular_rate_max))
-    return MissionConstraintSummaryV2Model(
+    return MissionConstraintSummaryModel(
         speed_max=max(speed_values) if speed_values else None,
         accel_max=max(accel_values) if accel_values else None,
         angular_rate_max=max(angular_values) if angular_values else None,
@@ -209,7 +209,7 @@ def summarize_constraints(
 
 
 def _build_scan_axis_mismatch_map(
-    mission: UnifiedMissionV2Model,
+    mission: UnifiedMissionModel,
 ) -> dict[int, dict[str, Any]]:
     try:
         mission_def = parse_unified_mission_payload(to_legacy_payload(mission))
@@ -220,8 +220,8 @@ def _build_scan_axis_mismatch_map(
 
 
 def _with_scan_axis_migration_notice(
-    mission: UnifiedMissionV2Model,
-) -> tuple[UnifiedMissionV2Model, list[str]]:
+    mission: UnifiedMissionModel,
+) -> tuple[UnifiedMissionModel, list[str]]:
     mismatch_map = _build_scan_axis_mismatch_map(mission)
     existing_tags = list(mission.metadata.tags or [])
     existing_tags_set = set(existing_tags)
@@ -276,13 +276,13 @@ def _with_scan_axis_migration_notice(
     return migrated, notices
 
 
-def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV2Model:
-    issues: list[ValidationIssueV2Model] = []
+def build_validation_report(mission: UnifiedMissionModel) -> ValidationReportModel:
+    issues: list[ValidationIssueModel] = []
     axis_mismatch_map = _build_scan_axis_mismatch_map(mission)
 
     if not mission.name.strip():
         issues.append(
-            ValidationIssueV2Model(
+            ValidationIssueModel(
                 code="MISSION_NAME_REQUIRED",
                 severity="error",
                 path="name",
@@ -296,7 +296,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
         and not (mission.start_target_id or "").strip()
     ):
         issues.append(
-            ValidationIssueV2Model(
+            ValidationIssueModel(
                 code="START_TARGET_REQUIRED",
                 severity="error",
                 path="start_target_id",
@@ -307,7 +307,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
 
     if not mission.segments:
         issues.append(
-            ValidationIssueV2Model(
+            ValidationIssueModel(
                 code="MISSION_SEGMENTS_REQUIRED",
                 severity="error",
                 path="segments",
@@ -321,7 +321,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
         seg_path = f"segments[{index}]"
         if segment.segment_id in segment_ids:
             issues.append(
-                ValidationIssueV2Model(
+                ValidationIssueModel(
                     code="SEGMENT_ID_DUPLICATE",
                     severity="error",
                     path=f"{seg_path}.segment_id",
@@ -334,7 +334,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
         if segment.type == "scan":
             if not segment.target_id.strip():
                 issues.append(
-                    ValidationIssueV2Model(
+                    ValidationIssueModel(
                         code="SCAN_TARGET_REQUIRED",
                         severity="error",
                         path=f"{seg_path}.target_id",
@@ -344,7 +344,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
                 )
             if not segment.path_asset:
                 issues.append(
-                    ValidationIssueV2Model(
+                    ValidationIssueModel(
                         code="SCAN_PATH_ASSET_RECOMMENDED",
                         severity="warning",
                         path=f"{seg_path}.path_asset",
@@ -356,7 +356,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
             if mismatch is not None:
                 inferred_axis = str(mismatch.get("inferred_axis", "Z")).upper()
                 issues.append(
-                    ValidationIssueV2Model(
+                    ValidationIssueModel(
                         code=SCAN_AXIS_ASSET_MISMATCH_CODE,
                         severity="warning",
                         path=f"{seg_path}.scan.axis",
@@ -377,7 +377,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
             and not (segment.target_id or "").strip()
         ):
             issues.append(
-                ValidationIssueV2Model(
+                ValidationIssueModel(
                     code="TRANSFER_TARGET_REQUIRED",
                     severity="error",
                     path=f"{seg_path}.target_id",
@@ -388,7 +388,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
 
         if segment.type == "hold" and segment.duration < 0:
             issues.append(
-                ValidationIssueV2Model(
+                ValidationIssueModel(
                     code="HOLD_DURATION_INVALID",
                     severity="error",
                     path=f"{seg_path}.duration",
@@ -405,7 +405,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
                     continue
                 if value <= 0:
                     issues.append(
-                        ValidationIssueV2Model(
+                        ValidationIssueModel(
                             code="CONSTRAINT_NON_POSITIVE",
                             severity="error",
                             path=f"{seg_path}.constraints.{key}",
@@ -415,7 +415,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
                     )
                 if value > 500:
                     issues.append(
-                        ValidationIssueV2Model(
+                        ValidationIssueModel(
                             code="CONSTRAINT_OUTLIER",
                             severity="warning",
                             path=f"{seg_path}.constraints.{key}",
@@ -427,7 +427,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
     manual_path = mission.overrides.manual_path if mission.overrides is not None else []
     if len(manual_path) > 3000:
         issues.append(
-            ValidationIssueV2Model(
+            ValidationIssueModel(
                 code="MANUAL_PATH_DENSE",
                 severity="warning",
                 path="overrides.manual_path",
@@ -438,7 +438,7 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
 
     if len(mission.segments) > 30:
         issues.append(
-            ValidationIssueV2Model(
+            ValidationIssueModel(
                 code="SEGMENT_COUNT_HIGH",
                 severity="warning",
                 path="segments",
@@ -447,19 +447,19 @@ def build_validation_report(mission: UnifiedMissionV2Model) -> ValidationReportV
             )
         )
 
-    summary = ValidationSummaryV2Model(
+    summary = ValidationSummaryModel(
         errors=sum(1 for issue in issues if issue.severity == "error"),
         warnings=sum(1 for issue in issues if issue.severity == "warning"),
         info=sum(1 for issue in issues if issue.severity == "info"),
     )
-    return ValidationReportV2Model(
+    return ValidationReportModel(
         valid=summary.errors == 0,
         issues=issues,
         summary=summary,
     )
 
 
-def preview_v2_mission(mission: UnifiedMissionV2Model) -> PreviewMissionV2ResponseModel:
+def preview_mission(mission: UnifiedMissionModel) -> PreviewMissionResponseModel:
     report = build_validation_report(mission)
     if not report.valid:
         raise HTTPException(
@@ -488,7 +488,7 @@ def preview_v2_mission(mission: UnifiedMissionV2Model) -> PreviewMissionV2Respon
     if path_speed > 3.0:
         risk_flags.append("high_speed")
 
-    return PreviewMissionV2ResponseModel(
+    return PreviewMissionResponseModel(
         path=[list(point) for point in runtime.path],
         path_length=path_length,
         path_speed=path_speed,
@@ -507,16 +507,16 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def list_missions_v2() -> list[MissionSummaryV2Model]:
-    summaries: list[MissionSummaryV2Model] = []
+def list_missions() -> list[MissionSummaryModel]:
+    summaries: list[MissionSummaryModel] = []
     for mission_file in _mission_files():
         try:
             payload = _read_json(mission_file)
-            mission = ensure_v2_payload(payload, name_hint=mission_file.stem)
+            mission = ensure_payload(payload, name_hint=mission_file.stem)
         except Exception:
             continue
         summaries.append(
-            MissionSummaryV2Model(
+            MissionSummaryModel(
                 name=mission.name,
                 mission_id=mission.mission_id,
                 updated_at=mission.metadata.updated_at,
@@ -528,7 +528,7 @@ def list_missions_v2() -> list[MissionSummaryV2Model]:
     return summaries
 
 
-def load_mission_v2(mission_id_or_name: str) -> UnifiedMissionV2Model:
+def load_mission(mission_id_or_name: str) -> UnifiedMissionModel:
     key = mission_id_or_name.strip()
     if not key:
         raise HTTPException(status_code=400, detail="Mission identifier is required.")
@@ -536,7 +536,7 @@ def load_mission_v2(mission_id_or_name: str) -> UnifiedMissionV2Model:
     for mission_file in _mission_files():
         try:
             payload = _read_json(mission_file)
-            mission = ensure_v2_payload(payload, name_hint=mission_file.stem)
+            mission = ensure_payload(payload, name_hint=mission_file.stem)
         except Exception:
             continue
         if key in {
@@ -552,9 +552,7 @@ def load_mission_v2(mission_id_or_name: str) -> UnifiedMissionV2Model:
     )
 
 
-def save_mission_v2(
-    name: str, mission: UnifiedMissionV2Model
-) -> SaveMissionV2ResponseModel:
+def save_mission(name: str, mission: UnifiedMissionModel) -> SaveMissionResponseModel:
     safe_name = sanitize_mission_name(name) or sanitize_mission_name(mission.name)
     if not safe_name:
         raise HTTPException(status_code=400, detail="Mission name is required.")
@@ -562,12 +560,10 @@ def save_mission_v2(
     file_path = MISSIONS_DIR / filename
 
     now_iso = _now_iso()
-    existing: UnifiedMissionV2Model | None = None
+    existing: UnifiedMissionModel | None = None
     if file_path.exists():
         try:
-            existing = ensure_v2_payload(
-                _read_json(file_path), name_hint=file_path.stem
-            )
+            existing = ensure_payload(_read_json(file_path), name_hint=file_path.stem)
         except Exception:
             existing = None
 
@@ -597,7 +593,7 @@ def save_mission_v2(
         }
     )
     _write_json(file_path, stored.model_dump(mode="json"))
-    return SaveMissionV2ResponseModel(
+    return SaveMissionResponseModel(
         mission_id=stored.mission_id,
         version=int(stored.metadata.version),
         saved_at=now_iso,
@@ -612,9 +608,9 @@ def _draft_path(draft_id: str) -> Path:
     return DRAFTS_DIR / f"{safe}.json"
 
 
-def save_draft_v2(
-    request: MissionDraftSaveRequestV2Model,
-) -> MissionDraftResponseV2Model:
+def save_draft(
+    request: MissionDraftSaveRequestModel,
+) -> MissionDraftResponseModel:
     draft_id = (
         request.draft_id.strip()
         if request.draft_id
@@ -641,14 +637,14 @@ def save_draft_v2(
 
     now_iso = _now_iso()
     payload = {
-        "schema_version": "mission_draft_v2",
+        "schema_version": "mission_draft",
         "draft_id": draft_id,
         "revision": revision,
         "saved_at": now_iso,
         "mission": request.mission.model_dump(mode="json"),
     }
     _write_json(path, payload)
-    return MissionDraftResponseV2Model(
+    return MissionDraftResponseModel(
         draft_id=draft_id,
         revision=revision,
         saved_at=now_iso,
@@ -656,7 +652,7 @@ def save_draft_v2(
     )
 
 
-def list_draft_ids_v2(limit: int = 200) -> list[str]:
+def list_draft_ids(limit: int = 200) -> list[str]:
     drafts: list[tuple[float, str]] = []
     if not DRAFTS_DIR.exists():
         return []
@@ -671,14 +667,14 @@ def list_draft_ids_v2(limit: int = 200) -> list[str]:
     return [draft_id for _, draft_id in drafts[:limit]]
 
 
-def load_draft_v2(draft_id: str) -> MissionDraftResponseV2Model:
+def load_draft(draft_id: str) -> MissionDraftResponseModel:
     path = _draft_path(draft_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Draft not found: {draft_id}")
     payload = _read_json(path)
-    return MissionDraftResponseV2Model(
+    return MissionDraftResponseModel(
         draft_id=str(payload.get("draft_id") or draft_id),
         revision=int(payload.get("revision") or 1),
         saved_at=str(payload.get("saved_at") or _now_iso()),
-        mission=UnifiedMissionV2Model.model_validate(payload.get("mission") or {}),
+        mission=UnifiedMissionModel.model_validate(payload.get("mission") or {}),
     )

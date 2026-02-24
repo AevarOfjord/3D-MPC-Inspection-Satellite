@@ -1,22 +1,22 @@
-"""Unit tests for V6 runtime mode/gate/policy helpers."""
+"""Unit tests for runtime mode/gate/policy helpers."""
 
 import numpy as np
 import pytest
-from runtime.v6_policy import (
-    ActuatorPolicyV6,
-    ControllerModeManagerV6,
-    PointingGuardrailV6,
-    TerminalSupervisorV6,
+from runtime.policy import (
+    ActuatorPolicy,
+    ControllerModeManager,
+    PointingGuardrail,
+    TerminalSupervisor,
     compute_pointing_errors_deg,
     compute_runtime_path_speed,
     estimate_required_duration_s,
-    resolve_pointing_context_v6,
+    resolve_pointing_context,
 )
 from simulation.reference import update_path_reference_state
 
 
 def test_mode_manager_track_recover_hysteresis() -> None:
-    manager = ControllerModeManagerV6(
+    manager = ControllerModeManager(
         recover_enter_error_m=0.20,
         recover_enter_hold_s=0.5,
         recover_exit_error_m=0.10,
@@ -70,7 +70,7 @@ def test_mode_manager_track_recover_hysteresis() -> None:
 
 
 def test_mode_manager_settle_hold_complete_transitions() -> None:
-    manager = ControllerModeManagerV6()
+    manager = ControllerModeManager()
     manager.reset(sim_time_s=0.0)
 
     state = manager.update(
@@ -108,7 +108,7 @@ def test_mode_manager_settle_hold_complete_transitions() -> None:
 
 
 def test_mode_manager_solver_degraded_triggers_recover() -> None:
-    manager = ControllerModeManagerV6(
+    manager = ControllerModeManager(
         recover_enter_error_m=0.20,
         recover_enter_hold_s=0.5,
     )
@@ -142,7 +142,7 @@ def test_mode_manager_solver_degraded_triggers_recover() -> None:
 
 
 def test_terminal_supervisor_hold_reset_and_completion() -> None:
-    supervisor = TerminalSupervisorV6(hold_required_s=10.0)
+    supervisor = TerminalSupervisor(hold_required_s=10.0)
 
     gate = supervisor.evaluate(
         sim_time_s=1.0,
@@ -240,7 +240,7 @@ def test_reference_velocity_prefers_mpc_progress_signal_and_clamps() -> None:
     class _Sim:
         mpc_controller = _Mpc()
         simulation_config = _SimCfg()
-        v6_mode_state = _Mode()
+        mode_state = _Mode()
         reference_state = None
 
     current_state = np.array(
@@ -288,7 +288,7 @@ def test_reference_velocity_forces_zero_in_settle_hold_complete() -> None:
     class _Sim:
         mpc_controller = _Mpc()
         simulation_config = _SimCfg()
-        v6_mode_state = _Mode()
+        mode_state = _Mode()
         reference_state = None
 
     current_state = np.array(
@@ -301,7 +301,7 @@ def test_reference_velocity_forces_zero_in_settle_hold_complete() -> None:
 
 
 def test_actuator_policy_mode_behavior() -> None:
-    policy = ActuatorPolicyV6(
+    policy = ActuatorPolicy(
         enable_thruster_hysteresis=True,
         thruster_hysteresis_on=0.02,
         thruster_hysteresis_off=0.01,
@@ -329,7 +329,7 @@ def test_actuator_policy_mode_behavior() -> None:
 
 
 def test_mode_profile_uses_configured_multipliers() -> None:
-    manager = ControllerModeManagerV6(
+    manager = ControllerModeManager(
         recover_contour_scale=2.5,
         recover_lag_scale=2.3,
         recover_progress_scale=0.55,
@@ -373,7 +373,7 @@ def test_pointing_context_falls_back_to_lvlh_radial_axis() -> None:
         [10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         dtype=float,
     )
-    context = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.5)
+    context = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=0.5)
     assert context.source == "lvlh_radial_fallback"
     assert np.allclose(context.axis_world, np.array([1.0, 0.0, 0.0]), atol=1e-6)
 
@@ -412,8 +412,8 @@ def test_pointing_context_switches_across_span_boundaries() -> None:
         dtype=float,
     )
 
-    first = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.25)
-    second = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=1.75)
+    first = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=0.25)
+    second = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=1.75)
 
     assert first.source == "transfer_next_scan"
     assert np.allclose(first.axis_world, np.array([0.0, 0.0, 1.0]), atol=1e-6)
@@ -458,14 +458,14 @@ def test_pointing_context_uses_nearest_valid_scan_axis_before_radial_fallback() 
         [10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         dtype=float,
     )
-    context = resolve_pointing_context_v6(sim=_Sim(), current_state=state, path_s=0.25)
+    context = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=0.25)
 
     assert context.source != "lvlh_radial_fallback"
     assert np.allclose(context.axis_world, np.array([0.0, 1.0, 0.0]), atol=1e-6)
 
 
 def test_pointing_guardrail_latch_and_clear() -> None:
-    guardrail = PointingGuardrailV6(
+    guardrail = PointingGuardrail(
         enabled=True,
         z_error_deg_max=4.0,
         x_error_deg_max=6.0,

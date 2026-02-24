@@ -20,10 +20,13 @@ Usage:
     })
 """
 
-from dataclasses import dataclass
-from typing import Any, Optional
+from __future__ import annotations
 
-from mission.state import MissionState, create_mission_state
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mission.state import MissionState
 
 from .defaults import create_default_app_config
 from .models import AppConfig
@@ -46,13 +49,15 @@ class SimulationConfig:
     mission_state: MissionState
 
     @classmethod
-    def create_default(cls) -> "SimulationConfig":
+    def create_default(cls) -> SimulationConfig:
         """
         Create a default simulation configuration.
 
         Returns:
             SimulationConfig with default settings
         """
+        from mission.state import create_mission_state
+
         return cls(
             app_config=create_default_app_config(),
             mission_state=create_mission_state(),
@@ -62,8 +67,8 @@ class SimulationConfig:
     def create_with_overrides(
         cls,
         overrides: dict[str, Any],
-        base_config: Optional["SimulationConfig"] = None,
-    ) -> "SimulationConfig":
+        base_config: SimulationConfig | None = None,
+    ) -> SimulationConfig:
         """
         Create configuration with overrides applied.
 
@@ -99,7 +104,7 @@ class SimulationConfig:
             mission_state=base_config.mission_state,  # Mission state not overridden here
         )
 
-    def clone(self) -> "SimulationConfig":
+    def clone(self) -> SimulationConfig:
         """Create a copy of this configuration."""
         # Since it's frozen/immutable, returning self is often enough,
         # but to be safe against deep modifications in Pydantic models:

@@ -1,5 +1,5 @@
 """
-Tests for V2 MPC (CasADi + OSQP RTI-SQP) components.
+Tests for MPC (CasADi + OSQP RTI-SQP) components.
 
 Tests are structured bottom-up:
   1. CasADi symbolic dynamics accuracy
@@ -324,9 +324,9 @@ class TestCppSQPController:
 
     @pytest.fixture
     def controller(self):
-        from cpp import _cpp_mpc as v2
+        from cpp import _cpp_mpc
 
-        sat = v2.SatelliteParams()
+        sat = _cpp_mpc.SatelliteParams()
         sat.mass = 10.0
         sat.inertia = np.array([0.15, 0.12, 0.18])
         sat.num_thrusters = 6
@@ -358,12 +358,12 @@ class TestCppSQPController:
         sat.orbital_mean_motion = 0.0
         sat.use_two_body = False
 
-        params = v2.MPCV2Params()
+        params = _cpp_mpc.MPCV2Params()
         params.prediction_horizon = 10
         params.control_horizon = 8
         params.dt = 0.1
 
-        return v2.SQPController(sat, params)
+        return _cpp_mpc.SQPController(sat, params)
 
     def test_construction(self, controller):
         """Controller should initialise without errors."""
@@ -371,7 +371,7 @@ class TestCppSQPController:
         assert controller.prediction_horizon == 10
 
     def test_get_control_action_returns_result(self, controller):
-        """get_control_action should return a ControlResultV2."""
+        """get_control_action should return a ControlResult."""
         x = np.zeros(17)
         x[3] = 1.0  # valid quaternion
         result = controller.get_control_action(x)
