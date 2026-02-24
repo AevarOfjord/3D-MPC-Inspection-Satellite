@@ -381,6 +381,7 @@ void SQPController::apply_mode_scaling() {
     active_Q_velocity_ = params_.Q_velocity_align;
     active_Q_angvel_ = params_.Q_angvel;
     active_thrust_pair_ = params_.thrust_pair_weight;
+    active_path_speed_ = params_.path_speed;
 
     switch (mode_) {
         case RuntimeMode::RECOVER:
@@ -397,10 +398,12 @@ void SQPController::apply_mode_scaling() {
             active_Q_attitude_ *= params_.settle_terminal_attitude_scale;
             active_Q_velocity_ *= params_.settle_velocity_align_scale;
             active_Q_angvel_ *= params_.settle_angular_velocity_scale;
+            active_path_speed_ = 0.0;  // no further path progress once settled
             break;
         case RuntimeMode::HOLD:
             active_Q_smooth_ *= params_.hold_smoothness_scale;
             active_thrust_pair_ *= params_.hold_thruster_pair_scale;
+            active_path_speed_ = 0.0;  // hold position, no path progress
             break;
         case RuntimeMode::TRACK:
         default:
@@ -570,13 +573,18 @@ ControlResultV2 SQPController::get_control_action(const VectorXd& x_current) {
 
 void SQPController::shift_trajectory() {
     if (!has_warm_start_) {
-        // First call — initialise trajectory from current state
-        // x_traj_[0] is set by caller; propagate with zero control
+        // First call — initialise trajectory from current state.
+        // Use warm_start_control_ (previous control from Python) if available,
+        // otherwise fall back to zero.  v_s is always reset to nominal path
+        // speed so the virtual progress integrator starts sensibly.
         for (int k = 0; k < N_; ++k) {
-            // Simple forward euler as initial guess
             x_traj_[k + 1] = x_traj_[k];
-            u_traj_[k] = VectorXd::Zero(nu_);
-            // Set v_s to nominal path speed
+            if (warm_start_control_.size() == nu_) {
+                u_traj_[k] = warm_start_control_;
+            } else {
+                u_traj_[k] = VectorXd::Zero(nu_);
+            }
+            // Always reset v_s to nominal path speed regardless of warm-start.
             u_traj_[k][nu_ - 1] = params_.path_speed;
         }
         return;
@@ -771,6 +779,18 @@ void SQPController::update_cost(const VectorXd& x_current) {
                         * q_ref[i];
                 }
             }
+
+            // Velocity alignment: bias velocity toward path tangent direction.
+            // v_ref = active_path_speed_ * t_ref; linear term = -2*Q_vel*v_ref.
+            // Zero when active_path_speed_==0 (SETTLE/HOLD), so no spurious
+            // incentive to depart from rest in terminal modes.
+            if (active_Q_velocity_ > 0.0 && active_path_speed_ > 0.0) {
+                double w_vel = scale * active_Q_velocity_;
+                for (int i = 0; i < 3; ++i) {
+                    q_qp_[x_offset + 7 + i] =
+                        -2.0 * w_vel * active_path_speed_ * t_ref[i];
+                }
+            }
         }
     }
 
@@ -801,7 +821,7 @@ void SQPController::update_cost(const VectorXd& x_current) {
             2.0 * (active_Q_progress_ + active_Q_smooth_) + 1e-6;
         // Linear: -2*Q_progress*v_ref  (quadratic tracking)
         //         - progress_reward    (pure linear incentive, no 2× factor)
-        q_qp_[vs_idx] = -2.0 * active_Q_progress_ * params_.path_speed
+        q_qp_[vs_idx] = -2.0 * active_Q_progress_ * active_path_speed_
                          - params_.progress_reward;
 
         // Opposing thruster pairs (P = 2w for OSQP ½z^TPz)

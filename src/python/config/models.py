@@ -350,6 +350,12 @@ class MPCParams(BaseModel):
         le=1e6,
         description="Terminal progress weight (0 = auto-scale from Q_progress/Q_contour)",
     )
+    Q_terminal_vel: float = Field(
+        constants.Constants.Q_TERMINAL_VEL,
+        ge=0.0,
+        le=1e6,
+        description="Additional terminal velocity weight — penalises residual speed at the endpoint",
+    )
     q_angular_velocity: float = Field(
         constants.Constants.Q_ANGULAR_VELOCITY,
         ge=0,
@@ -530,6 +536,7 @@ class MPCParams(BaseModel):
         "path_speed_max",
         "Q_terminal_pos",
         "Q_terminal_s",
+        "Q_terminal_vel",
         "progress_reward",
         "max_linear_velocity",
         "max_angular_velocity",
@@ -637,6 +644,7 @@ class MPCParams(BaseModel):
             + self.Q_quat_norm
             + self.Q_terminal_pos
             + self.Q_terminal_s
+            + self.Q_terminal_vel
             + self.q_angular_velocity
         )
         if total_q == 0 and self.r_thrust > 0:

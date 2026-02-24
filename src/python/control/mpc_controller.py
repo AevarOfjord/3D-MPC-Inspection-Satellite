@@ -145,6 +145,7 @@ class MPCController(Controller):
         # Terminal
         mpc_p.Q_terminal_pos = self.Q_terminal_pos
         mpc_p.Q_terminal_s = self.Q_terminal_s
+        mpc_p.Q_terminal_vel = float(self.Q_terminal_vel)
         mpc_p.enable_dare_terminal = bool(self.enable_online_dare_terminal)
         mpc_p.dare_update_period_steps = int(self.dare_update_period_steps)
         mpc_p.terminal_cost_profile = str(self.terminal_cost_profile)
@@ -526,12 +527,19 @@ class MPCController(Controller):
                 A_k = np.array(result[1])
                 B_k = np.array(result[2])
 
-                # Guard: skip injection if any matrix contains NaN/Inf
+                # Guard: skip injection if any matrix contains NaN/Inf.
+                # Stale A/B from a previous iteration will be reused — log so
+                # the caller can detect repeated linearization failures.
                 if not (
                     np.all(np.isfinite(A_k))
                     and np.all(np.isfinite(B_k))
                     and np.all(np.isfinite(x_next))
                 ):
+                    logger.warning(
+                        "CasADi linearization at stage %d produced NaN/Inf; "
+                        "reusing stale A/B matrix from previous iteration.",
+                        k,
+                    )
                     continue
 
                 # Affine term: d = x_next - A_k @ x_k - B_k @ u_k
@@ -621,6 +629,7 @@ class MPCController(Controller):
         self.Q_smooth = mpc.Q_smooth
         self.Q_terminal_pos = mpc.Q_terminal_pos
         self.Q_terminal_s = mpc.Q_terminal_s
+        self.Q_terminal_vel = mpc.Q_terminal_vel
         self.Q_angvel = mpc.q_angular_velocity
         self.Q_attitude = mpc.Q_attitude
         self.Q_axis_align = mpc.Q_axis_align

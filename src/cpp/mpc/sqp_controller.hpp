@@ -243,6 +243,10 @@ private:
     double active_Q_velocity_ = 0.0;
     double active_Q_angvel_ = 0.0;
     double active_thrust_pair_ = 0.0;
+    // Mode-aware path speed target for the virtual-speed cost term.
+    // Set to 0 in SETTLE/HOLD/COMPLETE so the MPC does not incentivise
+    // further path progress once the endpoint has been reached.
+    double active_path_speed_ = 0.0;
 
     // ----- Initialisation helpers ----------------------------------------
     void init_qp();
