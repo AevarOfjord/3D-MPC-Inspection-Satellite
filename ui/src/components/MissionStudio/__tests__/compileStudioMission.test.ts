@@ -1,0 +1,59 @@
+import { useStudioStore } from '../useStudioStore';
+
+function seedSimpleRoute() {
+  useStudioStore.setState({
+    referenceObjectPath: null,
+    missionName: 'Test',
+    satelliteStart: [0, 0, 0],
+    paths: [
+      {
+        id: 'p1',
+        axisSeed: 'Z',
+        planeA: { position: [0, 0, -5], orientation: [1, 0, 0, 0] },
+        planeB: { position: [0, 0, 5], orientation: [1, 0, 0, 0] },
+        ellipse: { radiusX: 2, radiusY: 1 },
+        levelSpacing: 0.5,
+        waypoints: [
+          [1, 0, -1],
+          [1, 0, 0],
+          [1, 0, 1],
+        ],
+        color: '#fff',
+        selectedHandleId: null,
+      },
+    ],
+    wires: [{ id: 'w1', fromNodeId: 'satellite:start', toNodeId: 'path:p1:start' }],
+    holds: [{ id: 'h1', pathId: 'p1', waypointIndex: 1, duration: 5 }],
+    obstacles: [],
+    assembly: [],
+  } as any);
+}
+
+describe('compileStudioMission', () => {
+  beforeEach(() => {
+    (globalThis as any).window = {
+      location: { hostname: 'localhost', port: '5173' },
+    };
+  });
+
+  it('builds manual path and hold schedule from connected route', async () => {
+    seedSimpleRoute();
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(3);
+    expect(mission.overrides?.hold_schedule?.length).toBe(1);
+    expect(mission.overrides?.hold_schedule?.[0].duration_s).toBe(5);
+  });
+
+  it('rejects branching graph', async () => {
+    seedSimpleRoute();
+    useStudioStore.setState({
+      wires: [
+        { id: 'w1', fromNodeId: 'satellite:start', toNodeId: 'path:p1:start' },
+        { id: 'w2', fromNodeId: 'satellite:start', toNodeId: 'path:p1:end' },
+      ],
+    } as any);
+    const { compileStudioMission } = await import('../compileStudioMission');
+    expect(() => compileStudioMission(useStudioStore.getState())).toThrow(/Branching/i);
+  });
+});

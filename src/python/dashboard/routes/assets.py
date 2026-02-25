@@ -583,25 +583,117 @@ class _KeyLevelIn(BaseModel):
 
 
 class _GenerateScanPathRequest(BaseModel):
-    axis: str = "Z"
-    plane_a: float = -5.0
-    plane_b: float = 5.0
+    axis_seed: str = "Z"
+    plane_a: dict = {"position": [0.0, 0.0, -5.0], "orientation": [1.0, 0.0, 0.0, 0.0]}
+    plane_b: dict = {"position": [0.0, 0.0, 5.0], "orientation": [1.0, 0.0, 0.0, 0.0]}
+    ellipse: dict = {"radius_x": 5.0, "radius_y": 5.0}
     level_spacing_m: float = 0.5
     key_levels: list[_KeyLevelIn] = []
 
 
+def _normalize3(value: list[float] | tuple[float, ...], fallback: tuple[float, float, float]) -> np.ndarray:
+    try:
+        arr = np.array(value, dtype=float).reshape(-1)
+        if arr.size >= 3 and np.all(np.isfinite(arr[:3])):
+            return arr[:3]
+    except Exception:
+        pass
+    return np.array(fallback, dtype=float)
+
+
+def _normalize_quat_wxyz(value: list[float] | tuple[float, ...]) -> np.ndarray:
+    try:
+        arr = np.array(value, dtype=float).reshape(-1)
+        if arr.size >= 4 and np.all(np.isfinite(arr[:4])):
+            q = arr[:4]
+            n = float(np.linalg.norm(q))
+            if n > 1e-9:
+                return q / n
+    except Exception:
+        pass
+    return np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+
+
+def _quat_to_matrix_wxyz(q: np.ndarray) -> np.ndarray:
+    w, x, y, z = [float(v) for v in q[:4]]
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=float,
+    )
+
+
+def _quat_slerp_wxyz(q0: np.ndarray, q1: np.ndarray, t: float) -> np.ndarray:
+    qa = np.array(q0, dtype=float)
+    qb = np.array(q1, dtype=float)
+    dot = float(np.dot(qa, qb))
+    if dot < 0.0:
+        qb = -qb
+        dot = -dot
+    dot = float(np.clip(dot, -1.0, 1.0))
+    if dot > 0.9995:
+        q = qa + t * (qb - qa)
+        n = float(np.linalg.norm(q))
+        return q / n if n > 1e-9 else qa
+    theta_0 = float(math.acos(dot))
+    sin_theta_0 = float(math.sin(theta_0))
+    theta = theta_0 * float(t)
+    sin_theta = float(math.sin(theta))
+    s0 = float(math.sin(theta_0 - theta) / max(sin_theta_0, 1e-9))
+    s1 = float(sin_theta / max(sin_theta_0, 1e-9))
+    q = s0 * qa + s1 * qb
+    n = float(np.linalg.norm(q))
+    return q / n if n > 1e-9 else qa
+
+
+def _axis_frame(axis_seed: str) -> tuple[np.ndarray, np.ndarray]:
+    axis = str(axis_seed).upper().strip().lstrip("+")
+    if axis == "X":
+        return np.array([0.0, 1.0, 0.0], dtype=float), np.array([0.0, 0.0, 1.0], dtype=float)
+    if axis == "Y":
+        return np.array([1.0, 0.0, 0.0], dtype=float), np.array([0.0, 0.0, 1.0], dtype=float)
+    return np.array([1.0, 0.0, 0.0], dtype=float), np.array([0.0, 1.0, 0.0], dtype=float)
+
+
 @router.post("/api/models/generate_scan_path")
 async def generate_scan_path(request: _GenerateScanPathRequest):
-    """Generate a spiral scan path from key-level ellipse parameters."""
-    from mission.scan_projects import _generate_scan_path
+    """Generate a spiral scan path from two 6-DOF planes and uniform ellipse radii."""
+    plane_a = dict(request.plane_a or {})
+    plane_b = dict(request.plane_b or {})
+    ellipse = dict(request.ellipse or {})
 
-    axis = request.axis.upper().strip().lstrip("+")
-    scan: dict = {
-        "axis": axis,
-        "plane_a": [0.0, 0.0, 0.0] if axis == "Z" else ([request.plane_a, 0.0, 0.0] if axis == "X" else [0.0, request.plane_a, 0.0]),
-        "plane_b": [0.0, 0.0, request.plane_b] if axis == "Z" else ([request.plane_b, 0.0, 0.0] if axis == "X" else [0.0, request.plane_b, 0.0]),
-        "level_spacing_m": request.level_spacing_m,
-        "key_levels": [kl.model_dump() for kl in request.key_levels],
-    }
-    coarse_path, _dense = _generate_scan_path(scan, np.array([0.0, 0.0, 0.0]), 1.0)
-    return {"waypoints": coarse_path}
+    pos_a = _normalize3(plane_a.get("position") or [0.0, 0.0, -5.0], (0.0, 0.0, -5.0))
+    pos_b = _normalize3(plane_b.get("position") or [0.0, 0.0, 5.0], (0.0, 0.0, 5.0))
+    quat_a = _normalize_quat_wxyz(plane_a.get("orientation") or [1.0, 0.0, 0.0, 0.0])
+    quat_b = _normalize_quat_wxyz(plane_b.get("orientation") or [1.0, 0.0, 0.0, 0.0])
+    radius_x = max(0.1, float(ellipse.get("radius_x", 5.0) or 5.0))
+    radius_y = max(0.1, float(ellipse.get("radius_y", 5.0) or 5.0))
+    level_spacing = max(0.05, float(request.level_spacing_m or 0.5))
+
+    axis_vec = pos_b - pos_a
+    span = float(np.linalg.norm(axis_vec))
+    if span < 1e-6:
+        span = 10.0
+    turns = max(1.0, span / level_spacing)
+    points_per_turn = 32
+    total_points = max(8, int(math.ceil(turns * points_per_turn)))
+    base_u, base_v = _axis_frame(request.axis_seed)
+
+    waypoints: list[list[float]] = []
+    for i in range(total_points + 1):
+        t = i / float(max(1, total_points))
+        center = pos_a + (pos_b - pos_a) * t
+        q_t = _quat_slerp_wxyz(quat_a, quat_b, t)
+        rot = _quat_to_matrix_wxyz(q_t)
+        u = rot @ base_u
+        v = rot @ base_v
+        ang = 2.0 * math.pi * turns * t
+        local_u = radius_x * math.cos(ang)
+        local_v = radius_y * math.sin(ang)
+        world = center + (u * local_u) + (v * local_v)
+        waypoints.append([float(world[0]), float(world[1]), float(world[2])])
+
+    return {"waypoints": waypoints}

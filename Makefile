@@ -71,6 +71,7 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 # Skip scikit-build editable runtime rebuild checks by default for faster startup.
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
+CPP_IMPORT_CHECK_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -c "from cpp import _cpp_mpc, _cpp_sim, _cpp_physics"
 LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
 TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=src/python --cov-report=term-missing --cov-fail-under=30
 
@@ -161,6 +162,15 @@ backend:
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
 	fi
+	@if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+		echo "Editable install/C++ modules are stale for this checkout."; \
+		echo "Running 'make install' to rebuild bindings..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+			echo "Error: C++ modules are still unavailable after reinstall."; \
+			exit 1; \
+		fi; \
+	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve --dev
 
 # Start backend in packaged-app mode (no Vite, serves ui/dist on :8000).
@@ -175,6 +185,15 @@ backend-prod:
 		echo "Backend dependencies are missing in $(VENV_DIR)."; \
 		echo "Running 'make install' to repair the environment..."; \
 		$(MAKE) install || exit $$?; \
+	fi
+	@if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+		echo "Editable install/C++ modules are stale for this checkout."; \
+		echo "Running 'make install' to rebuild bindings..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+			echo "Error: C++ modules are still unavailable after reinstall."; \
+			exit 1; \
+		fi; \
 	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve
 
@@ -315,6 +334,15 @@ sim:
 		echo "Installing C++ build dependencies into $(VENV_DIR)..."; \
 		$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10" || exit $$?; \
 	fi
+	@if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+		echo "Editable install/C++ modules are stale for this checkout."; \
+		echo "Running 'make install' to rebuild bindings..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+			echo "Error: C++ modules are still unavailable after reinstall."; \
+			exit 1; \
+		fi; \
+	fi
 	@printf "Run tests before simulation? [y/N] "; \
 	read ans; \
 	case "$$ans" in \
@@ -366,6 +394,11 @@ venv: check-python
 install: venv check-cmake
 	@echo ""
 	@echo "=== Installing C++ build dependencies ==="
+	@if [ -n "$(SKBUILD_BUILD_DIR)" ] && [ -d "$(SKBUILD_BUILD_DIR)/_deps" ]; then \
+		echo "Clearing stale FetchContent CMake cache metadata in $(SKBUILD_BUILD_DIR)/_deps"; \
+		rm -f "$(SKBUILD_BUILD_DIR)"/_deps/*-subbuild/CMakeCache.txt; \
+		rm -rf "$(SKBUILD_BUILD_DIR)"/_deps/*-subbuild/CMakeFiles; \
+	fi
 	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
 	@echo ""
 	@echo "=== Installing project + development dependencies ==="

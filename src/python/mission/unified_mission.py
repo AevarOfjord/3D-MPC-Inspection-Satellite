@@ -252,12 +252,21 @@ Segment = TransferSegment | ScanSegment | HoldSegment
 class MissionOverrides:
     spline_controls: list[SplineControl] = field(default_factory=list)
     manual_path: list[list[float]] = field(default_factory=list)
+    hold_schedule: list[dict[str, float]] = field(default_factory=list)
     path_density_multiplier: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "spline_controls": [c.to_dict() for c in self.spline_controls],
             "manual_path": [list(p) for p in self.manual_path],
+            "hold_schedule": [
+                {
+                    "path_index": int(item.get("path_index", 0)),
+                    "duration_s": float(item.get("duration_s", 0.0)),
+                }
+                for item in self.hold_schedule
+                if isinstance(item, dict)
+            ],
             "path_density_multiplier": float(self.path_density_multiplier),
         }
 
@@ -269,12 +278,24 @@ class MissionOverrides:
         manual_path = [
             list(map(float, p)) for p in data.get("manual_path", []) if len(p) == 3
         ]
+        hold_schedule_raw = data.get("hold_schedule", []) or []
+        hold_schedule: list[dict[str, float]] = []
+        for item in hold_schedule_raw:
+            if not isinstance(item, dict):
+                continue
+            hold_schedule.append(
+                {
+                    "path_index": int(item.get("path_index", 0)),
+                    "duration_s": max(0.0, float(item.get("duration_s", 0.0))),
+                }
+            )
         path_density_multiplier = float(data.get("path_density_multiplier", 1.0) or 1.0)
         if path_density_multiplier <= 0:
             path_density_multiplier = 1.0
         return cls(
             spline_controls=controls,
             manual_path=manual_path,
+            hold_schedule=hold_schedule,
             path_density_multiplier=path_density_multiplier,
         )
 

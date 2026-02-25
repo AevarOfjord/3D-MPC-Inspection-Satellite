@@ -208,6 +208,26 @@ def compile_unified_mission_runtime(
     mission_state.path_waypoints = path
     mission_state.path_length = float(path_length)
     mission_state.path_speed = runtime_path_speed
+    overrides = getattr(mission, "overrides", None)
+    raw_hold_schedule = getattr(overrides, "hold_schedule", []) if overrides else []
+    mission_state.path_hold_schedule = []
+    for item in raw_hold_schedule or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            path_index = int(item.get("path_index", 0))
+            duration_s = max(0.0, float(item.get("duration_s", 0.0)))
+        except Exception:
+            continue
+        mission_state.path_hold_schedule.append(
+            {"path_index": path_index, "duration_s": duration_s}
+        )
+    mission_state.path_hold_schedule.sort(
+        key=lambda item: int(item.get("path_index", 0))
+    )
+    mission_state.path_hold_active_index = None
+    mission_state.path_hold_started_at_s = None
+    mission_state.path_hold_completed = set()
     mission_state.path_tracking_estimated_duration = float(
         runtime_plan.required_duration_s
     )

@@ -1,15 +1,18 @@
 import { useCallback, useRef } from 'react';
 import { API_BASE_URL } from '../../config/endpoints';
 import { useStudioStore } from './useStudioStore';
-import type { ScanPass } from './useStudioStore';
+import type { StudioPath } from './useStudioStore';
 
-async function fetchScanPath(pass: ScanPass): Promise<[number, number, number][]> {
+async function fetchScanPath(path: StudioPath): Promise<[number, number, number][]> {
   const body = {
-    axis: pass.axis,
-    plane_a: pass.planeAOffset,
-    plane_b: pass.planeBOffset,
-    level_spacing_m: pass.levelHeight,
-    key_levels: pass.keyLevels,
+    axis_seed: path.axisSeed,
+    plane_a: path.planeA,
+    plane_b: path.planeB,
+    ellipse: {
+      radius_x: path.ellipse.radiusX,
+      radius_y: path.ellipse.radiusY,
+    },
+    level_spacing_m: path.levelSpacing,
   };
   const res = await fetch(`${API_BASE_URL}/api/models/generate_scan_path`, {
     method: 'POST',
@@ -24,13 +27,13 @@ async function fetchScanPath(pass: ScanPass): Promise<[number, number, number][]
 export function useRegenerateWaypoints() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const regenerate = useCallback((scanId: string, debounceMs = 0) => {
+  const regenerate = useCallback((pathId: string, debounceMs = 0) => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const pass = useStudioStore.getState().scanPasses.find((p) => p.id === scanId);
-      if (!pass) return;
-      void fetchScanPath(pass).then((waypoints) => {
-        useStudioStore.getState().setWaypointsFromBackend(scanId, waypoints);
+      const path = useStudioStore.getState().paths.find((p) => p.id === pathId);
+      if (!path) return;
+      void fetchScanPath(path).then((waypoints) => {
+        useStudioStore.getState().setWaypointsFromBackend(pathId, waypoints);
       });
     }, debounceMs);
   }, []);
