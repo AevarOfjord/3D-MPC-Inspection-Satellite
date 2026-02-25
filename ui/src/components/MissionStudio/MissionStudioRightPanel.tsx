@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Save, CheckCircle } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
@@ -65,6 +65,14 @@ export function MissionStudioRightPanel() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    if (missionName.trim().length > 0) return;
+    if (scanPasses.length === 0) return;
+    const ts = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    setMissionName(`Studio_${scanPasses.length}pass_${ts}`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanPasses.length]);
 
   const totalWaypoints = scanPasses.reduce((acc, p) => acc + p.waypoints.length, 0);
 
