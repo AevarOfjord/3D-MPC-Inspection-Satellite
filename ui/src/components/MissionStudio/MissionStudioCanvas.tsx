@@ -8,6 +8,7 @@ import { ScanPassObject } from './ScanPassObject';
 import { WaypointNudger } from './WaypointNudger';
 import { EndpointNodes } from './EndpointNodes';
 import { SatelliteStartNode } from './SatelliteStartNode';
+import { ObstacleObjects } from './ObstacleObjects';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -68,6 +69,7 @@ function SceneContents() {
       {selectedScanId && <WaypointNudger scanId={selectedScanId} />}
       <EndpointNodes />
       <SatelliteStartNode />
+      <ObstacleObjects />
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
