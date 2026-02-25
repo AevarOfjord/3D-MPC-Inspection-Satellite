@@ -5,6 +5,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import * as THREE from 'three';
 import { useStudioStore } from './useStudioStore';
 import { ScanPassObject } from './ScanPassObject';
+import { WaypointNudger } from './WaypointNudger';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -46,6 +47,7 @@ function StudioGrid() {
 function SceneContents() {
   const modelUrl = useStudioStore((s) => s.modelUrl);
   const scanPasses = useStudioStore((s) => s.scanPasses);
+  const selectedScanId = useStudioStore((s) => s.selectedScanId);
 
   return (
     <>
@@ -61,6 +63,7 @@ function SceneContents() {
       )}
 
       {scanPasses.map((p) => <ScanPassObject key={p.id} scanId={p.id} />)}
+      {selectedScanId && <WaypointNudger scanId={selectedScanId} />}
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
