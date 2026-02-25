@@ -20,7 +20,7 @@ describe('applyNudge', () => {
     });
     useStudioStore.setState({
       scanPasses: [{ id: 'p1', axis: 'Z', planeAOffset: -5, planeBOffset: 5,
-        crossSection: [], levelHeight: 1, waypoints, color: '#fff' }],
+        crossSection: [], levelHeight: 1, waypoints, color: '#fff', keyLevels: [], selectedHandleId: null }],
     });
 
     const idx = 10;

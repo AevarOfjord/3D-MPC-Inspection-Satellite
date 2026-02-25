@@ -2,6 +2,16 @@ import { create } from 'zustand';
 
 export type StudioSegmentType = 'start' | 'scan' | 'transfer' | 'hold';
 
+export interface KeyLevel {
+  id: string;
+  t: number;
+  radius_x: number;
+  radius_y: number;
+  rotation_deg: number;
+  offset_x: number;
+  offset_y: number;
+}
+
 export interface ScanPass {
   id: string;
   axis: 'X' | 'Y' | 'Z';
@@ -11,6 +21,8 @@ export interface ScanPass {
   levelHeight: number;
   waypoints: [number, number, number][];
   color: string;
+  keyLevels: KeyLevel[];
+  selectedHandleId: string | null;
 }
 
 export interface TransferWire {
@@ -66,6 +78,9 @@ export interface StudioState {
   saveBusy: boolean;
   missionName: string;
 
+  // Welcome
+  welcomeDismissed: boolean;
+
   // Actions
   setModelUrl: (url: string | null) => void;
   setModelBoundingBox: (bb: StudioState['modelBoundingBox']) => void;
@@ -91,6 +106,10 @@ export interface StudioState {
   setValidationBusy: (busy: boolean) => void;
   setSaveBusy: (busy: boolean) => void;
   setMissionName: (name: string) => void;
+  setWelcomeDismissed: (dismissed: boolean) => void;
+  updateKeyLevelHandle: (scanId: string, handleId: 'rx_pos' | 'rx_neg' | 'ry_pos' | 'ry_neg', worldPos: [number, number, number]) => void;
+  setSelectedHandle: (scanId: string, handleId: string | null) => void;
+  setWaypointsFromBackend: (scanId: string, waypoints: [number, number, number][]) => void;
 }
 
 let _obstacleCounter = 0;
@@ -113,6 +132,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   validationBusy: false,
   saveBusy: false,
   missionName: '',
+  welcomeDismissed: false,
 
   setModelUrl: (url) => set({ modelUrl: url }),
   setModelBoundingBox: (bb) => set({ modelBoundingBox: bb }),
@@ -122,7 +142,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     const PASS_COLORS = ['#22d3ee','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15'];
     const { scanPasses } = get();
     const color = PASS_COLORS[scanPasses.length % PASS_COLORS.length];
-    const passWithColor = { ...pass, color };
+    const defaultKeyLevel: KeyLevel = {
+      id: `kl-${Date.now()}`,
+      t: 0.5,
+      radius_x: 5,
+      radius_y: 5,
+      rotation_deg: 0,
+      offset_x: 0,
+      offset_y: 0,
+    };
+    const passWithColor = { ...pass, color, keyLevels: pass.keyLevels ?? [defaultKeyLevel], selectedHandleId: null };
     const segId = `seg-${++_segmentCounter}`;
     set((s) => ({
       scanPasses: [...s.scanPasses, passWithColor],
@@ -228,4 +257,68 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setValidationBusy: (busy) => set({ validationBusy: busy }),
   setSaveBusy: (busy) => set({ saveBusy: busy }),
   setMissionName: (name) => set({ missionName: name }),
+  setWelcomeDismissed: (dismissed) => set({ welcomeDismissed: dismissed }),
+
+  updateKeyLevelHandle: (scanId, handleId, worldPos) => {
+    set((s) => ({
+      scanPasses: s.scanPasses.map((p) => {
+        if (p.id !== scanId) return p;
+        const kl = p.keyLevels[0];
+        if (!kl) return p;
+
+        // Compute frame axes for this pass axis
+        const AXIS_FRAMES: Record<string, { normal: [number,number,number]; u: [number,number,number]; v: [number,number,number] }> = {
+          Z: { normal: [0,0,1], u: [1,0,0], v: [0,1,0] },
+          X: { normal: [1,0,0], u: [0,1,0], v: [0,0,1] },
+          Y: { normal: [0,1,0], u: [1,0,0], v: [0,0,1] },
+        };
+        const frame = AXIS_FRAMES[p.axis];
+        const [nu, nv] = [frame.u, frame.v];
+
+        const rot = (kl.rotation_deg * Math.PI) / 180;
+        const major: [number,number,number] = [
+          nu[0] * Math.cos(rot) + nv[0] * Math.sin(rot),
+          nu[1] * Math.cos(rot) + nv[1] * Math.sin(rot),
+          nu[2] * Math.cos(rot) + nv[2] * Math.sin(rot),
+        ];
+        const minor: [number,number,number] = [
+          -nu[0] * Math.sin(rot) + nv[0] * Math.cos(rot),
+          -nu[1] * Math.sin(rot) + nv[1] * Math.cos(rot),
+          -nu[2] * Math.sin(rot) + nv[2] * Math.cos(rot),
+        ];
+
+        // Center of the key level along the axis
+        const axisSpan = p.planeBOffset - p.planeAOffset;
+        const centerAlong = p.planeAOffset + axisSpan * kl.t;
+        const center: [number,number,number] =
+          p.axis === 'Z' ? [kl.offset_x, kl.offset_y, centerAlong] :
+          p.axis === 'X' ? [centerAlong, kl.offset_x, kl.offset_y] :
+                           [kl.offset_x, centerAlong, kl.offset_y];
+
+        const rel = [worldPos[0] - center[0], worldPos[1] - center[1], worldPos[2] - center[2]];
+
+        if (handleId === 'rx_pos' || handleId === 'rx_neg') {
+          const radius = Math.max(0.1, Math.abs(rel[0]*major[0] + rel[1]*major[1] + rel[2]*major[2]));
+          return { ...p, keyLevels: [{ ...kl, radius_x: radius }] };
+        } else {
+          const radius = Math.max(0.1, Math.abs(rel[0]*minor[0] + rel[1]*minor[1] + rel[2]*minor[2]));
+          return { ...p, keyLevels: [{ ...kl, radius_y: radius }] };
+        }
+      }),
+    }));
+  },
+
+  setSelectedHandle: (scanId, handleId) =>
+    set((s) => ({
+      scanPasses: s.scanPasses.map((p) =>
+        p.id === scanId ? { ...p, selectedHandleId: handleId } : p
+      ),
+    })),
+
+  setWaypointsFromBackend: (scanId, waypoints) =>
+    set((s) => ({
+      scanPasses: s.scanPasses.map((p) =>
+        p.id === scanId ? { ...p, waypoints } : p
+      ),
+    })),
 }));

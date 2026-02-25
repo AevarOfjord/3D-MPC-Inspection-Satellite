@@ -564,3 +564,44 @@ async def create_path_asset(request: PathAssetSaveRequest):
     except Exception as e:
         logger.error(f"Failed to save path asset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Studio spiral path generation ---
+
+
+from pydantic import BaseModel  # noqa: E402
+
+
+class _KeyLevelIn(BaseModel):
+    id: str = ""
+    t: float = 0.5
+    radius_x: float = 5.0
+    radius_y: float = 5.0
+    rotation_deg: float = 0.0
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+
+
+class _GenerateScanPathRequest(BaseModel):
+    axis: str = "Z"
+    plane_a: float = -5.0
+    plane_b: float = 5.0
+    level_spacing_m: float = 0.5
+    key_levels: list[_KeyLevelIn] = []
+
+
+@router.post("/api/models/generate_scan_path")
+async def generate_scan_path(request: _GenerateScanPathRequest):
+    """Generate a spiral scan path from key-level ellipse parameters."""
+    from mission.scan_projects import _generate_scan_path
+
+    axis = request.axis.upper().strip().lstrip("+")
+    scan: dict = {
+        "axis": axis,
+        "plane_a": [0.0, 0.0, 0.0] if axis == "Z" else ([request.plane_a, 0.0, 0.0] if axis == "X" else [0.0, request.plane_a, 0.0]),
+        "plane_b": [0.0, 0.0, request.plane_b] if axis == "Z" else ([request.plane_b, 0.0, 0.0] if axis == "X" else [0.0, request.plane_b, 0.0]),
+        "level_spacing_m": request.level_spacing_m,
+        "key_levels": [kl.model_dump() for kl in request.key_levels],
+    }
+    coarse_path, _dense = _generate_scan_path(scan, np.array([0.0, 0.0, 0.0]), 1.0)
+    return {"waypoints": coarse_path}

@@ -1,6 +1,7 @@
 import { useRef } from 'react';
-import { Plus, Layers, Move, Pause, AlertTriangle } from 'lucide-react';
+import { Plus, Layers, Move, Pause, RefreshCw } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
+import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 
 function SectionHeader({ label }: { label: string }) {
   return (
@@ -44,6 +45,7 @@ function ActionButton({
 export function MissionStudioLeftPanel() {
   const { addScanPass, addObstacle, setSatelliteStart, scanPasses, selectedScanId, modelUrl, setModelUrl } = useStudioStore();
   const fileRef = useRef<HTMLInputElement>(null);
+  const regenerate = useRegenerateWaypoints();
 
   const handleAddScan = () => {
     const id = `scan-${Date.now()}`;
@@ -52,13 +54,12 @@ export function MissionStudioLeftPanel() {
       axis: 'Z',
       planeAOffset: -5,
       planeBOffset: 5,
-      crossSection: Array.from({ length: 8 }, (_, i) => {
-        const angle = (i / 8) * Math.PI * 2;
-        return [Math.cos(angle) * 5, Math.sin(angle) * 5] as [number, number];
-      }),
+      crossSection: [],
       levelHeight: 0.5,
       waypoints: [],
       color: '#22d3ee',
+      keyLevels: [],
+      selectedHandleId: null,
     });
   };
 
@@ -172,9 +173,17 @@ export function MissionStudioLeftPanel() {
             </div>
 
             <div className="text-[10px] text-slate-500 flex items-center gap-1">
-              <AlertTriangle size={10} />
-              Drag waypoints in viewport to nudge path
+              Drag the 4 handles on the ellipse to reshape
             </div>
+
+            <button
+              type="button"
+              onClick={() => regenerate(selectedPass.id, 0)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-[10px] font-semibold text-slate-400 hover:border-cyan-700 hover:text-cyan-300 transition-all"
+            >
+              <RefreshCw size={10} />
+              Regenerate Path
+            </button>
           </div>
         </>
       )}

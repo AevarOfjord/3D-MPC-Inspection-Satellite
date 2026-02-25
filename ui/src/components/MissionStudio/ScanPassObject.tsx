@@ -1,7 +1,7 @@
 import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useStudioStore } from './useStudioStore';
-import { generateSpiral } from './useSpiralGenerator';
+import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 
 interface ScanPassObjectProps {
   scanId: string;
@@ -9,25 +9,14 @@ interface ScanPassObjectProps {
 
 export function ScanPassObject({ scanId }: ScanPassObjectProps) {
   const pass = useStudioStore((s) => s.scanPasses.find((p) => p.id === scanId));
-  const updateScanPass = useStudioStore((s) => s.updateScanPass);
   const selectedScanId = useStudioStore((s) => s.selectedScanId);
+  const regenerate = useRegenerateWaypoints();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const keyLevelsKey = JSON.stringify(pass?.keyLevels);
   useEffect(() => {
     if (!pass) return;
-    const waypoints = generateSpiral({
-      axis: pass.axis,
-      planeAOffset: pass.planeAOffset,
-      planeBOffset: pass.planeBOffset,
-      crossSection: pass.crossSection,
-      levelHeight: pass.levelHeight,
-    });
-    updateScanPass(pass.id, { waypoints });
-  // We intentionally serialize crossSection to detect changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pass?.axis, pass?.planeAOffset, pass?.planeBOffset, pass?.levelHeight,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      JSON.stringify(pass?.crossSection)]);
+    regenerate(scanId, 0);
+  }, [scanId, pass?.axis, pass?.planeAOffset, pass?.planeBOffset, pass?.levelHeight, keyLevelsKey, pass, regenerate]);
 
   const lineGeometry = useMemo(() => {
     if (!pass || pass.waypoints.length < 2) return null;

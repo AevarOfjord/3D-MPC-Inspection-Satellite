@@ -1,4 +1,4 @@
-import { Suspense, useRef, useEffect } from 'react';
+import { Suspense, useRef, useEffect, Component, type ReactNode } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/drei';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -9,6 +9,7 @@ import { WaypointNudger } from './WaypointNudger';
 import { EndpointNodes } from './EndpointNodes';
 import { SatelliteStartNode } from './SatelliteStartNode';
 import { ObstacleObjects } from './ObstacleObjects';
+import { EllipseHandles } from './EllipseHandles';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -30,6 +31,19 @@ function ObjModel({ url }: { url: string }) {
   );
 }
 
+class ModelErrorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch() { this.props.onError(); }
+  render() { return this.state.hasError ? null : this.props.children; }
+}
+
 function StudioGrid() {
   return (
     <Grid
@@ -47,10 +61,17 @@ function StudioGrid() {
   );
 }
 
-function SceneContents() {
+function SceneContents({ onModelError }: { onModelError: () => void }) {
   const modelUrl = useStudioStore((s) => s.modelUrl);
   const scanPasses = useStudioStore((s) => s.scanPasses);
   const selectedScanId = useStudioStore((s) => s.selectedScanId);
+
+  const handleBackgroundClick = () => {
+    // Deselect handle when clicking empty space
+    if (selectedScanId) {
+      useStudioStore.getState().setSelectedHandle(selectedScanId, null);
+    }
+  };
 
   return (
     <>
@@ -59,14 +80,25 @@ function SceneContents() {
 
       <StudioGrid />
 
+      {/* Invisible background mesh to capture background clicks */}
+      <mesh visible={false} onClick={handleBackgroundClick}>
+        <sphereGeometry args={[500, 8, 8]} />
+        <meshBasicMaterial side={THREE.BackSide} />
+      </mesh>
+
       {modelUrl && (
-        <Suspense fallback={null}>
-          <ObjModel url={modelUrl} />
-        </Suspense>
+        <ModelErrorBoundary key={modelUrl} onError={onModelError}>
+          <Suspense fallback={null}>
+            <ObjModel url={modelUrl} />
+          </Suspense>
+        </ModelErrorBoundary>
       )}
 
       {scanPasses.map((p) => <ScanPassObject key={p.id} scanId={p.id} />)}
-      {selectedScanId && <WaypointNudger scanId={selectedScanId} />}
+      {selectedScanId && <EllipseHandles scanId={selectedScanId} />}
+      {selectedScanId && !scanPasses.find((p) => p.id === selectedScanId)?.selectedHandleId && (
+        <WaypointNudger scanId={selectedScanId} />
+      )}
       <EndpointNodes />
       <SatelliteStartNode />
       <ObstacleObjects />
@@ -80,6 +112,14 @@ function SceneContents() {
 }
 
 export function MissionStudioCanvas() {
+  const setModelUrl = useStudioStore((s) => s.setModelUrl);
+  const setWelcomeDismissed = useStudioStore((s) => s.setWelcomeDismissed);
+
+  const handleModelError = () => {
+    setModelUrl(null);
+    setWelcomeDismissed(false); // re-show welcome so user can pick again
+  };
+
   return (
     <Canvas
       camera={{ position: [0, 15, 30], fov: 50, near: 0.01, far: 10000 }}
@@ -87,7 +127,7 @@ export function MissionStudioCanvas() {
       style={{ background: '#070b14', width: '100%', height: '100%' }}
     >
       <color attach="background" args={['#070b14']} />
-      <SceneContents />
+      <SceneContents onModelError={handleModelError} />
     </Canvas>
   );
 }
