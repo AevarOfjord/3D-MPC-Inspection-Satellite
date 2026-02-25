@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from config.paths import resolve_repo_path
+from config.paths import (
+    ASSET_MODEL_FILES_ROOT,
+    LEGACY_ASSET_MODEL_FILES_ROOT,
+    UI_PUBLIC_MODEL_FILES_ROOT,
+    resolve_repo_path,
+)
 from config.simulation_config import SimulationConfig
 from mission.axis_utils import infer_scan_axis_from_path, snap_axis_if_near_cardinal
 from mission.mesh_scan import (
@@ -28,10 +33,36 @@ from mission.unified_mission import (
 )
 
 
+_STUDIO_OBJ_TARGET_PREFIX = "STUDIO_OBJ::"
+_OBJ_ALLOWED_ROOTS = tuple(
+    root.resolve()
+    for root in (
+        ASSET_MODEL_FILES_ROOT,
+        LEGACY_ASSET_MODEL_FILES_ROOT,
+        UI_PUBLIC_MODEL_FILES_ROOT,
+    )
+)
+
+
 def _resolve_target_obj_path(target_id: str) -> Path | None:
     if not target_id:
         return None
-    upper = target_id.upper()
+    raw = str(target_id).strip()
+    if raw.startswith(_STUDIO_OBJ_TARGET_PREFIX):
+        encoded_path = raw[len(_STUDIO_OBJ_TARGET_PREFIX) :].strip()
+        if not encoded_path:
+            return None
+        try:
+            resolved = resolve_repo_path(encoded_path).resolve()
+        except Exception:
+            return None
+        if resolved.suffix.lower() != ".obj" or not resolved.exists():
+            return None
+        if any(resolved == root or root in resolved.parents for root in _OBJ_ALLOWED_ROOTS):
+            return resolved
+        return None
+
+    upper = raw.upper()
     if "ISS" in upper:
         return resolve_repo_path("assets/model_files/ISS/ISS.obj")
     if "STARLINK" in upper:

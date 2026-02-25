@@ -6,6 +6,11 @@ import { StarlinkModel } from '../StarlinkModel';
 export function resolvePreviewModel(modelPath?: string) {
   if (!modelPath) return null;
   const lower = modelPath.toLowerCase();
+  // Preserve OBJ+MTL workflows: when the user selects an OBJ, let ObjWithMtl load
+  // the chosen file set (materials/textures/colors) instead of force-switching models.
+  if (lower.endsWith('.obj')) {
+    return null;
+  }
   if (lower.includes('starlink')) {
     return (
       <StarlinkModel

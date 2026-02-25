@@ -4,29 +4,50 @@ import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
 
 function SegmentRow({ index }: { index: number }) {
-  const segments = useStudioStore((s) => s.segments);
-  const scanPasses = useStudioStore((s) => s.scanPasses);
+  const assembly = useStudioStore((s) => s.assembly);
+  const paths = useStudioStore((s) => s.paths);
   const holds = useStudioStore((s) => s.holds);
-  const removeSegment = useStudioStore((s) => s.removeSegment);
-  const seg = segments[index];
-  if (!seg) return null;
+  const wires = useStudioStore((s) => s.wires);
+  const obstacles = useStudioStore((s) => s.obstacles);
+  const removePath = useStudioStore((s) => s.removePath);
+  const removeHold = useStudioStore((s) => s.removeHold);
+  const removeWire = useStudioStore((s) => s.removeWire);
+  const removeObstacle = useStudioStore((s) => s.removeObstacle);
 
-  let icon = '●';
-  let label = seg.type;
-  let badge: string | null = null;
+  const item = assembly[index];
+  if (!item) return null;
 
-  if (seg.type === 'start') { icon = '🛰'; label = 'Start Position'; }
-  if (seg.type === 'scan' && seg.scanId) {
-    const pass = scanPasses.find((p) => p.id === seg.scanId);
-    icon = '🔄';
-    label = 'Scan Pass';
-    badge = pass?.axis ?? null;
+  let icon: string = '●';
+  let label: string = item.type;
+  let onRemove: (() => void) | null = null;
+
+  if (item.type === 'place_satellite') {
+    icon = '🛰';
+    label = 'Place Satellite';
   }
-  if (seg.type === 'transfer') { icon = '↗'; label = 'Transfer'; }
-  if (seg.type === 'hold' && seg.holdId) {
-    const hold = holds.find((h) => h.id === seg.holdId);
+  if (item.type === 'create_path') {
+    icon = '🌀';
+    const path = paths.find((p) => p.id === item.pathId);
+    label = `Create Path ${path?.axisSeed ?? ''}`.trim();
+    if (path) onRemove = () => removePath(path.id);
+  }
+  if (item.type === 'connect') {
+    icon = '↔';
+    const wire = wires.find((w) => w.id === item.wireId);
+    label = wire ? `Connect ${wire.fromNodeId} -> ${wire.toNodeId}` : 'Connect';
+    if (wire) onRemove = () => removeWire(wire.id);
+  }
+  if (item.type === 'hold') {
     icon = '⏸';
-    label = `Hold ${hold?.duration.toFixed(1) ?? '?'}s`;
+    const hold = holds.find((h) => h.id === item.holdId);
+    label = hold ? `Hold ${hold.duration.toFixed(1)}s @ ${hold.pathId}[${hold.waypointIndex}]` : 'Hold';
+    if (hold) onRemove = () => removeHold(hold.id);
+  }
+  if (item.type === 'obstacle') {
+    icon = '⚪';
+    const obs = obstacles.find((o) => o.id === item.obstacleId);
+    label = obs ? `Obstacle r=${obs.radius.toFixed(2)}` : 'Obstacle';
+    if (obs) onRemove = () => removeObstacle(obs.id);
   }
 
   return (
@@ -34,15 +55,10 @@ function SegmentRow({ index }: { index: number }) {
       <span className="text-[10px] text-slate-500 w-5 shrink-0 tabular-nums">{index + 1}</span>
       <span className="text-sm">{icon}</span>
       <span className="flex-1 text-xs text-slate-200 font-medium truncate">{label}</span>
-      {badge && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded border border-cyan-800 text-cyan-300 bg-cyan-950/40">
-          {badge}
-        </span>
-      )}
-      {seg.type !== 'start' && (
+      {onRemove && (
         <button
           type="button"
-          onClick={() => removeSegment(seg.id)}
+          onClick={onRemove}
           className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity"
         >
           <Trash2 size={12} />
@@ -53,8 +69,8 @@ function SegmentRow({ index }: { index: number }) {
 }
 
 export function MissionStudioRightPanel() {
-  const segments = useStudioStore((s) => s.segments);
-  const scanPasses = useStudioStore((s) => s.scanPasses);
+  const assembly = useStudioStore((s) => s.assembly);
+  const paths = useStudioStore((s) => s.paths);
   const missionName = useStudioStore((s) => s.missionName);
   const setMissionName = useStudioStore((s) => s.setMissionName);
   const validationBusy = useStudioStore((s) => s.validationBusy);
@@ -68,13 +84,12 @@ export function MissionStudioRightPanel() {
 
   useEffect(() => {
     if (missionName.trim().length > 0) return;
-    if (scanPasses.length === 0) return;
+    if (paths.length === 0) return;
     const ts = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    setMissionName(`Studio_${scanPasses.length}pass_${ts}`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanPasses.length]);
+    setMissionName(`Studio_${paths.length}path_${ts}`);
+  }, [paths.length, missionName, setMissionName]);
 
-  const totalWaypoints = scanPasses.reduce((acc, p) => acc + p.waypoints.length, 0);
+  const totalWaypoints = paths.reduce((acc, p) => acc + p.waypoints.length, 0);
 
   const handleValidate = async () => {
     setValidationBusy(true);
@@ -83,7 +98,10 @@ export function MissionStudioRightPanel() {
       const mission = compileStudioMission(useStudioStore.getState());
       const { unifiedMissionApi } = await import('../../api/unifiedMissionApi');
       const report = await unifiedMissionApi.validateMission(mission);
-      setValidateResult({ ok: report.valid, message: report.valid ? 'Validation passed' : `${report.summary?.errors ?? '?'} error(s)` });
+      setValidateResult({
+        ok: report.valid,
+        message: report.valid ? 'Validation passed' : `${report.summary?.errors ?? '?'} error(s)`,
+      });
     } catch (e) {
       setValidateResult({ ok: false, message: String(e) });
     } finally {
@@ -108,28 +126,23 @@ export function MissionStudioRightPanel() {
     }
   };
 
-  const canSave = segments.length > 0 && missionName.trim().length > 0;
+  const canSave = assembly.length > 0 && missionName.trim().length > 0;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 border-b border-slate-800/60 flex items-center justify-between">
         <span>Mission Assembly</span>
-        <span className="text-slate-600 tabular-nums">{segments.length} seg · {totalWaypoints} pts</span>
+        <span className="text-slate-600 tabular-nums">{assembly.length} seg · {totalWaypoints} pts</span>
       </div>
 
-      {/* Segment list */}
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
-        {segments.length === 0 ? (
-          <div className="text-xs text-slate-600 text-center py-8">
-            Add segments using the left panel
-          </div>
+        {assembly.length === 0 ? (
+          <div className="text-xs text-slate-600 text-center py-8">Add segments using the left panel</div>
         ) : (
-          segments.map((_, i) => <SegmentRow key={i} index={i} />)
+          assembly.map((_, i) => <SegmentRow key={i} index={i} />)
         )}
       </div>
 
-      {/* Validation result */}
       {validateResult && (
         <div className="px-3 py-2 border-t border-slate-800/60">
           <div className={`text-xs font-semibold ${validateResult.ok ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -137,11 +150,8 @@ export function MissionStudioRightPanel() {
           </div>
         </div>
       )}
-      {saveError && (
-        <div className="px-3 py-1 text-[10px] text-red-400">{saveError}</div>
-      )}
+      {saveError && <div className="px-3 py-1 text-[10px] text-red-400">{saveError}</div>}
 
-      {/* Footer actions */}
       <div className="p-3 border-t border-slate-800/60 flex flex-col gap-2">
         <input
           className="w-full bg-black/40 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-700"
@@ -163,7 +173,17 @@ export function MissionStudioRightPanel() {
           disabled={!canSave || saveBusy}
           className="w-full py-2 rounded-lg border border-emerald-700 bg-emerald-900/40 text-emerald-100 text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5 hover:bg-emerald-900/60 transition-all"
         >
-          {saveSuccess ? <><CheckCircle size={13} /> Saved!</> : saveBusy ? 'Saving...' : <><Save size={13} /> Save Mission</>}
+          {saveSuccess ? (
+            <>
+              <CheckCircle size={13} /> Saved!
+            </>
+          ) : saveBusy ? (
+            'Saving...'
+          ) : (
+            <>
+              <Save size={13} /> Save Mission
+            </>
+          )}
         </button>
       </div>
     </div>

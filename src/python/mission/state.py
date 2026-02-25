@@ -47,6 +47,11 @@ class MissionState:
 
     path: PathFollowingState = field(default_factory=PathFollowingState)
     path_hold_end: float = DEFAULT_PATH_HOLD_END_S
+    # Optional per-waypoint hold schedule: list of {"path_index": int, "duration_s": float}.
+    path_hold_schedule: list[dict[str, float]] = field(default_factory=list)
+    path_hold_active_index: int | None = None
+    path_hold_started_at_s: float | None = None
+    path_hold_completed: set[int] = field(default_factory=set)
     # Path tracking runtime fields.
     path_tracking_center: tuple[float, float, float] | None = None
     path_tracking_base_shape: list[tuple[float, float, float]] = field(

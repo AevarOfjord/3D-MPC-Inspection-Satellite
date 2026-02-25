@@ -1,58 +1,50 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
-import type { ScanPass } from './useStudioStore';
 
-const AXIS_FRAMES: Record<string, { normal: THREE.Vector3; u: THREE.Vector3; v: THREE.Vector3 }> = {
-  Z: { normal: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) },
-  X: { normal: new THREE.Vector3(1, 0, 0), u: new THREE.Vector3(0, 1, 0), v: new THREE.Vector3(0, 0, 1) },
-  Y: { normal: new THREE.Vector3(0, 1, 0), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
+const AXIS_FRAME: Record<'X' | 'Y' | 'Z', { u: THREE.Vector3; v: THREE.Vector3 }> = {
+  X: { u: new THREE.Vector3(0, 1, 0), v: new THREE.Vector3(0, 0, 1) },
+  Y: { u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 0, 1) },
+  Z: { u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) },
 };
 
-type HandleId = 'rx_pos' | 'rx_neg' | 'ry_pos' | 'ry_neg';
-
-function computeHandlePositions(pass: ScanPass): Array<{ id: HandleId; pos: THREE.Vector3; color: string }> {
-  const kl = pass.keyLevels[0];
-  if (!kl) return [];
-
-  const frame = AXIS_FRAMES[pass.axis];
-  const rot = (kl.rotation_deg * Math.PI) / 180;
-
-  const major = frame.u.clone().multiplyScalar(Math.cos(rot)).add(frame.v.clone().multiplyScalar(Math.sin(rot))).normalize();
-  const minor = frame.u.clone().multiplyScalar(-Math.sin(rot)).add(frame.v.clone().multiplyScalar(Math.cos(rot))).normalize();
-
-  const axisSpan = pass.planeBOffset - pass.planeAOffset;
-  const centerAlong = pass.planeAOffset + axisSpan * kl.t;
-  const center =
-    pass.axis === 'Z' ? new THREE.Vector3(kl.offset_x, kl.offset_y, centerAlong) :
-    pass.axis === 'X' ? new THREE.Vector3(centerAlong, kl.offset_x, kl.offset_y) :
-                        new THREE.Vector3(kl.offset_x, centerAlong, kl.offset_y);
-
-  const rx = Math.max(0.1, kl.radius_x);
-  const ry = Math.max(0.1, kl.radius_y);
-
-  return [
-    { id: 'rx_pos', pos: center.clone().add(major.clone().multiplyScalar(rx)), color: '#34d399' },
-    { id: 'rx_neg', pos: center.clone().add(major.clone().multiplyScalar(-rx)), color: '#34d399' },
-    { id: 'ry_pos', pos: center.clone().add(minor.clone().multiplyScalar(ry)), color: '#60a5fa' },
-    { id: 'ry_neg', pos: center.clone().add(minor.clone().multiplyScalar(-ry)), color: '#60a5fa' },
-  ];
+function basisAtMid(path: ReturnType<typeof useStudioStore.getState>['paths'][number]) {
+  const qA = new THREE.Quaternion(path.planeA.orientation[1], path.planeA.orientation[2], path.planeA.orientation[3], path.planeA.orientation[0]);
+  const qB = new THREE.Quaternion(path.planeB.orientation[1], path.planeB.orientation[2], path.planeB.orientation[3], path.planeB.orientation[0]);
+  const qMid = new THREE.Quaternion().copy(qA).slerp(qB, 0.5).normalize();
+  const base = AXIS_FRAME[path.axisSeed];
+  const u = base.u.clone().applyQuaternion(qMid).normalize();
+  const v = base.v.clone().applyQuaternion(qMid).normalize();
+  const center = new THREE.Vector3(
+    0.5 * (path.planeA.position[0] + path.planeB.position[0]),
+    0.5 * (path.planeA.position[1] + path.planeB.position[1]),
+    0.5 * (path.planeA.position[2] + path.planeB.position[2]),
+  );
+  return { center, u, v };
 }
 
 export function EllipseHandles({ scanId }: { scanId: string }) {
-  const pass = useStudioStore((s) => s.scanPasses.find((p) => p.id === scanId));
-  const updateKeyLevelHandle = useStudioStore((s) => s.updateKeyLevelHandle);
+  const path = useStudioStore((s) => s.paths.find((p) => p.id === scanId));
   const setSelectedHandle = useStudioStore((s) => s.setSelectedHandle);
-  const selectedHandleId = useStudioStore((s) => s.scanPasses.find((p) => p.id === scanId)?.selectedHandleId ?? null);
+  const selectedHandleId = useStudioStore((s) => s.paths.find((p) => p.id === scanId)?.selectedHandleId ?? null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const regenerate = useRegenerateWaypoints();
 
-  if (!pass || !pass.keyLevels[0]) return null;
+  const basis = useMemo(() => (path ? basisAtMid(path) : null), [path]);
+  if (!path || !basis) return null;
 
-  const handles = computeHandlePositions(pass);
-  const handleRadius = 0.25;
+  const { center, u, v } = basis;
+  const rx = Math.max(0.1, path.ellipse.radiusX);
+  const ry = Math.max(0.1, path.ellipse.radiusY);
+
+  const handles = [
+    { id: 'rx_pos', pos: center.clone().add(u.clone().multiplyScalar(rx)), axis: 'x' as const, sign: 1, color: '#34d399' },
+    { id: 'rx_neg', pos: center.clone().add(u.clone().multiplyScalar(-rx)), axis: 'x' as const, sign: -1, color: '#34d399' },
+    { id: 'ry_pos', pos: center.clone().add(v.clone().multiplyScalar(ry)), axis: 'y' as const, sign: 1, color: '#60a5fa' },
+    { id: 'ry_neg', pos: center.clone().add(v.clone().multiplyScalar(-ry)), axis: 'y' as const, sign: -1, color: '#60a5fa' },
+  ];
 
   return (
     <>
@@ -60,24 +52,28 @@ export function EllipseHandles({ scanId }: { scanId: string }) {
         const isHovered = hoveredId === h.id;
         const isSelected = selectedHandleId === h.id;
         const pos: [number, number, number] = [h.pos.x, h.pos.y, h.pos.z];
+
         return (
           <group key={h.id}>
             <mesh
               position={pos}
-              onPointerOver={(e) => { e.stopPropagation(); setHoveredId(h.id); }}
-              onPointerOut={(e) => { e.stopPropagation(); setHoveredId((prev) => prev === h.id ? null : prev); }}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setHoveredId(h.id);
+              }}
+              onPointerOut={(e) => {
+                e.stopPropagation();
+                setHoveredId((prev) => (prev === h.id ? null : prev));
+              }}
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedHandle(scanId, isSelected ? null : h.id);
+                setSelectedHandle(scanId, isSelected ? null : (h.id as any));
               }}
             >
-              <sphereGeometry args={[handleRadius * (isHovered ? 1.3 : 1.0), 12, 12]} />
-              <meshBasicMaterial
-                color={isSelected ? '#fde047' : isHovered ? '#ffffff' : h.color}
-                transparent
-                opacity={isHovered || isSelected ? 1.0 : 0.9}
-              />
+              <sphereGeometry args={[0.22 * (isHovered ? 1.2 : 1.0), 12, 12]} />
+              <meshBasicMaterial color={isSelected ? '#fde047' : isHovered ? '#ffffff' : h.color} />
             </mesh>
+
             {isSelected && (
               <TransformControls
                 mode="translate"
@@ -88,8 +84,15 @@ export function EllipseHandles({ scanId }: { scanId: string }) {
                 onObjectChange={(e: any) => {
                   const obj = e?.target?.object as THREE.Object3D | undefined;
                   if (!obj) return;
-                  updateKeyLevelHandle(scanId, h.id as HandleId, [obj.position.x, obj.position.y, obj.position.z]);
-                  regenerate(scanId, 150);
+                  const rel = new THREE.Vector3(obj.position.x, obj.position.y, obj.position.z).sub(center);
+                  if (h.axis === 'x') {
+                    const newRadius = Math.max(0.1, Math.abs(rel.dot(u)));
+                    useStudioStore.getState().updatePathEllipse(scanId, { radiusX: newRadius });
+                  } else {
+                    const newRadius = Math.max(0.1, Math.abs(rel.dot(v)));
+                    useStudioStore.getState().updatePathEllipse(scanId, { radiusY: newRadius });
+                  }
+                  regenerate(scanId, 120);
                 }}
               />
             )}

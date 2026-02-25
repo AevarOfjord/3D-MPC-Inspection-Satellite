@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
-import { API_BASE_URL } from '../../config/endpoints';
+import { trajectoryApi } from '../../api/trajectory';
 import { useStudioStore } from './useStudioStore';
+import { studioModelPathToUrl } from './studioReference';
 
 // Known built-in models — paths are relative to the repo root as served by the backend
 const BUILTIN_MODELS = [
@@ -49,24 +50,42 @@ function ModelCard({
 
 export function StudioWelcome() {
   const setModelUrl = useStudioStore((s) => s.setModelUrl);
+  const setReferenceObjectPath = useStudioStore((s) => s.setReferenceObjectPath);
   const setWelcomeDismissed = useStudioStore((s) => s.setWelcomeDismissed);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePickBuiltin = (path: string) => {
-    const url = `${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`;
-    setModelUrl(url);
+    setReferenceObjectPath(path);
+    setModelUrl(studioModelPathToUrl(path));
     setWelcomeDismissed(true);
   };
 
   const handleEmpty = () => {
+    setReferenceObjectPath(null);
+    setModelUrl(null);
     setWelcomeDismissed(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setModelUrl(URL.createObjectURL(file));
-    setWelcomeDismissed(true);
+    setUploading(true);
+    setError(null);
+    try {
+      const uploaded = await trajectoryApi.uploadObject(file);
+      setReferenceObjectPath(uploaded.path);
+      setModelUrl(studioModelPathToUrl(uploaded.path));
+      setWelcomeDismissed(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+      if (fileRef.current) {
+        fileRef.current.value = '';
+      }
+    }
   };
 
   return (
@@ -79,7 +98,9 @@ export function StudioWelcome() {
         <div className="text-center">
           <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-600 font-bold mb-2">Mission Studio</div>
           <h2 className="text-xl font-semibold text-slate-100">Choose a target object</h2>
-          <p className="text-sm text-slate-500 mt-1">Select a model to scan around, or start with an empty scene</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Selected object is fixed at [0,0,0]. All authored values are LVLH-local to that origin.
+          </p>
         </div>
 
         {/* Cards */}
@@ -108,12 +129,14 @@ export function StudioWelcome() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
+            disabled={uploading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:border-slate-500 hover:text-slate-200 transition-all"
           >
             <Upload size={12} />
-            Load your own OBJ file
+            {uploading ? 'Uploading...' : 'Load your own OBJ file'}
           </button>
           <input ref={fileRef} type="file" accept=".obj" className="hidden" onChange={handleFileChange} />
+          {error && <div className="text-[11px] text-red-400 max-w-sm text-center">{error}</div>}
         </div>
       </div>
     </div>

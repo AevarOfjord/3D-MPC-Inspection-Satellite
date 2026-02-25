@@ -16,6 +16,66 @@ from runtime.policy import (
 )
 
 
+def _resolve_waypoint_hold(
+    sim: Any,
+    *,
+    path_s: float,
+) -> tuple[bool, float]:
+    """Evaluate per-waypoint hold schedule and optionally activate a hold."""
+    mission_state = getattr(getattr(sim, "simulation_config", None), "mission_state", None)
+    if mission_state is None:
+        return False, float(path_s)
+
+    schedule = list(getattr(mission_state, "path_hold_schedule", []) or [])
+    waypoints = list(getattr(mission_state, "path_waypoints", []) or [])
+    if not schedule or len(waypoints) < 2:
+        mission_state.path_hold_active_index = None
+        mission_state.path_hold_started_at_s = None
+        return False, float(path_s)
+
+    arc = getattr(sim, "_studio_path_arc_lengths", None)
+    if arc is None or len(arc) != len(waypoints):
+        arc = [0.0]
+        total = 0.0
+        for i in range(1, len(waypoints)):
+            p0 = np.array(waypoints[i - 1], dtype=float)
+            p1 = np.array(waypoints[i], dtype=float)
+            total += float(np.linalg.norm(p1 - p0))
+            arc.append(total)
+        sim._studio_path_arc_lengths = arc
+
+    active_idx = getattr(mission_state, "path_hold_active_index", None)
+    if active_idx is not None:
+        hold_s = float(arc[min(max(0, int(active_idx)), len(arc) - 1)])
+        hold_started = getattr(mission_state, "path_hold_started_at_s", None)
+        hold_cfg = next((item for item in schedule if int(item.get("path_index", -1)) == int(active_idx)), None)
+        duration = float(hold_cfg.get("duration_s", 0.0)) if hold_cfg else 0.0
+        elapsed = 0.0 if hold_started is None else max(0.0, float(sim.simulation_time) - float(hold_started))
+        if elapsed >= duration:
+            mission_state.path_hold_completed.add(int(active_idx))
+            mission_state.path_hold_active_index = None
+            mission_state.path_hold_started_at_s = None
+            return False, float(path_s)
+        return True, hold_s
+
+    completed = set(getattr(mission_state, "path_hold_completed", set()) or set())
+    trigger_tol_m = 0.05
+    for item in schedule:
+        idx = int(item.get("path_index", 0))
+        if idx in completed:
+            continue
+        if idx < 0 or idx >= len(arc):
+            continue
+        hold_s = float(arc[idx])
+        if float(path_s) + trigger_tol_m >= hold_s:
+            mission_state.path_hold_active_index = idx
+            mission_state.path_hold_started_at_s = float(sim.simulation_time)
+            return True, hold_s
+        break
+
+    return False, float(path_s)
+
+
 def _set_runtime_pointing_context(
     sim: Any,
     *,
@@ -205,7 +265,21 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
         solver_degraded=solver_degraded_for_mode,
         solver_fallback_reason=solver_fallback_reason,
     )
+    hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s)
+    if hold_active:
+        try:
+            sim.mpc_controller.s = float(min(max(0.0, hold_s), path_len if path_len > 0.0 else hold_s))
+        except Exception:
+            pass
+        sim.mode_state.current_mode = "HOLD"
     sim.mode_profile = mode_manager.profile_for_mode(sim.mode_state.current_mode)
+    mission_state = getattr(getattr(sim, "simulation_config", None), "mission_state", None)
+    sim.studio_hold_status = {
+        "active": bool(hold_active),
+        "hold_s": float(hold_s),
+        "hold_index": getattr(mission_state, "path_hold_active_index", None),
+        "hold_started_at_s": getattr(mission_state, "path_hold_started_at_s", None),
+    }
 
     mode_timeline = getattr(sim, "mode_timeline", None)
     if mode_timeline is not None:
@@ -332,6 +406,10 @@ def update_mpc_control_step(sim: Any) -> None:
             "pointing_guardrail_reason"
         )
         mpc_info["object_visible_side"] = pointing_status.get("object_visible_side")
+    hold_status = getattr(sim, "studio_hold_status", None)
+    if isinstance(hold_status, dict):
+        mpc_info["studio_hold_active"] = bool(hold_status.get("active", False))
+        mpc_info["studio_hold_index"] = hold_status.get("hold_index")
 
     solver_health = getattr(sim, "solver_health", None)
     if solver_health is not None:

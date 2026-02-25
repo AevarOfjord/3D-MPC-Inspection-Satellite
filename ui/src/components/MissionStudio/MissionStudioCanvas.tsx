@@ -5,7 +5,6 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import * as THREE from 'three';
 import { useStudioStore } from './useStudioStore';
 import { ScanPassObject } from './ScanPassObject';
-import { WaypointNudger } from './WaypointNudger';
 import { EndpointNodes } from './EndpointNodes';
 import { SatelliteStartNode } from './SatelliteStartNode';
 import { ObstacleObjects } from './ObstacleObjects';
@@ -19,9 +18,10 @@ function ObjModel({ url }: { url: string }) {
   useEffect(() => {
     if (!groupRef.current) return;
     const box = new THREE.Box3().setFromObject(groupRef.current);
-    const min = box.min.toArray() as [number, number, number];
-    const max = box.max.toArray() as [number, number, number];
-    setModelBoundingBox({ min, max });
+    setModelBoundingBox({
+      min: box.min.toArray() as [number, number, number],
+      max: box.max.toArray() as [number, number, number],
+    });
   }, [obj, setModelBoundingBox]);
 
   return (
@@ -31,17 +31,20 @@ function ObjModel({ url }: { url: string }) {
   );
 }
 
-class ModelErrorBoundary extends Component<
-  { children: ReactNode; onError: () => void },
-  { hasError: boolean }
-> {
+class ModelErrorBoundary extends Component<{ children: ReactNode; onError: () => void }, { hasError: boolean }> {
   constructor(props: { children: ReactNode; onError: () => void }) {
     super(props);
     this.state = { hasError: false };
   }
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch() { this.props.onError(); }
-  render() { return this.state.hasError ? null : this.props.children; }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
 }
 
 function StudioGrid() {
@@ -63,13 +66,12 @@ function StudioGrid() {
 
 function SceneContents({ onModelError }: { onModelError: () => void }) {
   const modelUrl = useStudioStore((s) => s.modelUrl);
-  const scanPasses = useStudioStore((s) => s.scanPasses);
-  const selectedScanId = useStudioStore((s) => s.selectedScanId);
+  const paths = useStudioStore((s) => s.paths);
+  const selectedPathId = useStudioStore((s) => s.selectedPathId);
 
   const handleBackgroundClick = () => {
-    // Deselect handle when clicking empty space
-    if (selectedScanId) {
-      useStudioStore.getState().setSelectedHandle(selectedScanId, null);
+    if (selectedPathId) {
+      useStudioStore.getState().setSelectedHandle(selectedPathId, null);
     }
   };
 
@@ -80,7 +82,6 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
 
       <StudioGrid />
 
-      {/* Invisible background mesh to capture background clicks */}
       <mesh visible={false} onClick={handleBackgroundClick}>
         <sphereGeometry args={[500, 8, 8]} />
         <meshBasicMaterial side={THREE.BackSide} />
@@ -94,11 +95,10 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
         </ModelErrorBoundary>
       )}
 
-      {scanPasses.map((p) => <ScanPassObject key={p.id} scanId={p.id} />)}
-      {selectedScanId && <EllipseHandles scanId={selectedScanId} />}
-      {selectedScanId && !scanPasses.find((p) => p.id === selectedScanId)?.selectedHandleId && (
-        <WaypointNudger scanId={selectedScanId} />
-      )}
+      {paths.map((p) => (
+        <ScanPassObject key={p.id} scanId={p.id} />
+      ))}
+      {selectedPathId && <EllipseHandles scanId={selectedPathId} />}
       <EndpointNodes />
       <SatelliteStartNode />
       <ObstacleObjects />
@@ -113,11 +113,13 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
 
 export function MissionStudioCanvas() {
   const setModelUrl = useStudioStore((s) => s.setModelUrl);
+  const setReferenceObjectPath = useStudioStore((s) => s.setReferenceObjectPath);
   const setWelcomeDismissed = useStudioStore((s) => s.setWelcomeDismissed);
 
   const handleModelError = () => {
+    setReferenceObjectPath(null);
     setModelUrl(null);
-    setWelcomeDismissed(false); // re-show welcome so user can pick again
+    setWelcomeDismissed(false);
   };
 
   return (
