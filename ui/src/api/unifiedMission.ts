@@ -32,6 +32,16 @@ export interface TransferSegment {
 
 export type SpiralPattern = 'spiral' | 'circles';
 
+export interface ScanKeyLevel {
+  id?: string;
+  t: number;
+  radius_x: number;
+  radius_y: number;
+  rotation_deg: number;
+  offset_x: number;
+  offset_y: number;
+}
+
 export interface ScanConfig {
   frame: Frame;
   axis: SpiralAxis;
@@ -43,6 +53,8 @@ export interface ScanConfig {
   direction: SpiralDirection;
   sensor_axis: SensorAxis;
   pattern: SpiralPattern;
+  level_spacing_m?: number | null;
+  key_levels?: ScanKeyLevel[] | null;
 }
 
 export interface ScanSegment {

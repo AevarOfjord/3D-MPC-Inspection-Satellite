@@ -2,8 +2,12 @@ import { Suspense } from 'react';
 import { MissionStudioLeftPanel } from './MissionStudioLeftPanel';
 import { MissionStudioRightPanel } from './MissionStudioRightPanel';
 import { MissionStudioCanvas } from './MissionStudioCanvas';
+import { StudioWelcome } from './StudioWelcome';
+import { useStudioStore } from './useStudioStore';
 
 export function MissionStudioLayout() {
+  const welcomeDismissed = useStudioStore((s) => s.welcomeDismissed);
+
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden" style={{ background: '#070b14' }}>
       {/* Left panel */}
@@ -17,6 +21,7 @@ export function MissionStudioLayout() {
         <Suspense fallback={<div style={{ background: '#070b14', width: '100%', height: '100%' }} />}>
           <MissionStudioCanvas />
         </Suspense>
+        {!welcomeDismissed && <StudioWelcome />}
       </div>
 
       {/* Right panel */}

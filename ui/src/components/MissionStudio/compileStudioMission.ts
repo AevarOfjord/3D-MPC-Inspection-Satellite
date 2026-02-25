@@ -45,6 +45,8 @@ export function compileStudioMission(state: StudioState): UnifiedMission {
           direction: 'CW',
           sensor_axis: '+Y',
           pattern: 'spiral',
+          level_spacing_m: pass.levelHeight,
+          key_levels: pass.keyLevels.length > 0 ? pass.keyLevels : null,
         },
       };
       compiledSegments.push(scanSeg);
