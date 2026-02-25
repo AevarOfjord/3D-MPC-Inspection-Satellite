@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { useStudioStore } from './useStudioStore';
 import { ScanPassObject } from './ScanPassObject';
 import { WaypointNudger } from './WaypointNudger';
+import { EndpointNodes } from './EndpointNodes';
+import { SatelliteStartNode } from './SatelliteStartNode';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -64,6 +66,8 @@ function SceneContents() {
 
       {scanPasses.map((p) => <ScanPassObject key={p.id} scanId={p.id} />)}
       {selectedScanId && <WaypointNudger scanId={selectedScanId} />}
+      <EndpointNodes />
+      <SatelliteStartNode />
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
