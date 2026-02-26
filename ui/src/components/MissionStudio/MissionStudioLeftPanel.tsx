@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Crosshair, Route, Link2, Pause, CircleDot, Trash2 } from 'lucide-react';
+import { Crosshair, Route, PenSquare, Link2, Pause, CircleDot, Trash2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 import { trajectoryApi } from '../../api/trajectory';
@@ -91,6 +91,9 @@ export function MissionStudioLeftPanel() {
     setReferenceObjectPath,
     pathEditMode,
     setPathEditMode,
+    editMode,
+    setEditMode,
+    setPathWaypointsManual,
   } = useStudioStore();
 
   const activeTool = useStudioStore((s) => s.activeTool);
@@ -101,6 +104,58 @@ export function MissionStudioLeftPanel() {
   const [axisSeed, setAxisSeed] = useState<'X' | 'Y' | 'Z'>('Z');
 
   const selectedPath = paths.find((p) => p.id === selectedPathId) ?? null;
+
+  const resamplePolyline = (points: [number, number, number][], density: number): [number, number, number][] => {
+    if (points.length < 2) return points;
+    const clamped = Math.max(0.25, Math.min(25, density || 1));
+    const outCount = Math.max(2, Math.round(points.length * clamped));
+    const segLens: number[] = [];
+    let total = 0;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      segLens.push(len);
+      total += len;
+    }
+    if (total <= 1e-9) return points;
+    const sampled: [number, number, number][] = [];
+    for (let i = 0; i < outCount; i += 1) {
+      const t = i / Math.max(1, outCount - 1);
+      let dist = t * total;
+      let seg = 0;
+      while (seg < segLens.length - 1 && dist > segLens[seg]) {
+        dist -= segLens[seg];
+        seg += 1;
+      }
+      const a = points[seg];
+      const b = points[Math.min(seg + 1, points.length - 1)];
+      const segLen = Math.max(1e-9, segLens[Math.min(seg, segLens.length - 1)] || 1e-9);
+      const u = Math.max(0, Math.min(1, dist / segLen));
+      sampled.push([
+        a[0] + (b[0] - a[0]) * u,
+        a[1] + (b[1] - a[1]) * u,
+        a[2] + (b[2] - a[2]) * u,
+      ]);
+    }
+    return sampled;
+  };
+
+  const resampleSnippet = (
+    points: [number, number, number][],
+    start: number,
+    end: number,
+    density: number
+  ): { points: [number, number, number][]; newRange: [number, number] } => {
+    if (points.length < 2) return { points, newRange: [0, Math.max(0, points.length - 1)] };
+    const lo = Math.max(0, Math.min(start, end));
+    const hi = Math.min(points.length - 1, Math.max(start, end));
+    if (hi - lo < 1) return { points, newRange: [lo, hi] };
+    const snippet = points.slice(lo, hi + 1);
+    const sampled = resamplePolyline(snippet, density);
+    const merged = [...points.slice(0, lo), ...sampled, ...points.slice(hi + 1)];
+    return { points: merged, newRange: [lo, lo + sampled.length - 1] };
+  };
 
   useEffect(() => {
     if (activeTool !== 'obstacle') return;
@@ -131,6 +186,7 @@ export function MissionStudioLeftPanel() {
       <div className="p-3 flex flex-col gap-2">
         <ToolButton icon={<Crosshair size={13} />} label="Place Satellite" tool="place_satellite" />
         <ToolButton icon={<Route size={13} />} label="Create Path" tool="create_path" />
+        <ToolButton icon={<PenSquare size={13} />} label="Edit" tool="edit" />
         <ToolButton icon={<Link2 size={13} />} label="Connect" tool="connect" />
         <ToolButton icon={<Pause size={13} />} label="Hold" tool="hold" />
         <ToolButton icon={<CircleDot size={13} />} label="Obstacle" tool="obstacle" />
@@ -212,7 +268,7 @@ export function MissionStudioLeftPanel() {
                   </button>
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Click yellow centerline to show/hide both-plane control. Click a plane to show/hide that plane control.
+                  Move/Rotate: click centerline or plane to toggle controls.
                 </div>
                 <NumberField
                   label="Level Spacing"
@@ -318,6 +374,132 @@ export function MissionStudioLeftPanel() {
                 </button>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {activeTool === 'edit' && (
+        <>
+          <SectionHeader label="Edit" />
+          <div className="p-3 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => setEditMode('stretch')}
+                className={`py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                  editMode === 'stretch'
+                    ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                    : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                }`}
+              >
+                Edit Path
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditMode('add')}
+                className={`py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                  editMode === 'add'
+                    ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                    : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                }`}
+              >
+                Add Waypoint
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditMode('delete')}
+                className={`py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                  editMode === 'delete'
+                    ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                    : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                }`}
+              >
+                Delete Waypoint
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditMode('density')}
+                className={`py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                  editMode === 'density'
+                    ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                    : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                }`}
+              >
+                Change Density
+              </button>
+            </div>
+            <div className="text-[10px] text-slate-500">
+              {editMode === 'stretch' && 'Click a waypoint and drag to locally stretch nearby waypoints.'}
+              {editMode === 'add' && 'Click a location on the path to insert a waypoint there.'}
+              {editMode === 'delete' && 'Click a waypoint to delete it (minimum 2 waypoints kept).'}
+              {editMode === 'density' && 'Choose Total Path or Path Snippet, then adjust the density multiplier.'}
+            </div>
+            {selectedPath && editMode === 'density' ? (
+              <div className="border border-slate-800 rounded p-2">
+                <div className="grid grid-cols-2 gap-1 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => updatePath(selectedPath.id, { densityScope: 'total', densitySnippetRange: null })}
+                    className={`py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                      (selectedPath.densityScope ?? 'total') === 'total'
+                        ? 'border-amber-500 bg-amber-900/30 text-amber-100'
+                        : 'border-slate-700 text-slate-400 hover:border-amber-700'
+                    }`}
+                  >
+                    Total Path
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePath(selectedPath.id, { densityScope: 'snippet' })}
+                    className={`py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                      (selectedPath.densityScope ?? 'total') === 'snippet'
+                        ? 'border-amber-500 bg-amber-900/30 text-amber-100'
+                        : 'border-slate-700 text-slate-400 hover:border-amber-700'
+                    }`}
+                  >
+                    Path Snippet
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                  <span>Waypoint Density</span>
+                  <span className="tabular-nums">{(selectedPath.waypointDensity ?? 1).toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={25}
+                  step={0.05}
+                  value={selectedPath.waypointDensity ?? 1}
+                  onChange={(e) => {
+                    const v = Math.max(0.25, Math.min(25, Number(e.target.value) || 1));
+                    if ((selectedPath.densityScope ?? 'total') === 'snippet') {
+                      const range = selectedPath.densitySnippetRange;
+                      if (!range || range[1] - range[0] < 1) return;
+                      const snippet = resampleSnippet(selectedPath.waypoints, range[0], range[1], v);
+                      updatePath(selectedPath.id, { waypointDensity: v, densitySnippetRange: snippet.newRange });
+                      setPathWaypointsManual(selectedPath.id, snippet.points);
+                      return;
+                    }
+                    updatePath(selectedPath.id, { waypointDensity: v, densitySnippetRange: null });
+                    setPathWaypointsManual(selectedPath.id, resamplePolyline(selectedPath.waypoints, v));
+                  }}
+                  className="w-full accent-cyan-500"
+                />
+                <div className="flex justify-between text-[9px] text-slate-600 mt-1">
+                  <span>0.25x</span>
+                  <span>25x</span>
+                </div>
+                {(selectedPath.densityScope ?? 'total') === 'snippet' && (
+                  <div className="text-[10px] text-amber-300 mt-2">
+                    {selectedPath.densitySnippetRange && selectedPath.densitySnippetRange[1] - selectedPath.densitySnippetRange[0] >= 1
+                      ? `Snippet selected: wp ${selectedPath.densitySnippetRange[0]} → ${selectedPath.densitySnippetRange[1]}`
+                      : 'Click two waypoints on the path to define the snippet.'}
+                  </div>
+                )}
+              </div>
+            ) : editMode === 'density' ? (
+              <div className="text-[10px] text-slate-600">Select a path waypoint to edit density.</div>
+            ) : null}
           </div>
         </>
       )}

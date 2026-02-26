@@ -1,6 +1,7 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
+import { TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 
 type NodePositionState = Pick<ReturnType<typeof useStudioStore.getState>, 'satelliteStart' | 'paths'>;
@@ -16,6 +17,42 @@ function resolveNodePosition(nodeId: string, state: NodePositionState): [number,
   return endpoint === 'start' ? path.waypoints[0] : path.waypoints[path.waypoints.length - 1];
 }
 
+function parsePathNode(nodeId: string): { pathId: string; endpoint: 'start' | 'end' } | null {
+  const parts = nodeId.split(':');
+  if (parts.length !== 3 || parts[0] !== 'path') return null;
+  if (parts[2] !== 'start' && parts[2] !== 'end') return null;
+  return { pathId: parts[1], endpoint: parts[2] };
+}
+
+function wireDensityScale(wire: { fromNodeId: string; toNodeId: string }, state: NodePositionState): number {
+  const from = parsePathNode(wire.fromNodeId);
+  const to = parsePathNode(wire.toNodeId);
+  const fromDensity = from ? state.paths.find((p) => p.id === from.pathId)?.waypointDensity ?? 1 : 1;
+  const toDensity = to ? state.paths.find((p) => p.id === to.pathId)?.waypointDensity ?? 1 : 1;
+  const avg = 0.5 * (fromDensity + toDensity);
+  return Math.max(0.25, Math.min(25, avg));
+}
+
+function sampleConnectorPoints(
+  src: [number, number, number],
+  dst: [number, number, number],
+  densityScale: number
+): [number, number, number][] {
+  const dx = dst[0] - src[0];
+  const dy = dst[1] - src[1];
+  const dz = dst[2] - src[2];
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist <= 1e-9) return [src];
+  const spacing = 1 / Math.max(0.25, Math.min(25, densityScale || 1)); // 1x => 1m
+  const steps = Math.max(1, Math.ceil(dist / spacing));
+  const out: [number, number, number][] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    out.push([src[0] + dx * t, src[1] + dy * t, src[2] + dz * t]);
+  }
+  return out;
+}
+
 export function EndpointNodes() {
   const paths = useStudioStore((s) => s.paths);
   const satelliteStart = useStudioStore((s) => s.satelliteStart);
@@ -24,10 +61,12 @@ export function EndpointNodes() {
   const activeTool = useStudioStore((s) => s.activeTool);
   const setWireDrag = useStudioStore((s) => s.setWireDrag);
   const addWire = useStudioStore((s) => s.addWire);
+  const setWireWaypoints = useStudioStore((s) => s.setWireWaypoints);
   const { camera, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const dragLineRef = useRef<THREE.Line>(null);
   const nodeState = { paths, satelliteStart };
+  const [selectedWirePoint, setSelectedWirePoint] = useState<{ wireId: string; index: number } | null>(null);
 
   useFrame(() => {
     if (wireDrag.phase !== 'dragging' || !dragLineRef.current) return;
@@ -86,6 +125,7 @@ export function EndpointNodes() {
     if (useStudioStore.getState().wireDrag.phase === 'dragging') {
       setWireDrag({ phase: 'idle' });
     }
+    setSelectedWirePoint(null);
   }, [activeTool, gl, handlePointerMove, setWireDrag]);
 
   return (
@@ -94,11 +134,64 @@ export function EndpointNodes() {
         const src = resolveNodePosition(wire.fromNodeId, nodeState);
         const dst = resolveNodePosition(wire.toNodeId, nodeState);
         if (!src || !dst) return null;
-        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...src), new THREE.Vector3(...dst)]);
+        const density = wireDensityScale(wire, nodeState);
+        const sampled = wire.waypoints && wire.waypoints.length >= 2
+          ? [...wire.waypoints]
+          : sampleConnectorPoints(src, dst, density);
+        sampled[0] = src;
+        sampled[sampled.length - 1] = dst;
+        const pointsVec = sampled.map((p) => new THREE.Vector3(...p));
+        const geom = new THREE.BufferGeometry().setFromPoints(pointsVec);
+        const pointGeom = new THREE.BufferGeometry().setFromPoints(pointsVec);
         return (
-          <line key={wire.id} geometry={geom}>
-            <lineBasicMaterial color="#f59e0b" opacity={0.95} transparent />
-          </line>
+          <group key={wire.id}>
+            <line geometry={geom}>
+              <lineBasicMaterial color="#f59e0b" opacity={0.98} transparent />
+            </line>
+            <points geometry={pointGeom}>
+              <pointsMaterial color="#fdba74" size={0.06} sizeAttenuation opacity={0.95} transparent />
+            </points>
+            {activeTool === 'edit' && sampled.map((p, i) => {
+              const isEndpoint = i === 0 || i === sampled.length - 1;
+              const selected = selectedWirePoint?.wireId === wire.id && selectedWirePoint?.index === i;
+              return (
+                <mesh
+                  key={`${wire.id}-wp-${i}`}
+                  position={p}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isEndpoint) return;
+                    setSelectedWirePoint((prev) =>
+                      prev && prev.wireId === wire.id && prev.index === i ? null : { wireId: wire.id, index: i }
+                    );
+                  }}
+                >
+                  <sphereGeometry args={[selected ? 0.11 : 0.08, 10, 10]} />
+                  <meshBasicMaterial color={selected ? '#fde047' : '#fbbf24'} opacity={0.95} transparent />
+                </mesh>
+              );
+            })}
+            {activeTool === 'edit' &&
+              selectedWirePoint?.wireId === wire.id &&
+              selectedWirePoint.index > 0 &&
+              selectedWirePoint.index < sampled.length - 1 && (
+                <TransformControls
+                  mode="translate"
+                  space="world"
+                  position={sampled[selectedWirePoint.index]}
+                  onObjectChange={(e: any) => {
+                    if (!e?.target?.dragging) return;
+                    const obj = e?.target?.object as THREE.Object3D | undefined;
+                    if (!obj) return;
+                    const next = [...sampled] as [number, number, number][];
+                    next[selectedWirePoint.index] = [obj.position.x, obj.position.y, obj.position.z];
+                    next[0] = src;
+                    next[next.length - 1] = dst;
+                    setWireWaypoints(wire.id, next);
+                  }}
+                />
+              )}
+          </group>
         );
       })}
 

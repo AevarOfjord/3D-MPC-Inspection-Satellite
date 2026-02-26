@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Save, CheckCircle } from 'lucide-react';
+import { Trash2, Save, CheckCircle, Crosshair, Route, Link2, Pause, CircleDot } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
 
@@ -20,34 +20,34 @@ function SegmentRow({ index }: { index: number }) {
   const item = assembly[index];
   if (!item) return null;
 
-  let icon: string = '●';
+  let icon: React.ReactNode = <CircleDot size={13} />;
   let label: string = item.type;
   let onRemove: (() => void) | null = null;
 
   if (item.type === 'place_satellite') {
-    icon = '🛰';
+    icon = <Crosshair size={13} />;
     label = 'Place Satellite';
   }
   if (item.type === 'create_path') {
-    icon = '🌀';
+    icon = <Route size={13} />;
     const path = paths.find((p) => p.id === item.pathId);
     label = `Create Path ${path?.axisSeed ?? ''}`.trim();
     if (path) onRemove = () => removePath(path.id);
   }
   if (item.type === 'connect') {
-    icon = '↔';
+    icon = <Link2 size={13} />;
     const wire = wires.find((w) => w.id === item.wireId);
     label = wire ? `Connect ${wire.fromNodeId} -> ${wire.toNodeId}` : 'Connect';
     if (wire) onRemove = () => removeWire(wire.id);
   }
   if (item.type === 'hold') {
-    icon = '⏸';
+    icon = <Pause size={13} />;
     const hold = holds.find((h) => h.id === item.holdId);
     label = hold ? `Hold ${hold.duration.toFixed(1)}s @ ${hold.pathId}[${hold.waypointIndex}]` : 'Hold';
     if (hold) onRemove = () => removeHold(hold.id);
   }
   if (item.type === 'obstacle') {
-    icon = '⚪';
+    icon = <CircleDot size={13} />;
     const obs = obstacles.find((o) => o.id === item.obstacleId);
     label = obs ? `Obstacle r=${obs.radius.toFixed(2)}` : 'Obstacle';
     if (obs) onRemove = () => removeObstacle(obs.id);
@@ -100,7 +100,7 @@ function SegmentRow({ index }: { index: number }) {
       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 hover:border-cyan-700 bg-slate-900/40 group text-left"
     >
       <span className="text-[10px] text-slate-500 w-5 shrink-0 tabular-nums">{index + 1}</span>
-      <span className="text-sm">{icon}</span>
+      <span className="text-slate-300">{icon}</span>
       <span className="flex-1 text-xs text-slate-200 font-medium truncate">{label}</span>
       {onRemove && (
         <button

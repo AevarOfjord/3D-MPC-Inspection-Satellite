@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export type StudioTool =
   | 'place_satellite'
   | 'create_path'
+  | 'edit'
   | 'connect'
   | 'hold'
   | 'obstacle'
@@ -27,6 +28,10 @@ export interface StudioPath {
   planeB: PlanePose;
   ellipse: EllipseShape;
   levelSpacing: number;
+  waypointDensity: number;
+  densityScope: 'total' | 'snippet';
+  densitySnippetRange: [number, number] | null;
+  isLocallyEdited: boolean;
   waypoints: [number, number, number][];
   color: string;
   selectedHandleId: 'rx_pos' | 'rx_neg' | 'ry_pos' | 'ry_neg' | null;
@@ -36,6 +41,7 @@ export interface TransferWire {
   id: string;
   fromNodeId: string;
   toNodeId: string;
+  waypoints?: [number, number, number][];
 }
 
 export interface HoldMarker {
@@ -77,7 +83,8 @@ export interface StudioState {
   modelBoundingBox: { min: [number, number, number]; max: [number, number, number] } | null;
 
   activeTool: StudioTool;
-  pathEditMode: 'translate' | 'rotate';
+  pathEditMode: 'translate' | 'rotate' | 'edit';
+  editMode: 'stretch' | 'add' | 'delete' | 'density';
 
   satelliteStart: [number, number, number];
   paths: StudioPath[];
@@ -101,7 +108,8 @@ export interface StudioState {
   setReferenceObjectPath: (path: string | null) => void;
   setModelBoundingBox: (bb: StudioState['modelBoundingBox']) => void;
   setActiveTool: (tool: StudioTool) => void;
-  setPathEditMode: (mode: 'translate' | 'rotate') => void;
+  setPathEditMode: (mode: 'translate' | 'rotate' | 'edit') => void;
+  setEditMode: (mode: 'stretch' | 'add' | 'delete' | 'density') => void;
 
   setSatelliteStart: (pos: [number, number, number]) => void;
 
@@ -113,9 +121,11 @@ export interface StudioState {
   selectPath: (id: string | null) => void;
   setSelectedHandle: (pathId: string, handleId: StudioPath['selectedHandleId']) => void;
   setWaypointsFromBackend: (pathId: string, waypoints: [number, number, number][]) => void;
+  setPathWaypointsManual: (pathId: string, waypoints: [number, number, number][]) => void;
 
   addWire: (wire: TransferWire) => void;
   removeWire: (id: string) => void;
+  setWireWaypoints: (id: string, waypoints: [number, number, number][]) => void;
 
   addHold: (hold: HoldMarker) => void;
   updateHold: (id: string, updates: Partial<Pick<HoldMarker, 'duration'>>) => void;
@@ -189,6 +199,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   activeTool: null,
   pathEditMode: 'translate',
+  editMode: 'stretch',
 
   satelliteStart: [0, 0, 20],
   paths: [],
@@ -213,6 +224,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setModelBoundingBox: (bb) => set({ modelBoundingBox: bb }),
   setActiveTool: (tool) => set({ activeTool: tool }),
   setPathEditMode: (mode) => set({ pathEditMode: mode }),
+  setEditMode: (mode) => set({ editMode: mode }),
 
   setSatelliteStart: (pos) => {
     set((s) => ({
@@ -238,6 +250,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           planeB,
           ellipse: { radiusX: 5, radiusY: 5 },
           levelSpacing: 0.5,
+          waypointDensity: 1,
+          densityScope: 'total',
+          densitySnippetRange: null,
+          isLocallyEdited: false,
           waypoints: [],
           color,
           selectedHandleId: null,
@@ -258,6 +274,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         if (p.id !== id) return p;
         return {
           ...p,
+          isLocallyEdited: false,
           [plane]: {
             ...p[plane],
             ...pose,
@@ -272,6 +289,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         p.id === id
           ? {
               ...p,
+              isLocallyEdited: false,
               ellipse: {
                 radiusX: Math.max(0.1, ellipse.radiusX ?? p.ellipse.radiusX),
                 radiusY: Math.max(0.1, ellipse.radiusY ?? p.ellipse.radiusY),
@@ -299,7 +317,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setWaypointsFromBackend: (pathId, waypoints) =>
     set((s) => ({
-      paths: s.paths.map((p) => (p.id === pathId ? { ...p, waypoints } : p)),
+      paths: s.paths.map((p) =>
+        p.id === pathId
+          ? { ...p, waypoints, isLocallyEdited: false, densitySnippetRange: null }
+          : p
+      ),
+    })),
+
+  setPathWaypointsManual: (pathId, waypoints) =>
+    set((s) => ({
+      paths: s.paths.map((p) => (p.id === pathId ? { ...p, waypoints, isLocallyEdited: true } : p)),
     })),
 
   addWire: (wire) => {
@@ -314,6 +341,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set((s) => ({
       wires: s.wires.filter((w) => w.id !== id),
       assembly: s.assembly.filter((a) => a.wireId !== id),
+    })),
+
+  setWireWaypoints: (id, waypoints) =>
+    set((s) => ({
+      wires: s.wires.map((w) => (w.id === id ? { ...w, waypoints } : w)),
     })),
 
   addHold: (hold) => {

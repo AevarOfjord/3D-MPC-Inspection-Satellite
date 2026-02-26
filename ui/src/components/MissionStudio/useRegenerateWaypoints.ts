@@ -13,6 +13,7 @@ async function fetchScanPath(path: StudioPath): Promise<[number, number, number]
       radius_y: path.ellipse.radiusY,
     },
     level_spacing_m: path.levelSpacing,
+    point_density_scale: path.waypointDensity,
   };
   const res = await fetch(`${API_BASE_URL}/api/models/generate_scan_path`, {
     method: 'POST',
@@ -100,7 +101,7 @@ function buildFallbackPath(path: StudioPath): [number, number, number][] {
   const span = Math.max(1e-6, Math.hypot(dx, dy, dz));
   const nAxis = normalize([dx, dy, dz], [0, 0, 1]);
   const turns = Math.max(1, span / Math.max(0.05, path.levelSpacing));
-  const pointsPerTurn = 32;
+  const pointsPerTurn = 32 * Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
   const total = Math.max(8, Math.ceil(turns * pointsPerTurn));
   const base = axisFrame(path.axisSeed);
   const rotA = quatToMatrix(qa);

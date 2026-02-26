@@ -588,6 +588,7 @@ class _GenerateScanPathRequest(BaseModel):
     plane_b: dict = {"position": [0.0, 0.0, 5.0], "orientation": [1.0, 0.0, 0.0, 0.0]}
     ellipse: dict = {"radius_x": 5.0, "radius_y": 5.0}
     level_spacing_m: float = 0.5
+    point_density_scale: float = 1.0
     key_levels: list[_KeyLevelIn] = []
 
 
@@ -669,6 +670,7 @@ async def generate_scan_path(request: _GenerateScanPathRequest):
     radius_x = max(0.1, float(ellipse.get("radius_x", 5.0) or 5.0))
     radius_y = max(0.1, float(ellipse.get("radius_y", 5.0) or 5.0))
     level_spacing = max(0.05, float(request.level_spacing_m or 0.5))
+    density_scale = float(np.clip(float(request.point_density_scale or 1.0), 0.25, 25.0))
 
     axis_vec = pos_b - pos_a
     span = float(np.linalg.norm(axis_vec))
@@ -677,7 +679,7 @@ async def generate_scan_path(request: _GenerateScanPathRequest):
         axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
     n_axis = axis_vec / max(float(np.linalg.norm(axis_vec)), 1e-9)
     turns = max(1.0, span / level_spacing)
-    points_per_turn = 32
+    points_per_turn = max(4, int(round(32 * density_scale)))
     total_points = max(8, int(math.ceil(turns * points_per_turn)))
     base_u, _base_v = _axis_frame(request.axis_seed)
     rot_a = _quat_to_matrix_wxyz(quat_a)

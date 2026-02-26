@@ -36,6 +36,45 @@ function resolveNodePosition(nodeId: string, state: StudioState): [number, numbe
   return parsed.endpoint === 'start' ? path.waypoints[0] : path.waypoints[path.waypoints.length - 1];
 }
 
+function appendSampledConnector(
+  out: [number, number, number][],
+  from: [number, number, number],
+  to: [number, number, number],
+  waypointDensity: number
+) {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const dz = to[2] - from[2];
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist <= 1e-9) return;
+  const density = Math.max(0.25, Math.min(25, waypointDensity || 1));
+  const spacing = 1.0 / density; // 1x => 1m spacing
+  const steps = Math.max(1, Math.ceil(dist / spacing));
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    out.push([from[0] + dx * t, from[1] + dy * t, from[2] + dz * t]);
+  }
+}
+
+function appendConnectorFromWire(
+  out: [number, number, number][],
+  wire: { fromNodeId: string; toNodeId: string; waypoints?: [number, number, number][] } | null,
+  from: [number, number, number],
+  to: [number, number, number],
+  waypointDensity: number
+) {
+  const custom = wire?.waypoints;
+  if (custom && custom.length >= 2) {
+    const fwd = samePoint(custom[0], from, 1e-3) && samePoint(custom[custom.length - 1], to, 1e-3);
+    const rev = samePoint(custom[0], to, 1e-3) && samePoint(custom[custom.length - 1], from, 1e-3);
+    const oriented = fwd ? custom : rev ? [...custom].reverse() : custom;
+    if (out.length === 0 || !samePoint(out[out.length - 1], oriented[0])) out.push(oriented[0]);
+    for (let i = 1; i < oriented.length; i += 1) out.push(oriented[i]);
+    return;
+  }
+  appendSampledConnector(out, from, to, waypointDensity);
+}
+
 function buildRouteGraph(state: StudioState): RouteBuildResult {
   const outgoing = new Map<string, { id: string; to: string }>();
   const incoming = new Map<string, { id: string; from: string }>();
@@ -86,7 +125,8 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
     const entry = oriented[0];
 
     if (!samePoint(currentPos, entry)) {
-      manualPath.push(entry);
+      const wire = state.wires.find((w) => w.id === edge.id) ?? null;
+      appendConnectorFromWire(manualPath, wire, currentPos, entry, path.waypointDensity ?? 1);
       const transferSeg: TransferSegment = {
         segment_id: `transfer-${edge.id}`,
         type: 'transfer',
