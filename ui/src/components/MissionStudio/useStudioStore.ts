@@ -77,6 +77,7 @@ export interface StudioState {
   modelBoundingBox: { min: [number, number, number]; max: [number, number, number] } | null;
 
   activeTool: StudioTool;
+  pathEditMode: 'translate' | 'rotate';
 
   satelliteStart: [number, number, number];
   paths: StudioPath[];
@@ -100,6 +101,7 @@ export interface StudioState {
   setReferenceObjectPath: (path: string | null) => void;
   setModelBoundingBox: (bb: StudioState['modelBoundingBox']) => void;
   setActiveTool: (tool: StudioTool) => void;
+  setPathEditMode: (mode: 'translate' | 'rotate') => void;
 
   setSatelliteStart: (pos: [number, number, number]) => void;
 
@@ -139,22 +141,44 @@ const PATH_COLORS = ['#22d3ee', '#a78bfa', '#fb923c', '#4ade80', '#f472b6', '#fa
 
 function defaultPlanes(axisSeed: StudioAxisSeed): { planeA: PlanePose; planeB: PlanePose } {
   const zero: [number, number, number] = [0, 0, 0];
-  const q: [number, number, number, number] = [1, 0, 0, 0];
+  // Plane geometry normal is +Z. Orient plane A so +Z points along selected axis,
+  // and plane B 180deg opposite so they face each other by default.
+  const qAByAxis: Record<StudioAxisSeed, [number, number, number, number]> = {
+    Z: [1, 0, 0, 0],
+    X: [Math.SQRT1_2, 0, Math.SQRT1_2, 0], // +90deg about Y: +Z -> +X
+    Y: [Math.SQRT1_2, -Math.SQRT1_2, 0, 0], // -90deg about X: +Z -> +Y
+  };
+  const qA = qAByAxis[axisSeed];
+  const qFlipLocalY: [number, number, number, number] = [0, 0, 1, 0]; // 180deg about local Y
+  const mul = (
+    qa: [number, number, number, number],
+    qb: [number, number, number, number]
+  ): [number, number, number, number] => {
+    const [aw, ax, ay, az] = qa;
+    const [bw, bx, by, bz] = qb;
+    return [
+      aw * bw - ax * bx - ay * by - az * bz,
+      aw * bx + ax * bw + ay * bz - az * by,
+      aw * by - ax * bz + ay * bw + az * bx,
+      aw * bz + ax * by - ay * bx + az * bw,
+    ];
+  };
+  const qB = mul(qA, qFlipLocalY);
   if (axisSeed === 'X') {
     return {
-      planeA: { position: [-5, 0, 0], orientation: q },
-      planeB: { position: [5, 0, 0], orientation: q },
+      planeA: { position: [-5, 0, 0], orientation: qA },
+      planeB: { position: [5, 0, 0], orientation: qB },
     };
   }
   if (axisSeed === 'Y') {
     return {
-      planeA: { position: [0, -5, 0], orientation: q },
-      planeB: { position: [0, 5, 0], orientation: q },
+      planeA: { position: [0, -5, 0], orientation: qA },
+      planeB: { position: [0, 5, 0], orientation: qB },
     };
   }
   return {
-    planeA: { position: [zero[0], zero[1], -5], orientation: q },
-    planeB: { position: [zero[0], zero[1], 5], orientation: q },
+    planeA: { position: [zero[0], zero[1], -5], orientation: qA },
+    planeB: { position: [zero[0], zero[1], 5], orientation: qB },
   };
 }
 
@@ -164,6 +188,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   modelBoundingBox: null,
 
   activeTool: null,
+  pathEditMode: 'translate',
 
   satelliteStart: [0, 0, 20],
   paths: [],
@@ -187,6 +212,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setReferenceObjectPath: (path) => set({ referenceObjectPath: path }),
   setModelBoundingBox: (bb) => set({ modelBoundingBox: bb }),
   setActiveTool: (tool) => set({ activeTool: tool }),
+  setPathEditMode: (mode) => set({ pathEditMode: mode }),
 
   setSatelliteStart: (pos) => {
     set((s) => ({

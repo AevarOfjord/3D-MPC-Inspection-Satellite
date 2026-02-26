@@ -13,6 +13,9 @@ function SegmentRow({ index }: { index: number }) {
   const removeHold = useStudioStore((s) => s.removeHold);
   const removeWire = useStudioStore((s) => s.removeWire);
   const removeObstacle = useStudioStore((s) => s.removeObstacle);
+  const setActiveTool = useStudioStore((s) => s.setActiveTool);
+  const selectPath = useStudioStore((s) => s.selectPath);
+  const setSelectedHandle = useStudioStore((s) => s.setSelectedHandle);
 
   const item = assembly[index];
   if (!item) return null;
@@ -50,15 +53,62 @@ function SegmentRow({ index }: { index: number }) {
     if (obs) onRemove = () => removeObstacle(obs.id);
   }
 
+  const handleSelectSegment = () => {
+    if (item.type === 'place_satellite') {
+      setActiveTool('place_satellite');
+      selectPath(null);
+      return;
+    }
+    if (item.type === 'create_path') {
+      setActiveTool('create_path');
+      if (item.pathId) {
+        selectPath(item.pathId);
+        setSelectedHandle(item.pathId, null);
+      }
+      return;
+    }
+    if (item.type === 'connect') {
+      setActiveTool('connect');
+      return;
+    }
+    if (item.type === 'hold') {
+      setActiveTool('hold');
+      const hold = holds.find((h) => h.id === item.holdId);
+      if (hold?.pathId) {
+        selectPath(hold.pathId);
+        setSelectedHandle(hold.pathId, null);
+      }
+      return;
+    }
+    if (item.type === 'obstacle') {
+      setActiveTool('obstacle');
+      return;
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-900/40 group">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleSelectSegment}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleSelectSegment();
+        }
+      }}
+      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 hover:border-cyan-700 bg-slate-900/40 group text-left"
+    >
       <span className="text-[10px] text-slate-500 w-5 shrink-0 tabular-nums">{index + 1}</span>
       <span className="text-sm">{icon}</span>
       <span className="flex-1 text-xs text-slate-200 font-medium truncate">{label}</span>
       {onRemove && (
         <button
           type="button"
-          onClick={onRemove}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
           className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity"
         >
           <Trash2 size={12} />

@@ -650,11 +650,9 @@ def _quat_slerp_wxyz(q0: np.ndarray, q1: np.ndarray, t: float) -> np.ndarray:
 
 
 def _axis_frame(axis_seed: str) -> tuple[np.ndarray, np.ndarray]:
-    axis = str(axis_seed).upper().strip().lstrip("+")
-    if axis == "X":
-        return np.array([0.0, 1.0, 0.0], dtype=float), np.array([0.0, 0.0, 1.0], dtype=float)
-    if axis == "Y":
-        return np.array([1.0, 0.0, 0.0], dtype=float), np.array([0.0, 0.0, 1.0], dtype=float)
+    _ = str(axis_seed).upper().strip().lstrip("+")
+    # Local in-plane basis for a plane mesh whose local +Z is the normal.
+    # Axis seed controls initial plane placement only, not ellipse frame math.
     return np.array([1.0, 0.0, 0.0], dtype=float), np.array([0.0, 1.0, 0.0], dtype=float)
 
 
@@ -668,7 +666,6 @@ async def generate_scan_path(request: _GenerateScanPathRequest):
     pos_a = _normalize3(plane_a.get("position") or [0.0, 0.0, -5.0], (0.0, 0.0, -5.0))
     pos_b = _normalize3(plane_b.get("position") or [0.0, 0.0, 5.0], (0.0, 0.0, 5.0))
     quat_a = _normalize_quat_wxyz(plane_a.get("orientation") or [1.0, 0.0, 0.0, 0.0])
-    quat_b = _normalize_quat_wxyz(plane_b.get("orientation") or [1.0, 0.0, 0.0, 0.0])
     radius_x = max(0.1, float(ellipse.get("radius_x", 5.0) or 5.0))
     radius_y = max(0.1, float(ellipse.get("radius_y", 5.0) or 5.0))
     level_spacing = max(0.05, float(request.level_spacing_m or 0.5))
@@ -677,23 +674,42 @@ async def generate_scan_path(request: _GenerateScanPathRequest):
     span = float(np.linalg.norm(axis_vec))
     if span < 1e-6:
         span = 10.0
+        axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
+    n_axis = axis_vec / max(float(np.linalg.norm(axis_vec)), 1e-9)
     turns = max(1.0, span / level_spacing)
     points_per_turn = 32
     total_points = max(8, int(math.ceil(turns * points_per_turn)))
-    base_u, base_v = _axis_frame(request.axis_seed)
+    base_u, _base_v = _axis_frame(request.axis_seed)
+    rot_a = _quat_to_matrix_wxyz(quat_a)
+    u_seed = rot_a @ base_u
+    # Spiral must remain centered about A->B line. Build a stable frame (u,v)
+    # perpendicular to this centerline.
+    u_proj = u_seed - float(np.dot(u_seed, n_axis)) * n_axis
+    u_norm = float(np.linalg.norm(u_proj))
+    if u_norm <= 1e-9:
+        fallback = (
+            np.array([0.0, 0.0, 1.0], dtype=float)
+            if abs(float(np.dot(n_axis, np.array([0.0, 0.0, 1.0], dtype=float)))) < 0.9
+            else np.array([1.0, 0.0, 0.0], dtype=float)
+        )
+        u_proj = np.cross(fallback, n_axis)
+        u_norm = float(np.linalg.norm(u_proj))
+    u_axis = u_proj / max(u_norm, 1e-9)
+    v_axis = np.cross(n_axis, u_axis)
+    v_norm = float(np.linalg.norm(v_axis))
+    if v_norm <= 1e-9:
+        v_axis = np.array([0.0, 1.0, 0.0], dtype=float)
+    else:
+        v_axis = v_axis / v_norm
 
     waypoints: list[list[float]] = []
     for i in range(total_points + 1):
         t = i / float(max(1, total_points))
         center = pos_a + (pos_b - pos_a) * t
-        q_t = _quat_slerp_wxyz(quat_a, quat_b, t)
-        rot = _quat_to_matrix_wxyz(q_t)
-        u = rot @ base_u
-        v = rot @ base_v
         ang = 2.0 * math.pi * turns * t
         local_u = radius_x * math.cos(ang)
         local_v = radius_y * math.sin(ang)
-        world = center + (u * local_u) + (v * local_v)
+        world = center + (u_axis * local_u) + (v_axis * local_v)
         waypoints.append([float(world[0]), float(world[1]), float(world[2])])
 
     return {"waypoints": waypoints}

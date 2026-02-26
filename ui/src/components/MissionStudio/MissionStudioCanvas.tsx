@@ -68,6 +68,7 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
   const modelUrl = useStudioStore((s) => s.modelUrl);
   const paths = useStudioStore((s) => s.paths);
   const selectedPathId = useStudioStore((s) => s.selectedPathId);
+  const activeTool = useStudioStore((s) => s.activeTool);
 
   const handleBackgroundClick = () => {
     if (selectedPathId) {
@@ -98,7 +99,7 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
       {paths.map((p) => (
         <ScanPassObject key={p.id} scanId={p.id} />
       ))}
-      {selectedPathId && <EllipseHandles scanId={selectedPathId} />}
+      {selectedPathId && activeTool === 'create_path' && <EllipseHandles scanId={selectedPathId} />}
       <EndpointNodes />
       <SatelliteStartNode />
       <ObstacleObjects />

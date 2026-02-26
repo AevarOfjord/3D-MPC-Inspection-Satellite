@@ -1,9 +1,11 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useStudioStore } from './useStudioStore';
 
-function resolveNodePosition(nodeId: string, state: ReturnType<typeof useStudioStore.getState>): [number, number, number] | null {
+type NodePositionState = Pick<ReturnType<typeof useStudioStore.getState>, 'satelliteStart' | 'paths'>;
+
+function resolveNodePosition(nodeId: string, state: NodePositionState): [number, number, number] | null {
   if (nodeId === 'satellite:start') return state.satelliteStart;
   const parts = nodeId.split(':');
   if (parts.length < 3 || parts[0] !== 'path') return null;
@@ -17,6 +19,7 @@ function resolveNodePosition(nodeId: string, state: ReturnType<typeof useStudioS
 export function EndpointNodes() {
   const paths = useStudioStore((s) => s.paths);
   const satelliteStart = useStudioStore((s) => s.satelliteStart);
+  const wires = useStudioStore((s) => s.wires);
   const wireDrag = useStudioStore((s) => s.wireDrag);
   const activeTool = useStudioStore((s) => s.activeTool);
   const setWireDrag = useStudioStore((s) => s.setWireDrag);
@@ -24,6 +27,7 @@ export function EndpointNodes() {
   const { camera, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const dragLineRef = useRef<THREE.Line>(null);
+  const nodeState = { paths, satelliteStart };
 
   useFrame(() => {
     if (wireDrag.phase !== 'dragging' || !dragLineRef.current) return;
@@ -53,26 +57,53 @@ export function EndpointNodes() {
     if (activeTool !== 'connect') return;
     setWireDrag({ phase: 'dragging', sourceNodeId: nodeId, cursorWorld: [0, 0, 0] });
     gl.domElement.addEventListener('pointermove', handlePointerMove);
-    gl.domElement.addEventListener('pointerup', () => {
-      gl.domElement.removeEventListener('pointermove', handlePointerMove);
-      if (useStudioStore.getState().wireDrag.phase === 'dragging') setWireDrag({ phase: 'idle' });
-    }, { once: true });
   }, [activeTool, gl, setWireDrag, handlePointerMove]);
 
   const completeDrag = useCallback((targetNodeId: string) => {
     const drag = useStudioStore.getState().wireDrag;
     if (drag.phase !== 'dragging' || drag.sourceNodeId === targetNodeId) {
       setWireDrag({ phase: 'idle' });
+      gl.domElement.removeEventListener('pointermove', handlePointerMove);
       return;
     }
     addWire({ id: `wire-${Date.now()}`, fromNodeId: drag.sourceNodeId, toNodeId: targetNodeId });
     setWireDrag({ phase: 'idle' });
-  }, [addWire, setWireDrag]);
+    gl.domElement.removeEventListener('pointermove', handlePointerMove);
+  }, [addWire, setWireDrag, gl, handlePointerMove]);
 
-  if (activeTool !== 'connect') return null;
+  const handleNodeClick = useCallback((nodeId: string) => {
+    const drag = useStudioStore.getState().wireDrag;
+    if (drag.phase !== 'dragging') {
+      startDrag(nodeId);
+      return;
+    }
+    completeDrag(nodeId);
+  }, [startDrag, completeDrag]);
+
+  useEffect(() => {
+    if (activeTool === 'connect') return;
+    gl.domElement.removeEventListener('pointermove', handlePointerMove);
+    if (useStudioStore.getState().wireDrag.phase === 'dragging') {
+      setWireDrag({ phase: 'idle' });
+    }
+  }, [activeTool, gl, handlePointerMove, setWireDrag]);
 
   return (
     <group>
+      {wires.map((wire) => {
+        const src = resolveNodePosition(wire.fromNodeId, nodeState);
+        const dst = resolveNodePosition(wire.toNodeId, nodeState);
+        if (!src || !dst) return null;
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...src), new THREE.Vector3(...dst)]);
+        return (
+          <line key={wire.id} geometry={geom}>
+            <lineBasicMaterial color="#f59e0b" opacity={0.95} transparent />
+          </line>
+        );
+      })}
+
+      {activeTool === 'connect' && (
+        <>
       {wireDrag.phase === 'dragging' && (
         // @ts-expect-error r3f ref typing
         <line ref={dragLineRef}>
@@ -85,8 +116,7 @@ export function EndpointNodes() {
         position={satelliteStart}
         color="#ffffff"
         pulse
-        onPointerDown={() => startDrag('satellite:start')}
-        onPointerUp={() => completeDrag('satellite:start')}
+        onClick={() => handleNodeClick('satellite:start')}
       />
 
       {paths.map((path) => {
@@ -99,19 +129,19 @@ export function EndpointNodes() {
               position={path.waypoints[0]}
               color="#22d3ee"
               pulse
-              onPointerDown={() => startDrag(startId)}
-              onPointerUp={() => completeDrag(startId)}
+              onClick={() => handleNodeClick(startId)}
             />
             <EndpointSphere
               position={path.waypoints[path.waypoints.length - 1]}
               color="#a78bfa"
               pulse
-              onPointerDown={() => startDrag(endId)}
-              onPointerUp={() => completeDrag(endId)}
+              onClick={() => handleNodeClick(endId)}
             />
           </group>
         );
       })}
+        </>
+      )}
     </group>
   );
 }
@@ -120,14 +150,12 @@ function EndpointSphere({
   position,
   color,
   pulse,
-  onPointerDown,
-  onPointerUp,
+  onClick,
 }: {
   position: [number, number, number];
   color: string;
   pulse: boolean;
-  onPointerDown: () => void;
-  onPointerUp: () => void;
+  onClick: () => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
@@ -136,7 +164,14 @@ function EndpointSphere({
     meshRef.current.scale.setScalar(s);
   });
   return (
-    <mesh ref={meshRef} position={position} onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
+    <mesh
+      ref={meshRef}
+      position={position}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
       <sphereGeometry args={[0.45, 16, 16]} />
       <meshBasicMaterial color={color} />
     </mesh>
