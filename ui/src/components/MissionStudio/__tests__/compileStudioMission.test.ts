@@ -13,6 +13,7 @@ function seedSimpleRoute() {
         planeB: { position: [0, 0, 5], orientation: [1, 0, 0, 0] },
         ellipse: { radiusX: 2, radiusY: 1 },
         levelSpacing: 0.5,
+        waypointDensity: 1,
         waypoints: [
           [1, 0, -1],
           [1, 0, 0],
@@ -43,6 +44,15 @@ describe('compileStudioMission', () => {
     expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(3);
     expect(mission.overrides?.hold_schedule?.length).toBe(1);
     expect(mission.overrides?.hold_schedule?.[0].duration_s).toBe(5);
+  });
+
+  it('samples connector points at ~1m for 1x density', async () => {
+    seedSimpleRoute();
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    const manual = mission.overrides?.manual_path ?? [];
+    // Start->entry is sqrt(2)m, so sampled connector contributes >1 point before scan waypoints.
+    expect(manual.length).toBeGreaterThanOrEqual(5);
   });
 
   it('rejects branching graph', async () => {
