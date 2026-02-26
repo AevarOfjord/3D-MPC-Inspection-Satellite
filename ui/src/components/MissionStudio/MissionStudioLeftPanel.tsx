@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Crosshair, Route, Link2, Pause, CircleDot, Trash2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
@@ -89,6 +89,8 @@ export function MissionStudioLeftPanel() {
     referenceObjectPath,
     setModelUrl,
     setReferenceObjectPath,
+    pathEditMode,
+    setPathEditMode,
   } = useStudioStore();
 
   const activeTool = useStudioStore((s) => s.activeTool);
@@ -99,6 +101,12 @@ export function MissionStudioLeftPanel() {
   const [axisSeed, setAxisSeed] = useState<'X' | 'Y' | 'Z'>('Z');
 
   const selectedPath = paths.find((p) => p.id === selectedPathId) ?? null;
+
+  useEffect(() => {
+    if (activeTool !== 'obstacle') return;
+    if (obstacles.length > 0) return;
+    addObstacle();
+  }, [activeTool, obstacles.length, addObstacle]);
 
   const handleLoadModel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -163,7 +171,13 @@ export function MissionStudioLeftPanel() {
               type="button"
               onClick={() => {
                 const id = addPath(axisSeed);
+                const raw = window.prompt('Layer height (m) for this spiral path:', '0.5');
+                const level = raw === null ? 0.5 : Number(raw);
+                if (Number.isFinite(level) && level > 0) {
+                  updatePath(id, { levelSpacing: Math.max(0.05, level) });
+                }
                 selectPath(id);
+                regenerate(id, 0);
               }}
               className="w-full py-2 rounded-lg border border-violet-700 bg-violet-900/30 text-violet-100 text-xs font-semibold"
             >
@@ -173,6 +187,33 @@ export function MissionStudioLeftPanel() {
             {selectedPath && (
               <>
                 <div className="text-[10px] text-slate-500">Selected: {selectedPath.id}</div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPathEditMode('translate')}
+                    className={`flex-1 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                      pathEditMode === 'translate'
+                        ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                        : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                    }`}
+                  >
+                    Move
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPathEditMode('rotate')}
+                    className={`flex-1 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                      pathEditMode === 'rotate'
+                        ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                        : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                    }`}
+                  >
+                    Rotate
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Click yellow centerline to show/hide both-plane control. Click a plane to show/hide that plane control.
+                </div>
                 <NumberField
                   label="Level Spacing"
                   value={selectedPath.levelSpacing}
@@ -289,7 +330,7 @@ export function MissionStudioLeftPanel() {
           disabled={uploading}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300 hover:border-cyan-700 transition-all"
         >
-          {uploading ? 'Uploading model...' : modelUrl ? '⬛ Change Model' : '📂 Load OBJ Model'}
+          {uploading ? 'Uploading model...' : modelUrl ? 'Change Model' : 'Load OBJ Model'}
         </button>
         <input ref={fileRef} type="file" accept=".obj" className="hidden" onChange={handleLoadModel} />
         <div className="text-[10px] text-slate-500 px-1">Reference: {studioReferenceLabel(referenceObjectPath)}</div>
