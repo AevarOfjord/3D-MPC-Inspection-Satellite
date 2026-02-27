@@ -84,6 +84,8 @@ class MissionState:
     pointing_path_spans: list[dict[str, Any]] = field(default_factory=list)
     # In-memory migration notices populated during mission compile/load.
     scan_axis_migration_notices: list[str] = field(default_factory=list)
+    # Optional viewer metadata for playback reference object rendering.
+    visualization_scan_object: dict[str, Any] | None = None
 
     # --- Path Following ---
 

@@ -209,7 +209,7 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
                     y=target_y,
                     z=target_z,
                     mode="lines",
-                    line=dict(color="#facc15", width=3, dash="dash"),
+                    line=dict(color=PlotStyle.COLOR_WARNING, width=3, dash="dash"),
                     name="Target Path",
                 )
             )
@@ -257,10 +257,18 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
 
     fig.update_layout(
         title=f"Interactive 3D Trajectory - {plot_gen.system_title}",
+        template="plotly_white",
+        font=dict(
+            family=PlotStyle.FONT_FAMILY,
+            size=PlotStyle.BASE_FONT_SIZE,
+            color=PlotStyle.COLOR_PRIMARY,
+        ),
+        paper_bgcolor=PlotStyle.COLOR_BG,
+        plot_bgcolor=PlotStyle.COLOR_BG,
         scene=dict(
-            xaxis_title="X (m)",
-            yaxis_title="Y (m)",
-            zaxis_title="Z (m)",
+            xaxis_title="X LVLH (m)",
+            yaxis_title="Y LVLH (m)",
+            zaxis_title="Z LVLH (m)",
             aspectmode="data",
         ),
         legend=dict(itemsizing="constant"),
@@ -276,8 +284,8 @@ def generate_trajectory_3d_interactive_plot(plot_gen: Any, plot_dir: Path) -> No
         x=0.5,
         y=0.98,
         showarrow=False,
-        font=dict(size=14, color="gray"),
-        bgcolor="white",
+        font=dict(size=PlotStyle.ANNOTATION_SIZE, color=PlotStyle.COLOR_MUTED),
+        bgcolor=PlotStyle.COLOR_BG,
         opacity=0.8,
     )
 
@@ -393,7 +401,7 @@ def generate_trajectory_3d_orientation_plot(plot_gen: Any, plot_dir: Path) -> No
             dirs[:, 2],
             length=arrow_len,
             normalize=True,
-            color="gray",
+            color=PlotStyle.COLOR_MUTED,
             alpha=0.6,
         )
     except Exception:

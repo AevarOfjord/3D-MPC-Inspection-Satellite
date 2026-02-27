@@ -13,6 +13,7 @@ import math
 import mimetypes
 import os
 import platform
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -153,6 +154,9 @@ class SimulationIO:
             ]
         except Exception:
             metadata["frame_origin"] = [0.0, 0.0, 0.0]
+        scan_object = getattr(mission_state, "visualization_scan_object", None)
+        if isinstance(scan_object, dict):
+            metadata["scan_object"] = scan_object
 
         planned_path = getattr(mission_state, "path_waypoints", None)
         if not planned_path:
@@ -1227,7 +1231,7 @@ class SimulationIO:
                     }
                 )
 
-        top_level_html = []
+        top_level_html: list[dict[str, Any]] = []
         for path in sorted(run_dir.glob("*.html")):
             top_level_html.append(
                 {
@@ -1239,10 +1243,131 @@ class SimulationIO:
                 }
             )
 
+        manifest_path = plots_dir / "plot_manifest.json"
+        manifest: dict[str, Any] = {}
+        if manifest_path.exists():
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    manifest = payload
+            except Exception:
+                manifest = {}
+
+        files_v2: list[dict[str, Any]] = []
+        groups_v2: list[dict[str, Any]] = []
+        failures_v2: list[dict[str, Any]] = []
+
+        if manifest:
+            raw_groups = manifest.get("groups", [])
+            if isinstance(raw_groups, list):
+                groups_v2 = sorted(
+                    [
+                        {
+                            "id": str(group.get("id", "unknown")),
+                            "order": int(self._to_float(group.get("order"), 0)),
+                            "title": str(group.get("title", "Unknown")),
+                            "path": str(group.get("path", "")),
+                            "file_count": int(
+                                self._to_float(group.get("file_count"), default=0.0)
+                            ),
+                        }
+                        for group in raw_groups
+                        if isinstance(group, dict)
+                    ],
+                    key=lambda item: item["order"],
+                )
+
+            raw_files = manifest.get("files", [])
+            if isinstance(raw_files, list):
+                files_v2 = sorted(
+                    [
+                        {
+                            "plot_id": str(item.get("plot_id", "")),
+                            "title": str(item.get("title", "")),
+                            "path": str(item.get("path", "")),
+                            "order": int(self._to_float(item.get("order"), 0)),
+                            "group_id": str(item.get("group_id", "")),
+                            "format": str(
+                                item.get(
+                                    "format",
+                                    Path(str(item.get("path", ""))).suffix.lstrip("."),
+                                )
+                            ),
+                            "interactive": bool(item.get("interactive", False)),
+                            "status": str(item.get("status", "ok")),
+                        }
+                        for item in raw_files
+                        if isinstance(item, dict)
+                    ],
+                    key=lambda item: item["order"],
+                )
+
+            raw_failures = manifest.get("failures", [])
+            if isinstance(raw_failures, list):
+                failures_v2 = [
+                    {
+                        "plot_id": str(item.get("plot_id", "")),
+                        "reason": str(item.get("reason", "")),
+                    }
+                    for item in raw_failures
+                    if isinstance(item, dict)
+                ]
+        else:
+            group_map: dict[str, dict[str, Any]] = {}
+            for item in plot_files:
+                rel = Path(item["path"])
+                if len(rel.parts) < 3 or rel.parts[0] != "Plots":
+                    continue
+                folder = rel.parts[1]
+                match = re.match(r"^(\d+)_?(.*)$", folder)
+                if match:
+                    group_order = int(match.group(1))
+                    group_title = (
+                        match.group(2).replace("_", " ").strip().title() or folder
+                    )
+                else:
+                    group_order = 999
+                    group_title = folder.replace("_", " ").title()
+                group_id = folder
+                if group_id not in group_map:
+                    group_map[group_id] = {
+                        "id": group_id,
+                        "order": group_order,
+                        "title": group_title,
+                        "path": str(Path("Plots") / folder),
+                        "file_count": 0,
+                    }
+                group_map[group_id]["file_count"] += 1
+
+                file_match = re.match(r"^(\d+)_?(.*)$", item["name"])
+                within_group_order = int(file_match.group(1)) if file_match else 999
+                files_v2.append(
+                    {
+                        "plot_id": Path(item["name"]).stem,
+                        "title": Path(item["name"]).stem.replace("_", " ").title(),
+                        "path": item["path"],
+                        "order": group_order * 1000 + within_group_order,
+                        "group_id": group_id,
+                        "format": item["format"],
+                        "interactive": item["interactive"],
+                        "status": "ok",
+                    }
+                )
+            groups_v2 = sorted(group_map.values(), key=lambda item: item["order"])
+            files_v2 = sorted(files_v2, key=lambda item: item["order"])
+
         return {
-            "schema_version": "plots_index_v1",
+            "schema_version": "plots_index_v2",
+            "suite_version": str(
+                manifest.get(
+                    "suite_version", "postrun_v2_full" if manifest else "legacy"
+                )
+            ),
             "run_id": run_dir.name,
             "generated_at": datetime.utcnow().isoformat() + "Z",
+            "groups": groups_v2,
+            "files": files_v2,
+            "failures": failures_v2,
             "plot_files": plot_files,
             "top_level_html": top_level_html,
             "plot_count": len(plot_files),

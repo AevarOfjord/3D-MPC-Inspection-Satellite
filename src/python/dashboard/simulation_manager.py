@@ -186,6 +186,7 @@ class SimulationManager:
 
         frame = "LVLH"
         frame_origin: list[float] | None = None
+        scan_object: dict[str, Any] | None = None
         mission_state = getattr(
             getattr(self.sim_instance, "simulation_config", None), "mission_state", None
         )
@@ -202,6 +203,9 @@ class SimulationManager:
                     ]
                 except Exception:
                     frame_origin = None
+            scan_object_raw = getattr(mission_state, "visualization_scan_object", None)
+            if isinstance(scan_object_raw, dict):
+                scan_object = dict(scan_object_raw)
         if frame == "LVLH" and frame_origin is None:
             frame_origin = [0.0, 0.0, 0.0]
         elif frame != "LVLH":
@@ -317,6 +321,7 @@ class SimulationManager:
                     ),
                 )
             ),
+            "scan_object": scan_object,
             "frame": frame,
             "frame_origin": frame_origin,
             "mode_state": mode_state,

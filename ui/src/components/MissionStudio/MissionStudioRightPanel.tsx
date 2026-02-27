@@ -5,6 +5,7 @@ import { compileStudioMission } from './compileStudioMission';
 
 function SegmentRow({ index }: { index: number }) {
   const assembly = useStudioStore((s) => s.assembly);
+  const selectedAssemblyId = useStudioStore((s) => s.selectedAssemblyId);
   const paths = useStudioStore((s) => s.paths);
   const holds = useStudioStore((s) => s.holds);
   const wires = useStudioStore((s) => s.wires);
@@ -16,9 +17,11 @@ function SegmentRow({ index }: { index: number }) {
   const setActiveTool = useStudioStore((s) => s.setActiveTool);
   const selectPath = useStudioStore((s) => s.selectPath);
   const setSelectedHandle = useStudioStore((s) => s.setSelectedHandle);
+  const setSelectedAssemblyId = useStudioStore((s) => s.setSelectedAssemblyId);
 
   const item = assembly[index];
   if (!item) return null;
+  const isFocused = selectedAssemblyId === item.id;
 
   let icon: React.ReactNode = <CircleDot size={13} />;
   let label: string = item.type;
@@ -54,6 +57,7 @@ function SegmentRow({ index }: { index: number }) {
   }
 
   const handleSelectSegment = () => {
+    setSelectedAssemblyId(isFocused ? null : item.id);
     if (item.type === 'place_satellite') {
       setActiveTool('place_satellite');
       selectPath(null);
@@ -97,7 +101,11 @@ function SegmentRow({ index }: { index: number }) {
           handleSelectSegment();
         }
       }}
-      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 hover:border-cyan-700 bg-slate-900/40 group text-left"
+      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border group text-left ${
+        isFocused
+          ? 'border-cyan-600 bg-cyan-900/25'
+          : 'border-slate-800 hover:border-cyan-700 bg-slate-900/40'
+      }`}
     >
       <span className="text-[10px] text-slate-500 w-5 shrink-0 tabular-nums">{index + 1}</span>
       <span className="text-slate-300">{icon}</span>

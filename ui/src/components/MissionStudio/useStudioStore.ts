@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { fairCorners } from './splineUtils';
 
 export type StudioTool =
   | 'place_satellite'
@@ -95,6 +96,7 @@ export interface StudioState {
   assembly: StudioAssemblyItem[];
 
   selectedPathId: string | null;
+  selectedAssemblyId: string | null;
   wireDrag: WireDragState;
 
   validationReport: null;
@@ -136,6 +138,7 @@ export interface StudioState {
   removeObstacle: (id: string) => void;
 
   setWireDrag: (state: WireDragState) => void;
+  setSelectedAssemblyId: (id: string | null) => void;
 
   setValidationReport: (report: null) => void;
   setValidationBusy: (busy: boolean) => void;
@@ -210,6 +213,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   assembly: [],
 
   selectedPathId: null,
+  selectedAssemblyId: null,
   wireDrag: { phase: 'idle' },
 
   validationReport: null,
@@ -306,6 +310,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       holds: s.holds.filter((h) => h.pathId !== id),
       assembly: s.assembly.filter((a) => a.pathId !== id),
       selectedPathId: s.selectedPathId === id ? null : s.selectedPathId,
+      selectedAssemblyId:
+        s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.pathId === id)
+          ? null
+          : s.selectedAssemblyId,
     })),
 
   selectPath: (id) => set({ selectedPathId: id }),
@@ -326,7 +334,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
   setPathWaypointsManual: (pathId, waypoints) =>
     set((s) => ({
-      paths: s.paths.map((p) => (p.id === pathId ? { ...p, waypoints, isLocallyEdited: true } : p)),
+      paths: s.paths.map((p) =>
+        p.id === pathId
+          ? {
+              ...p,
+              waypoints: fairCorners(waypoints, 145, 2),
+              isLocallyEdited: true,
+            }
+          : p
+      ),
     })),
 
   addWire: (wire) => {
@@ -341,11 +357,22 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set((s) => ({
       wires: s.wires.filter((w) => w.id !== id),
       assembly: s.assembly.filter((a) => a.wireId !== id),
+      selectedAssemblyId:
+        s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.wireId === id)
+          ? null
+          : s.selectedAssemblyId,
     })),
 
   setWireWaypoints: (id, waypoints) =>
     set((s) => ({
-      wires: s.wires.map((w) => (w.id === id ? { ...w, waypoints } : w)),
+      wires: s.wires.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              waypoints,
+            }
+          : w
+      ),
     })),
 
   addHold: (hold) => {
@@ -365,6 +392,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set((s) => ({
       holds: s.holds.filter((h) => h.id !== id),
       assembly: s.assembly.filter((a) => a.holdId !== id),
+      selectedAssemblyId:
+        s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.holdId === id)
+          ? null
+          : s.selectedAssemblyId,
     })),
 
   addObstacle: () => {
@@ -385,9 +416,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set((s) => ({
       obstacles: s.obstacles.filter((o) => o.id !== id),
       assembly: s.assembly.filter((a) => a.obstacleId !== id),
+      selectedAssemblyId:
+        s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.obstacleId === id)
+          ? null
+          : s.selectedAssemblyId,
     })),
 
   setWireDrag: (state) => set({ wireDrag: state }),
+  setSelectedAssemblyId: (id) => set({ selectedAssemblyId: id }),
 
   setValidationReport: (report) => set({ validationReport: report }),
   setValidationBusy: (busy) => set({ validationBusy: busy }),

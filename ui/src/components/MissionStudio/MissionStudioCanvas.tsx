@@ -1,4 +1,4 @@
-import { Suspense, useRef, useEffect, Component, type ReactNode } from 'react';
+import { Suspense, useRef, useEffect, useMemo, Component, type ReactNode } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/drei';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -67,8 +67,45 @@ function StudioGrid() {
 function SceneContents({ onModelError }: { onModelError: () => void }) {
   const modelUrl = useStudioStore((s) => s.modelUrl);
   const paths = useStudioStore((s) => s.paths);
+  const wires = useStudioStore((s) => s.wires);
+  const holds = useStudioStore((s) => s.holds);
+  const assembly = useStudioStore((s) => s.assembly);
+  const selectedAssemblyId = useStudioStore((s) => s.selectedAssemblyId);
   const selectedPathId = useStudioStore((s) => s.selectedPathId);
   const activeTool = useStudioStore((s) => s.activeTool);
+  const selectedAssembly = useMemo(
+    () => (selectedAssemblyId ? assembly.find((item) => item.id === selectedAssemblyId) ?? null : null),
+    [assembly, selectedAssemblyId]
+  );
+
+  const focusedPathId = useMemo(() => {
+    if (!selectedAssembly) return null;
+    if (selectedAssembly.type === 'create_path') return selectedAssembly.pathId ?? null;
+    if (selectedAssembly.type === 'hold') {
+      const hold = holds.find((item) => item.id === selectedAssembly.holdId);
+      return hold?.pathId ?? null;
+    }
+    return null;
+  }, [holds, selectedAssembly]);
+
+  const pathsToRender = useMemo(() => {
+    if (!selectedAssembly) return paths;
+    if (!focusedPathId) return [];
+    return paths.filter((path) => path.id === focusedPathId);
+  }, [focusedPathId, paths, selectedAssembly]);
+
+  const visibleWireIds = useMemo(() => {
+    if (!selectedAssembly) return null;
+    if (selectedAssembly.type !== 'connect') return [] as string[];
+    return selectedAssembly.wireId ? [selectedAssembly.wireId] : [];
+  }, [selectedAssembly]);
+
+  const connectNodeFilter = useMemo(() => {
+    if (!selectedAssembly || selectedAssembly.type !== 'connect') return null;
+    const wire = wires.find((item) => item.id === selectedAssembly.wireId);
+    if (!wire) return [] as string[];
+    return [wire.fromNodeId, wire.toNodeId];
+  }, [selectedAssembly, wires]);
 
   const handleBackgroundClick = () => {
     if (selectedPathId) {
@@ -96,11 +133,13 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
         </ModelErrorBoundary>
       )}
 
-      {paths.map((p) => (
+      {pathsToRender.map((p) => (
         <ScanPassObject key={p.id} scanId={p.id} />
       ))}
-      {selectedPathId && activeTool === 'create_path' && <EllipseHandles scanId={selectedPathId} />}
-      <EndpointNodes />
+      {selectedPathId &&
+        activeTool === 'create_path' &&
+        pathsToRender.some((path) => path.id === selectedPathId) && <EllipseHandles scanId={selectedPathId} />}
+      <EndpointNodes visibleWireIds={visibleWireIds} connectNodeFilter={connectNodeFilter} />
       <SatelliteStartNode />
       <ObstacleObjects />
 
