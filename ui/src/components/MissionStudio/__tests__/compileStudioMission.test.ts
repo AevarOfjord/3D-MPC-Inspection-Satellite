@@ -26,6 +26,7 @@ function seedSimpleRoute() {
     wires: [{ id: 'w1', fromNodeId: 'satellite:start', toNodeId: 'path:p1:start' }],
     holds: [{ id: 'h1', pathId: 'p1', waypointIndex: 1, duration: 5 }],
     obstacles: [],
+    points: [],
     assembly: [],
   } as any);
 }
@@ -65,5 +66,20 @@ describe('compileStudioMission', () => {
     } as any);
     const { compileStudioMission } = await import('../compileStudioMission');
     expect(() => compileStudioMission(useStudioStore.getState())).toThrow(/Branching/i);
+  });
+
+  it('supports routing through intermediate point nodes', async () => {
+    seedSimpleRoute();
+    useStudioStore.setState({
+      points: [{ id: 'pt1', position: [0, 0, -1] }],
+      wires: [
+        { id: 'w1', fromNodeId: 'satellite:start', toNodeId: 'point:pt1' },
+        { id: 'w2', fromNodeId: 'point:pt1', toNodeId: 'path:p1:start' },
+      ],
+    } as any);
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    expect((mission.segments ?? []).some((seg: any) => seg.type === 'transfer')).toBe(true);
+    expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(4);
   });
 });

@@ -9,6 +9,7 @@ import { EndpointNodes } from './EndpointNodes';
 import { SatelliteStartNode } from './SatelliteStartNode';
 import { ObstacleObjects } from './ObstacleObjects';
 import { EllipseHandles } from './EllipseHandles';
+import { PointObjects } from './PointObjects';
 
 function ObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
@@ -142,6 +143,7 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
       <EndpointNodes visibleWireIds={visibleWireIds} connectNodeFilter={connectNodeFilter} />
       <SatelliteStartNode />
       <ObstacleObjects />
+      <PointObjects />
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>

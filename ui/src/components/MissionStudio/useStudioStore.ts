@@ -8,6 +8,7 @@ export type StudioTool =
   | 'connect'
   | 'hold'
   | 'obstacle'
+  | 'point'
   | null;
 
 export type StudioAxisSeed = 'X' | 'Y' | 'Z';
@@ -58,12 +59,18 @@ export interface StudioObstacle {
   radius: number;
 }
 
+export interface StudioPoint {
+  id: string;
+  position: [number, number, number];
+}
+
 export type StudioAssemblyType =
   | 'place_satellite'
   | 'create_path'
   | 'connect'
   | 'hold'
-  | 'obstacle';
+  | 'obstacle'
+  | 'point';
 
 export interface StudioAssemblyItem {
   id: string;
@@ -72,6 +79,7 @@ export interface StudioAssemblyItem {
   wireId?: string;
   holdId?: string;
   obstacleId?: string;
+  pointId?: string;
 }
 
 export type WireDragState =
@@ -92,6 +100,7 @@ export interface StudioState {
   wires: TransferWire[];
   holds: HoldMarker[];
   obstacles: StudioObstacle[];
+  points: StudioPoint[];
 
   assembly: StudioAssemblyItem[];
 
@@ -137,6 +146,10 @@ export interface StudioState {
   updateObstacle: (id: string, updates: Partial<Pick<StudioObstacle, 'position' | 'radius'>>) => void;
   removeObstacle: (id: string) => void;
 
+  addPoint: () => void;
+  updatePoint: (id: string, updates: Partial<Pick<StudioPoint, 'position'>>) => void;
+  removePoint: (id: string) => void;
+
   setWireDrag: (state: WireDragState) => void;
   setSelectedAssemblyId: (id: string | null) => void;
 
@@ -148,6 +161,7 @@ export interface StudioState {
 }
 
 let obstacleCounter = 0;
+let pointCounter = 0;
 let assemblyCounter = 0;
 
 const PATH_COLORS = ['#22d3ee', '#a78bfa', '#fb923c', '#4ade80', '#f472b6', '#facc15'];
@@ -209,6 +223,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   wires: [],
   holds: [],
   obstacles: [],
+  points: [],
 
   assembly: [],
 
@@ -418,6 +433,37 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       assembly: s.assembly.filter((a) => a.obstacleId !== id),
       selectedAssemblyId:
         s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.obstacleId === id)
+          ? null
+          : s.selectedAssemblyId,
+    })),
+
+  addPoint: () => {
+    const id = `pt-${++pointCounter}`;
+    const itemId = `asm-${++assemblyCounter}`;
+    set((s) => ({
+      points: [...s.points, { id, position: [0, 0, 0] }],
+      assembly: [...s.assembly, { id: itemId, type: 'point', pointId: id }],
+    }));
+  },
+
+  updatePoint: (id, updates) =>
+    set((s) => ({
+      points: s.points.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+    })),
+
+  removePoint: (id) =>
+    set((s) => ({
+      points: s.points.filter((p) => p.id !== id),
+      wires: s.wires.filter((w) => w.fromNodeId !== `point:${id}` && w.toNodeId !== `point:${id}`),
+      assembly: s.assembly.filter((a) => {
+        if (a.pointId === id) return false;
+        if (!a.wireId) return true;
+        const wire = s.wires.find((w) => w.id === a.wireId);
+        if (!wire) return true;
+        return wire.fromNodeId !== `point:${id}` && wire.toNodeId !== `point:${id}`;
+      }),
+      selectedAssemblyId:
+        s.selectedAssemblyId && s.assembly.some((a) => a.id === s.selectedAssemblyId && a.pointId === id)
           ? null
           : s.selectedAssemblyId,
     })),

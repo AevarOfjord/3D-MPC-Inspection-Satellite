@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Crosshair, Route, PenSquare, Link2, Pause, CircleDot, Trash2 } from 'lucide-react';
+import { Crosshair, Route, PenSquare, Link2, Pause, CircleDot, MapPin, Trash2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 import { trajectoryApi } from '../../api/trajectory';
@@ -89,6 +89,10 @@ export function MissionStudioLeftPanel() {
     addObstacle,
     updateObstacle,
     removeObstacle,
+    points,
+    addPoint,
+    updatePoint,
+    removePoint,
     modelUrl,
     referenceObjectPath,
     setModelUrl,
@@ -167,6 +171,12 @@ export function MissionStudioLeftPanel() {
     addObstacle();
   }, [activeTool, obstacles.length, addObstacle]);
 
+  useEffect(() => {
+    if (activeTool !== 'point') return;
+    if (points.length > 0) return;
+    addPoint();
+  }, [activeTool, points.length, addPoint]);
+
   const handleLoadModel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -194,6 +204,7 @@ export function MissionStudioLeftPanel() {
         <ToolButton icon={<Link2 size={13} />} label="Connect" tool="connect" />
         <ToolButton icon={<Pause size={13} />} label="Hold" tool="hold" />
         <ToolButton icon={<CircleDot size={13} />} label="Obstacle" tool="obstacle" />
+        <ToolButton icon={<MapPin size={13} />} label="Point" tool="point" />
       </div>
 
       {activeTool === 'place_satellite' && (
@@ -374,6 +385,48 @@ export function MissionStudioLeftPanel() {
                 <NumberField label="Z" value={o.position[2]} onChange={(v) => updateObstacle(o.id, { position: [o.position[0], o.position[1], v] })} />
                 <NumberField label="Radius" value={o.radius} onChange={(v) => updateObstacle(o.id, { radius: Math.max(0.05, v) })} />
                 <button type="button" onClick={() => removeObstacle(o.id)} className="text-[10px] text-red-400 hover:text-red-300 text-left">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activeTool === 'point' && (
+        <>
+          <SectionHeader label="Point" />
+          <div className="p-3 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={addPoint}
+              className="w-full py-2 rounded-lg border border-cyan-700 bg-cyan-900/20 text-cyan-100 text-xs font-semibold"
+            >
+              Add Point
+            </button>
+            {points.map((point) => (
+              <div key={point.id} className="border border-slate-800 rounded p-2 flex flex-col gap-1">
+                <div className="text-[10px] text-slate-500">{point.id}</div>
+                <NumberField
+                  label="X"
+                  value={point.position[0]}
+                  onChange={(v) => updatePoint(point.id, { position: [v, point.position[1], point.position[2]] })}
+                />
+                <NumberField
+                  label="Y"
+                  value={point.position[1]}
+                  onChange={(v) => updatePoint(point.id, { position: [point.position[0], v, point.position[2]] })}
+                />
+                <NumberField
+                  label="Z"
+                  value={point.position[2]}
+                  onChange={(v) => updatePoint(point.id, { position: [point.position[0], point.position[1], v] })}
+                />
+                <button
+                  type="button"
+                  onClick={() => removePoint(point.id)}
+                  className="text-[10px] text-red-400 hover:text-red-300 text-left"
+                >
                   Remove
                 </button>
               </div>
