@@ -1,7 +1,18 @@
-import { useState, useEffect } from 'react';
-import { Trash2, Save, CheckCircle, Crosshair, Route, Link2, Pause, CircleDot } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Trash2, Save, CheckCircle, Crosshair, Route, Link2, Pause, CircleDot, MapPin } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
+
+function polylineLength(points: [number, number, number][]): number {
+  if (!points || points.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1];
+    const b = points[i];
+    total += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  }
+  return total;
+}
 
 function SegmentRow({ index }: { index: number }) {
   const assembly = useStudioStore((s) => s.assembly);
@@ -10,10 +21,12 @@ function SegmentRow({ index }: { index: number }) {
   const holds = useStudioStore((s) => s.holds);
   const wires = useStudioStore((s) => s.wires);
   const obstacles = useStudioStore((s) => s.obstacles);
+  const points = useStudioStore((s) => s.points);
   const removePath = useStudioStore((s) => s.removePath);
   const removeHold = useStudioStore((s) => s.removeHold);
   const removeWire = useStudioStore((s) => s.removeWire);
   const removeObstacle = useStudioStore((s) => s.removeObstacle);
+  const removePoint = useStudioStore((s) => s.removePoint);
   const setActiveTool = useStudioStore((s) => s.setActiveTool);
   const selectPath = useStudioStore((s) => s.selectPath);
   const setSelectedHandle = useStudioStore((s) => s.setSelectedHandle);
@@ -55,6 +68,14 @@ function SegmentRow({ index }: { index: number }) {
     label = obs ? `Obstacle r=${obs.radius.toFixed(2)}` : 'Obstacle';
     if (obs) onRemove = () => removeObstacle(obs.id);
   }
+  if (item.type === 'point') {
+    icon = <MapPin size={13} />;
+    const point = points.find((p) => p.id === item.pointId);
+    label = point
+      ? `Point (${point.position[0].toFixed(2)}, ${point.position[1].toFixed(2)}, ${point.position[2].toFixed(2)})`
+      : 'Point';
+    if (point) onRemove = () => removePoint(point.id);
+  }
 
   const handleSelectSegment = () => {
     setSelectedAssemblyId(isFocused ? null : item.id);
@@ -86,6 +107,10 @@ function SegmentRow({ index }: { index: number }) {
     }
     if (item.type === 'obstacle') {
       setActiveTool('obstacle');
+      return;
+    }
+    if (item.type === 'point') {
+      setActiveTool('point');
       return;
     }
   };
@@ -129,6 +154,9 @@ function SegmentRow({ index }: { index: number }) {
 export function MissionStudioRightPanel() {
   const assembly = useStudioStore((s) => s.assembly);
   const paths = useStudioStore((s) => s.paths);
+  const wires = useStudioStore((s) => s.wires);
+  const satelliteStart = useStudioStore((s) => s.satelliteStart);
+  const points = useStudioStore((s) => s.points);
   const missionName = useStudioStore((s) => s.missionName);
   const setMissionName = useStudioStore((s) => s.setMissionName);
   const validationBusy = useStudioStore((s) => s.validationBusy);
@@ -148,6 +176,41 @@ export function MissionStudioRightPanel() {
   }, [paths.length, missionName, setMissionName]);
 
   const totalWaypoints = paths.reduce((acc, p) => acc + p.waypoints.length, 0);
+  const totalPathLengthM = useMemo(() => {
+    try {
+      const mission = compileStudioMission(useStudioStore.getState());
+      const manual = (mission.overrides?.manual_path ?? []) as [number, number, number][];
+      if (manual.length >= 2) return polylineLength(manual);
+    } catch {
+      // Route may be incomplete/invalid while authoring; use geometric fallback.
+    }
+
+    const authoredPathLength = paths.reduce((acc, p) => acc + polylineLength(p.waypoints), 0);
+    const resolveNodePosition = (nodeId: string): [number, number, number] | null => {
+      if (nodeId === 'satellite:start') return satelliteStart;
+      if (nodeId.startsWith('point:')) {
+        const pointId = nodeId.slice('point:'.length);
+        return points.find((p) => p.id === pointId)?.position ?? null;
+      }
+      const parts = nodeId.split(':');
+      if (parts.length === 3 && parts[0] === 'path' && (parts[2] === 'start' || parts[2] === 'end')) {
+        const path = paths.find((p) => p.id === parts[1]);
+        if (!path || path.waypoints.length === 0) return null;
+        return parts[2] === 'start' ? path.waypoints[0] : path.waypoints[path.waypoints.length - 1];
+      }
+      return null;
+    };
+    const authoredWireLength = wires.reduce((acc, w) => {
+      if (w.waypoints && w.waypoints.length >= 2) {
+        return acc + polylineLength(w.waypoints);
+      }
+      const from = resolveNodePosition(w.fromNodeId);
+      const to = resolveNodePosition(w.toNodeId);
+      if (!from || !to) return acc;
+      return acc + Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+    }, 0);
+    return authoredPathLength + authoredWireLength;
+  }, [paths, wires, satelliteStart, points]);
 
   const handleValidate = async () => {
     setValidationBusy(true);
@@ -190,7 +253,9 @@ export function MissionStudioRightPanel() {
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 border-b border-slate-800/60 flex items-center justify-between">
         <span>Mission Assembly</span>
-        <span className="text-slate-600 tabular-nums">{assembly.length} seg · {totalWaypoints} pts</span>
+        <span className="text-slate-600 tabular-nums">
+          {assembly.length} seg · {totalWaypoints} pts · {totalPathLengthM.toFixed(1)} m
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">

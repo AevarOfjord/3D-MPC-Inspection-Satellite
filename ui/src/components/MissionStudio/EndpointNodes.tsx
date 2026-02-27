@@ -5,10 +5,15 @@ import { TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
 
-type NodePositionState = Pick<ReturnType<typeof useStudioStore.getState>, 'satelliteStart' | 'paths'>;
+type NodePositionState = Pick<ReturnType<typeof useStudioStore.getState>, 'satelliteStart' | 'paths' | 'points'>;
 
 function resolveNodePosition(nodeId: string, state: NodePositionState): [number, number, number] | null {
   if (nodeId === 'satellite:start') return state.satelliteStart;
+  if (nodeId.startsWith('point:')) {
+    const pointId = nodeId.slice('point:'.length);
+    const point = state.points.find((p) => p.id === pointId);
+    return point?.position ?? null;
+  }
   const parts = nodeId.split(':');
   if (parts.length < 3 || parts[0] !== 'path') return null;
   const pathId = parts[1];
@@ -234,6 +239,7 @@ interface EndpointNodesProps {
 export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null }: EndpointNodesProps) {
   const paths = useStudioStore((s) => s.paths);
   const satelliteStart = useStudioStore((s) => s.satelliteStart);
+  const points = useStudioStore((s) => s.points);
   const wires = useStudioStore((s) => s.wires);
   const wireDrag = useStudioStore((s) => s.wireDrag);
   const activeTool = useStudioStore((s) => s.activeTool);
@@ -243,7 +249,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const { camera, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const dragLineRef = useRef<THREE.Line>(null);
-  const nodeState = { paths, satelliteStart };
+  const nodeState = { paths, satelliteStart, points };
   const [selectedWirePoint, setSelectedWirePoint] = useState<{ wireId: string; index: number } | null>(null);
   const visibleWireSet = useMemo(
     () => (visibleWireIds && visibleWireIds.length > 0 ? new Set(visibleWireIds) : null),
@@ -296,7 +302,11 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
       return;
     }
     const st = useStudioStore.getState();
-    const controls = autoWireControls(drag.sourceNodeId, targetNodeId, { paths: st.paths, satelliteStart: st.satelliteStart });
+    const controls = autoWireControls(drag.sourceNodeId, targetNodeId, {
+      paths: st.paths,
+      satelliteStart: st.satelliteStart,
+      points: st.points,
+    });
     addWire({
       id: `wire-${Date.now()}`,
       fromNodeId: drag.sourceNodeId,
@@ -457,6 +467,20 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
               />
             )}
           </group>
+        );
+      })}
+      {points.map((point) => {
+        const nodeId = `point:${point.id}`;
+        const show = connectNodeSet == null || connectNodeSet.has(nodeId);
+        if (!show) return null;
+        return (
+          <EndpointSphere
+            key={point.id}
+            position={point.position}
+            color="#38bdf8"
+            pulse
+            onClick={() => handleNodeClick(nodeId)}
+          />
         );
       })}
         </>

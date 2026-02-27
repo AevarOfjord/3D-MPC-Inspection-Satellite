@@ -26,8 +26,20 @@ function parsePathNode(nodeId: string): { pathId: string; endpoint: 'start' | 'e
   return { pathId: parts[1], endpoint: parts[2] };
 }
 
+function parsePointNode(nodeId: string): { pointId: string } | null {
+  if (!nodeId.startsWith('point:')) return null;
+  const pointId = nodeId.slice('point:'.length);
+  return pointId.length > 0 ? { pointId } : null;
+}
+
 function resolveNodePosition(nodeId: string, state: StudioState): [number, number, number] {
   if (nodeId === 'satellite:start') return state.satelliteStart;
+  const point = parsePointNode(nodeId);
+  if (point) {
+    const p = state.points.find((item) => item.id === point.pointId);
+    if (!p) throw new Error(`Unknown point node: ${nodeId}`);
+    return p.position;
+  }
   const parsed = parsePathNode(nodeId);
   if (!parsed) throw new Error(`Unknown node: ${nodeId}`);
   const path = state.paths.find((p) => p.id === parsed.pathId);
@@ -233,16 +245,37 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
     if (visitedWireIds.has(edge.id)) throw new Error('Cycle detected in connection graph');
     visitedWireIds.add(edge.id);
 
-    const parsed = parsePathNode(edge.to);
-    if (!parsed) {
-      throw new Error(`Wire target '${edge.to}' is invalid. Connect only to path endpoints.`);
+    const parsedPath = parsePathNode(edge.to);
+    if (!parsedPath) {
+      const parsedPoint = parsePointNode(edge.to);
+      if (!parsedPoint) {
+        throw new Error(`Wire target '${edge.to}' is invalid. Connect only to path endpoints or points.`);
+      }
+      const pointPos = resolveNodePosition(edge.to, state);
+      if (!samePoint(currentPos, pointPos)) {
+        const wire = state.wires.find((w) => w.id === edge.id) ?? null;
+        appendConnectorFromWire(manualPath, wire, currentPos, pointPos, 1, state);
+        const transferSeg: TransferSegment = {
+          segment_id: `transfer-${edge.id}`,
+          type: 'transfer',
+          end_pose: {
+            frame: 'LVLH',
+            position: pointPos,
+            orientation: [1, 0, 0, 0],
+          },
+        };
+        segments.push(transferSeg);
+      }
+      currentPos = pointPos;
+      currentNode = edge.to;
+      continue;
     }
 
-    const path = state.paths.find((p) => p.id === parsed.pathId);
-    if (!path || path.waypoints.length < 2) throw new Error(`Path '${parsed.pathId}' is missing or invalid`);
+    const path = state.paths.find((p) => p.id === parsedPath.pathId);
+    if (!path || path.waypoints.length < 2) throw new Error(`Path '${parsedPath.pathId}' is missing or invalid`);
     if (visitedPathIds.has(path.id)) throw new Error(`Path '${path.id}' is connected more than once`);
 
-    const controlOriented = parsed.endpoint === 'start'
+    const controlOriented = parsedPath.endpoint === 'start'
       ? fairCorners(path.waypoints, 150, 2)
       : fairCorners([...path.waypoints].reverse(), 150, 2);
     const density = Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
@@ -296,7 +329,7 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
       .sort((a, b) => a.waypointIndex - b.waypointIndex);
 
     for (const hold of holdsForPath) {
-      const localControlIdx = parsed.endpoint === 'start'
+      const localControlIdx = parsedPath.endpoint === 'start'
         ? hold.waypointIndex
         : Math.max(0, path.waypoints.length - 1 - hold.waypointIndex);
       const ratio = path.waypoints.length > 1
@@ -315,7 +348,7 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
 
     visitedPathIds.add(path.id);
     currentPos = oriented[oriented.length - 1];
-    currentNode = `path:${path.id}:${parsed.endpoint === 'start' ? 'end' : 'start'}`;
+    currentNode = `path:${path.id}:${parsedPath.endpoint === 'start' ? 'end' : 'start'}`;
   }
 
   if (state.wires.length > 0 && !outgoing.has('satellite:start')) {
