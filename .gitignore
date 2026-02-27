@@ -89,3 +89,6 @@ site/
 src/python/cpp/*.so
 src/python/cpp/*.pyd
 src/python/cpp/*.dylib
+
+# Ignore oversized mission artifacts that are kept out-of-repo
+missions/ISS-FullScan.json
