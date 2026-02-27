@@ -61,7 +61,7 @@ def generate_thruster_usage_plot(plot_gen: Any, plot_dir: Path) -> None:
         total_activation_time,
         color=PlotStyle.COLOR_BARS,
         alpha=0.8,
-        edgecolor="black",
+        edgecolor=PlotStyle.COLOR_PRIMARY,
         linewidth=1.2,
     )
 
@@ -135,12 +135,14 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
             cmds = np.zeros_like(vals, dtype=float)
 
         ax = axes[i]
-        ax.fill_between(time, vals, color="tab:blue", alpha=0.3, label="Valve")
-        ax.plot(time, vals, color="tab:blue", linewidth=1)
+        ax.fill_between(
+            time, vals, color=PlotStyle.COLOR_SIGNAL_POS, alpha=0.3, label="Valve"
+        )
+        ax.plot(time, vals, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=1)
         ax.plot(
             time,
             cmds,
-            color="red",
+            color=PlotStyle.COLOR_TARGET,
             linestyle="--",
             linewidth=1.0,
             label="Command",
@@ -160,8 +162,8 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
 
         fig_ind, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
 
-        ax_top.fill_between(time, vals, color="tab:blue", alpha=0.3)
-        ax_top.plot(time, vals, color="tab:blue", linewidth=1)
+        ax_top.fill_between(time, vals, color=PlotStyle.COLOR_SIGNAL_POS, alpha=0.3)
+        ax_top.plot(time, vals, color=PlotStyle.COLOR_SIGNAL_POS, linewidth=1)
         ax_top.set_ylim(-0.1, 1.1)
         ax_top.set_yticks([0, 1])
         ax_top.set_yticklabels(["OFF", "ON"])
@@ -171,21 +173,18 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
             f"Thruster {thruster_id} - {plot_gen.system_title}", fontsize=12
         )
 
-        ax_bot.plot(time, cmds, color="red", linewidth=1.5)
-        ax_bot.fill_between(time, cmds, color="red", alpha=0.2)
+        ax_bot.plot(time, cmds, color=PlotStyle.COLOR_TARGET, linewidth=1.5)
+        ax_bot.fill_between(time, cmds, color=PlotStyle.COLOR_TARGET, alpha=0.2)
         ax_bot.set_ylim(-0.05, 1.05)
         ax_bot.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
         ax_bot.grid(True, alpha=0.3)
         ax_bot.set_ylabel("Cmd Duty Cycle")
         ax_bot.set_xlabel("Time (s)")
 
-        plt.tight_layout()
         per_thruster_path = (
             plot_dir / f"thruster_valve_activity_thruster_{thruster_id:02d}.png"
         )
-        per_thruster_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(per_thruster_path, dpi=300, bbox_inches="tight")
-        plt.close(fig_ind)
+        PlotStyle.save_figure(fig_ind, per_thruster_path)
 
     fig.suptitle(
         f"Thruster Valve Activity (0.0 - 1.0) - {plot_gen.system_title}",
@@ -193,12 +192,8 @@ def generate_thruster_valve_activity_plot(plot_gen: Any, plot_dir: Path) -> None
     )
     for idx in range(thruster_count, len(axes)):
         axes[idx].axis("off")
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.92)
     aggregate_path = plot_dir / "thruster_valve_activity.png"
-    aggregate_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(aggregate_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    PlotStyle.save_figure(fig, aggregate_path)
 
 
 def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -243,7 +238,9 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
         fontweight="bold",
     )
 
-    colors = plt.cm.tab20(np.linspace(0, 1, thruster_count))
+    colors = [
+        PlotStyle.PALETTE[idx % len(PlotStyle.PALETTE)] for idx in range(thruster_count)
+    ]
     all_intermediate_values = []
 
     for i, ax in enumerate(axes):
@@ -263,15 +260,28 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
         )
         ax.fill_between(time, 0, duty_cycles, step="post", color=colors[i], alpha=0.3)
 
-        ax.axhline(y=0.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
-        ax.axhline(y=0.5, color="gray", linestyle="--", alpha=0.3, linewidth=0.5)
-        ax.axhline(y=1.0, color="gray", linestyle="-", alpha=0.3, linewidth=0.5)
+        ax.axhline(
+            y=0.0, color=PlotStyle.COLOR_MUTED, linestyle="-", alpha=0.3, linewidth=0.5
+        )
+        ax.axhline(
+            y=0.5, color=PlotStyle.COLOR_MUTED, linestyle="--", alpha=0.3, linewidth=0.5
+        )
+        ax.axhline(
+            y=1.0, color=PlotStyle.COLOR_MUTED, linestyle="-", alpha=0.3, linewidth=0.5
+        )
 
         intermediate = [(t, u) for t, u in zip(time, duty_cycles) if 0.01 < u < 0.99]
         if intermediate:
             all_intermediate_values.extend([u for _, u in intermediate])
             for t_val, u_val in intermediate:
-                ax.plot(t_val, u_val, "ko", markersize=4)
+                ax.plot(
+                    t_val,
+                    u_val,
+                    marker="o",
+                    color=PlotStyle.COLOR_THRESHOLD,
+                    markersize=4,
+                    linestyle="None",
+                )
 
         ax.set_ylabel(f"T{thruster_id}", fontsize=10, fontweight="bold")
         ax.set_ylim(-0.05, 1.05)
@@ -289,7 +299,7 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
                 ha="right",
                 va="top",
                 bbox=dict(
-                    facecolor="lightgreen",
+                    facecolor=PlotStyle.COLOR_SUCCESS,
                     alpha=0.7,
                     boxstyle="round,pad=0.2",
                 ),
@@ -312,7 +322,12 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
             summary,
             ha="center",
             fontsize=10,
-            bbox=dict(facecolor="lightgreen", alpha=0.8, boxstyle="round,pad=0.5"),
+            bbox=dict(
+                facecolor=PlotStyle.COLOR_SUCCESS,
+                alpha=0.2,
+                edgecolor=PlotStyle.COLOR_SUCCESS,
+                boxstyle="round,pad=0.5",
+            ),
         )
     else:
         fig.text(
@@ -323,18 +338,14 @@ def generate_pwm_quantization_plot(plot_gen: Any, plot_dir: Path) -> None:
             ha="center",
             fontsize=10,
             bbox=dict(
-                facecolor="lightyellow",
+                facecolor=PlotStyle.COLOR_WARNING,
                 alpha=0.8,
                 boxstyle="round,pad=0.5",
             ),
         )
 
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.1)
     pwm_path = plot_dir / "pwm_duty_cycles.png"
-    pwm_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(pwm_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    PlotStyle.save_figure(fig, pwm_path)
 
 
 def generate_control_effort_plot(plot_gen: Any, plot_dir: Path) -> None:
@@ -356,7 +367,7 @@ def generate_control_effort_plot(plot_gen: Any, plot_dir: Path) -> None:
     ax.plot(
         time,
         total_effort_per_step,
-        color="c",
+        color=PlotStyle.COLOR_SIGNAL_POS,
         linewidth=PlotStyle.LINEWIDTH,
         label="Total Control Effort",
     )
@@ -492,7 +503,11 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
             label="Sum Thruster Command",
         )
         axes[0].axhline(
-            y=1.0, color="black", linestyle="--", alpha=0.6, label="Max Limit"
+            y=1.0,
+            color=PlotStyle.COLOR_THRESHOLD,
+            linestyle="--",
+            alpha=0.6,
+            label="Max Limit",
         )
         axes[0].set_ylabel("Command (0-1)", fontsize=PlotStyle.AXIS_LABEL_SIZE)
         axes[0].grid(True, alpha=PlotStyle.GRID_ALPHA)
@@ -546,10 +561,12 @@ def generate_actuator_limits_plot(plot_gen: Any, plot_dir: Path) -> None:
             label="RW Z",
         )
         if max_rw > 0:
-            axes[1].axhline(y=max_rw, color="black", linestyle="--", alpha=0.6)
+            axes[1].axhline(
+                y=max_rw, color=PlotStyle.COLOR_THRESHOLD, linestyle="--", alpha=0.6
+            )
             axes[1].axhline(
                 y=-max_rw,
-                color="black",
+                color=PlotStyle.COLOR_THRESHOLD,
                 linestyle="--",
                 alpha=0.6,
                 label="RW Limit",
@@ -708,7 +725,7 @@ def generate_thruster_impulse_proxy_plot(plot_gen: Any, plot_dir: Path) -> None:
     axes[0].plot(
         time[:min_len],
         force_mag,
-        color="black",
+        color=PlotStyle.COLOR_WARNING,
         linestyle="--",
         linewidth=PlotStyle.LINEWIDTH,
         label="|F|",
@@ -844,7 +861,7 @@ def generate_command_vs_valve_tracking_plot(plot_gen: Any, plot_dir: Path) -> No
     axes[1].plot(
         time,
         max_abs_err,
-        color="black",
+        color=PlotStyle.COLOR_WARNING,
         linewidth=PlotStyle.LINEWIDTH,
         linestyle="--",
         label="Max |Cmd-Val|",

@@ -7,6 +7,7 @@ import type {
   HoldSegment,
 } from '../../api/unifiedMission';
 import { studioTargetIdFromModelPath } from './studioReference';
+import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
 
 interface RouteBuildResult {
   manualPath: [number, number, number][];
@@ -36,6 +37,114 @@ function resolveNodePosition(nodeId: string, state: StudioState): [number, numbe
   return parsed.endpoint === 'start' ? path.waypoints[0] : path.waypoints[path.waypoints.length - 1];
 }
 
+function normalizeVec(v: [number, number, number]): [number, number, number] {
+  const n = Math.hypot(v[0], v[1], v[2]);
+  if (n <= 1e-9) return [0, 0, 0];
+  return [v[0] / n, v[1] / n, v[2] / n];
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function resolveNodeTangent(
+  nodeId: string,
+  state: StudioState,
+  role: 'from' | 'to',
+  other: [number, number, number]
+): [number, number, number] {
+  const pos = resolveNodePosition(nodeId, state);
+  const parsed = parsePathNode(nodeId);
+  if (!parsed) {
+    return normalizeVec(
+      role === 'from'
+        ? [other[0] - pos[0], other[1] - pos[1], other[2] - pos[2]]
+        : [pos[0] - other[0], pos[1] - other[1], pos[2] - other[2]]
+    );
+  }
+  const path = state.paths.find((p) => p.id === parsed.pathId);
+  if (!path || path.waypoints.length < 2) {
+    return normalizeVec(
+      role === 'from'
+        ? [other[0] - pos[0], other[1] - pos[1], other[2] - pos[2]]
+        : [pos[0] - other[0], pos[1] - other[1], pos[2] - other[2]]
+    );
+  }
+  const controls = fairCorners(path.waypoints, 150, 2);
+  const n = controls.length;
+  if (parsed.endpoint === 'start') {
+    const intoPath: [number, number, number] = [
+      controls[1][0] - controls[0][0],
+      controls[1][1] - controls[0][1],
+      controls[1][2] - controls[0][2],
+    ];
+    return normalizeVec(role === 'to' ? intoPath : ([-intoPath[0], -intoPath[1], -intoPath[2]] as [number, number, number]));
+  }
+  const intoPathFromEnd: [number, number, number] = [
+    controls[n - 2][0] - controls[n - 1][0],
+    controls[n - 2][1] - controls[n - 1][1],
+    controls[n - 2][2] - controls[n - 1][2],
+  ];
+  return normalizeVec(role === 'to' ? intoPathFromEnd : ([-intoPathFromEnd[0], -intoPathFromEnd[1], -intoPathFromEnd[2]] as [number, number, number]));
+}
+
+function autoWireControls(
+  fromNodeId: string,
+  toNodeId: string,
+  state: StudioState
+): [number, number, number][] {
+  const src = resolveNodePosition(fromNodeId, state);
+  const dst = resolveNodePosition(toNodeId, state);
+  const dist = Math.hypot(dst[0] - src[0], dst[1] - src[1], dst[2] - src[2]);
+  if (dist <= 1e-9) return [src];
+  const tSrc = resolveNodeTangent(fromNodeId, state, 'from', dst);
+  const tDst = resolveNodeTangent(toNodeId, state, 'to', src);
+  const handle = Math.max(0.5, Math.min(dist * 0.45, 0.28 * dist + 0.6));
+  return [
+    src,
+    [src[0] + tSrc[0] * handle, src[1] + tSrc[1] * handle, src[2] + tSrc[2] * handle],
+    [dst[0] - tDst[0] * handle, dst[1] - tDst[1] * handle, dst[2] - tDst[2] * handle],
+    dst,
+  ];
+}
+
+function constrainWireControls(
+  controls: [number, number, number][],
+  fromNodeId: string,
+  toNodeId: string,
+  state: StudioState
+): [number, number, number][] {
+  if (!controls || controls.length < 2) return autoWireControls(fromNodeId, toNodeId, state);
+  const src = resolveNodePosition(fromNodeId, state);
+  const dst = resolveNodePosition(toNodeId, state);
+  if (controls.length < 4) return autoWireControls(fromNodeId, toNodeId, state);
+
+  const next = controls.map((p) => [p[0], p[1], p[2]] as [number, number, number]);
+  next[0] = src;
+  next[next.length - 1] = dst;
+  const dist = Math.hypot(dst[0] - src[0], dst[1] - src[1], dst[2] - src[2]);
+  if (dist <= 1e-9) return [src];
+
+  const tSrc = resolveNodeTangent(fromNodeId, state, 'from', dst);
+  const tDst = resolveNodeTangent(toNodeId, state, 'to', src);
+  const handleMin = Math.max(0.2, dist * 0.03);
+  const handleMax = Math.max(handleMin, dist * 0.95);
+  const last = next.length - 1;
+  const srcHandle = clamp(
+    Math.hypot(next[1][0] - src[0], next[1][1] - src[1], next[1][2] - src[2]),
+    handleMin,
+    handleMax
+  );
+  const dstHandle = clamp(
+    Math.hypot(next[last - 1][0] - dst[0], next[last - 1][1] - dst[1], next[last - 1][2] - dst[2]),
+    handleMin,
+    handleMax
+  );
+  next[1] = [src[0] + tSrc[0] * srcHandle, src[1] + tSrc[1] * srcHandle, src[2] + tSrc[2] * srcHandle];
+  next[last - 1] = [dst[0] - tDst[0] * dstHandle, dst[1] - tDst[1] * dstHandle, dst[2] - tDst[2] * dstHandle];
+  return next;
+}
+
 function appendSampledConnector(
   out: [number, number, number][],
   from: [number, number, number],
@@ -61,15 +170,27 @@ function appendConnectorFromWire(
   wire: { fromNodeId: string; toNodeId: string; waypoints?: [number, number, number][] } | null,
   from: [number, number, number],
   to: [number, number, number],
-  waypointDensity: number
+  waypointDensity: number,
+  state: StudioState
 ) {
   const custom = wire?.waypoints;
   if (custom && custom.length >= 2) {
     const fwd = samePoint(custom[0], from, 1e-3) && samePoint(custom[custom.length - 1], to, 1e-3);
     const rev = samePoint(custom[0], to, 1e-3) && samePoint(custom[custom.length - 1], from, 1e-3);
-    const oriented = fwd ? custom : rev ? [...custom].reverse() : custom;
-    if (out.length === 0 || !samePoint(out[out.length - 1], oriented[0])) out.push(oriented[0]);
-    for (let i = 1; i < oriented.length; i += 1) out.push(oriented[i]);
+    const orientedRaw = fwd ? custom : rev ? [...custom].reverse() : custom;
+    const oriented = constrainWireControls(orientedRaw, wire.fromNodeId, wire.toNodeId, state);
+    const density = Math.max(0.25, Math.min(25, waypointDensity || 1));
+    const sampled = sampleCatmullRomBySpacing(oriented, Math.min(0.1, 1 / density));
+    if (out.length === 0 || !samePoint(out[out.length - 1], sampled[0])) out.push(sampled[0]);
+    for (let i = 1; i < sampled.length; i += 1) out.push(sampled[i]);
+    return;
+  }
+  if (wire) {
+    const auto = constrainWireControls(autoWireControls(wire.fromNodeId, wire.toNodeId, state), wire.fromNodeId, wire.toNodeId, state);
+    const density = Math.max(0.25, Math.min(25, waypointDensity || 1));
+    const sampled = sampleCatmullRomBySpacing(auto, Math.min(0.1, 1 / density));
+    if (out.length === 0 || !samePoint(out[out.length - 1], sampled[0])) out.push(sampled[0]);
+    for (let i = 1; i < sampled.length; i += 1) out.push(sampled[i]);
     return;
   }
   appendSampledConnector(out, from, to, waypointDensity);
@@ -121,12 +242,16 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
     if (!path || path.waypoints.length < 2) throw new Error(`Path '${parsed.pathId}' is missing or invalid`);
     if (visitedPathIds.has(path.id)) throw new Error(`Path '${path.id}' is connected more than once`);
 
-    const oriented = parsed.endpoint === 'start' ? path.waypoints : [...path.waypoints].reverse();
+    const controlOriented = parsed.endpoint === 'start'
+      ? fairCorners(path.waypoints, 150, 2)
+      : fairCorners([...path.waypoints].reverse(), 150, 2);
+    const density = Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
+    const oriented = sampleCatmullRomBySpacing(controlOriented, Math.min(0.1, 1 / density));
     const entry = oriented[0];
 
     if (!samePoint(currentPos, entry)) {
       const wire = state.wires.find((w) => w.id === edge.id) ?? null;
-      appendConnectorFromWire(manualPath, wire, currentPos, entry, path.waypointDensity ?? 1);
+      appendConnectorFromWire(manualPath, wire, currentPos, entry, path.waypointDensity ?? 1, state);
       const transferSeg: TransferSegment = {
         segment_id: `transfer-${edge.id}`,
         type: 'transfer',
@@ -171,10 +296,14 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
       .sort((a, b) => a.waypointIndex - b.waypointIndex);
 
     for (const hold of holdsForPath) {
-      const localIdx = parsed.endpoint === 'start'
+      const localControlIdx = parsed.endpoint === 'start'
         ? hold.waypointIndex
         : Math.max(0, path.waypoints.length - 1 - hold.waypointIndex);
-      const globalIdx = Math.max(0, Math.min(pathBaseIndex + localIdx, manualPath.length - 1));
+      const ratio = path.waypoints.length > 1
+        ? localControlIdx / Math.max(1, path.waypoints.length - 1)
+        : 0;
+      const localSampleIdx = Math.round(ratio * Math.max(0, oriented.length - 1));
+      const globalIdx = Math.max(0, Math.min(pathBaseIndex + localSampleIdx, manualPath.length - 1));
       holdSchedule.push({ path_index: globalIdx, duration_s: Math.max(0, hold.duration) });
       const holdSeg: HoldSegment = {
         segment_id: `hold-${hold.id}`,

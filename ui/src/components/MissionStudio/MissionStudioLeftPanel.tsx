@@ -24,11 +24,15 @@ function ToolButton({
 }) {
   const activeTool = useStudioStore((s) => s.activeTool);
   const setActiveTool = useStudioStore((s) => s.setActiveTool);
+  const setSelectedAssemblyId = useStudioStore((s) => s.setSelectedAssemblyId);
   const active = activeTool === tool;
   return (
     <button
       type="button"
-      onClick={() => setActiveTool(active ? null : tool)}
+      onClick={() => {
+        setSelectedAssemblyId(null);
+        setActiveTool(active ? null : tool);
+      }}
       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
         active
           ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'

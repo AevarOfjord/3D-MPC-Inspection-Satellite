@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
+import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
 
 interface ScanPassObjectProps {
   scanId: string;
@@ -73,9 +74,13 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
 
   const lineGeometry = useMemo(() => {
     if (!path || path.waypoints.length < 2) return null;
-    const points = path.waypoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+    const density = Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
+    const controls = fairCorners(path.waypoints, 150, 2);
+    const spacing = Math.min(0.05, 1 / density);
+    const sampled = sampleCatmullRomBySpacing(controls, spacing);
+    const points = sampled.map(([x, y, z]) => new THREE.Vector3(x, y, z));
     return new THREE.BufferGeometry().setFromPoints(points);
-  }, [path?.waypoints]);
+  }, [path?.waypoints, path?.waypointDensity]);
 
   const densitySnippetGeometry = useMemo(() => {
     if (!path || !path.densitySnippetRange) return null;
@@ -90,9 +95,12 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
 
   const pointsGeometry = useMemo(() => {
     if (!path || path.waypoints.length < 2) return null;
-    const points = path.waypoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+    const density = Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
+    const controls = fairCorners(path.waypoints, 150, 2);
+    const sampled = sampleCatmullRomBySpacing(controls, 1 / density);
+    const points = sampled.map(([x, y, z]) => new THREE.Vector3(x, y, z));
     return new THREE.BufferGeometry().setFromPoints(points);
-  }, [path?.waypoints]);
+  }, [path?.waypoints, path?.waypointDensity]);
 
   const centerLineGeometry = useMemo(() => {
     if (!path) return null;
@@ -110,8 +118,6 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
     );
   }, [path]);
 
-  const startPos = path?.waypoints[0] ?? null;
-  const endPos = path && path.waypoints.length > 0 ? path.waypoints[path.waypoints.length - 1] : null;
   const isSelected = selectedPathId === scanId;
   const color = path?.color ?? '#22d3ee';
 
@@ -240,19 +246,6 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
         >
           <lineBasicMaterial color="#facc15" opacity={0.95} transparent />
         </line>
-      )}
-
-      {!isConnectMode && startPos && (
-        <mesh position={startPos} onClick={() => useStudioStore.getState().selectPath(scanId)}>
-          <sphereGeometry args={[0.3, 16, 16]} />
-          <meshBasicMaterial color="#22d3ee" />
-        </mesh>
-      )}
-      {!isConnectMode && endPos && (
-        <mesh position={endPos} onClick={() => useStudioStore.getState().selectPath(scanId)}>
-          <sphereGeometry args={[0.3, 16, 16]} />
-          <meshBasicMaterial color="#a78bfa" />
-        </mesh>
       )}
 
       {!isConnectMode && (

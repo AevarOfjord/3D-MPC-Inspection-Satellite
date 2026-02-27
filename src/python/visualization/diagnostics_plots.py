@@ -203,7 +203,7 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
         ax.plot(
             time,
             comp_times,
-            color="purple",
+            color=PlotStyle.COLOR_SIGNAL_POS,
             linewidth=PlotStyle.LINEWIDTH,
             label="Computation Time",
         )
@@ -211,20 +211,24 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
         max_ms = float(np.max(comp_times))
         ax.axhline(
             y=mean_ms,
-            color="r",
+            color=PlotStyle.COLOR_WARNING,
             linestyle="--",
             alpha=0.7,
             label=f"Mean: {mean_ms:.1f} ms",
         )
         ax.axhline(
-            y=max_ms, color="g", linestyle=":", alpha=0.7, label=f"Max: {max_ms:.1f} ms"
+            y=max_ms,
+            color=PlotStyle.COLOR_SIGNAL_ANG,
+            linestyle=":",
+            alpha=0.7,
+            label=f"Max: {max_ms:.1f} ms",
         )
         if limit_ms is not None and np.any(limit_ms > 0):
             if len(np.unique(limit_ms)) > 1:
                 ax.plot(
                     time,
                     limit_ms,
-                    color="black",
+                    color=PlotStyle.COLOR_THRESHOLD,
                     linestyle=":",
                     alpha=0.6,
                     label="Time Limit",
@@ -236,7 +240,7 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
                 if limit_val > 0:
                     ax.axhline(
                         y=limit_val,
-                        color="black",
+                        color=PlotStyle.COLOR_THRESHOLD,
                         linestyle=":",
                         alpha=0.6,
                         label="Time Limit",
@@ -257,7 +261,7 @@ def generate_mpc_performance_plot(plot_gen: Any, plot_dir: Path) -> None:
                     ax.scatter(
                         np.array(time)[exceeded_idx_arr],
                         comp_times[exceeded_idx_arr],
-                        color="red",
+                        color=PlotStyle.COLOR_ERROR,
                         s=25,
                         label="Exceeded",
                         zorder=5,
@@ -308,13 +312,13 @@ def generate_timing_intervals_plot(plot_gen: Any, plot_dir: Path) -> None:
         ax.plot(
             time,
             intervals,
-            color="orange",
+            color=PlotStyle.COLOR_SIGNAL_POS,
             linewidth=PlotStyle.LINEWIDTH,
             label="Actual Intervals",
         )
         ax.axhline(
             y=reference_dt,
-            color="r",
+            color=PlotStyle.COLOR_THRESHOLD,
             linestyle="--",
             alpha=0.7,
             label=f"Reference: {reference_dt:.3f}s",
@@ -612,7 +616,7 @@ def generate_error_vs_solve_time_scatter_plot(plot_gen: Any, plot_dir: Path) -> 
         solve_ms,
         pos_err,
         c=color_idx,
-        cmap="viridis",
+        cmap="cividis",
         s=16,
         alpha=0.75,
     )
@@ -624,7 +628,7 @@ def generate_error_vs_solve_time_scatter_plot(plot_gen: Any, plot_dir: Path) -> 
         solve_ms,
         ang_err_deg,
         c=color_idx,
-        cmap="plasma",
+        cmap="cividis",
         s=16,
         alpha=0.75,
     )
