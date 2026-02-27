@@ -357,7 +357,7 @@ def test_mode_profile_uses_configured_multipliers() -> None:
     assert hold.thruster_pair_scale == pytest.approx(1.25)
 
 
-def test_pointing_context_falls_back_to_lvlh_radial_axis() -> None:
+def test_pointing_context_defaults_to_non_scan_minimal_twist() -> None:
     class _MissionState:
         path_frame = "LVLH"
         frame_origin = (100.0, 0.0, 0.0)
@@ -365,6 +365,34 @@ def test_pointing_context_falls_back_to_lvlh_radial_axis() -> None:
 
     class _SimConfig:
         mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    context = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=0.5)
+    assert context.source == "non_scan_minimal_twist"
+    assert np.allclose(context.axis_world, np.array([0.0, 0.0, 1.0]), atol=1e-6)
+
+
+def test_pointing_context_radial_lock_preserves_legacy_fallback() -> None:
+    class _Contracts:
+        non_scan_orientation_policy = "radial_lock"
+
+    class _AppConfig:
+        controller_contracts = _Contracts()
+
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (100.0, 0.0, 0.0)
+        pointing_path_spans: list[dict] = []
+
+    class _SimConfig:
+        mission_state = _MissionState()
+        app_config = _AppConfig()
 
     class _Sim:
         simulation_config = _SimConfig()

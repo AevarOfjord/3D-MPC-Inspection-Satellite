@@ -157,6 +157,21 @@ function constrainWireControls(
   return next;
 }
 
+function anchorWireEndpoints(
+  controls: [number, number, number][],
+  fromNodeId: string,
+  toNodeId: string,
+  state: StudioState
+): [number, number, number][] {
+  const src = resolveNodePosition(fromNodeId, state);
+  const dst = resolveNodePosition(toNodeId, state);
+  if (!controls || controls.length < 2) return [src, dst];
+  const next = controls.map((p) => [p[0], p[1], p[2]] as [number, number, number]);
+  next[0] = src;
+  next[next.length - 1] = dst;
+  return next;
+}
+
 function appendSampledConnector(
   out: [number, number, number][],
   from: [number, number, number],
@@ -179,18 +194,21 @@ function appendSampledConnector(
 
 function appendConnectorFromWire(
   out: [number, number, number][],
-  wire: { fromNodeId: string; toNodeId: string; waypoints?: [number, number, number][] } | null,
+  wire: { fromNodeId: string; toNodeId: string; waypoints?: [number, number, number][]; constraintMode?: 'constrained' | 'free' } | null,
   from: [number, number, number],
   to: [number, number, number],
   waypointDensity: number,
   state: StudioState
 ) {
+  const mode = wire?.constraintMode ?? 'constrained';
   const custom = wire?.waypoints;
   if (custom && custom.length >= 2) {
     const fwd = samePoint(custom[0], from, 1e-3) && samePoint(custom[custom.length - 1], to, 1e-3);
     const rev = samePoint(custom[0], to, 1e-3) && samePoint(custom[custom.length - 1], from, 1e-3);
     const orientedRaw = fwd ? custom : rev ? [...custom].reverse() : custom;
-    const oriented = constrainWireControls(orientedRaw, wire.fromNodeId, wire.toNodeId, state);
+    const oriented = mode === 'free'
+      ? anchorWireEndpoints(orientedRaw, wire.fromNodeId, wire.toNodeId, state)
+      : constrainWireControls(orientedRaw, wire.fromNodeId, wire.toNodeId, state);
     const density = Math.max(0.25, Math.min(25, waypointDensity || 1));
     const sampled = sampleCatmullRomBySpacing(oriented, Math.min(0.1, 1 / density));
     if (out.length === 0 || !samePoint(out[out.length - 1], sampled[0])) out.push(sampled[0]);
@@ -198,7 +216,10 @@ function appendConnectorFromWire(
     return;
   }
   if (wire) {
-    const auto = constrainWireControls(autoWireControls(wire.fromNodeId, wire.toNodeId, state), wire.fromNodeId, wire.toNodeId, state);
+    const autoRaw = autoWireControls(wire.fromNodeId, wire.toNodeId, state);
+    const auto = mode === 'free'
+      ? anchorWireEndpoints(autoRaw, wire.fromNodeId, wire.toNodeId, state)
+      : constrainWireControls(autoRaw, wire.fromNodeId, wire.toNodeId, state);
     const density = Math.max(0.25, Math.min(25, waypointDensity || 1));
     const sampled = sampleCatmullRomBySpacing(auto, Math.min(0.1, 1 / density));
     if (out.length === 0 || !samePoint(out[out.length - 1], sampled[0])) out.push(sampled[0]);

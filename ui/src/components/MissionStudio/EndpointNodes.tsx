@@ -161,6 +161,18 @@ function autoWireControls(
   return [src, p1, p2, dst];
 }
 
+function anchorWireEndpoints(
+  controls: [number, number, number][],
+  src: [number, number, number],
+  dst: [number, number, number]
+): [number, number, number][] {
+  if (!controls || controls.length < 2) return [src, dst];
+  const next = controls.map((p) => [p[0], p[1], p[2]] as [number, number, number]);
+  next[0] = src;
+  next[next.length - 1] = dst;
+  return next;
+}
+
 function sampleConnectorPoints(
   src: [number, number, number],
   dst: [number, number, number],
@@ -246,6 +258,8 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const setWireDrag = useStudioStore((s) => s.setWireDrag);
   const addWire = useStudioStore((s) => s.addWire);
   const setWireWaypoints = useStudioStore((s) => s.setWireWaypoints);
+  const assembly = useStudioStore((s) => s.assembly);
+  const setSelectedAssemblyId = useStudioStore((s) => s.setSelectedAssemblyId);
   const { camera, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const dragLineRef = useRef<THREE.Line>(null);
@@ -312,6 +326,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
       fromNodeId: drag.sourceNodeId,
       toNodeId: targetNodeId,
       waypoints: controls ?? undefined,
+      constraintMode: 'constrained',
     });
     setWireDrag({ phase: 'idle' });
     gl.domElement.removeEventListener('pointermove', handlePointerMove);
@@ -350,10 +365,13 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
         const dst = resolveNodePosition(wire.toNodeId, nodeState);
         if (!src || !dst) return null;
         const density = wireDensityScale(wire, nodeState);
+        const constraintMode = wire.constraintMode ?? 'constrained';
         const unconstrained = wire.waypoints && wire.waypoints.length >= 2
           ? [...wire.waypoints]
           : autoWireControls(wire.fromNodeId, wire.toNodeId, nodeState) ?? sampleConnectorPoints(src, dst, density);
-        const controls = constrainWireControls(unconstrained, wire.fromNodeId, wire.toNodeId, nodeState);
+        const controls = constraintMode === 'free'
+          ? anchorWireEndpoints(unconstrained, src, dst)
+          : constrainWireControls(unconstrained, wire.fromNodeId, wire.toNodeId, nodeState);
         const denseSpacing = Math.min(0.05, 1 / Math.max(0.25, Math.min(25, density)));
         const dense = sampleCatmullRomBySpacing(controls, denseSpacing);
         dense[0] = src;
@@ -384,6 +402,8 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isEndpoint) return;
+                    const connectAssembly = assembly.find((item) => item.type === 'connect' && item.wireId === wire.id);
+                    setSelectedAssemblyId(connectAssembly?.id ?? null);
                     setSelectedWirePoint((prev) =>
                       prev && prev.wireId === wire.id && prev.index === i ? null : { wireId: wire.id, index: i }
                     );
@@ -411,10 +431,11 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
                       selectedWirePoint.index,
                       [obj.position.x, obj.position.y, obj.position.z]
                     );
-                    next[0] = src;
-                    next[next.length - 1] = dst;
-                    const constrained = constrainWireControls(next, wire.fromNodeId, wire.toNodeId, nodeState);
-                    setWireWaypoints(wire.id, constrained);
+                    const endpointAnchored = anchorWireEndpoints(next, src, dst);
+                    const updated = constraintMode === 'free'
+                      ? endpointAnchored
+                      : constrainWireControls(endpointAnchored, wire.fromNodeId, wire.toNodeId, nodeState);
+                    setWireWaypoints(wire.id, updated);
                   }}
                 />
               )}

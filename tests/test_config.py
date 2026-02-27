@@ -169,6 +169,15 @@ class TestConfigValidation:
                 recover_enter_error_m=0.10,
                 recover_exit_error_m=0.20,
             )
+        with pytest.raises(ValidationError):
+            ControllerContractsParams(
+                non_scan_orientation_policy="not_a_policy",
+            )
+
+        contracts = ControllerContractsParams(
+            non_scan_orientation_policy="world_up_lock",
+        )
+        assert contracts.non_scan_orientation_policy == "world_up_lock"
 
     def test_default_mission_hold_end_is_preserved(self):
         """Default mission hold-end stays wired to the global hold constant."""

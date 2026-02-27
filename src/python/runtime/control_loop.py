@@ -22,7 +22,9 @@ def _resolve_waypoint_hold(
     path_s: float,
 ) -> tuple[bool, float]:
     """Evaluate per-waypoint hold schedule and optionally activate a hold."""
-    mission_state = getattr(getattr(sim, "simulation_config", None), "mission_state", None)
+    mission_state = getattr(
+        getattr(sim, "simulation_config", None), "mission_state", None
+    )
     if mission_state is None:
         return False, float(path_s)
 
@@ -48,9 +50,20 @@ def _resolve_waypoint_hold(
     if active_idx is not None:
         hold_s = float(arc[min(max(0, int(active_idx)), len(arc) - 1)])
         hold_started = getattr(mission_state, "path_hold_started_at_s", None)
-        hold_cfg = next((item for item in schedule if int(item.get("path_index", -1)) == int(active_idx)), None)
+        hold_cfg = next(
+            (
+                item
+                for item in schedule
+                if int(item.get("path_index", -1)) == int(active_idx)
+            ),
+            None,
+        )
         duration = float(hold_cfg.get("duration_s", 0.0)) if hold_cfg else 0.0
-        elapsed = 0.0 if hold_started is None else max(0.0, float(sim.simulation_time) - float(hold_started))
+        elapsed = (
+            0.0
+            if hold_started is None
+            else max(0.0, float(sim.simulation_time) - float(hold_started))
+        )
         if elapsed >= duration:
             mission_state.path_hold_completed.add(int(active_idx))
             mission_state.path_hold_active_index = None
@@ -104,11 +117,14 @@ def _set_runtime_pointing_context(
     )
     direction = "CW" if context.direction_cw else "CCW"
 
-    sim.mpc_controller.set_scan_attitude_context(
-        center_payload,
-        axis_payload,
-        direction,
-    )
+    if str(getattr(context, "source", "")).strip().lower() == "non_scan_minimal_twist":
+        sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
+    else:
+        sim.mpc_controller.set_scan_attitude_context(
+            center_payload,
+            axis_payload,
+            direction,
+        )
 
     x_error_deg = None
     z_error_deg = None
@@ -268,12 +284,16 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s)
     if hold_active:
         try:
-            sim.mpc_controller.s = float(min(max(0.0, hold_s), path_len if path_len > 0.0 else hold_s))
+            sim.mpc_controller.s = float(
+                min(max(0.0, hold_s), path_len if path_len > 0.0 else hold_s)
+            )
         except Exception:
             pass
         sim.mode_state.current_mode = "HOLD"
     sim.mode_profile = mode_manager.profile_for_mode(sim.mode_state.current_mode)
-    mission_state = getattr(getattr(sim, "simulation_config", None), "mission_state", None)
+    mission_state = getattr(
+        getattr(sim, "simulation_config", None), "mission_state", None
+    )
     sim.studio_hold_status = {
         "active": bool(hold_active),
         "hold_s": float(hold_s),

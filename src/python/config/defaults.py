@@ -182,6 +182,7 @@ def create_default_app_config() -> AppConfig:
         enable_pointing_contract=constants.Constants.ENABLE_POINTING_CONTRACT,
         pointing_scope=constants.Constants.POINTING_SCOPE,
         scan_axis_source=constants.Constants.SCAN_AXIS_SOURCE,
+        non_scan_orientation_policy=constants.Constants.NON_SCAN_ORIENTATION_POLICY,
         pointing_guardrails_enabled=constants.Constants.POINTING_GUARDRAILS_ENABLED,
         pointing_z_error_deg_max=constants.Constants.POINTING_Z_ERROR_DEG_MAX,
         pointing_x_error_deg_max=constants.Constants.POINTING_X_ERROR_DEG_MAX,

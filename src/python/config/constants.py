@@ -413,6 +413,7 @@ class _MPCContractsDefaults:
     SCAN_AXIS_SOURCE: str = (
         "planner"  # source for scan-axis reference: "planner" or "mission"
     )
+    NON_SCAN_ORIENTATION_POLICY: str = "minimal_twist"  # non-scan +Z behavior: minimal_twist, world_up_lock, radial_lock
 
 
 MPCTimingDefaults = _MPCTimingDefaults()
@@ -546,6 +547,7 @@ class Constants:
     POINTING_BREACH_HOLD_S = MPCContractsDefaults.POINTING_BREACH_HOLD_S
     POINTING_CLEAR_HOLD_S = MPCContractsDefaults.POINTING_CLEAR_HOLD_S
     SCAN_AXIS_SOURCE = MPCContractsDefaults.SCAN_AXIS_SOURCE
+    NON_SCAN_ORIENTATION_POLICY = MPCContractsDefaults.NON_SCAN_ORIENTATION_POLICY
 
     # Physics
     TOTAL_MASS = PhysicsConstants.TOTAL_MASS

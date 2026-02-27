@@ -1088,29 +1088,88 @@ Vector4d SQPController::build_reference_quaternion(
     const Vector3d& t_ref,
     const Vector4d& q_curr
 ) const {
-    // Build body frame: +X along path tangent, +Z along scan axis (or up)
-    Vector3d x_body = t_ref.normalized();
-    Vector3d z_body;
+    (void)p_ref;
 
-    if (scan_ctx_.enabled) {
-        z_body = scan_ctx_.axis.normalized();
+    // Build body frame:
+    // - +X follows path tangent
+    // - scan mode: +Z follows configured scan axis
+    // - non-scan: +Z uses minimal-twist continuity from prior reference frame
+    Vector3d x_body = t_ref;
+    double x_norm = x_body.norm();
+    if (x_norm <= 1e-9) {
+        x_body = Vector3d::UnitX();
     } else {
-        z_body = Vector3d(0, 0, 1);  // Default: inertial Z
+        x_body /= x_norm;
     }
 
-    // Gram-Schmidt orthogonalise
-    z_body = z_body - z_body.dot(x_body) * x_body;
+    Vector3d z_seed = Vector3d::UnitZ();
+    if (scan_ctx_.enabled) {
+        z_seed = scan_ctx_.axis;
+        double axis_norm = z_seed.norm();
+        if (axis_norm > 1e-9) {
+            z_seed /= axis_norm;
+        } else {
+            z_seed = Vector3d::UnitZ();
+        }
+    } else if (scan_ctx_.ref_initialized && scan_ctx_.ref_prev_z.norm() > 1e-9) {
+        z_seed = scan_ctx_.ref_prev_z.normalized();
+    } else {
+        Eigen::Quaterniond q_curr_eigen(
+            q_curr[0], q_curr[1], q_curr[2], q_curr[3]
+        );
+        double q_norm = q_curr_eigen.norm();
+        if (q_norm > 1e-9) {
+            q_curr_eigen.normalize();
+            z_seed = q_curr_eigen * Vector3d::UnitZ();
+            if (z_seed.norm() <= 1e-9) {
+                z_seed = Vector3d::UnitZ();
+            }
+        }
+    }
+
+    // Project seed +Z to tangent-orthogonal plane.
+    Vector3d z_body = z_seed - z_seed.dot(x_body) * x_body;
     double z_norm = z_body.norm();
-    if (z_norm < 1e-6) {
-        // Degenerate — pick arbitrary orthogonal
-        z_body = Vector3d(0, 1, 0);
-        z_body = z_body - z_body.dot(x_body) * x_body;
+    if (z_norm <= 1e-6) {
+        // Deterministic least-aligned fallback.
+        Vector3d cand_x = Vector3d::UnitX();
+        Vector3d cand_y = Vector3d::UnitY();
+        Vector3d cand_z = Vector3d::UnitZ();
+        double ax = std::abs(cand_x.dot(x_body));
+        double ay = std::abs(cand_y.dot(x_body));
+        double az = std::abs(cand_z.dot(x_body));
+        Vector3d fallback =
+            (ax <= ay && ax <= az) ? cand_x : ((ay <= az) ? cand_y : cand_z);
+        z_body = fallback - fallback.dot(x_body) * x_body;
         z_norm = z_body.norm();
     }
-    z_body /= z_norm;
+    if (z_norm <= 1e-9) {
+        z_body = x_body.unitOrthogonal();
+        z_norm = z_body.norm();
+    }
+    z_body /= std::max(z_norm, 1e-12);
 
     Vector3d y_body = z_body.cross(x_body);
-    y_body.normalize();
+    double y_norm = y_body.norm();
+    if (y_norm <= 1e-9) {
+        y_body = Vector3d::UnitY();
+        y_body = y_body - y_body.dot(x_body) * x_body;
+        y_norm = y_body.norm();
+        if (y_norm <= 1e-9) {
+            y_body = x_body.unitOrthogonal();
+            y_norm = y_body.norm();
+        }
+    }
+    y_body /= std::max(y_norm, 1e-12);
+    z_body = x_body.cross(y_body).normalized();
+
+    // Keep frame hemisphere continuous across updates.
+    if (scan_ctx_.ref_initialized && scan_ctx_.ref_prev_y.norm() > 1e-9) {
+        if (scan_ctx_.ref_prev_y.dot(y_body) < 0.0) {
+            y_body = -y_body;
+            z_body = -z_body;
+        }
+    }
 
     // Rotation matrix R = [x_body | y_body | z_body]
     Eigen::Matrix3d R;
@@ -1127,6 +1186,11 @@ Vector4d SQPController::build_reference_quaternion(
     if (q_ref.dot(q_curr) < 0) {
         q_ref = -q_ref;
     }
+
+    scan_ctx_.ref_prev_x = x_body;
+    scan_ctx_.ref_prev_y = y_body;
+    scan_ctx_.ref_prev_z = z_body;
+    scan_ctx_.ref_initialized = true;
 
     return q_ref;
 }
@@ -1159,6 +1223,10 @@ void SQPController::set_path_data(
     // Reset path tracking
     s_runtime_ = 0.0;
     s_initialized_ = false;
+    scan_ctx_.ref_initialized = false;
+    scan_ctx_.ref_prev_x = Vector3d::Zero();
+    scan_ctx_.ref_prev_y = Vector3d::Zero();
+    scan_ctx_.ref_prev_z = Vector3d::Zero();
 }
 
 void SQPController::set_scan_attitude_context(
@@ -1172,11 +1240,17 @@ void SQPController::set_scan_attitude_context(
     scan_ctx_.axis = axis;
     scan_ctx_.direction_cw = (direction != "CCW");
     scan_ctx_.ref_initialized = false;
+    scan_ctx_.ref_prev_x = Vector3d::Zero();
+    scan_ctx_.ref_prev_y = Vector3d::Zero();
+    scan_ctx_.ref_prev_z = Vector3d::Zero();
 }
 
 void SQPController::clear_scan_attitude_context() {
     scan_ctx_.enabled = false;
     scan_ctx_.ref_initialized = false;
+    scan_ctx_.ref_prev_x = Vector3d::Zero();
+    scan_ctx_.ref_prev_y = Vector3d::Zero();
+    scan_ctx_.ref_prev_z = Vector3d::Zero();
 }
 
 void SQPController::set_runtime_mode(const std::string& mode) {

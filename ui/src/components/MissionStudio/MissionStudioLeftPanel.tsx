@@ -81,7 +81,9 @@ export function MissionStudioLeftPanel() {
     updatePath,
     removePath,
     wires,
+    assembly,
     removeWire,
+    setWireConstraintMode,
     holds,
     updateHold,
     removeHold,
@@ -103,6 +105,7 @@ export function MissionStudioLeftPanel() {
     setEditMode,
     setPathWaypointsManual,
   } = useStudioStore();
+  const selectedAssemblyId = useStudioStore((s) => s.selectedAssemblyId);
 
   const activeTool = useStudioStore((s) => s.activeTool);
   const regenerate = useRegenerateWaypoints();
@@ -112,6 +115,10 @@ export function MissionStudioLeftPanel() {
   const [axisSeed, setAxisSeed] = useState<'X' | 'Y' | 'Z'>('Z');
 
   const selectedPath = paths.find((p) => p.id === selectedPathId) ?? null;
+  const selectedWireId = selectedAssemblyId
+    ? assembly.find((item) => item.id === selectedAssemblyId && item.type === 'connect')?.wireId ?? null
+    : null;
+  const selectedWire = selectedWireId ? wires.find((w) => w.id === selectedWireId) ?? null : null;
 
   const resamplePolyline = (points: [number, number, number][], density: number): [number, number, number][] => {
     if (points.length < 2) return points;
@@ -491,6 +498,40 @@ export function MissionStudioLeftPanel() {
               {editMode === 'delete' && 'Click a waypoint to delete it (minimum 2 waypoints kept).'}
               {editMode === 'density' && 'Choose Total Path or Path Snippet, then adjust the density multiplier.'}
             </div>
+            {selectedWire && (
+              <div className="border border-slate-800 rounded p-2">
+                <div className="text-[10px] text-slate-500 mb-1">Constraint Mode</div>
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setWireConstraintMode(selectedWire.id, 'constrained')}
+                    className={`py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                      (selectedWire.constraintMode ?? 'constrained') === 'constrained'
+                        ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                        : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                    }`}
+                  >
+                    Constrained
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWireConstraintMode(selectedWire.id, 'free')}
+                    className={`py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                      (selectedWire.constraintMode ?? 'constrained') === 'free'
+                        ? 'border-cyan-600 bg-cyan-900/40 text-cyan-100'
+                        : 'border-slate-700 text-slate-400 hover:border-cyan-700'
+                    }`}
+                  >
+                    Free
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-2">
+                  {(selectedWire.constraintMode ?? 'constrained') === 'constrained'
+                    ? 'Maintains smooth endpoint tangency.'
+                    : 'Allows lateral bend and arbitrary curvature.'}
+                </div>
+              </div>
+            )}
             {selectedPath && editMode === 'density' ? (
               <div className="border border-slate-800 rounded p-2">
                 <div className="grid grid-cols-2 gap-1 mb-2">
