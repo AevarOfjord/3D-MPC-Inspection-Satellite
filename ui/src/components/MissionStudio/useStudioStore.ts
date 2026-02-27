@@ -44,6 +44,7 @@ export interface TransferWire {
   fromNodeId: string;
   toNodeId: string;
   waypoints?: [number, number, number][];
+  constraintMode?: 'constrained' | 'free';
 }
 
 export interface HoldMarker {
@@ -137,6 +138,7 @@ export interface StudioState {
   addWire: (wire: TransferWire) => void;
   removeWire: (id: string) => void;
   setWireWaypoints: (id: string, waypoints: [number, number, number][]) => void;
+  setWireConstraintMode: (id: string, mode: 'constrained' | 'free') => void;
 
   addHold: (hold: HoldMarker) => void;
   updateHold: (id: string, updates: Partial<Pick<HoldMarker, 'duration'>>) => void;
@@ -363,7 +365,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   addWire: (wire) => {
     const itemId = `asm-${++assemblyCounter}`;
     set((s) => ({
-      wires: [...s.wires, wire],
+      wires: [...s.wires, { ...wire, constraintMode: wire.constraintMode ?? 'constrained' }],
       assembly: [...s.assembly, { id: itemId, type: 'connect', wireId: wire.id }],
     }));
   },
@@ -385,6 +387,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           ? {
               ...w,
               waypoints,
+            }
+          : w
+      ),
+    })),
+
+  setWireConstraintMode: (id, mode) =>
+    set((s) => ({
+      wires: s.wires.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              constraintMode: mode,
             }
           : w
       ),

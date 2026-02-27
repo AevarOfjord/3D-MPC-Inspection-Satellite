@@ -82,4 +82,68 @@ describe('compileStudioMission', () => {
     expect((mission.segments ?? []).some((seg: any) => seg.type === 'transfer')).toBe(true);
     expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(4);
   });
+
+  it('preserves lateral connector deformation in free mode', async () => {
+    useStudioStore.setState({
+      referenceObjectPath: null,
+      missionName: 'WireFreeMode',
+      satelliteStart: [0, 0, 20],
+      paths: [],
+      holds: [],
+      obstacles: [],
+      points: [{ id: 'pt1', position: [0, 0, 0] }],
+      assembly: [],
+      wires: [
+        {
+          id: 'w1',
+          fromNodeId: 'satellite:start',
+          toNodeId: 'point:pt1',
+          constraintMode: 'free',
+          waypoints: [
+            [0, 0, 20],
+            [4, 0, 14],
+            [4, 0, 6],
+            [0, 0, 0],
+          ],
+        },
+      ],
+    } as any);
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    const manual = mission.overrides?.manual_path ?? [];
+    const maxAbsX = manual.reduce((acc, p) => Math.max(acc, Math.abs(p[0])), 0);
+    expect(maxAbsX).toBeGreaterThan(1);
+  });
+
+  it('reconstrains connector handles in constrained mode', async () => {
+    useStudioStore.setState({
+      referenceObjectPath: null,
+      missionName: 'WireConstrainedMode',
+      satelliteStart: [0, 0, 20],
+      paths: [],
+      holds: [],
+      obstacles: [],
+      points: [{ id: 'pt1', position: [0, 0, 0] }],
+      assembly: [],
+      wires: [
+        {
+          id: 'w1',
+          fromNodeId: 'satellite:start',
+          toNodeId: 'point:pt1',
+          constraintMode: 'constrained',
+          waypoints: [
+            [0, 0, 20],
+            [4, 0, 14],
+            [4, 0, 6],
+            [0, 0, 0],
+          ],
+        },
+      ],
+    } as any);
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    const manual = mission.overrides?.manual_path ?? [];
+    const maxAbsX = manual.reduce((acc, p) => Math.max(acc, Math.abs(p[0])), 0);
+    expect(maxAbsX).toBeLessThan(1e-3);
+  });
 });

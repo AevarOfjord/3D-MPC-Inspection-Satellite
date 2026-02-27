@@ -29,4 +29,15 @@ describe('useStudioStore studio v1', () => {
     expect(path?.planeA.position[2]).toBeCloseTo(-5, 6);
     expect(path?.planeB.position[2]).toBeCloseTo(5, 6);
   });
+
+  it('defaults new wires to constrained mode and allows toggling mode', () => {
+    useStudioStore.getState().addWire({
+      id: 'w1',
+      fromNodeId: 'satellite:start',
+      toNodeId: 'point:pt1',
+    });
+    expect(useStudioStore.getState().wires[0]?.constraintMode).toBe('constrained');
+    useStudioStore.getState().setWireConstraintMode('w1', 'free');
+    expect(useStudioStore.getState().wires[0]?.constraintMode).toBe('free');
+  });
 });

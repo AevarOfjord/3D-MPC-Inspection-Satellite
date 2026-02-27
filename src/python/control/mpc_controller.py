@@ -423,6 +423,8 @@ class MPCController(Controller):
         direction: str = "CW",
     ) -> None:
         if axis is None:
+            if not self._scan_attitude_enabled:
+                return
             self._cpp.clear_scan_attitude_context()
             self._scan_attitude_enabled = False
             return

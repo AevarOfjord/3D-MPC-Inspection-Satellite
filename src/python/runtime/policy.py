@@ -258,6 +258,18 @@ def resolve_pointing_context(
     chosen_span = selected_span
     axis_vec = _axis_from_span(chosen_span)
     center_world = _center_from_span(chosen_span)
+    contracts_cfg = getattr(
+        getattr(getattr(sim, "simulation_config", None), "app_config", None),
+        "controller_contracts",
+        None,
+    )
+    non_scan_policy = (
+        str(getattr(contracts_cfg, "non_scan_orientation_policy", "minimal_twist"))
+        .strip()
+        .lower()
+    )
+    if non_scan_policy not in {"minimal_twist", "world_up_lock", "radial_lock"}:
+        non_scan_policy = "minimal_twist"
 
     valid_scan_spans: list[dict[str, Any]] = []
     for span in spans:
@@ -291,26 +303,34 @@ def resolve_pointing_context(
             axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
 
     if axis_vec is None:
-        # Fallback for missions without any scan-axis context.
-        pos = (
-            np.array(current_state[:3], dtype=float)
-            if current_state.size >= 3
-            else np.zeros(3, dtype=float)
-        )
-        path_frame = (
-            str(getattr(mission_state, "path_frame", "LVLH")).upper()
-            if mission_state is not None
-            else "LVLH"
-        )
-        if path_frame == "LVLH":
-            origin = np.array(
-                getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0)), dtype=float
-            )
-            if origin.size >= 3:
-                pos = pos + origin[:3]
-        axis_vec = _normalize_vec(pos, np.array([0.0, 0.0, 1.0], dtype=float))
         center_world = None
-        source_label = "lvlh_radial_fallback"
+        if non_scan_policy == "radial_lock":
+            # Legacy fallback for missions without any scan-axis context.
+            pos = (
+                np.array(current_state[:3], dtype=float)
+                if current_state.size >= 3
+                else np.zeros(3, dtype=float)
+            )
+            path_frame = (
+                str(getattr(mission_state, "path_frame", "LVLH")).upper()
+                if mission_state is not None
+                else "LVLH"
+            )
+            if path_frame == "LVLH":
+                origin = np.array(
+                    getattr(mission_state, "frame_origin", (0.0, 0.0, 0.0)),
+                    dtype=float,
+                )
+                if origin.size >= 3:
+                    pos = pos + origin[:3]
+            axis_vec = _normalize_vec(pos, np.array([0.0, 0.0, 1.0], dtype=float))
+            source_label = "lvlh_radial_fallback"
+        elif non_scan_policy == "world_up_lock":
+            axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
+            source_label = "non_scan_world_up_lock"
+        else:
+            axis_vec = np.array([0.0, 0.0, 1.0], dtype=float)
+            source_label = "non_scan_minimal_twist"
     else:
         source_label = "segment_span"
         if isinstance(chosen_span, dict):

@@ -151,6 +151,46 @@ class TestMPCController:
         t /= np.linalg.norm(t)
         assert np.dot(t, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.999
 
+    def test_non_scan_reference_quaternion_is_continuous_on_sway_path(self, controller):
+        """Minimal-twist non-scan reference should stay continuous through tangent reversals."""
+        controller.set_path(
+            [
+                (0.0, 0.0, 20.0),
+                (1.431361, 0.0, 14.205968),
+                (-1.377417, 0.0, 6.528819),
+                (0.0, 0.0, 0.0),
+            ]
+        )
+        controller.set_scan_attitude_context(center=None, axis=None, direction="CW")
+
+        def _rotate(q_wxyz: np.ndarray, v: np.ndarray) -> np.ndarray:
+            w, x, y, z = q_wxyz
+            q_vec = np.array([x, y, z], dtype=float)
+            uv = np.cross(q_vec, v)
+            uuv = np.cross(q_vec, uv)
+            return v + 2.0 * (w * uv + uuv)
+
+        q_prev = np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
+        min_abs_dot = 1.0
+        samples = np.linspace(0.0, controller._path_length, 81)
+        for s_query in samples:
+            _p_ref, t_ref, q_ref = controller.get_path_reference_state(
+                s_query=float(s_query),
+                q_current=q_prev,
+            )
+            q_ref = np.array(q_ref, dtype=float)
+            q_ref /= np.linalg.norm(q_ref)
+            t_ref = np.array(t_ref, dtype=float)
+            t_ref /= np.linalg.norm(t_ref)
+            x_axis = _rotate(q_ref, np.array([1.0, 0.0, 0.0], dtype=float))
+            assert np.dot(x_axis, t_ref) > 0.995
+
+            dot_abs = abs(float(np.dot(q_prev, q_ref)))
+            min_abs_dot = min(min_abs_dot, dot_abs)
+            q_prev = q_ref
+
+        assert min_abs_dot > 0.70
+
     def test_cpp_loader_uses_only_canonical_namespace(self, monkeypatch):
         """cpp extension loader should only probe the canonical cpp.* namespace."""
         attempted: list[str] = []

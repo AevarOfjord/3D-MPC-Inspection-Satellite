@@ -1006,6 +1006,10 @@ class ControllerContractsParams(BaseModel):
         constants.Constants.SCAN_AXIS_SOURCE,
         description='Scan axis source policy ("planner", "asset_infer").',
     )
+    non_scan_orientation_policy: str = Field(
+        constants.Constants.NON_SCAN_ORIENTATION_POLICY,
+        description='Non-scan +Z policy ("minimal_twist", "world_up_lock", "radial_lock").',
+    )
     pointing_guardrails_enabled: bool = Field(
         constants.Constants.POINTING_GUARDRAILS_ENABLED,
         description="Enable pointing guardrail breach monitoring and RECOVER trigger.",
@@ -1052,6 +1056,15 @@ class ControllerContractsParams(BaseModel):
 
         if self.scan_axis_source not in {"planner", "asset_infer"}:
             raise ValueError("scan_axis_source must be one of: planner, asset_infer")
+        if self.non_scan_orientation_policy not in {
+            "minimal_twist",
+            "world_up_lock",
+            "radial_lock",
+        }:
+            raise ValueError(
+                "non_scan_orientation_policy must be one of: "
+                "minimal_twist, world_up_lock, radial_lock"
+            )
         return self
 
 
