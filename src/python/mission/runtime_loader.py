@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from config.paths import normalize_repo_relative_str
 from config.simulation_config import SimulationConfig
 from mission.axis_utils import infer_scan_axis_from_path, snap_axis_if_near_cardinal
 from mission.path_assets import load_path_asset
@@ -19,6 +20,7 @@ from runtime.policy import (
     MissionRuntimePlan,
     compile_mission_runtime_plan,
 )
+from utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 
 @dataclass
@@ -32,6 +34,14 @@ class UnifiedMissionRuntime:
     start_pos: tuple[float, float, float]
     end_pos: tuple[float, float, float]
     runtime_plan: MissionRuntimePlan | None = None
+
+
+_STUDIO_OBJ_TARGET_PREFIX = "STUDIO_OBJ::"
+_STUDIO_LOCAL_TARGET_ID = "STUDIO_LOCAL_ORIGIN"
+_CANONICAL_ORBIT_TARGET_ORIGINS: dict[str, tuple[float, float, float]] = {
+    "ISS": (6_799_250.0, 0.0, 0.0),
+    "STARLINK-1008": (0.0, 6_854_420.0, 0.0),
+}
 
 
 def _axis_token_to_letter(axis_token: Any) -> str | None:
@@ -152,6 +162,131 @@ def parse_unified_mission_payload(payload: Mapping[str, Any]) -> MissionDefiniti
         raise ValueError(f"Invalid unified mission: {exc}") from exc
 
 
+def _resolve_reference_scan_segment(
+    mission: MissionDefinition,
+) -> tuple[Any | None, str]:
+    target_id = str(getattr(mission, "start_target_id", "") or "").strip()
+    if target_id:
+        for segment in mission.segments:
+            if segment.type == SegmentType.SCAN and str(segment.target_id).strip() == target_id:
+                return segment, target_id
+    for segment in mission.segments:
+        if segment.type == SegmentType.SCAN:
+            fallback_target = str(getattr(segment, "target_id", "") or "").strip()
+            if fallback_target:
+                return segment, fallback_target
+    return None, target_id
+
+
+def _canonical_target_from_studio_obj(target_raw: str) -> str | None:
+    if not target_raw.startswith(_STUDIO_OBJ_TARGET_PREFIX):
+        return None
+    encoded_path = target_raw[len(_STUDIO_OBJ_TARGET_PREFIX) :].strip()
+    if not encoded_path:
+        return None
+    normalized = encoded_path.replace("\\", "/").lower()
+    if normalized.endswith("starlink.obj") or "/starlink/" in normalized:
+        return "STARLINK-1008"
+    if normalized.endswith("iss.obj") or "/iss/" in normalized:
+        return "ISS"
+    return None
+
+
+def _canonical_orbit_target_id(target_raw: str) -> str | None:
+    raw = str(target_raw or "").strip()
+    if not raw:
+        return None
+    mapped_from_obj = _canonical_target_from_studio_obj(raw)
+    if mapped_from_obj:
+        return mapped_from_obj
+    upper = raw.upper()
+    if upper in _CANONICAL_ORBIT_TARGET_ORIGINS:
+        return upper
+    if "STARLINK" in upper:
+        return "STARLINK-1008"
+    if "ISS" in upper:
+        return "ISS"
+    return None
+
+
+def _resolve_runtime_frame_origin(
+    mission: MissionDefinition,
+    *,
+    compiled_origin: np.ndarray,
+    output_frame: str,
+) -> np.ndarray:
+    # Studio built-in OBJ targets (ISS/Starlink) are authored in local LVLH but
+    # should run around the existing orbiting Viewer targets.
+    if _normalize_frame(output_frame) != "LVLH":
+        return np.array(compiled_origin, dtype=float)
+    _, target_id = _resolve_reference_scan_segment(mission)
+    target_raw = str(target_id or "").strip()
+    if not target_raw.startswith(_STUDIO_OBJ_TARGET_PREFIX):
+        return np.array(compiled_origin, dtype=float)
+    canonical = _canonical_orbit_target_id(target_raw)
+    if not canonical:
+        return np.array(compiled_origin, dtype=float)
+    origin = _CANONICAL_ORBIT_TARGET_ORIGINS.get(canonical)
+    if origin is None:
+        return np.array(compiled_origin, dtype=float)
+    return np.array(origin, dtype=float)
+
+
+def _resolve_visualization_scan_object(
+    mission: MissionDefinition,
+    *,
+    origin: np.ndarray,
+    output_frame: str,
+) -> dict[str, Any] | None:
+    segment, target_id = _resolve_reference_scan_segment(mission)
+    target_raw = str(target_id or "").strip()
+    if not target_raw or target_raw.upper() == _STUDIO_LOCAL_TARGET_ID:
+        return None
+    canonical_target = _canonical_orbit_target_id(target_raw)
+    if canonical_target in _CANONICAL_ORBIT_TARGET_ORIGINS:
+        # Viewer already renders canonical orbit targets; do not add duplicates.
+        return None
+
+    position = np.zeros(3, dtype=float)
+    orientation_euler = [0.0, 0.0, 0.0]
+    if segment is not None and getattr(segment, "target_pose", None) is not None:
+        target_pose = segment.target_pose
+        position = _convert_position(
+            position=getattr(target_pose, "position", (0.0, 0.0, 0.0)),
+            source_frame=_normalize_frame(getattr(target_pose, "frame", output_frame)),
+            target_frame=output_frame,
+            origin=origin,
+        )
+        orientation = getattr(target_pose, "orientation", None)
+        if orientation is not None:
+            try:
+                euler = quat_wxyz_to_euler_xyz(np.array(orientation, dtype=float))
+                orientation_euler = [
+                    float(euler[0]),
+                    float(euler[1]),
+                    float(euler[2]),
+                ]
+            except Exception:
+                orientation_euler = [0.0, 0.0, 0.0]
+
+    upper = target_raw.upper()
+    if target_raw.startswith(_STUDIO_OBJ_TARGET_PREFIX):
+        encoded_path = target_raw[len(_STUDIO_OBJ_TARGET_PREFIX) :].strip()
+        if not encoded_path:
+            return None
+        return {
+            "type": "mesh",
+            "position": [float(position[0]), float(position[1]), float(position[2])],
+            "orientation": orientation_euler,
+            "radius": 1.0,
+            "height": 1.0,
+            "obj_path": normalize_repo_relative_str(encoded_path),
+        }
+    if "STARLINK" in upper or "ISS" in upper:
+        return None
+    return None
+
+
 def compile_unified_mission_runtime(
     mission: MissionDefinition,
     *,
@@ -231,7 +366,12 @@ def compile_unified_mission_runtime(
     mission_state.path_tracking_estimated_duration = float(
         runtime_plan.required_duration_s
     )
-    mission_state.frame_origin = origin
+    runtime_origin = _resolve_runtime_frame_origin(
+        mission,
+        compiled_origin=np.array(origin, dtype=float),
+        output_frame=resolved_output_frame,
+    )
+    mission_state.frame_origin = tuple(map(float, runtime_origin))
     mission_state.path_frame = resolved_output_frame
     mission_state.pointing_path_spans = list(pointing_spans or [])
     mission_state.scan_axis_migration_notices = list(scan_axis_migration_notices)
@@ -248,9 +388,14 @@ def compile_unified_mission_runtime(
         mission_state.scan_attitude_direction,
     ) = _resolve_scan_attitude_context(
         mission=mission,
-        origin=np.array(origin, dtype=float),
+        origin=runtime_origin,
         output_frame=resolved_output_frame,
         scan_axis_source=scan_axis_source,
+    )
+    mission_state.visualization_scan_object = _resolve_visualization_scan_object(
+        mission,
+        origin=runtime_origin,
+        output_frame=resolved_output_frame,
     )
 
     start_pos = tuple(path[0]) if path else tuple(mission.start_pose.position)
