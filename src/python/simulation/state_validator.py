@@ -53,6 +53,10 @@ class SimulationStateValidator:
         angle_tolerance: float = 0.05,
         velocity_tolerance: float = 0.01,
         angular_velocity_tolerance: float = 0.01,
+        position_hold_exit_tolerance: float | None = None,
+        angle_hold_exit_tolerance: float | None = None,
+        velocity_hold_exit_tolerance: float | None = None,
+        angular_velocity_hold_exit_tolerance: float | None = None,
         position_bounds: float | None = None,
         max_velocity: float | None = None,
         max_angular_velocity: float | None = None,
@@ -75,6 +79,38 @@ class SimulationStateValidator:
         self.angle_tolerance = angle_tolerance
         self.velocity_tolerance = velocity_tolerance
         self.angular_velocity_tolerance = angular_velocity_tolerance
+        self.position_hold_exit_tolerance = max(
+            float(self.position_tolerance),
+            float(
+                position_hold_exit_tolerance
+                if position_hold_exit_tolerance is not None
+                else 0.12
+            ),
+        )
+        self.angle_hold_exit_tolerance = max(
+            float(self.angle_tolerance),
+            float(
+                angle_hold_exit_tolerance
+                if angle_hold_exit_tolerance is not None
+                else np.deg2rad(2.5)
+            ),
+        )
+        self.velocity_hold_exit_tolerance = max(
+            float(self.velocity_tolerance),
+            float(
+                velocity_hold_exit_tolerance
+                if velocity_hold_exit_tolerance is not None
+                else 0.06
+            ),
+        )
+        self.angular_velocity_hold_exit_tolerance = max(
+            float(self.angular_velocity_tolerance),
+            float(
+                angular_velocity_hold_exit_tolerance
+                if angular_velocity_hold_exit_tolerance is not None
+                else np.deg2rad(2.5)
+            ),
+        )
         self.app_config = app_config
 
         if position_bounds is None:
@@ -242,12 +278,12 @@ class SimulationStateValidator:
         """
         # Position error (3D)
         pos_error = np.linalg.norm(current_state[:3] - reference_state[:3])
-        if pos_error >= self.position_tolerance:
+        if pos_error > self.position_tolerance:
             return False
 
         # Velocity error (3D)
         vel_error = np.linalg.norm(current_state[7:10] - reference_state[7:10])
-        if vel_error >= self.velocity_tolerance:
+        if vel_error > self.velocity_tolerance:
             return False
 
         # Angle error (Quaternion dot prod)
@@ -257,12 +293,12 @@ class SimulationStateValidator:
         dot = min(1.0, max(-1.0, dot))
         ang_error = 2.0 * np.arccos(dot)
 
-        if ang_error >= self.angle_tolerance:
+        if ang_error > self.angle_tolerance:
             return False
 
         # Angular velocity error (3D)
         angvel_error = np.linalg.norm(current_state[10:13] - reference_state[10:13])
-        if angvel_error >= self.angular_velocity_tolerance:
+        if angvel_error > self.angular_velocity_tolerance:
             return False
 
         return True
@@ -303,7 +339,11 @@ class SimulationStateValidator:
         }
 
     def check_within_tolerances(
-        self, current_state: np.ndarray, reference_state: np.ndarray
+        self,
+        current_state: np.ndarray,
+        reference_state: np.ndarray,
+        *,
+        hysteresis_mode: str = "enter",
     ) -> dict[str, bool]:
         """
         Check which state components are within tolerance.
@@ -316,13 +356,33 @@ class SimulationStateValidator:
             Dictionary indicating which components are within tolerance
         """
         errors = self.compute_state_errors(current_state, reference_state)
+        mode = str(hysteresis_mode or "enter").strip().lower()
+        use_hold_exit = mode in {"hold", "exit", "maintain"}
+        position_threshold = (
+            self.position_hold_exit_tolerance
+            if use_hold_exit
+            else self.position_tolerance
+        )
+        velocity_threshold = (
+            self.velocity_hold_exit_tolerance
+            if use_hold_exit
+            else self.velocity_tolerance
+        )
+        angle_threshold = (
+            self.angle_hold_exit_tolerance if use_hold_exit else self.angle_tolerance
+        )
+        angular_velocity_threshold = (
+            self.angular_velocity_hold_exit_tolerance
+            if use_hold_exit
+            else self.angular_velocity_tolerance
+        )
 
         return {
-            "position": errors["position_error"] < self.position_tolerance,
-            "velocity": errors["velocity_error"] < self.velocity_tolerance,
-            "angle": errors["angle_error"] < self.angle_tolerance,
+            "position": errors["position_error"] <= position_threshold,
+            "velocity": errors["velocity_error"] <= velocity_threshold,
+            "angle": errors["angle_error"] <= angle_threshold,
             "angular_velocity": errors["angular_velocity_error"]
-            < self.angular_velocity_tolerance,
+            <= angular_velocity_threshold,
         }
 
     def apply_sensor_noise(
@@ -438,6 +498,12 @@ class SimulationStateValidator:
             "angle_tolerance": self.angle_tolerance,
             "velocity_tolerance": self.velocity_tolerance,
             "angular_velocity_tolerance": self.angular_velocity_tolerance,
+            "position_hold_exit_tolerance": self.position_hold_exit_tolerance,
+            "angle_hold_exit_tolerance": self.angle_hold_exit_tolerance,
+            "velocity_hold_exit_tolerance": self.velocity_hold_exit_tolerance,
+            "angular_velocity_hold_exit_tolerance": (
+                self.angular_velocity_hold_exit_tolerance
+            ),
         }
 
     def get_bounds_summary(self) -> dict[str, float]:
@@ -547,6 +613,14 @@ def create_state_validator_from_config(
         angular_velocity_tolerance = config.get(
             "angular_velocity_tolerance", Constants.ANGULAR_VELOCITY_TOLERANCE
         )
+        position_hold_exit_tolerance = config.get("position_hold_exit_tolerance", 0.12)
+        angle_hold_exit_tolerance = config.get(
+            "angle_hold_exit_tolerance", np.deg2rad(2.5)
+        )
+        velocity_hold_exit_tolerance = config.get("velocity_hold_exit_tolerance", 0.06)
+        angular_velocity_hold_exit_tolerance = config.get(
+            "angular_velocity_hold_exit_tolerance", np.deg2rad(2.5)
+        )
     else:
         position_tolerance = config.get(
             "position_tolerance", Constants.POSITION_TOLERANCE
@@ -559,6 +633,14 @@ def create_state_validator_from_config(
             "angular_velocity_tolerance",
             Constants.ANGULAR_VELOCITY_TOLERANCE,
         )
+        position_hold_exit_tolerance = config.get("position_hold_exit_tolerance", 0.12)
+        angle_hold_exit_tolerance = config.get(
+            "angle_hold_exit_tolerance", np.deg2rad(2.5)
+        )
+        velocity_hold_exit_tolerance = config.get("velocity_hold_exit_tolerance", 0.06)
+        angular_velocity_hold_exit_tolerance = config.get(
+            "angular_velocity_hold_exit_tolerance", np.deg2rad(2.5)
+        )
 
     position_bounds = config.get("position_bounds", 5.0)
     max_velocity = config.get("max_velocity", 1.0)
@@ -569,6 +651,10 @@ def create_state_validator_from_config(
         angle_tolerance=angle_tolerance,
         velocity_tolerance=velocity_tolerance,
         angular_velocity_tolerance=angular_velocity_tolerance,
+        position_hold_exit_tolerance=position_hold_exit_tolerance,
+        angle_hold_exit_tolerance=angle_hold_exit_tolerance,
+        velocity_hold_exit_tolerance=velocity_hold_exit_tolerance,
+        angular_velocity_hold_exit_tolerance=angular_velocity_hold_exit_tolerance,
         position_bounds=position_bounds,
         max_velocity=max_velocity,
         max_angular_velocity=max_angular_velocity,

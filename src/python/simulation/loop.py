@@ -427,6 +427,12 @@ class SimulationLoop:
             angle_ok=bool(status.get("angle_ok", False)),
             velocity_ok=bool(status.get("velocity_ok", False)),
             angular_velocity_ok=bool(status.get("angular_velocity_ok", False)),
+            position_hold_ok=bool(status.get("position_hold_ok", False)),
+            angle_hold_ok=bool(status.get("angle_hold_ok", False)),
+            velocity_hold_ok=bool(status.get("velocity_hold_ok", False)),
+            angular_velocity_hold_ok=bool(
+                status.get("angular_velocity_hold_ok", False)
+            ),
         )
         self.simulation.completion_gate = gate
         self.simulation.completion_reached = bool(gate.complete)
@@ -452,7 +458,11 @@ class SimulationLoop:
                     "gate_ok": bool(gate.gate_ok),
                     "complete": bool(gate.complete),
                     "last_breach_reason": gate.last_breach_reason,
+                    "fail_reason": gate.fail_reason,
+                    "hold_reset_count": int(gate.hold_reset_count),
                     "path_s": float(status.get("path_s", 0.0)),
+                    "path_s_controller": float(status.get("path_s_controller", 0.0)),
+                    "path_s_progress": float(status.get("path_s_progress", 0.0)),
                     "path_length": float(status.get("path_length", 0.0)),
                     "path_error": float(status.get("path_error", 0.0)),
                 },

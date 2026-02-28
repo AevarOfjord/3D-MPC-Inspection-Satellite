@@ -170,6 +170,10 @@ def create_default_app_config() -> AppConfig:
         angular_velocity_error_degps_max=float(
             constants.Constants.ANGULAR_VELOCITY_TOLERANCE * 180.0 / 3.141592653589793
         ),
+        position_error_exit_m_max=constants.Constants.TERMINAL_POSITION_EXIT_TOLERANCE_M,
+        angle_error_exit_deg_max=constants.Constants.TERMINAL_ANGLE_EXIT_TOLERANCE_DEG,
+        velocity_error_exit_mps_max=constants.Constants.TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS,
+        angular_velocity_error_exit_degps_max=constants.Constants.TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS,
         hold_duration_s=10.0,
         solver_fallback_hold_s=constants.Constants.SOLVER_FALLBACK_HOLD_S,
         solver_fallback_decay_s=constants.Constants.SOLVER_FALLBACK_DECAY_S,

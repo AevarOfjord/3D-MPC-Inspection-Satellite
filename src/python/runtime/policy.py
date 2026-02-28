@@ -8,6 +8,7 @@ from typing import Any, Literal
 import numpy as np
 
 ModeName = Literal["TRACK", "RECOVER", "SETTLE", "HOLD", "COMPLETE"]
+PointingPolicyName = Literal["scan_locked", "transit_free"]
 
 
 @dataclass
@@ -71,6 +72,10 @@ class CompletionGateStatus:
     hold_elapsed_s: float
     hold_required_s: float
     last_breach_reason: str | None
+    fail_reason: Literal[
+        "progress", "position", "angle", "velocity", "angular_velocity", "none"
+    ]
+    hold_reset_count: int
     complete: bool
 
 
@@ -98,6 +103,8 @@ class PointingContext:
     source: str
     span_index: int | None = None
     source_segment_index: int | None = None
+    policy: PointingPolicyName = "scan_locked"
+    enforced: bool = True
 
 
 @dataclass
@@ -230,6 +237,19 @@ def resolve_pointing_context(
             return 0.0
         return min(abs(s_query - s_start), abs(s_query - s_end))
 
+    def _policy_from_span(span: dict[str, Any] | None) -> PointingPolicyName | None:
+        if not isinstance(span, dict):
+            return None
+        policy_raw = str(span.get("pointing_policy", "")).strip().lower()
+        if policy_raw in {"scan_locked", "transit_free"}:
+            return policy_raw  # type: ignore[return-value]
+        segment_type = str(span.get("segment_type", "")).strip().lower()
+        if segment_type == "transfer":
+            return "transit_free"
+        if segment_type == "scan":
+            return "scan_locked"
+        return None
+
     selected_span: dict[str, Any] | None = None
     selected_idx: int | None = None
     if spans:
@@ -255,6 +275,28 @@ def resolve_pointing_context(
                     selected_span = span
                     selected_idx = idx
 
+    selected_policy = _policy_from_span(selected_span) or "scan_locked"
+    source_segment_index = (
+        None
+        if selected_span is None
+        else int(_safe_float(selected_span.get("source_segment_index"), -1.0))
+    )
+    if selected_policy == "transit_free":
+        return PointingContext(
+            axis_world=np.array([0.0, 0.0, 1.0], dtype=float),
+            center_world=None,
+            direction_cw=True,
+            source="transit_free",
+            span_index=selected_idx,
+            source_segment_index=(
+                source_segment_index
+                if isinstance(source_segment_index, int) and source_segment_index >= 0
+                else None
+            ),
+            policy="transit_free",
+            enforced=False,
+        )
+
     chosen_span = selected_span
     axis_vec = _axis_from_span(chosen_span)
     center_world = _center_from_span(chosen_span)
@@ -271,12 +313,12 @@ def resolve_pointing_context(
     if non_scan_policy not in {"minimal_twist", "world_up_lock", "radial_lock"}:
         non_scan_policy = "minimal_twist"
 
-    valid_scan_spans: list[dict[str, Any]] = []
-    for span in spans:
+    valid_scan_spans: list[tuple[int, dict[str, Any]]] = []
+    for idx, span in enumerate(spans):
         if not isinstance(span, dict):
             continue
         if _axis_from_span(span) is not None:
-            valid_scan_spans.append(span)
+            valid_scan_spans.append((idx, span))
 
     initial_axis = np.array(
         getattr(mission_state, "scan_attitude_axis", (0.0, 0.0, 0.0)),
@@ -290,8 +332,12 @@ def resolve_pointing_context(
     has_scan_context = bool(valid_scan_spans) or has_initial_scan_axis
 
     if axis_vec is None and valid_scan_spans:
-        nearest_span = min(valid_scan_spans, key=_span_distance)
+        nearest_idx, nearest_span = min(
+            valid_scan_spans,
+            key=lambda item: _span_distance(item[1]),
+        )
         chosen_span = nearest_span
+        selected_idx = nearest_idx
         axis_vec = _axis_from_span(nearest_span)
         if center_world is None:
             center_world = _center_from_span(nearest_span)
@@ -344,6 +390,7 @@ def resolve_pointing_context(
         "CW" if chosen_span is None else str(chosen_span.get("scan_direction", "CW"))
     )
     direction_cw = direction_raw.strip().upper() != "CCW"
+    chosen_policy = _policy_from_span(chosen_span) or "scan_locked"
     source_segment_index = (
         None
         if chosen_span is None
@@ -363,6 +410,8 @@ def resolve_pointing_context(
             if isinstance(source_segment_index, int) and source_segment_index >= 0
             else None
         ),
+        policy=chosen_policy,
+        enforced=True,
     )
 
 
@@ -650,10 +699,51 @@ class TerminalSupervisor:
         self.hold_required_s = max(0.0, float(hold_required_s))
         self.hold_started_at_s: float | None = None
         self.last_breach_reason: str | None = None
+        self.hold_reset_count: int = 0
 
     def reset(self) -> None:
         self.hold_started_at_s = None
         self.last_breach_reason = None
+        self.hold_reset_count = 0
+
+    @staticmethod
+    def _resolve_fail_reason(
+        *,
+        progress_ok: bool,
+        position_ok: bool,
+        angle_ok: bool,
+        velocity_ok: bool,
+        angular_velocity_ok: bool,
+    ) -> Literal[
+        "progress", "position", "angle", "velocity", "angular_velocity", "none"
+    ]:
+        if not progress_ok:
+            return "progress"
+        if not position_ok:
+            return "position"
+        if not angle_ok:
+            return "angle"
+        if not velocity_ok:
+            return "velocity"
+        if not angular_velocity_ok:
+            return "angular_velocity"
+        return "none"
+
+    @staticmethod
+    def _legacy_breach_reason(
+        fail_reason: Literal[
+            "progress", "position", "angle", "velocity", "angular_velocity", "none"
+        ],
+    ) -> str | None:
+        mapping = {
+            "progress": "path_progress",
+            "position": "position_error",
+            "angle": "angle_error",
+            "velocity": "velocity_error",
+            "angular_velocity": "angular_velocity_error",
+            "none": None,
+        }
+        return mapping[fail_reason]
 
     def evaluate(
         self,
@@ -664,35 +754,69 @@ class TerminalSupervisor:
         angle_ok: bool,
         velocity_ok: bool,
         angular_velocity_ok: bool,
+        position_hold_ok: bool | None = None,
+        angle_hold_ok: bool | None = None,
+        velocity_hold_ok: bool | None = None,
+        angular_velocity_hold_ok: bool | None = None,
     ) -> CompletionGateStatus:
         sim_time_s = float(sim_time_s)
         all_thresholds_ok = bool(
             position_ok and angle_ok and velocity_ok and angular_velocity_ok
         )
         gate_ok = bool(progress_ok and all_thresholds_ok)
+        hold_position_ok = (
+            position_ok if position_hold_ok is None else bool(position_hold_ok)
+        )
+        hold_angle_ok = angle_ok if angle_hold_ok is None else bool(angle_hold_ok)
+        hold_velocity_ok = (
+            velocity_ok if velocity_hold_ok is None else bool(velocity_hold_ok)
+        )
+        hold_angular_velocity_ok = (
+            angular_velocity_ok
+            if angular_velocity_hold_ok is None
+            else bool(angular_velocity_hold_ok)
+        )
+        hold_maintained = bool(
+            progress_ok
+            and hold_position_ok
+            and hold_angle_ok
+            and hold_velocity_ok
+            and hold_angular_velocity_ok
+        )
 
-        if gate_ok:
-            if self.hold_started_at_s is None:
+        fail_reason: Literal[
+            "progress", "position", "angle", "velocity", "angular_velocity", "none"
+        ]
+        hold_elapsed = 0.0
+        if self.hold_started_at_s is None:
+            if gate_ok:
                 self.hold_started_at_s = sim_time_s
-            hold_elapsed = max(0.0, sim_time_s - self.hold_started_at_s)
-            self.last_breach_reason = None
-        else:
-            hold_elapsed = 0.0
-            self.hold_started_at_s = None
-            if not progress_ok:
-                self.last_breach_reason = "path_progress"
-            elif not position_ok:
-                self.last_breach_reason = "position_error"
-            elif not angle_ok:
-                self.last_breach_reason = "angle_error"
-            elif not velocity_ok:
-                self.last_breach_reason = "velocity_error"
-            elif not angular_velocity_ok:
-                self.last_breach_reason = "angular_velocity_error"
+                hold_elapsed = 0.0
+                fail_reason = "none"
             else:
-                self.last_breach_reason = "unknown"
-
-        complete = gate_ok and hold_elapsed >= self.hold_required_s
+                fail_reason = self._resolve_fail_reason(
+                    progress_ok=bool(progress_ok),
+                    position_ok=bool(position_ok),
+                    angle_ok=bool(angle_ok),
+                    velocity_ok=bool(velocity_ok),
+                    angular_velocity_ok=bool(angular_velocity_ok),
+                )
+        else:
+            if hold_maintained:
+                hold_elapsed = max(0.0, sim_time_s - self.hold_started_at_s)
+                fail_reason = "none"
+            else:
+                fail_reason = self._resolve_fail_reason(
+                    progress_ok=bool(progress_ok),
+                    position_ok=bool(hold_position_ok),
+                    angle_ok=bool(hold_angle_ok),
+                    velocity_ok=bool(hold_velocity_ok),
+                    angular_velocity_ok=bool(hold_angular_velocity_ok),
+                )
+                self.hold_started_at_s = None
+                self.hold_reset_count += 1
+        self.last_breach_reason = self._legacy_breach_reason(fail_reason)
+        complete = bool(hold_maintained and hold_elapsed >= self.hold_required_s)
 
         return CompletionGateStatus(
             progress_ok=bool(progress_ok),
@@ -705,6 +829,8 @@ class TerminalSupervisor:
             hold_elapsed_s=hold_elapsed,
             hold_required_s=self.hold_required_s,
             last_breach_reason=self.last_breach_reason,
+            fail_reason=fail_reason,
+            hold_reset_count=int(self.hold_reset_count),
             complete=bool(complete),
         )
 

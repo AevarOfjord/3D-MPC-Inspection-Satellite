@@ -92,3 +92,31 @@ class TestStateValidation:
         assert validator.angular_velocity_tolerance == pytest.approx(
             Constants.ANGULAR_VELOCITY_TOLERANCE
         )
+
+    def test_check_within_tolerances_is_inclusive_at_boundary(self, validator):
+        current = np.zeros(13, dtype=float)
+        reference = np.zeros(13, dtype=float)
+        current[3] = 1.0
+        reference[3] = 1.0
+        current[0] = float(validator.position_tolerance)
+        current[7] = float(validator.velocity_tolerance)
+        current[10] = float(validator.angular_velocity_tolerance)
+        checks = validator.check_within_tolerances(current, reference)
+        assert checks["position"] is True
+        assert checks["velocity"] is True
+        assert checks["angular_velocity"] is True
+
+    def test_hold_hysteresis_thresholds_allow_small_exit_band(self, validator):
+        current = np.zeros(13, dtype=float)
+        reference = np.zeros(13, dtype=float)
+        current[3] = 1.0
+        reference[3] = 1.0
+        current[0] = float(validator.position_hold_exit_tolerance)
+        enter_checks = validator.check_within_tolerances(
+            current, reference, hysteresis_mode="enter"
+        )
+        hold_checks = validator.check_within_tolerances(
+            current, reference, hysteresis_mode="hold"
+        )
+        assert enter_checks["position"] is False
+        assert hold_checks["position"] is True

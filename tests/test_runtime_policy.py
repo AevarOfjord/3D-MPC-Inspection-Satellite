@@ -188,6 +188,53 @@ def test_terminal_supervisor_hold_reset_and_completion() -> None:
     assert gate.complete is True
 
 
+def test_terminal_supervisor_uses_exit_hysteresis_for_hold_maintenance() -> None:
+    supervisor = TerminalSupervisor(hold_required_s=2.0)
+
+    gate = supervisor.evaluate(
+        sim_time_s=0.0,
+        progress_ok=True,
+        position_ok=True,
+        angle_ok=True,
+        velocity_ok=True,
+        angular_velocity_ok=True,
+    )
+    assert gate.hold_elapsed_s == pytest.approx(0.0)
+    assert gate.hold_reset_count == 0
+
+    gate = supervisor.evaluate(
+        sim_time_s=1.0,
+        progress_ok=True,
+        position_ok=False,
+        angle_ok=True,
+        velocity_ok=True,
+        angular_velocity_ok=True,
+        position_hold_ok=True,
+        angle_hold_ok=True,
+        velocity_hold_ok=True,
+        angular_velocity_hold_ok=True,
+    )
+    assert gate.hold_elapsed_s == pytest.approx(1.0)
+    assert gate.hold_reset_count == 0
+    assert gate.fail_reason == "none"
+
+    gate = supervisor.evaluate(
+        sim_time_s=1.2,
+        progress_ok=True,
+        position_ok=False,
+        angle_ok=True,
+        velocity_ok=True,
+        angular_velocity_ok=True,
+        position_hold_ok=False,
+        angle_hold_ok=True,
+        velocity_hold_ok=True,
+        angular_velocity_hold_ok=True,
+    )
+    assert gate.hold_elapsed_s == pytest.approx(0.0)
+    assert gate.hold_reset_count == 1
+    assert gate.fail_reason == "position"
+
+
 def test_runtime_speed_policy_and_duration_estimator() -> None:
     speed = compute_runtime_path_speed(
         non_hold_segment_caps=[0.12, 0.08, 0.10],
@@ -450,6 +497,39 @@ def test_pointing_context_switches_across_span_boundaries() -> None:
     assert second.source == "transfer_previous_scan"
     assert np.allclose(second.axis_world, np.array([0.0, 1.0, 0.0]), atol=1e-6)
     assert second.direction_cw is False
+
+
+def test_pointing_context_marks_transfer_spans_as_transit_free() -> None:
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (0.0, 0.0, 0.0)
+        pointing_path_spans = [
+            {
+                "segment_type": "transfer",
+                "pointing_policy": "transit_free",
+                "s_start": 0.0,
+                "s_end": 2.0,
+                "scan_axis": [0.0, 1.0, 0.0],
+                "scan_direction": "CW",
+                "source_segment_index": 0,
+                "context_source": "transfer_previous_scan",
+            }
+        ]
+
+    class _SimConfig:
+        mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    context = resolve_pointing_context(sim=_Sim(), current_state=state, path_s=1.0)
+    assert context.policy == "transit_free"
+    assert context.enforced is False
+    assert context.source == "transit_free"
 
 
 def test_pointing_context_uses_nearest_valid_scan_axis_before_radial_fallback() -> None:

@@ -17,6 +17,11 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             "angle_ok": False,
             "velocity_ok": False,
             "angular_velocity_ok": False,
+            "position_hold_ok": False,
+            "angle_hold_ok": False,
+            "velocity_hold_ok": False,
+            "angular_velocity_hold_ok": False,
+            "terminal_gate_fail_reason": "progress",
             "state_ok": False,
             "validator_available": False,
             "path_s": 0.0,
@@ -33,6 +38,11 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             "angle_ok": False,
             "velocity_ok": False,
             "angular_velocity_ok": False,
+            "position_hold_ok": False,
+            "angle_hold_ok": False,
+            "velocity_hold_ok": False,
+            "angular_velocity_hold_ok": False,
+            "terminal_gate_fail_reason": "progress",
             "state_ok": False,
             "validator_available": False,
             "path_s": 0.0,
@@ -51,7 +61,8 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             logger.debug("Failed to get position from state", exc_info=True)
             pos = None
 
-    path_s = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
+    path_s_controller = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
+    path_s = float(path_s_controller)
     path_error = float("inf")
     endpoint_error = float("inf")
     if pos is not None:
@@ -62,7 +73,8 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
 
     pos_tol = float(getattr(sim, "position_tolerance", 0.05))
-    progress_ok = path_s >= (path_len - pos_tol)
+    path_s_progress = max(path_s, path_s_controller)
+    progress_ok = path_s_progress >= (path_len - pos_tol)
     pos_ok = bool(endpoint_error <= pos_tol)
     validator_available = False
     threshold_status = {
@@ -71,6 +83,7 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         "velocity": False,
         "angular_velocity": False,
     }
+    hold_threshold_status = dict(threshold_status)
     state_ok: bool | None = None
     state_validator = getattr(sim, "state_validator", None)
     if state_validator is not None:
@@ -85,6 +98,15 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             )
             if callable(check_within_tolerances):
                 checks = check_within_tolerances(current_state, reference_state)
+                hold_checks = checks
+                try:
+                    hold_checks = check_within_tolerances(
+                        current_state,
+                        reference_state,
+                        hysteresis_mode="hold",
+                    )
+                except TypeError:
+                    hold_checks = checks
                 if isinstance(checks, dict):
                     threshold_status["position"] = bool(
                         checks.get("position", threshold_status["position"])
@@ -94,6 +116,24 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
                     threshold_status["angular_velocity"] = bool(
                         checks.get("angular_velocity", False)
                     )
+                    if isinstance(hold_checks, dict):
+                        hold_threshold_status["position"] = bool(
+                            hold_checks.get("position", threshold_status["position"])
+                        )
+                        hold_threshold_status["angle"] = bool(
+                            hold_checks.get("angle", threshold_status["angle"])
+                        )
+                        hold_threshold_status["velocity"] = bool(
+                            hold_checks.get("velocity", threshold_status["velocity"])
+                        )
+                        hold_threshold_status["angular_velocity"] = bool(
+                            hold_checks.get(
+                                "angular_velocity",
+                                threshold_status["angular_velocity"],
+                            )
+                        )
+                    else:
+                        hold_threshold_status = dict(threshold_status)
                     state_ok = bool(
                         threshold_status["position"]
                         and threshold_status["angle"]
@@ -111,6 +151,7 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
                 threshold_status["angle"] = bool(state_ok)
                 threshold_status["velocity"] = bool(state_ok)
                 threshold_status["angular_velocity"] = bool(state_ok)
+                hold_threshold_status = dict(threshold_status)
         except Exception:
             logger.debug("State validator check failed", exc_info=True)
             state_ok = None
@@ -123,6 +164,20 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         threshold_status["angle"] = bool(pos_ok)
         threshold_status["velocity"] = bool(pos_ok)
         threshold_status["angular_velocity"] = bool(pos_ok)
+        hold_threshold_status = dict(threshold_status)
+
+    if not progress_ok:
+        fail_reason = "progress"
+    elif not threshold_status["position"]:
+        fail_reason = "position"
+    elif not threshold_status["angle"]:
+        fail_reason = "angle"
+    elif not threshold_status["velocity"]:
+        fail_reason = "velocity"
+    elif not threshold_status["angular_velocity"]:
+        fail_reason = "angular_velocity"
+    else:
+        fail_reason = "none"
 
     return {
         "progress_ok": bool(progress_ok),
@@ -130,9 +185,16 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         "angle_ok": bool(threshold_status["angle"]),
         "velocity_ok": bool(threshold_status["velocity"]),
         "angular_velocity_ok": bool(threshold_status["angular_velocity"]),
+        "position_hold_ok": bool(hold_threshold_status["position"]),
+        "angle_hold_ok": bool(hold_threshold_status["angle"]),
+        "velocity_hold_ok": bool(hold_threshold_status["velocity"]),
+        "angular_velocity_hold_ok": bool(hold_threshold_status["angular_velocity"]),
+        "terminal_gate_fail_reason": str(fail_reason),
         "state_ok": bool(state_ok),
         "validator_available": bool(validator_available),
         "path_s": float(path_s),
+        "path_s_controller": float(path_s_controller),
+        "path_s_progress": float(path_s_progress),
         "path_length": float(path_len),
         "path_error": float(path_error),
         "endpoint_error": float(endpoint_error),

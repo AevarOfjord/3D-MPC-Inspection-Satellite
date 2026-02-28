@@ -100,32 +100,36 @@ def _set_runtime_pointing_context(
     *,
     current_state: np.ndarray,
     path_s: float,
-) -> tuple[Any, float | None, float | None, str | None]:
+) -> tuple[Any, float | None, float | None, str | None, str]:
     """Resolve and forward current pointing context to MPC core."""
     context = resolve_pointing_context(
         sim=sim,
         current_state=current_state,
         path_s=float(path_s),
     )
-    center_payload = (
-        None
-        if context.center_world is None
-        else (
-            float(context.center_world[0]),
-            float(context.center_world[1]),
-            float(context.center_world[2]),
-        )
-    )
-    axis_payload = (
-        float(context.axis_world[0]),
-        float(context.axis_world[1]),
-        float(context.axis_world[2]),
-    )
-    direction = "CW" if context.direction_cw else "CCW"
-
+    pointing_policy = str(getattr(context, "policy", "scan_locked")).strip().lower()
+    enforced = bool(getattr(context, "enforced", True))
     if str(getattr(context, "source", "")).strip().lower() == "non_scan_minimal_twist":
+        enforced = False
+        pointing_policy = "transit_free"
+    if not enforced:
         sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
     else:
+        center_payload = (
+            None
+            if context.center_world is None
+            else (
+                float(context.center_world[0]),
+                float(context.center_world[1]),
+                float(context.center_world[2]),
+            )
+        )
+        axis_payload = (
+            float(context.axis_world[0]),
+            float(context.axis_world[1]),
+            float(context.axis_world[2]),
+        )
+        direction = "CW" if context.direction_cw else "CCW"
         sim.mpc_controller.set_scan_attitude_context(
             center_payload,
             axis_payload,
@@ -134,30 +138,31 @@ def _set_runtime_pointing_context(
 
     x_error_deg = None
     z_error_deg = None
-    try:
-        q_curr = (
-            np.array(current_state[3:7], dtype=float)
-            if current_state.size >= 7
-            else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
-        )
-        _, _, q_ref = sim.mpc_controller.get_path_reference_state(
-            s_query=float(path_s),
-            q_current=q_curr,
-        )
-        if q_ref is not None:
-            x_error_deg, z_error_deg = compute_pointing_errors_deg(
-                current_quat_wxyz=q_curr,
-                reference_quat_wxyz=np.array(q_ref, dtype=float),
+    if enforced:
+        try:
+            q_curr = (
+                np.array(current_state[3:7], dtype=float)
+                if current_state.size >= 7
+                else np.array([1.0, 0.0, 0.0, 0.0], dtype=float)
             )
-    except Exception:
-        logger.warning("Pointing context resolution failed", exc_info=True)
-        x_error_deg = None
-        z_error_deg = None
+            _, _, q_ref = sim.mpc_controller.get_path_reference_state(
+                s_query=float(path_s),
+                q_current=q_curr,
+            )
+            if q_ref is not None:
+                x_error_deg, z_error_deg = compute_pointing_errors_deg(
+                    current_quat_wxyz=q_curr,
+                    reference_quat_wxyz=np.array(q_ref, dtype=float),
+                )
+        except Exception:
+            logger.warning("Pointing context resolution failed", exc_info=True)
+            x_error_deg = None
+            z_error_deg = None
 
     visible_side = resolve_object_visible_side(
         current_state=current_state, context=context
     )
-    return context, x_error_deg, z_error_deg, visible_side
+    return context, x_error_deg, z_error_deg, visible_side, pointing_policy
 
 
 def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
@@ -166,20 +171,26 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     if mode_manager is None:
         return
 
-    path_s = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
+    path_s_controller = float(getattr(sim.mpc_controller, "s", 0.0) or 0.0)
+    path_s_projected = float(path_s_controller)
     contour_error = 0.0
     endpoint_error = None
 
     try:
         metrics = sim.mpc_controller.get_path_progress(current_state[:3])
         if isinstance(metrics, dict):
-            path_s = float(metrics.get("s", path_s))
+            path_s_projected = float(metrics.get("s", path_s_projected))
             contour_error = float(metrics.get("path_error", contour_error) or 0.0)
             endpoint_error = metrics.get("endpoint_error")
     except Exception:
         contour_error = 0.0
 
     path_len = float(sim._get_mission_path_length(compute_if_missing=True) or 0.0)
+    path_s_progress = max(path_s_projected, path_s_controller)
+    if path_len > 0.0:
+        path_s_progress = float(np.clip(path_s_progress, 0.0, path_len))
+    else:
+        path_s_progress = max(0.0, path_s_progress)
     pos_tol = float(getattr(sim, "position_tolerance", 0.1) or 0.1)
     gate = getattr(sim, "completion_gate", None)
     completion_gate_state_ok = bool(getattr(gate, "all_thresholds_ok", False))
@@ -231,19 +242,30 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     x_error_deg = None
     z_error_deg = None
     visible_side = None
+    pointing_policy = "transit_free"
     if apply_pointing:
-        context, x_error_deg, z_error_deg, visible_side = _set_runtime_pointing_context(
+        (
+            context,
+            x_error_deg,
+            z_error_deg,
+            visible_side,
+            pointing_policy,
+        ) = _set_runtime_pointing_context(
             sim,
             current_state=current_state,
-            path_s=path_s,
+            path_s=path_s_progress,
         )
         context_source = getattr(context, "source", None)
     else:
         sim.mpc_controller.set_scan_attitude_context(None, None, "CW")
+        context_source = "pointing_disabled"
 
     pointing_guardrail = getattr(sim, "pointing_guardrail", None)
     pointing_guardrail_status = None
-    if pointing_guardrail is not None and apply_pointing:
+    guardrail_enforced = bool(apply_pointing and pointing_policy != "transit_free")
+    if pointing_guardrail is not None and not guardrail_enforced:
+        pointing_guardrail.reset()
+    if pointing_guardrail is not None and guardrail_enforced:
         pointing_guardrail_status = pointing_guardrail.update(
             sim_time_s=float(sim.simulation_time),
             x_error_deg=x_error_deg,
@@ -264,6 +286,7 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
 
     sim.pointing_status = {
         "pointing_context_source": context_source,
+        "pointing_policy": str(pointing_policy),
         "pointing_axis_world": (
             list(getattr(context, "axis_world", [0.0, 0.0, 1.0]))
             if apply_pointing
@@ -279,7 +302,7 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     sim.mode_state = mode_manager.update(
         sim_time_s=float(sim.simulation_time),
         contour_error_m=contour_error,
-        path_s=path_s,
+        path_s=path_s_progress,
         path_len=path_len,
         position_tolerance_m=pos_tol,
         completion_gate_state_ok=completion_gate_state_ok,
@@ -287,7 +310,7 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
         solver_degraded=solver_degraded_for_mode,
         solver_fallback_reason=solver_fallback_reason,
     )
-    hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s)
+    hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s_projected)
     if hold_active:
         try:
             sim.mpc_controller.s = float(
@@ -315,7 +338,9 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
                 "time_s": float(sim.simulation_time),
                 "mode": str(sim.mode_state.current_mode),
                 "time_in_mode_s": float(sim.mode_state.time_in_mode_s),
-                "path_s": float(path_s),
+                "path_s": float(path_s_progress),
+                "path_s_proj": float(path_s_projected),
+                "path_s_controller": float(path_s_controller),
                 "path_error_m": float(contour_error),
                 "endpoint_error_m": (
                     float(endpoint_error) if endpoint_error is not None else None
@@ -327,6 +352,8 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
                     float(z_error_deg) if z_error_deg is not None else None
                 ),
                 "pointing_guardrail_breached": bool(pointing_guardrail_breached),
+                "pointing_policy": str(pointing_policy),
+                "pointing_context_source": context_source,
             },
         )
 
@@ -413,8 +440,15 @@ def update_mpc_control_step(sim: Any) -> None:
         mpc_info["completion_gate_last_breach_reason"] = getattr(
             gate, "last_breach_reason", None
         )
+        mpc_info["terminal_gate_fail_reason"] = getattr(gate, "fail_reason", "none")
+        mpc_info["hold_timer_s"] = float(getattr(gate, "hold_elapsed_s", 0.0))
+        mpc_info["hold_reset_count"] = int(getattr(gate, "hold_reset_count", 0))
     pointing_status = getattr(sim, "pointing_status", None)
     if isinstance(pointing_status, dict):
+        mpc_info["pointing_policy_active"] = pointing_status.get("pointing_policy")
+        mpc_info["pointing_context_source_active"] = pointing_status.get(
+            "pointing_context_source"
+        )
         mpc_info["pointing_context_source"] = pointing_status.get(
             "pointing_context_source"
         )

@@ -389,6 +389,36 @@ class DataLogger:
             "Path_Remaining",
             "Path_Error",
             "Path_Endpoint_Error",
+            "Mode_State",
+            "Mode_Time_In_Mode_s",
+            "Completion_Gate_Position_OK",
+            "Completion_Gate_Angle_OK",
+            "Completion_Gate_Velocity_OK",
+            "Completion_Gate_Angular_Velocity_OK",
+            "Completion_Gate_Hold_Elapsed_s",
+            "Completion_Gate_Hold_Required_s",
+            "Completion_Gate_Last_Breach_Reason",
+            "Terminal_Gate_Fail_Reason",
+            "Hold_Timer_s",
+            "Hold_Reset_Count",
+            "Solver_Health_Status",
+            "Solver_Fallback_Count",
+            "Solver_Hard_Limit_Breaches",
+            "Solver_Last_Fallback_Reason",
+            "Solver_Fallback_Active",
+            "Solver_Fallback_Age_s",
+            "Solver_Fallback_Scale",
+            "Pointing_Policy_Active",
+            "Pointing_Context_Source_Active",
+            "Pointing_Context_Source",
+            "Pointing_Axis_X",
+            "Pointing_Axis_Y",
+            "Pointing_Axis_Z",
+            "Pointing_Z_Axis_Error_Deg",
+            "Pointing_X_Axis_Error_Deg",
+            "Pointing_Guardrail_Breached",
+            "Pointing_Guardrail_Reason",
+            "Object_Visible_Side",
             "Frame_Origin_X",
             "Frame_Origin_Y",
             "Frame_Origin_Z",
@@ -428,6 +458,9 @@ class DataLogger:
             "Total_Active_Thrusters",
             "Thruster_Switches",
             "MPC_Iterations",
+            "Solver_Fallback_Count",
+            "Solver_Hard_Limit_Breaches",
+            "Hold_Reset_Count",
         ]:
             dispatch[h] = "int"
 
@@ -446,6 +479,11 @@ class DataLogger:
             "MPC_T_Solve_Only",
             "MPC_Solve_Time",
             "Total_MPC_Loop_Time",
+            "Mode_Time_In_Mode_s",
+            "Completion_Gate_Hold_Elapsed_s",
+            "Completion_Gate_Hold_Required_s",
+            "Hold_Timer_s",
+            "Solver_Fallback_Age_s",
         ]:
             dispatch[h] = ".4f"
 
@@ -532,7 +570,16 @@ class DataLogger:
             dispatch[h] = ".5f"
 
         # Objective / gap — 3 decimals
-        for h in ["MPC_Objective", "MPC_Optimality_Gap"]:
+        for h in [
+            "MPC_Objective",
+            "MPC_Optimality_Gap",
+            "Solver_Fallback_Scale",
+            "Pointing_Axis_X",
+            "Pointing_Axis_Y",
+            "Pointing_Axis_Z",
+            "Pointing_Z_Axis_Error_Deg",
+            "Pointing_X_Axis_Error_Deg",
+        ]:
             dispatch[h] = ".3f"
 
         return dispatch

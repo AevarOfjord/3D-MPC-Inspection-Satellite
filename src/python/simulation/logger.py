@@ -171,6 +171,9 @@ class SimulationLogger:
         completion_gate_last_breach_reason = mpc_info.get(
             "completion_gate_last_breach_reason"
         )
+        terminal_gate_fail_reason = mpc_info.get("terminal_gate_fail_reason")
+        hold_timer_s = mpc_info.get("hold_timer_s")
+        hold_reset_count = mpc_info.get("hold_reset_count")
         solver_health_status = mpc_info.get("solver_health_status")
         solver_fallback_count = mpc_info.get("solver_fallback_count")
         solver_hard_limit_breaches = mpc_info.get("solver_hard_limit_breaches")
@@ -178,6 +181,8 @@ class SimulationLogger:
         solver_fallback_active = mpc_info.get("solver_fallback_active")
         solver_fallback_age_s = mpc_info.get("solver_fallback_age_s")
         solver_fallback_scale = mpc_info.get("solver_fallback_scale")
+        pointing_policy_active = mpc_info.get("pointing_policy_active")
+        pointing_context_source_active = mpc_info.get("pointing_context_source_active")
         pointing_context_source = mpc_info.get("pointing_context_source")
         pointing_axis_world = mpc_info.get("pointing_axis_world")
         pointing_z_axis_error_deg = mpc_info.get("z_axis_error_deg")
@@ -297,6 +302,9 @@ class SimulationLogger:
             "Completion_Gate_Hold_Elapsed_s": completion_gate_hold_elapsed_s,
             "Completion_Gate_Hold_Required_s": completion_gate_hold_required_s,
             "Completion_Gate_Last_Breach_Reason": completion_gate_last_breach_reason,
+            "Terminal_Gate_Fail_Reason": terminal_gate_fail_reason,
+            "Hold_Timer_s": hold_timer_s,
+            "Hold_Reset_Count": hold_reset_count,
             "Solver_Health_Status": solver_health_status,
             "Solver_Fallback_Count": solver_fallback_count,
             "Solver_Hard_Limit_Breaches": solver_hard_limit_breaches,
@@ -304,6 +312,8 @@ class SimulationLogger:
             "Solver_Fallback_Active": solver_fallback_active,
             "Solver_Fallback_Age_s": solver_fallback_age_s,
             "Solver_Fallback_Scale": solver_fallback_scale,
+            "Pointing_Policy_Active": pointing_policy_active,
+            "Pointing_Context_Source_Active": pointing_context_source_active,
             "Pointing_Context_Source": pointing_context_source,
             "Pointing_Axis_X": (
                 float(pointing_axis_world[0])

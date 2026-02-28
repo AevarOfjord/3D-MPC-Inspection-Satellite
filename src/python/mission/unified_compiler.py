@@ -579,6 +579,7 @@ def _append_pointing_span(
     context: dict[str, Any] | None,
     source_segment_index: int,
     context_source: str,
+    pointing_policy: str,
 ) -> None:
     if s_end <= s_start:
         return
@@ -606,6 +607,7 @@ def _append_pointing_span(
             ),
             "source_segment_index": int(source_segment_index),
             "context_source": str(context_source),
+            "pointing_policy": str(pointing_policy),
         }
     )
 
@@ -687,6 +689,7 @@ def _build_compiled_path_and_spans(
                     context=transfer_context,
                     source_segment_index=segment_index,
                     context_source=context_source,
+                    pointing_policy="transit_free",
                 )
             current = end
 
@@ -785,6 +788,7 @@ def _build_compiled_path_and_spans(
                         context=(scan_context or {}),
                         source_segment_index=segment_index,
                         context_source="scan_segment",
+                        pointing_policy="scan_locked",
                     )
 
             if scan_context is not None:

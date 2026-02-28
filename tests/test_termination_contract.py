@@ -5,17 +5,26 @@ Termination contract tests for strict last-waypoint completion behavior.
 from types import SimpleNamespace
 
 import numpy as np
-from runtime.path_completion import check_path_complete
+from runtime.path_completion import check_path_complete, get_path_completion_status
 from simulation.loop import SimulationLoop
 
 
 class _FakeMPCController:
-    def __init__(self, s_val: float, endpoint_error: float):
+    def __init__(
+        self,
+        s_val: float,
+        endpoint_error: float,
+        projected_s: float | None = None,
+    ):
         self.s = s_val
         self._endpoint_error = endpoint_error
+        self._projected_s = s_val if projected_s is None else projected_s
 
     def get_path_progress(self, _position: np.ndarray) -> dict[str, float]:
-        return {"s": float(self.s), "endpoint_error": float(self._endpoint_error)}
+        return {
+            "s": float(self._projected_s),
+            "endpoint_error": float(self._endpoint_error),
+        }
 
 
 class _FakeStateValidator:
@@ -37,12 +46,15 @@ class _FakeCompletionSimulation:
         *,
         path_len: float = 2.0,
         s_val: float = 2.0,
+        projected_s: float | None = None,
         endpoint_error: float = 0.05,
         position_tolerance: float = 0.1,
         validator: _FakeStateValidator | None = None,
     ):
         self.mpc_controller = _FakeMPCController(
-            s_val=s_val, endpoint_error=endpoint_error
+            s_val=s_val,
+            endpoint_error=endpoint_error,
+            projected_s=projected_s,
         )
         self.satellite = SimpleNamespace(position=np.array([2.0, 0.0, 0.0]))
         self.position_tolerance = position_tolerance
@@ -174,3 +186,28 @@ def test_hold_timer_requires_continuous_10s_window():
     assert loop._check_path_following_completion() is True
     assert sim.is_running is False
     assert sim.summary_calls == 1
+
+
+def test_path_completion_reports_gate_specific_failure_reason():
+    sim = _FakeCompletionSimulation(
+        validator=_FakeStateValidator(result=True),
+        endpoint_error=0.50,
+        s_val=1.0,
+        path_len=2.0,
+    )
+    status = get_path_completion_status(sim)
+    assert status["terminal_gate_fail_reason"] == "progress"
+
+
+def test_path_completion_uses_controller_progress_when_projection_lags():
+    sim = _FakeCompletionSimulation(
+        validator=_FakeStateValidator(result=True),
+        path_len=2.0,
+        s_val=2.0,
+        projected_s=1.6,
+        endpoint_error=0.5,
+        position_tolerance=0.1,
+    )
+    status = get_path_completion_status(sim)
+    assert status["progress_ok"] is True
+    assert status["terminal_gate_fail_reason"] == "position"

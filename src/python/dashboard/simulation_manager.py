@@ -241,6 +241,10 @@ class SimulationManager:
                 "last_breach_reason": getattr(
                     completion_gate_obj, "last_breach_reason", None
                 ),
+                "fail_reason": getattr(completion_gate_obj, "fail_reason", "none"),
+                "hold_reset_count": int(
+                    getattr(completion_gate_obj, "hold_reset_count", 0)
+                ),
             }
 
         solver_health = None
@@ -274,6 +278,7 @@ class SimulationManager:
                 "pointing_context_source": pointing_status_obj.get(
                     "pointing_context_source"
                 ),
+                "pointing_policy": pointing_status_obj.get("pointing_policy"),
                 "pointing_axis_world": list(
                     pointing_status_obj.get("pointing_axis_world", [0.0, 0.0, 1.0])
                     or [0.0, 0.0, 1.0]

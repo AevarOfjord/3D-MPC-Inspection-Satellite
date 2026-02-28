@@ -941,6 +941,30 @@ class ControllerContractsParams(BaseModel):
         le=360.0,
         description="Terminal angular velocity error threshold [deg/s].",
     )
+    position_error_exit_m_max: float = Field(
+        constants.Constants.TERMINAL_POSITION_EXIT_TOLERANCE_M,
+        gt=0.0,
+        le=5.0,
+        description="Terminal position hold-exit threshold [m].",
+    )
+    angle_error_exit_deg_max: float = Field(
+        constants.Constants.TERMINAL_ANGLE_EXIT_TOLERANCE_DEG,
+        gt=0.0,
+        le=180.0,
+        description="Terminal attitude hold-exit threshold [deg].",
+    )
+    velocity_error_exit_mps_max: float = Field(
+        constants.Constants.TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS,
+        gt=0.0,
+        le=10.0,
+        description="Terminal linear velocity hold-exit threshold [m/s].",
+    )
+    angular_velocity_error_exit_degps_max: float = Field(
+        constants.Constants.TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS,
+        gt=0.0,
+        le=360.0,
+        description="Terminal angular velocity hold-exit threshold [deg/s].",
+    )
     hold_duration_s: float = Field(
         constants.MissionDefaults.PATH_HOLD_END_S,
         ge=0.0,
@@ -1048,6 +1072,23 @@ class ControllerContractsParams(BaseModel):
         if self.solver_fallback_zero_after_s < self.solver_fallback_hold_s:
             raise ValueError(
                 "solver_fallback_zero_after_s must be >= solver_fallback_hold_s"
+            )
+        if self.position_error_exit_m_max < self.position_error_m_max:
+            raise ValueError(
+                "position_error_exit_m_max must be >= position_error_m_max"
+            )
+        if self.angle_error_exit_deg_max < self.angle_error_deg_max:
+            raise ValueError("angle_error_exit_deg_max must be >= angle_error_deg_max")
+        if self.velocity_error_exit_mps_max < self.velocity_error_mps_max:
+            raise ValueError(
+                "velocity_error_exit_mps_max must be >= velocity_error_mps_max"
+            )
+        if (
+            self.angular_velocity_error_exit_degps_max
+            < self.angular_velocity_error_degps_max
+        ):
+            raise ValueError(
+                "angular_velocity_error_exit_degps_max must be >= angular_velocity_error_degps_max"
             )
         if self.pointing_scope not in {"all_missions", "scan_only", "config_toggle"}:
             raise ValueError(
