@@ -65,13 +65,19 @@ def _resolve_waypoint_hold(
             else max(0.0, float(sim.simulation_time) - float(hold_started))
         )
         if elapsed >= duration:
-            mission_state.path_hold_completed.add(int(active_idx))
+            completed_list = list(
+                getattr(mission_state, "path_hold_completed", []) or []
+            )
+            idx_completed = int(active_idx)
+            if idx_completed not in completed_list:
+                completed_list.append(idx_completed)
+            mission_state.path_hold_completed = completed_list
             mission_state.path_hold_active_index = None
             mission_state.path_hold_started_at_s = None
             return False, float(path_s)
         return True, hold_s
 
-    completed = set(getattr(mission_state, "path_hold_completed", set()) or set())
+    completed = set(getattr(mission_state, "path_hold_completed", []) or [])
     trigger_tol_m = 0.05
     for item in schedule:
         idx = int(item.get("path_index", 0))

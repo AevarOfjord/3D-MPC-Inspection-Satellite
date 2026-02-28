@@ -51,7 +51,8 @@ class MissionState:
     path_hold_schedule: list[dict[str, float]] = field(default_factory=list)
     path_hold_active_index: int | None = None
     path_hold_started_at_s: float | None = None
-    path_hold_completed: set[int] = field(default_factory=set)
+    # Keep JSON-serializable for dataclass round-trips used in tests/tooling.
+    path_hold_completed: list[int] = field(default_factory=list)
     # Path tracking runtime fields.
     path_tracking_center: tuple[float, float, float] | None = None
     path_tracking_base_shape: list[tuple[float, float, float]] = field(

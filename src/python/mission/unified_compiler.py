@@ -32,7 +32,6 @@ from mission.unified_mission import (
     SegmentType,
 )
 
-
 _STUDIO_OBJ_TARGET_PREFIX = "STUDIO_OBJ::"
 _OBJ_ALLOWED_ROOTS = tuple(
     root.resolve()
@@ -58,7 +57,9 @@ def _resolve_target_obj_path(target_id: str) -> Path | None:
             return None
         if resolved.suffix.lower() != ".obj" or not resolved.exists():
             return None
-        if any(resolved == root or root in resolved.parents for root in _OBJ_ALLOWED_ROOTS):
+        if any(
+            resolved == root or root in resolved.parents for root in _OBJ_ALLOWED_ROOTS
+        ):
             return resolved
         return None
 

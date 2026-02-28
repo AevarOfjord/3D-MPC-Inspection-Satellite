@@ -18,7 +18,6 @@ All obstacle-avoidance code has been stripped from the codebase.
 
 - `src/python/config/defaults.py` — removed `enable_collision_avoidance` default
 - `src/python/config/simulation_config.py` — removed fields from `to_dict()`
-- `src/python/config/io.py` — removed `obstacle_state` serialization
 - `src/python/config/models.py` — removed fields from `MPCParams` schema
 
 **Runtime / mission:**
@@ -62,9 +61,6 @@ This computes once at controller construction — **zero runtime overhead**.
 
 ---
 
-## Test Results
+## Validation Note
 
-```
-132 passed, 1 skipped
-MPC solve time: ~35ms (unchanged)
-```
+The test numbers in this file were from the original change window and are not treated as a live quality gate. Use the current project gates (`make lint`, `make test`, and `npm --prefix ui run test`) for up-to-date validation.

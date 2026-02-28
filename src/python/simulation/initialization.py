@@ -35,6 +35,7 @@ from runtime.policy import (
 )
 from runtime.thruster_manager import ThrusterManager
 from scipy.spatial.transform import Rotation
+from simulation.artifact_paths import artifact_relative_path
 from simulation.data_logger import create_data_logger
 from simulation.io import SimulationIO
 from simulation.state_validator import (
@@ -634,12 +635,12 @@ class SimulationInitializer:
         history_max_steps = int(getattr(self.simulation, "history_max_steps", 0) or 0)
         self.simulation.data_logger = create_data_logger(
             mode="simulation",
-            filename="control_data.csv",
+            filename=str(artifact_relative_path("control_data.csv")),
             max_terminal_entries=history_max_steps,
         )
         self.simulation.physics_logger = create_data_logger(
             mode="physics",
-            filename="physics_data.csv",
+            filename=str(artifact_relative_path("physics_data.csv")),
             max_terminal_entries=history_max_steps,
         )
 

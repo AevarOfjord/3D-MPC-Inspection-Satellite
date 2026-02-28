@@ -19,6 +19,7 @@ import numpy as np
 from config.constants import Constants
 from config.models import AppConfig
 from scipy.spatial.transform import Rotation
+from simulation.artifact_paths import artifact_relative_path
 from utils.orientation_utils import quat_angle_error
 from visualization.actuator_plots import (
     generate_actuator_limits_plot,
@@ -356,7 +357,10 @@ class PlotGenerator:
         run_dir = self._run_dir()
         if run_dir is None:
             return {}
-        path = run_dir / name
+        candidates = [run_dir / artifact_relative_path(name), run_dir / name]
+        path = next(
+            (candidate for candidate in candidates if candidate.exists()), candidates[0]
+        )
         if not path.exists():
             return {}
         try:
@@ -371,7 +375,10 @@ class PlotGenerator:
         run_dir = self._run_dir()
         if run_dir is None:
             return []
-        path = run_dir / name
+        candidates = [run_dir / artifact_relative_path(name), run_dir / name]
+        path = next(
+            (candidate for candidate in candidates if candidate.exists()), candidates[0]
+        )
         if not path.exists():
             return []
         try:
@@ -385,7 +392,10 @@ class PlotGenerator:
         run_dir = self._run_dir()
         if run_dir is None:
             return []
-        path = run_dir / name
+        candidates = [run_dir / artifact_relative_path(name), run_dir / name]
+        path = next(
+            (candidate for candidate in candidates if candidate.exists()), candidates[0]
+        )
         if not path.exists():
             return []
         rows: list[dict[str, Any]] = []

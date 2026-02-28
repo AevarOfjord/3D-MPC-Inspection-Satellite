@@ -29,6 +29,7 @@ make run            # backend + frontend dev
 make run-app        # backend serving prebuilt ui/dist
 make test           # backend tests
 make lint           # backend + frontend lint
+make docs-check     # markdown link/path accuracy checks
 make package-pyinstaller
 ```
 
@@ -41,7 +42,17 @@ make package-pyinstaller
 - `missions/` saved mission payloads
 - `data/` canonical assets and runtime simulation/dashboard data
 - `tests/` backend test suite
-- `docs/architecture/` architecture notes
+- `ARCHITECTURE.md` system architecture notes
+
+## Compatibility Matrix
+
+Supported mission APIs are split between canonical v2 endpoints and retained compatibility endpoints:
+
+- Canonical: `/api/v2/missions/*`
+- Compatibility retained: `/mission_v2`, `/save_mission_v2`, `/saved_missions_v2`
+- Compatibility migration helper retained: `/api/v2/missions/migrate_legacy`
+
+Compatibility endpoints include deprecation headers and are retained to avoid breaking existing UI/test workflows.
 
 ## Contributing & Policies
 

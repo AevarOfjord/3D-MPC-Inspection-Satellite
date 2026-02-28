@@ -45,7 +45,7 @@ Result: a validated runtime mission representation with path/reference context a
   - `src/python/simulation/initialization.py`
   - `src/python/simulation/cpp_backend.py`
   - `src/python/control/mpc_controller.py`
-  - `src/python/runtime/v6_policy.py`
+  - `src/python/runtime/policy.py`
 
 Python wrapper `MPCController` loads C++ extension `cpp._cpp_mpc` (RTI-SQP backend) and passes:
 
@@ -104,7 +104,8 @@ Backend API:
 - Routes:
   - `src/python/dashboard/routes/runner.py`
   - `src/python/dashboard/routes/simulations.py`
-  - `src/python/dashboard/routes/missions_v2.py`
+  - `src/python/dashboard/routes/missions.py`
+  - `src/python/dashboard/routes/missions_api.py`
   - `src/python/dashboard/routes/assets.py`
 
 Frontend:
@@ -114,7 +115,15 @@ Frontend:
 - Mission/planner state hooks: `ui/src/hooks/*`
 - 3D/telemetry UI: `ui/src/components/*`, `ui/src/store/*`
 
-Run output and artifacts are written under `data/simulation_data/`.
+Run output and artifacts are written under `data/simulation_data/<run_id>/` with:
+
+- `Plots/` for generated plots and plot manifests.
+- `Data/01_timeseries/` for control/physics CSV streams and derived step stats.
+- `Data/02_metadata/` for run metadata/config/status/performance payloads.
+- `Data/03_diagnostics/` for KPI, constraints, controller-health and timelines.
+- `Data/04_manifests/` for checksums and artifact indexes.
+- `Data/05_notes/` for human-readable summaries/notes.
+- `Data/06_media/` for rendered videos/images.
 
 ## 3. Key Interfaces and Contracts
 
@@ -178,19 +187,19 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │   │       ├── satellite_dynamics.py
 │   │   │       ├── cost_functions.py
 │   │   │       └── generate.py
-│   │   ├── core/           (empty stub — all content migrated)
+│   │   ├── core/           (compatibility namespace; no active modules)
 │   │   ├── cpp/
 │   │   │   └── __init__.py
 │   │   ├── dashboard/
 │   │   │   ├── app.py
-│   │   │   ├── mission_v2_service.py
+│   │   │   ├── mission_service.py
 │   │   │   ├── models.py
 │   │   │   ├── runner_manager.py
 │   │   │   ├── simulation_manager.py
 │   │   │   └── routes/
 │   │   │       ├── assets.py
 │   │   │       ├── missions.py
-│   │   │       ├── missions_v2.py
+│   │   │       ├── missions_api.py
 │   │   │       ├── runner.py
 │   │   │       └── simulations.py
 │   │   ├── mission/
@@ -214,8 +223,9 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   │   │   ├── mpc_runner.py
 │   │   │   ├── path_completion.py
 │   │   │   ├── performance_monitor.py
+│   │   │   ├── policy.py
 │   │   │   ├── thruster_manager.py
-│   │   │   └── v6_policy.py
+│   │   │   └── __init__.py
 │   │   ├── simulation/
 │   │   │   ├── context.py
 │   │   │   ├── cpp_backend.py
@@ -291,17 +301,17 @@ Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/
 │   ├── test_mission_workflow.py
 │   ├── test_mpc.py
 │   ├── test_mpc_monte_carlo.py
-│   ├── test_missions_v2_api.py
+│   ├── test_missions_api.py
 │   ├── test_path_planning.py
 │   ├── test_performance_monitor.py
 │   ├── test_property_based.py
 │   ├── test_runner_workspace_routes.py
+│   ├── test_runtime_policy.py
 │   ├── test_scan_project_pipeline.py
 │   ├── test_state_validation.py
 │   ├── test_termination_contract.py
 │   ├── test_thruster_logic.py
 │   ├── test_unified_compiler.py
-│   ├── test_v6_runtime.py
 │   ├── verify_runner_manager.py
 │   └── verify_runner_mission.py
 ├── scripts/

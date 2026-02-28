@@ -2,10 +2,10 @@
 Mission service helpers.
 
 Provides:
-- legacy mission migration helpers
+- compatibility mission migration helpers
 - validation/preview support
 - mission/draft persistence utilities
-- legacy API deprecation header constants
+- compatibility API deprecation header constants
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ def to_legacy_payload(
     mission: UnifiedMissionModel | dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Convert a v2 mission payload to legacy unified mission contract.
+    Convert a v2 mission payload to the compatibility unified mission contract.
     """
     mission_dict = (
         mission.model_dump(mode="json")
@@ -117,7 +117,7 @@ def migrate_legacy_payload(
     name_hint: str | None = None,
 ) -> UnifiedMissionModel:
     """
-    Migrate a legacy unified mission payload to v2 model.
+    Migrate a compatibility unified mission payload to the v2 model.
     """
     mission_def = parse_unified_mission_payload(payload)
     legacy = mission_def.to_dict()

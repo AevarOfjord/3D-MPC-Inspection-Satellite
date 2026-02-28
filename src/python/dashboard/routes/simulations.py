@@ -11,6 +11,7 @@ import numpy as np
 from dashboard.models import ControlCommand, SpeedCommand
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from simulation.artifact_paths import artifact_path, resolve_existing_artifact_path
 
 logger = logging.getLogger("dashboard")
 
@@ -55,10 +56,12 @@ def _collect_runs(limit: int = 50) -> list[dict]:
     for run_dir in sorted(_data_dir.iterdir(), reverse=True):
         if not run_dir.is_dir():
             continue
-        physics_path = run_dir / "physics_data.csv"
-        if not physics_path.exists():
+        physics_path = resolve_existing_artifact_path(run_dir, "physics_data.csv")
+        if physics_path is None:
             continue
-        metrics_path = run_dir / "performance_metrics.json"
+        metrics_path = resolve_existing_artifact_path(
+            run_dir, "performance_metrics.json"
+        ) or artifact_path(run_dir, "performance_metrics.json")
         metrics: dict = {}
         if metrics_path.exists():
             try:
@@ -109,10 +112,12 @@ async def get_simulation_telemetry(
     stride: int = Query(1, ge=1, le=1000),
 ):
     run_dir = _get_run_dir(run_id)
-    physics_path = run_dir / "physics_data.csv"
-    if not physics_path.exists():
+    physics_path = resolve_existing_artifact_path(run_dir, "physics_data.csv")
+    if physics_path is None:
         raise HTTPException(status_code=404, detail="physics_data.csv not found")
-    metadata_path = run_dir / "mission_metadata.json"
+    metadata_path = resolve_existing_artifact_path(
+        run_dir, "mission_metadata.json"
+    ) or artifact_path(run_dir, "mission_metadata.json")
     scan_object = None
     planned_path = None
     # Playback should be interpreted as LVLH by default.
@@ -435,7 +440,9 @@ async def get_simulation_file(run_id: str, file_path: str):
 @router.get("/simulations/{run_id}/video")
 async def get_simulation_video(run_id: str):
     run_dir = _get_run_dir(run_id)
-    video_path = run_dir / "Simulation_3D_Render.mp4"
+    video_path = resolve_existing_artifact_path(
+        run_dir, "Simulation_3D_Render.mp4"
+    ) or artifact_path(run_dir, "Simulation_3D_Render.mp4")
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video animation not found")
 

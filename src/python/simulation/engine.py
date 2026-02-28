@@ -41,6 +41,7 @@ from config import AppConfig, SimulationConfig
 from config.constants import Constants
 from runtime.control_loop import update_mpc_control_step
 from runtime.path_completion import check_path_complete
+from simulation.artifact_paths import artifact_path
 from simulation.initialization import SimulationInitializer
 from simulation.loop import SimulationLoop
 from simulation.reference import (
@@ -500,7 +501,9 @@ class SatelliteMPCLinearizedSimulation:
         """Print performance summary at the end of simulation."""
         # Export performance metrics
         if self.data_save_path:
-            metrics_path = self.data_save_path / "performance_metrics.json"
+            metrics_path = artifact_path(
+                self.data_save_path, "performance_metrics.json"
+            )
             try:
                 self.performance_monitor.export_metrics(metrics_path)
                 logger.info(f"Performance metrics exported to {metrics_path}")

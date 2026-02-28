@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 from config.constants import Constants
 from config.simulation_config import SimulationConfig
+from simulation.artifact_paths import artifact_path, resolve_existing_artifact_path
 from utils.orientation_utils import quat_wxyz_to_euler_xyz
 
 logger = logging.getLogger(__name__)
@@ -448,7 +449,9 @@ class MissionReportGenerator:
 
     def _compute_actuator_tracking_summary(self, run_dir: Path) -> dict[str, Any]:
         """Estimate command-vs-valve tracking quality from physics CSV logs."""
-        physics_csv = run_dir / "physics_data.csv"
+        physics_csv = resolve_existing_artifact_path(
+            run_dir, "physics_data.csv"
+        ) or artifact_path(run_dir, "physics_data.csv")
         if not physics_csv.exists():
             return {}
 
@@ -577,7 +580,10 @@ class MissionReportGenerator:
 
     def _write_run_identity_and_termination(self, f, run_dir: Path) -> None:
         """Write run identity block and termination reason details."""
-        status_payload = self._read_json_file(run_dir / "run_status.json")
+        status_payload = self._read_json_file(
+            resolve_existing_artifact_path(run_dir, "run_status.json")
+            or artifact_path(run_dir, "run_status.json")
+        )
         mission = status_payload.get("mission", {}) or {}
         preset = status_payload.get("preset", {}) or {}
         config = status_payload.get("config", {}) or {}
@@ -618,7 +624,10 @@ class MissionReportGenerator:
         solver_limit_exceeded: int,
     ) -> None:
         """Write explicit constraints pass/fail summary."""
-        payload = self._read_json_file(run_dir / "constraint_violations.json")
+        payload = self._read_json_file(
+            resolve_existing_artifact_path(run_dir, "constraint_violations.json")
+            or artifact_path(run_dir, "constraint_violations.json")
+        )
         f.write("\nCONSTRAINTS SUMMARY\n")
         f.write("-" * 50 + "\n")
 

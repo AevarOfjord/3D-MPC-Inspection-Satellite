@@ -20,6 +20,7 @@ from config.paths import (
     SRC_PYTHON_ROOT,
 )
 from fastapi import WebSocket
+from simulation.artifact_paths import artifact_path, resolve_existing_artifact_path
 
 logger = logging.getLogger("dashboard.runner")
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
@@ -863,7 +864,9 @@ class RunnerManager:
         run_dir = self._current_run_dir
         if run_dir is None:
             return
-        status_path = run_dir / "run_status.json"
+        status_path = resolve_existing_artifact_path(
+            run_dir, "run_status.json"
+        ) or artifact_path(run_dir, "run_status.json")
         if not status_path.exists():
             return
 
@@ -909,10 +912,13 @@ class RunnerManager:
             for candidate in sorted(base_dir.iterdir(), reverse=True):
                 if not candidate.is_dir():
                     continue
-                status_path = candidate / "run_status.json"
+                status_path = resolve_existing_artifact_path(
+                    candidate, "run_status.json"
+                ) or artifact_path(candidate, "run_status.json")
                 if (
                     not status_path.exists()
-                    and not (candidate / "physics_data.csv").exists()
+                    and resolve_existing_artifact_path(candidate, "physics_data.csv")
+                    is None
                 ):
                     continue
                 status_payload: dict[str, Any] = {}

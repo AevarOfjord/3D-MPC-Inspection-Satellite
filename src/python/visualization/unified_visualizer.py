@@ -40,6 +40,7 @@ from cycler import cycler
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from mission.state import MissionState
+from simulation.artifact_paths import resolve_existing_artifact_path
 from visualization.plot_style import PlotStyle
 
 matplotlib.use("Agg")  # Use non-interactive backend
@@ -201,6 +202,25 @@ class UnifiedVisualizationGenerator:
         self.trajectory_title = "MPC - Satellite Trajectory"
         self.frame_title_template = "MPC - Frame {frame}"
 
+    def _find_csv_files_for_folder(self, folder: Path) -> list[Path]:
+        """Find CSV artifacts in canonical locations with legacy fallback."""
+        preferred = [
+            resolve_existing_artifact_path(folder, "physics_data.csv"),
+            resolve_existing_artifact_path(folder, "control_data.csv"),
+            resolve_existing_artifact_path(folder, "simulation_data.csv"),
+        ]
+        csv_files = [path for path in preferred if path is not None]
+        if csv_files:
+            return csv_files
+
+        data_dir = folder / "Data"
+        if data_dir.exists():
+            nested = sorted(data_dir.rglob("*.csv"))
+            if nested:
+                return nested
+
+        return sorted(folder.glob("*.csv"))
+
     def find_newest_data(self) -> None:
         """Find the newest data folder and CSV file."""
         print(f"Searching for {self.system_name} data in: {self.data_directory}")
@@ -209,23 +229,13 @@ class UnifiedVisualizationGenerator:
             raise FileNotFoundError(f"Data directory not found: {self.data_directory}")
 
         # First, check if the current directory itself contains CSV files
-        csv_patterns = [
-            "physics_data.csv",
-            "control_data.csv",
-            "simulation_data.csv",
-            "*.csv",
-        ]
-        csv_files = []
-
-        for pattern in csv_patterns:
-            csv_files = list(self.data_directory.glob(pattern))
-            if csv_files:
-                # Current directory has CSV files - use it directly
-                self.csv_path = csv_files[0]
-                self.output_dir = self.data_directory
-                print(f"Using CSV file: {self.csv_path.name} in current directory")
-                self.load_csv_data()
-                return
+        csv_files = self._find_csv_files_for_folder(self.data_directory)
+        if csv_files:
+            self.csv_path = csv_files[0]
+            self.output_dir = self.data_directory
+            print(f"Using CSV file: {self.csv_path.name} in current directory")
+            self.load_csv_data()
+            return
 
         # If no CSV in current directory, search subdirectories
         data_folders = [d for d in self.data_directory.iterdir() if d.is_dir()]
@@ -244,10 +254,7 @@ class UnifiedVisualizationGenerator:
         for folder in data_folders:
             print(f"Checking folder: {folder.name}")
 
-            for pattern in csv_patterns:
-                csv_files = list(folder.glob(pattern))
-                if csv_files:
-                    break
+            csv_files = self._find_csv_files_for_folder(folder)
 
             if csv_files:
                 newest_folder = folder
@@ -281,7 +288,7 @@ class UnifiedVisualizationGenerator:
         data_folders = []
         for folder in self.data_directory.iterdir():
             if folder.is_dir():
-                csv_files = list(folder.glob("*.csv"))
+                csv_files = self._find_csv_files_for_folder(folder)
                 if csv_files:
                     data_folders.append((folder, csv_files))
 
