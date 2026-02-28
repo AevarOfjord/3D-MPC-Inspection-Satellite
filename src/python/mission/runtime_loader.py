@@ -168,7 +168,10 @@ def _resolve_reference_scan_segment(
     target_id = str(getattr(mission, "start_target_id", "") or "").strip()
     if target_id:
         for segment in mission.segments:
-            if segment.type == SegmentType.SCAN and str(segment.target_id).strip() == target_id:
+            if (
+                segment.type == SegmentType.SCAN
+                and str(segment.target_id).strip() == target_id
+            ):
                 return segment, target_id
     for segment in mission.segments:
         if segment.type == SegmentType.SCAN:
@@ -362,7 +365,7 @@ def compile_unified_mission_runtime(
     )
     mission_state.path_hold_active_index = None
     mission_state.path_hold_started_at_s = None
-    mission_state.path_hold_completed = set()
+    mission_state.path_hold_completed = []
     mission_state.path_tracking_estimated_duration = float(
         runtime_plan.required_duration_s
     )

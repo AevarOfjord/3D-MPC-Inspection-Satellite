@@ -39,6 +39,10 @@ import matplotlib.patches as patches
 import numpy as np
 from config.physics import THRUSTER_COUNT
 from matplotlib.animation import writers
+from simulation.artifact_paths import (
+    artifact_path,
+    resolve_existing_artifact_path,
+)
 
 # Conditional import for visualization generator
 try:
@@ -172,7 +176,7 @@ class SimulationVisualizationManager:
         if not self.data_save_path:
             return
 
-        mp4_path = self.data_save_path / "Simulation_3D_Render.mp4"
+        mp4_path = artifact_path(self.data_save_path, "Simulation_3D_Render.mp4")
 
         try:
             # Set up the writer
@@ -843,7 +847,9 @@ class SimulationVisualizationManager:
         from matplotlib.animation import FuncAnimation
         from scipy.spatial.transform import Rotation
 
-        csv_path = output_dir / "control_data.csv"
+        csv_path = resolve_existing_artifact_path(
+            output_dir, "control_data.csv"
+        ) or artifact_path(output_dir, "control_data.csv")
         if not csv_path.exists():
             logger.warning(f"WARNING: CSV log not found at {csv_path}; skip animation.")
             return
@@ -859,7 +865,7 @@ class SimulationVisualizationManager:
             logger.warning("WARNING: Empty simulation data; skipping animation.")
             return
 
-        video_path = output_dir / "Simulation_3D_Render.mp4"
+        video_path = artifact_path(output_dir, "Simulation_3D_Render.mp4")
 
         # Use 0 as default if column missing
         def get_col(name, default=0.0):
@@ -1414,7 +1420,7 @@ class SimulationVisualizationManager:
             if "ffmpeg" not in writers.list():
                 logger.warning("WARNING: ffmpeg not available; using pillow.")
                 writer_name = "pillow"
-                video_path = output_dir / "Simulation_3D_Render.gif"
+                video_path = artifact_path(output_dir, "Simulation_3D_Render.gif")
             else:
                 writer_name = "ffmpeg"
 
@@ -1569,7 +1575,9 @@ class SimulationVisualizationManager:
             )
 
             # Override paths to use current simulation data
-            generator.csv_path = self.data_save_path / "physics_data.csv"
+            generator.csv_path = resolve_existing_artifact_path(
+                self.data_save_path, "physics_data.csv"
+            ) or artifact_path(self.data_save_path, "physics_data.csv")
             generator.output_dir = self.data_save_path
 
             # Load the data silently
@@ -1604,7 +1612,9 @@ class SimulationVisualizationManager:
             if generate_animation:
                 try:
                     print("\nCreating animation...")
-                    animation_path = self.data_save_path / "Simulation_3D_Render.mp4"
+                    animation_path = artifact_path(
+                        self.data_save_path, "Simulation_3D_Render.mp4"
+                    )
                     print(f"Saving animation to: {animation_path}")
 
                     # Use new dual-panel trajectory animation
@@ -1615,7 +1625,9 @@ class SimulationVisualizationManager:
                         print(f" File location: {animation_path}")
                     else:
                         # Check for GIF fallback
-                        gif_path = self.data_save_path / "Simulation_3D_Render.gif"
+                        gif_path = artifact_path(
+                            self.data_save_path, "Simulation_3D_Render.gif"
+                        )
                         if gif_path.exists():
                             print(" Animation saved successfully (GIF format)!")
                             print(f" File location: {gif_path}")

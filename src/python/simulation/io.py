@@ -21,6 +21,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from config.paths import SIMULATION_DATA_ROOT
+from simulation.artifact_paths import (
+    artifact_path,
+    ensure_artifact_directories,
+    resolve_existing_artifact_path,
+)
 from utils.orientation_utils import quat_angle_error
 
 if TYPE_CHECKING:
@@ -64,6 +69,7 @@ class SimulationIO:
 
         # Create directories
         timestamped_path.mkdir(parents=True, exist_ok=True)
+        ensure_artifact_directories(timestamped_path)
         self._write_run_status(
             run_dir=timestamped_path,
             status="running",
@@ -73,6 +79,14 @@ class SimulationIO:
 
         logger.info(f"Created data directory: {timestamped_path}")
         return timestamped_path
+
+    def _artifact_path(self, run_dir: Path, name: str) -> Path:
+        """Resolve canonical output path for a run artifact."""
+        return artifact_path(run_dir, name)
+
+    def _artifact_existing_path(self, run_dir: Path, name: str) -> Path | None:
+        """Resolve existing path for artifact (new layout first, then legacy)."""
+        return resolve_existing_artifact_path(run_dir, name)
 
     def save_csv_data(self) -> None:
         """Save all logged data to CSV files (delegates to DataLoggers)."""
@@ -98,7 +112,9 @@ class SimulationIO:
             logger.warning("No state history available for full summary")
             return
 
-        summary_path = self.sim.data_save_path / "mission_summary.txt"
+        summary_path = self._artifact_path(
+            self.sim.data_save_path, "mission_summary.txt"
+        )
 
         # Use DataLogger stats for solve times
         solve_times = self.sim.data_logger.stats_solve_times
@@ -168,7 +184,9 @@ class SimulationIO:
             except Exception as exc:
                 logger.warning(f"Failed to serialize planned_path for metadata: {exc}")
 
-        metadata_path = self.sim.data_save_path / "mission_metadata.json"
+        metadata_path = self._artifact_path(
+            self.sim.data_save_path, "mission_metadata.json"
+        )
         try:
             metadata_path.write_text(json.dumps(metadata, indent=2))
         except Exception as exc:
@@ -232,7 +250,9 @@ class SimulationIO:
                 },
             }
 
-            manifest_path = self.sim.data_save_path / "reproducibility_manifest.json"
+            manifest_path = self._artifact_path(
+                self.sim.data_save_path, "reproducibility_manifest.json"
+            )
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         except Exception as exc:
             logger.warning(f"Failed to save reproducibility manifest: {exc}")
@@ -259,7 +279,9 @@ class SimulationIO:
                 physics_stats=physics_stats,
                 mission_stats=mission_stats,
             )
-            self._write_json(run_dir / "kpi_summary.json", kpi_summary)
+            self._write_json(
+                self._artifact_path(run_dir, "kpi_summary.json"), kpi_summary
+            )
 
             constraints = self._build_constraint_violations(
                 run_dir=run_dir,
@@ -267,7 +289,9 @@ class SimulationIO:
                 physics_stats=physics_stats,
                 mission_stats=mission_stats,
             )
-            self._write_json(run_dir / "constraint_violations.json", constraints)
+            self._write_json(
+                self._artifact_path(run_dir, "constraint_violations.json"), constraints
+            )
 
             self._write_event_timeline(
                 run_dir=run_dir,
@@ -281,19 +305,26 @@ class SimulationIO:
             self._write_controller_health(run_dir)
 
             plots_index = self._build_plots_index(run_dir)
-            self._write_json(run_dir / "plots_index.json", plots_index)
+            self._write_json(
+                self._artifact_path(run_dir, "plots_index.json"), plots_index
+            )
 
             media_metadata = self._build_media_metadata(
                 run_dir=run_dir, kpi_summary=kpi_summary
             )
-            self._write_json(run_dir / "media_metadata.json", media_metadata)
+            self._write_json(
+                self._artifact_path(run_dir, "media_metadata.json"), media_metadata
+            )
 
             compare_signature = self._build_compare_signature(
                 run_dir=run_dir,
                 kpi_summary=kpi_summary,
                 control_stats=control_stats,
             )
-            self._write_json(run_dir / "compare_signature.json", compare_signature)
+            self._write_json(
+                self._artifact_path(run_dir, "compare_signature.json"),
+                compare_signature,
+            )
 
             self._write_run_notes(
                 run_dir=run_dir,
@@ -331,7 +362,7 @@ class SimulationIO:
         constraints: dict[str, Any] | None = None,
     ) -> None:
         """Create/update run_status.json with lifecycle and summary metadata."""
-        status_path = run_dir / "run_status.json"
+        status_path = self._artifact_path(run_dir, "run_status.json")
         payload: dict[str, Any] = {}
         if status_path.exists():
             try:
@@ -431,8 +462,10 @@ class SimulationIO:
 
     def _generate_mpc_step_stats(self, run_dir: Path) -> dict[str, Any]:
         """Generate mpc_step_stats.csv and aggregate control-loop statistics."""
-        control_csv = run_dir / "control_data.csv"
-        output_csv = run_dir / "mpc_step_stats.csv"
+        control_csv = self._artifact_existing_path(
+            run_dir, "control_data.csv"
+        ) or self._artifact_path(run_dir, "control_data.csv")
+        output_csv = self._artifact_path(run_dir, "mpc_step_stats.csv")
         if not control_csv.exists():
             return {
                 "control_steps": 0,
@@ -663,7 +696,9 @@ class SimulationIO:
 
     def _collect_physics_stats(self, run_dir: Path) -> dict[str, Any]:
         """Collect high-frequency stats from physics_data.csv."""
-        physics_csv = run_dir / "physics_data.csv"
+        physics_csv = self._artifact_existing_path(
+            run_dir, "physics_data.csv"
+        ) or self._artifact_path(run_dir, "physics_data.csv")
         if not physics_csv.exists():
             return {
                 "physics_steps": 0,
@@ -784,7 +819,9 @@ class SimulationIO:
             idx = int(round((len(sorted_vals) - 1) * p))
             return sorted_vals[max(0, min(idx, len(sorted_vals) - 1))]
 
-        perf_metrics_path = run_dir / "performance_metrics.json"
+        perf_metrics_path = self._artifact_existing_path(
+            run_dir, "performance_metrics.json"
+        ) or self._artifact_path(run_dir, "performance_metrics.json")
         perf_metrics = {}
         if perf_metrics_path.exists():
             try:
@@ -1013,7 +1050,7 @@ class SimulationIO:
         )
 
         events.sort(key=lambda item: self._to_float(item.get("time_s")))
-        timeline_path = run_dir / "event_timeline.jsonl"
+        timeline_path = self._artifact_path(run_dir, "event_timeline.jsonl")
         with timeline_path.open("w", encoding="utf-8") as handle:
             for event in events:
                 handle.write(json.dumps(event) + "\n")
@@ -1024,7 +1061,7 @@ class SimulationIO:
         if not isinstance(entries, list) or not entries:
             return
 
-        output_path = run_dir / "mode_timeline.csv"
+        output_path = self._artifact_path(run_dir, "mode_timeline.csv")
         headers = [
             "time_s",
             "mode",
@@ -1060,7 +1097,7 @@ class SimulationIO:
         if not isinstance(entries, list) or not entries:
             return
 
-        output_path = run_dir / "completion_gate_trace.csv"
+        output_path = self._artifact_path(run_dir, "completion_gate_trace.csv")
         headers = [
             "time_s",
             "progress_ok",
@@ -1209,7 +1246,9 @@ class SimulationIO:
                 ),
             },
         }
-        self._write_json(run_dir / "controller_health.json", payload)
+        self._write_json(
+            self._artifact_path(run_dir, "controller_health.json"), payload
+        )
 
     def _build_plots_index(self, run_dir: Path) -> dict[str, Any]:
         """Index static/interactive plot outputs for quick UI consumption."""
@@ -1444,7 +1483,9 @@ class SimulationIO:
         control_stats: dict[str, Any],
     ) -> dict[str, Any]:
         """Build compact deterministic signature for run-to-run comparisons."""
-        status_path = run_dir / "run_status.json"
+        status_path = self._artifact_existing_path(
+            run_dir, "run_status.json"
+        ) or self._artifact_path(run_dir, "run_status.json")
         status_payload: dict[str, Any] = {}
         if status_path.exists():
             try:
@@ -1487,7 +1528,9 @@ class SimulationIO:
     ) -> None:
         """Write lightweight markdown notes for humans reviewing run outputs."""
         status_payload = {}
-        status_path = run_dir / "run_status.json"
+        status_path = self._artifact_existing_path(
+            run_dir, "run_status.json"
+        ) or self._artifact_path(run_dir, "run_status.json")
         if status_path.exists():
             try:
                 status_payload = json.loads(status_path.read_text(encoding="utf-8"))
@@ -1523,16 +1566,18 @@ class SimulationIO:
             f"- Signature: `{compare_signature.get('signature', '')}`",
             "",
         ]
-        (run_dir / "run_notes.md").write_text("\n".join(lines), encoding="utf-8")
+        self._artifact_path(run_dir, "run_notes.md").write_text(
+            "\n".join(lines), encoding="utf-8"
+        )
 
     def _write_checksums_file(self, run_dir: Path) -> None:
         """Write sha256 checksums for all run files (except this checksum file)."""
-        checksum_path = run_dir / "checksums.sha256"
+        checksum_path = self._artifact_path(run_dir, "checksums.sha256")
         lines: list[str] = []
         for path in sorted(run_dir.rglob("*")):
             if not path.is_file():
                 continue
-            if path.name == "checksums.sha256":
+            if path == checksum_path:
                 continue
             rel = path.relative_to(run_dir)
             digest = self._sha256_file(path)
@@ -1543,14 +1588,16 @@ class SimulationIO:
 
     def _write_artifacts_manifest(self, run_dir: Path) -> None:
         """Write structured manifest for every generated file in run directory."""
-        checksums = self._load_checksums_map(run_dir / "checksums.sha256")
+        checksums = self._load_checksums_map(
+            self._artifact_path(run_dir, "checksums.sha256")
+        )
         files: list[dict[str, Any]] = []
         total_size = 0
         for path in sorted(run_dir.rglob("*")):
             if not path.is_file():
                 continue
             rel = path.relative_to(run_dir)
-            if rel.name == "artifacts_manifest.json":
+            if path == self._artifact_path(run_dir, "artifacts_manifest.json"):
                 continue
             size = path.stat().st_size
             total_size += size
@@ -1573,7 +1620,7 @@ class SimulationIO:
             "total_size_bytes": total_size,
             "files": files,
         }
-        (run_dir / "artifacts_manifest.json").write_text(
+        self._artifact_path(run_dir, "artifacts_manifest.json").write_text(
             json.dumps(payload, indent=2), encoding="utf-8"
         )
 
@@ -1587,11 +1634,15 @@ class SimulationIO:
         for candidate in sorted(base_dir.iterdir(), reverse=True):
             if not candidate.is_dir():
                 continue
-            status_path = candidate / "run_status.json"
-            kpi_path = candidate / "kpi_summary.json"
+            status_path = self._artifact_existing_path(
+                candidate, "run_status.json"
+            ) or self._artifact_path(candidate, "run_status.json")
+            kpi_path = self._artifact_existing_path(
+                candidate, "kpi_summary.json"
+            ) or self._artifact_path(candidate, "kpi_summary.json")
             if (
                 not status_path.exists()
-                and not (candidate / "physics_data.csv").exists()
+                and self._artifact_existing_path(candidate, "physics_data.csv") is None
             ):
                 continue
 
@@ -1679,6 +1730,7 @@ class SimulationIO:
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         """Write JSON atomically via temporary file replacement."""
+        path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         tmp.replace(path)
@@ -1761,7 +1813,7 @@ class SimulationIO:
             if self.sim.data_save_path is None:
                 return None
 
-            csv_path = self.sim.data_save_path / "control_data.csv"
+            csv_path = self._artifact_path(self.sim.data_save_path, "control_data.csv")
             if csv_path.exists():
                 df = pd.read_csv(csv_path)
 

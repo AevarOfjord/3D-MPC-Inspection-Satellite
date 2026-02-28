@@ -70,7 +70,7 @@ Homepage = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters
 Repository = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel"
 Issues = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/issues"
 Documentation = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/tree/main/docs"
-Changelog = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/docs/CHANGELOG.md"
+Changelog = "https://github.com/AevarOfjord/Satellite_3D_PWM-Continuous_Thrusters_ReactionWheel/blob/main/CHANGES.md"
 
 [project.scripts]
 satellite-control = "cli:app"

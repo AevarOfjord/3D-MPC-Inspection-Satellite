@@ -1,4 +1,4 @@
-"""Mission CRUD and execution routes."""
+"""Mission CRUD and compatibility execution routes."""
 
 import logging
 from pathlib import Path
@@ -68,14 +68,14 @@ def _parse_unified_mission(data: dict[str, Any]) -> MissionDefinition:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-def _apply_legacy_deprecation_headers(response: Response) -> None:
+def _apply_compat_deprecation_headers(response: Response) -> None:
     for key, value in LEGACY_DEPRECATION_HEADERS.items():
         response.headers[key] = value
 
 
 @router.post("/mission_v2")
 async def update_legacy_mission(config: SimpleUnifiedMissionModel, response: Response):
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     mission_def = _parse_unified_mission(config.model_dump())
     await _get_sim_manager().update_unified_mission(mission_def)
     return {
@@ -86,7 +86,7 @@ async def update_legacy_mission(config: SimpleUnifiedMissionModel, response: Res
 
 @router.post("/mission_v2/preview", response_model=SimplePreviewMissionResponse)
 async def preview_legacy_mission(config: SimpleUnifiedMissionModel, response: Response):
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     mission_def = _parse_unified_mission(config.model_dump())
     mission_runtime = compile_unified_mission_runtime(
         mission_def,
@@ -102,7 +102,7 @@ async def preview_legacy_mission(config: SimpleUnifiedMissionModel, response: Re
 
 @router.get("/mission_v2")
 async def get_current_legacy_mission(response: Response):
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     mgr = _get_sim_manager()
     if not mgr.current_unified_mission:
         raise HTTPException(status_code=404, detail="No unified mission set")
@@ -112,7 +112,7 @@ async def get_current_legacy_mission(response: Response):
 @router.post("/save_mission_v2")
 async def save_legacy_mission(request: SimpleSaveMissionRequest, response: Response):
     """Save a unified mission configuration to JSON."""
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     mission_def = _parse_unified_mission(request.config.model_dump())
 
     try:
@@ -129,14 +129,14 @@ async def save_legacy_mission(request: SimpleSaveMissionRequest, response: Respo
 @router.get("/saved_missions_v2")
 async def list_saved_legacy_missions(response: Response):
     """List all saved unified mission JSON files."""
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     mission_names = list_mission_names(source_priority=("local",))
     return {"missions": mission_names}
 
 
 @router.get("/mission_v2/{mission_name}")
 async def load_legacy_mission(mission_name: str, response: Response):
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     try:
         mission_payload = load_mission_payload(mission_name)
         mission_def = _parse_unified_mission(to_legacy_payload(mission_payload))
@@ -162,7 +162,7 @@ async def load_legacy_mission(mission_name: str, response: Response):
 @router.post("/run_mission")
 async def run_mission(request: RunMissionRequest, response: Response):
     """Spawn a subprocess to run a saved mission via CLI."""
-    _apply_legacy_deprecation_headers(response)
+    _apply_compat_deprecation_headers(response)
     import subprocess
     import sys
 

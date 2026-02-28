@@ -18,7 +18,7 @@ make lint-backend  # ruff check only
 make sim           # Run CLI simulation interactively
 make ui-build      # Build production React bundle
 make clean         # Remove .venv311, build artifacts, caches
-make sync-ui-model-assets  # Mirror data/assets/model_files/ → ui/dist/model_files/
+make sync-ui-model-assets  # Mirror canonical model assets into the built UI bundle
 make package-app   # Create distributable .tar.gz bundle
 ```
 
@@ -85,12 +85,12 @@ The MPC augments this to 17D by adding `s` (path progress parameter).
 ### Python Package Layout (`src/python/`)
 
 - **`simulation/`** — `engine.py` (main sim class), `loop.py`, `context.py`, `initialization.py`, `cpp_backend.py`, telemetry utilities
-- **`runtime/`** — `control_loop.py`, `mpc_runner.py`, `thruster_manager.py`, `path_completion.py`, `v6_policy.py`, `performance_monitor.py`
+- **`runtime/`** — `control_loop.py`, `mpc_runner.py`, `thruster_manager.py`, `path_completion.py`, `policy.py`, `performance_monitor.py`
 - **`control/`** — `mpc_controller.py` (Python wrapper around `_cpp_mpc`), `codegen/` (CasADi symbolic dynamics & Jacobian generation)
 - **`mission/`** — `runtime_loader.py` (parse/compile missions), `state.py` (MissionState), `unified_compiler.py`, `unified_mission.py` (Pydantic schema)
 - **`config/`** — Pydantic models (`models.py`), constants, physics/timing parameters
 - **`physics/`** — `orbital_config.py` (OrbitalConfig), `orbital_dynamics.py`
-- **`dashboard/`** — FastAPI app (`app.py`), routes (`simulations.py`, `runner.py`, `missions.py`, `assets.py`)
+- **`dashboard/`** — FastAPI app (`app.py`), routes (`simulations.py`, `runner.py`, `missions.py`, `missions_api.py`, `assets.py`)
 - **`exceptions.py`** — Top-level `SimulationError` and siblings (not in a subpackage)
 
 Key import paths:
@@ -104,7 +104,7 @@ from physics.orbital_config import OrbitalConfig
 from config.simulation_config import SimulationConfig
 ```
 
-**`src/python` must be the working directory** (or on `sys.path`) — there is no `pyproject.toml` entry adding it automatically. `make test` and `make run` handle this; manual invocations need `cd src/python` first.
+When running Python modules manually, ensure `src/python` is on `PYTHONPATH` (or run from `src/python`). `make` targets already set this correctly.
 
 ### Control Loop Data Flow
 
@@ -129,7 +129,7 @@ Mission JSON
 
 ### MPC Controller Modes
 
-Modes: `TRACK → RECOVER → SETTLE → HOLD → COMPLETE` — managed by `v6_policy.py` and `control_loop.py`.
+Modes: `TRACK → RECOVER → SETTLE → HOLD → COMPLETE` — managed by `policy.py` and `control_loop.py`.
 
 | Transition | Trigger |
 |-----------|---------|
@@ -190,14 +190,7 @@ Pytest markers defined in `tests/conftest.py`:
 
 Fixtures auto-applied to every test: `fresh_config` (default `SimulationConfig`), `cleanup_matplotlib` (closes pyplot figures).
 
-**Expected baseline:** 163 passed, 1 skipped, 2 failed.
-
-## Pre-existing Test Failures
-
-Two failures exist on all branches (not regressions):
-
-- `tests/test_mission_workflow.py::TestMissionState::test_mission_state_roundtrip` — `MissionState` missing `get_current_mission_type()`
-- `tests/test_mission_workflow.py::TestMissionState::test_mission_reset` — `MissionState` missing `reset()`
+Do not rely on fixed test-count baselines in this file; use current gate outputs (`make test`, `npm --prefix ui run test`) as the source of truth.
 
 ## Environment Variables
 

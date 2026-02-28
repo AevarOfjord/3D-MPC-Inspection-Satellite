@@ -80,7 +80,7 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHON
 # ============================================================================
 
 .PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
-	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-build release-v4-beta release-v4-final clean rebuild \
+	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -107,7 +107,8 @@ help:
 	@echo "  make test-ui-e2e  Run frontend Playwright smoke tests"
 	@echo "  make lint-backend Run backend lint checks (canonical command)"
 	@echo "  make lint-ui      Run frontend lint checks"
-	@echo "  make lint         Run backend + frontend lint checks"
+	@echo "  make docs-check   Validate markdown links and repo path references"
+	@echo "  make lint         Run backend + frontend lint checks plus docs-check"
 	@echo "  make docs-build   Build docs with warnings-as-errors"
 	@echo "  make release-v4-beta Run V4 beta release gates + packaging and print tag command"
 	@echo "  make release-v4-final Run V4 final release gates + packaging and print tag command"
@@ -454,8 +455,12 @@ lint-backend:
 lint-ui: $(UI_DEPS_STAMP)
 	cd ui && npx eslint .
 
+# Validate markdown links and path references in docs.
+docs-check:
+	@$(VENV_PY) scripts/check_markdown_links.py
+
 # Run Python + frontend lint checks.
-lint: lint-backend lint-ui
+lint: lint-backend lint-ui docs-check
 
 # ============================================================================
 # Clean targets

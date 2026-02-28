@@ -751,7 +751,7 @@ Expected: 0 errors.
 **Step 2: Lint**
 
 ```bash
-cd ui && npx eslint src/components/Overlay.tsx src/components/TelemetryPanel.tsx src/components/ControllerActuatorPanel.tsx src/components/HudComponents.tsx src/components/TelemetryCharts.tsx --max-warnings 0
+npx --prefix ui eslint ui/src/components/Overlay.tsx ui/src/components/TelemetryPanel.tsx ui/src/components/ControllerActuatorPanel.tsx ui/src/components/HudComponents.tsx ui/src/components/TelemetryCharts.tsx --max-warnings 0
 ```
 Expected: no errors or warnings.
 

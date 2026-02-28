@@ -10,6 +10,7 @@ import os
 
 import pytest
 from config.simulation_config import SimulationConfig
+from simulation.artifact_paths import artifact_path
 from simulation.engine import SatelliteMPCLinearizedSimulation
 from simulation.loop import SimulationLoop
 
@@ -58,9 +59,9 @@ class TestE2ESimulation:
         assert output_path.exists()
 
         # Verify core simulation artifacts were created.
-        assert (output_path / "physics_data.csv").exists()
-        assert (output_path / "control_data.csv").exists()
-        metrics_path = output_path / "performance_metrics.json"
+        assert artifact_path(output_path, "physics_data.csv").exists()
+        assert artifact_path(output_path, "control_data.csv").exists()
+        metrics_path = artifact_path(output_path, "performance_metrics.json")
         assert metrics_path.exists()
 
         metrics = json.loads(metrics_path.read_text())

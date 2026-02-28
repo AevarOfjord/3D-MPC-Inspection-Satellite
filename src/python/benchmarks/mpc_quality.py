@@ -22,6 +22,7 @@ from config.paths import (
     resolve_repo_path,
 )
 from runtime.policy import QualityContractReport
+from simulation.artifact_paths import artifact_path, resolve_existing_artifact_path
 
 DATA_SIM_DIR = SIMULATION_DATA_ROOT
 SIM_RUNNER = SCRIPTS_DIR / "run_simulation.py"
@@ -247,8 +248,14 @@ def _extract_path_error_p95(step_stats_csv: Path) -> float:
 
 
 def _extract_metrics(run_dir: Path) -> dict[str, Any]:
-    kpi = _read_json(run_dir / "kpi_summary.json")
-    perf = _read_json(run_dir / "performance_metrics.json")
+    kpi = _read_json(
+        resolve_existing_artifact_path(run_dir, "kpi_summary.json")
+        or artifact_path(run_dir, "kpi_summary.json")
+    )
+    perf = _read_json(
+        resolve_existing_artifact_path(run_dir, "performance_metrics.json")
+        or artifact_path(run_dir, "performance_metrics.json")
+    )
 
     mpc_steps = int(_to_float(kpi.get("mpc_control_steps"), 0.0))
     total_switches = int(_to_float(kpi.get("total_thruster_switches"), 0.0))
@@ -278,7 +285,10 @@ def _extract_metrics(run_dir: Path) -> dict[str, Any]:
         "mpc_control_steps": mpc_steps,
         "total_thruster_switches": total_switches,
         "switches_per_step": switches_per_step,
-        "path_error_p95_m": _extract_path_error_p95(run_dir / "mpc_step_stats.csv"),
+        "path_error_p95_m": _extract_path_error_p95(
+            resolve_existing_artifact_path(run_dir, "mpc_step_stats.csv")
+            or artifact_path(run_dir, "mpc_step_stats.csv")
+        ),
         "mean_active_thrusters": _to_float(kpi.get("mean_active_thrusters")),
         "hard_limit_breaches": hard_limit_breaches,
     }

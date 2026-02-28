@@ -17,6 +17,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from simulation.artifact_paths import artifact_relative_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,6 +123,7 @@ class DataLogger:
             return False
 
         csv_file_path = self.data_save_path / self.filename
+        csv_file_path.parent.mkdir(parents=True, exist_ok=True)
         headers = (
             self._get_physics_headers()
             if self.mode == "physics"
@@ -201,7 +204,11 @@ class DataLogger:
         # Save terminal log (always overwrite/new file for terminal log as it's
         # small)
         if self.terminal_log_data:
-            terminal_log_path = self.data_save_path / f"{self.mode}_terminal_log.csv"
+            terminal_name = f"{self.mode}_terminal_log.csv"
+            terminal_log_path = self.data_save_path / artifact_relative_path(
+                terminal_name
+            )
+            terminal_log_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 with open(terminal_log_path, "w", newline="") as csvfile:
                     writer = csv.writer(csvfile)

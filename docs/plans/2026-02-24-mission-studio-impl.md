@@ -1006,7 +1006,7 @@ describe('generateSpiral', () => {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cd ui && npx vitest run src/components/MissionStudio/__tests__/useSpiralGenerator.test.ts 2>&1 | tail -10
+npx --prefix ui vitest run ui/src/components/MissionStudio/__tests__/useSpiralGenerator.test.ts 2>&1 | tail -10
 ```
 Expected: FAIL — `generateSpiral` not found.
 
@@ -1097,7 +1097,7 @@ function buildPerimeterSamples(polygon: [number, number][], count: number): [num
 **Step 4: Run test to verify it passes**
 
 ```bash
-cd ui && npx vitest run src/components/MissionStudio/__tests__/useSpiralGenerator.test.ts 2>&1 | tail -10
+npx --prefix ui vitest run ui/src/components/MissionStudio/__tests__/useSpiralGenerator.test.ts 2>&1 | tail -10
 ```
 Expected: PASS.
 
@@ -1273,7 +1273,7 @@ describe('applyNudge', () => {
 **Step 2: Run test**
 
 ```bash
-cd ui && npx vitest run src/components/MissionStudio/__tests__/useStudioStore.nudge.test.ts 2>&1 | tail -10
+npx --prefix ui vitest run ui/src/components/MissionStudio/__tests__/useStudioStore.nudge.test.ts 2>&1 | tail -10
 ```
 Expected: PASS (applyNudge already implemented in Task 1 store).
 
