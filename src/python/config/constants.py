@@ -362,6 +362,18 @@ class _MPCContractsDefaults:
     TERMINAL_BYPASS_BAND_M: float = (
         0.20  # m — position error within which SETTLE mode activates
     )
+    TERMINAL_POSITION_EXIT_TOLERANCE_M: float = (
+        0.12  # m — hold reset only after exceeding this (hysteresis exit)
+    )
+    TERMINAL_ANGLE_EXIT_TOLERANCE_DEG: float = (
+        2.5  # deg — hold reset only after exceeding this (hysteresis exit)
+    )
+    TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS: float = (
+        0.06  # m/s — hold reset only after exceeding this (hysteresis exit)
+    )
+    TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS: float = (
+        2.5  # deg/s — hold reset only after exceeding this (hysteresis exit)
+    )
 
     # ----- RECOVER mode weight scales (multiplied onto base Q values) -----
     RECOVER_CONTOUR_SCALE: float = (
@@ -527,6 +539,18 @@ class Constants:
     RECOVER_EXIT_HOLD_S = MPCContractsDefaults.RECOVER_EXIT_HOLD_S
     DURATION_MARGIN_S = MPCContractsDefaults.DURATION_MARGIN_S
     TERMINAL_BYPASS_BAND_M = MPCContractsDefaults.TERMINAL_BYPASS_BAND_M
+    TERMINAL_POSITION_EXIT_TOLERANCE_M = (
+        MPCContractsDefaults.TERMINAL_POSITION_EXIT_TOLERANCE_M
+    )
+    TERMINAL_ANGLE_EXIT_TOLERANCE_DEG = (
+        MPCContractsDefaults.TERMINAL_ANGLE_EXIT_TOLERANCE_DEG
+    )
+    TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS = (
+        MPCContractsDefaults.TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS
+    )
+    TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS = (
+        MPCContractsDefaults.TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS
+    )
     RECOVER_CONTOUR_SCALE = MPCContractsDefaults.RECOVER_CONTOUR_SCALE
     RECOVER_LAG_SCALE = MPCContractsDefaults.RECOVER_LAG_SCALE
     RECOVER_PROGRESS_SCALE = MPCContractsDefaults.RECOVER_PROGRESS_SCALE

@@ -15,6 +15,7 @@ import os
 import platform
 import re
 import subprocess
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -433,6 +434,13 @@ class SimulationIO:
                     "final_angle_error_deg": kpi_summary.get("final_angle_error_deg"),
                     "mpc_mean_solve_time_ms": kpi_summary.get("mpc_mean_solve_time_ms"),
                     "mpc_max_solve_time_ms": kpi_summary.get("mpc_max_solve_time_ms"),
+                    "hold_reset_count": kpi_summary.get("hold_reset_count"),
+                    "dominant_terminal_gate_fail_reason_last_60s": kpi_summary.get(
+                        "dominant_terminal_gate_fail_reason_last_60s"
+                    ),
+                    "terminal_gate_fail_reason_counts_last_60s": kpi_summary.get(
+                        "terminal_gate_fail_reason_counts_last_60s"
+                    ),
                 }
             if constraints:
                 payload["constraints_pass"] = constraints.get("pass")
@@ -477,7 +485,30 @@ class SimulationIO:
                 "final_angle_error_deg": 0.0,
                 "final_velocity_error_mps": 0.0,
                 "final_angular_velocity_error_degps": 0.0,
+                "terminal_gate_fail_reason_counts": {},
+                "terminal_gate_fail_reason_counts_last_60s": {},
+                "pointing_policy_counts": {},
+                "pointing_context_source_counts": {},
+                "hold_reset_count": 0,
             }
+
+        def _normalize_terminal_fail_reason(raw: Any) -> str:
+            token = str(raw or "").strip().lower()
+            mapping = {
+                "progress": "progress",
+                "path_progress": "progress",
+                "position": "position",
+                "position_error": "position",
+                "angle": "angle",
+                "angle_error": "angle",
+                "velocity": "velocity",
+                "velocity_error": "velocity",
+                "angular_velocity": "angular_velocity",
+                "angular_velocity_error": "angular_velocity",
+                "none": "none",
+                "": "none",
+            }
+            return mapping.get(token, "none")
 
         solve_times_ms: list[float] = []
         control_steps = 0
@@ -496,6 +527,11 @@ class SimulationIO:
         max_angle_error = {"value": 0.0, "time": 0.0}
         first_time_limit_exceeded_time: float | None = None
         first_timing_violation_time: float | None = None
+        hold_reset_count = 0
+        terminal_gate_fail_reason_counts: dict[str, int] = {}
+        pointing_policy_counts: dict[str, int] = {}
+        pointing_context_source_counts: dict[str, int] = {}
+        recent_fail_reasons: deque[tuple[float, str]] = deque()
 
         output_headers = [
             "Step",
@@ -519,6 +555,11 @@ class SimulationIO:
             "MPC_Time_Limit_Exceeded",
             "MPC_Status",
             "MPC_Iterations",
+            "Terminal_Gate_Fail_Reason",
+            "Hold_Timer_s",
+            "Hold_Reset_Count",
+            "Pointing_Policy_Active",
+            "Pointing_Context_Source_Active",
         ]
 
         with (
@@ -616,6 +657,24 @@ class SimulationIO:
                 time_limit_exceeded = self._to_bool_flag(
                     row.get("MPC_Time_Limit_Exceeded", "")
                 )
+                terminal_gate_fail_reason = _normalize_terminal_fail_reason(
+                    row.get("Terminal_Gate_Fail_Reason")
+                    or row.get("Completion_Gate_Last_Breach_Reason")
+                )
+                hold_timer_s = self._to_float(row.get("Hold_Timer_s"))
+                hold_reset_count = max(
+                    hold_reset_count, int(self._to_float(row.get("Hold_Reset_Count")))
+                )
+                pointing_policy = str(row.get("Pointing_Policy_Active") or "").strip()
+                if not pointing_policy:
+                    pointing_policy = "unknown"
+                pointing_context_source = str(
+                    row.get("Pointing_Context_Source_Active")
+                    or row.get("Pointing_Context_Source")
+                    or ""
+                ).strip()
+                if not pointing_context_source:
+                    pointing_context_source = "unknown"
 
                 writer.writerow(
                     {
@@ -642,6 +701,11 @@ class SimulationIO:
                         "MPC_Time_Limit_Exceeded": int(time_limit_exceeded),
                         "MPC_Status": row.get("MPC_Status", ""),
                         "MPC_Iterations": row.get("MPC_Iterations", ""),
+                        "Terminal_Gate_Fail_Reason": terminal_gate_fail_reason,
+                        "Hold_Timer_s": f"{hold_timer_s:.6f}",
+                        "Hold_Reset_Count": hold_reset_count,
+                        "Pointing_Policy_Active": pointing_policy,
+                        "Pointing_Context_Source_Active": pointing_context_source,
                     }
                 )
 
@@ -670,9 +734,34 @@ class SimulationIO:
                     if first_time_limit_exceeded_time is None:
                         first_time_limit_exceeded_time = t
 
+                terminal_gate_fail_reason_counts[terminal_gate_fail_reason] = (
+                    int(
+                        terminal_gate_fail_reason_counts.get(
+                            terminal_gate_fail_reason, 0
+                        )
+                    )
+                    + 1
+                )
+                pointing_policy_counts[pointing_policy] = (
+                    int(pointing_policy_counts.get(pointing_policy, 0)) + 1
+                )
+                pointing_context_source_counts[pointing_context_source] = (
+                    int(pointing_context_source_counts.get(pointing_context_source, 0))
+                    + 1
+                )
+                if terminal_gate_fail_reason != "none":
+                    recent_fail_reasons.append((t, terminal_gate_fail_reason))
+                while recent_fail_reasons and (t - recent_fail_reasons[0][0]) > 60.0:
+                    recent_fail_reasons.popleft()
+
         mean_active_thrusters = (
             total_active_thrusters / control_steps if control_steps > 0 else 0.0
         )
+        terminal_gate_fail_reason_counts_last_60s: dict[str, int] = {}
+        for _, reason in recent_fail_reasons:
+            terminal_gate_fail_reason_counts_last_60s[reason] = (
+                int(terminal_gate_fail_reason_counts_last_60s.get(reason, 0)) + 1
+            )
 
         return {
             "control_steps": control_steps,
@@ -692,6 +781,13 @@ class SimulationIO:
             "max_angle_error": max_angle_error,
             "mean_active_thrusters": mean_active_thrusters,
             "total_thruster_switches": total_thruster_switches,
+            "terminal_gate_fail_reason_counts": terminal_gate_fail_reason_counts,
+            "terminal_gate_fail_reason_counts_last_60s": (
+                terminal_gate_fail_reason_counts_last_60s
+            ),
+            "pointing_policy_counts": pointing_policy_counts,
+            "pointing_context_source_counts": pointing_context_source_counts,
+            "hold_reset_count": int(hold_reset_count),
         }
 
     def _collect_physics_stats(self, run_dir: Path) -> dict[str, Any]:
@@ -838,6 +934,18 @@ class SimulationIO:
         solver_fallback_active = bool(getattr(solver_health, "fallback_active", False))
         solver_fallback_age_s = float(getattr(solver_health, "fallback_age_s", 0.0))
         solver_fallback_scale = float(getattr(solver_health, "fallback_scale", 0.0))
+        terminal_fail_counts = dict(
+            control_stats.get("terminal_gate_fail_reason_counts", {}) or {}
+        )
+        terminal_fail_counts_last_60s = dict(
+            control_stats.get("terminal_gate_fail_reason_counts_last_60s", {}) or {}
+        )
+        dominant_terminal_fail_reason_last_60s = "none"
+        if terminal_fail_counts_last_60s:
+            dominant_terminal_fail_reason_last_60s = max(
+                terminal_fail_counts_last_60s.items(),
+                key=lambda item: int(item[1]),
+            )[0]
 
         return {
             "schema_version": "kpi_summary_v1",
@@ -884,6 +992,18 @@ class SimulationIO:
             "solver_fallback_active": solver_fallback_active,
             "solver_fallback_age_s": solver_fallback_age_s,
             "solver_fallback_scale": solver_fallback_scale,
+            "terminal_gate_fail_reason_counts": terminal_fail_counts,
+            "terminal_gate_fail_reason_counts_last_60s": terminal_fail_counts_last_60s,
+            "dominant_terminal_gate_fail_reason_last_60s": (
+                dominant_terminal_fail_reason_last_60s
+            ),
+            "hold_reset_count": int(control_stats.get("hold_reset_count", 0)),
+            "pointing_policy_counts": dict(
+                control_stats.get("pointing_policy_counts", {}) or {}
+            ),
+            "pointing_context_source_counts": dict(
+                control_stats.get("pointing_context_source_counts", {}) or {}
+            ),
             "performance_metrics_ref": perf_metrics.get("simulation", {}),
         }
 
@@ -1110,6 +1230,8 @@ class SimulationIO:
             "gate_ok",
             "complete",
             "last_breach_reason",
+            "fail_reason",
+            "hold_reset_count",
             "path_s",
             "path_length",
             "path_error",
@@ -1136,6 +1258,10 @@ class SimulationIO:
                         "complete": int(bool(row.get("complete", False))),
                         "last_breach_reason": str(
                             row.get("last_breach_reason", "") or ""
+                        ),
+                        "fail_reason": str(row.get("fail_reason", "") or ""),
+                        "hold_reset_count": int(
+                            self._to_float(row.get("hold_reset_count"), 0.0)
                         ),
                         "path_s": f"{self._to_float(row.get('path_s')):.6f}",
                         "path_length": f"{self._to_float(row.get('path_length')):.6f}",
@@ -1202,11 +1328,20 @@ class SimulationIO:
                 "last_breach_reason": getattr(
                     completion_gate, "last_breach_reason", None
                 ),
+                "fail_reason": getattr(completion_gate, "fail_reason", "none"),
+                "hold_reset_count": int(
+                    self._to_float(getattr(completion_gate, "hold_reset_count", 0.0))
+                ),
                 "complete": bool(getattr(completion_gate, "complete", False)),
             },
             "pointing_status": {
                 "pointing_context_source": (
                     pointing_status.get("pointing_context_source")
+                    if isinstance(pointing_status, dict)
+                    else None
+                ),
+                "pointing_policy": (
+                    pointing_status.get("pointing_policy")
                     if isinstance(pointing_status, dict)
                     else None
                 ),

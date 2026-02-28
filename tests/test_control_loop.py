@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from runtime.control_loop import update_mpc_control_step
+from runtime.control_loop import _update_mode_state, update_mpc_control_step
 from runtime.policy import SolverHealth
 
 
@@ -103,3 +103,65 @@ class TestSolverHealthTransitions:
         update_mpc_control_step(sim)
 
         assert sim.next_control_simulation_time == pytest.approx(-1.0 + interval)
+
+
+def test_update_mode_state_uses_max_progress_for_mode_transitions():
+    class _CaptureModeManager:
+        def __init__(self):
+            self.last_update_kwargs: dict | None = None
+
+        def update(self, **kwargs):
+            self.last_update_kwargs = kwargs
+            return SimpleNamespace(current_mode="TRACK", time_in_mode_s=0.0)
+
+        @staticmethod
+        def profile_for_mode(_mode: str) -> SimpleNamespace:
+            return SimpleNamespace()
+
+    class _FakeMPC:
+        def __init__(self):
+            self.s = 10.0
+
+        @staticmethod
+        def get_path_progress(_pos: np.ndarray) -> dict[str, float]:
+            return {"s": 9.6, "path_error": 0.0, "endpoint_error": 0.4}
+
+        @staticmethod
+        def set_scan_attitude_context(_center, _axis, _direction) -> None:
+            return None
+
+    mode_manager = _CaptureModeManager()
+    mission_state = SimpleNamespace(
+        path_hold_schedule=[],
+        path_waypoints=[],
+        path_hold_active_index=None,
+        path_hold_started_at_s=None,
+        path_hold_completed=[],
+    )
+    sim = SimpleNamespace(
+        mode_manager=mode_manager,
+        mpc_controller=_FakeMPC(),
+        position_tolerance=0.1,
+        completion_gate=SimpleNamespace(all_thresholds_ok=False),
+        completion_reached=False,
+        solver_health=SimpleNamespace(status="ok", last_fallback_reason=None),
+        simulation_time=12.0,
+        simulation_config=SimpleNamespace(
+            mission_state=mission_state,
+            app_config=SimpleNamespace(
+                controller_contracts=SimpleNamespace(
+                    enable_pointing_contract=False,
+                    pointing_scope="all_missions",
+                )
+            ),
+        ),
+        pointing_guardrail=None,
+        mode_timeline=None,
+    )
+    sim._get_mission_path_length = lambda compute_if_missing=True: 10.0
+    sim._append_capped_history = lambda *_args, **_kwargs: None
+
+    _update_mode_state(sim, np.zeros(13, dtype=float))
+
+    assert mode_manager.last_update_kwargs is not None
+    assert mode_manager.last_update_kwargs["path_s"] == pytest.approx(10.0)

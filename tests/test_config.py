@@ -178,6 +178,7 @@ class TestConfigValidation:
             non_scan_orientation_policy="world_up_lock",
         )
         assert contracts.non_scan_orientation_policy == "world_up_lock"
+        assert contracts.position_error_exit_m_max >= contracts.position_error_m_max
 
     def test_default_mission_hold_end_is_preserved(self):
         """Default mission hold-end stays wired to the global hold constant."""

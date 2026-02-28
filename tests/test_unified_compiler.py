@@ -217,8 +217,10 @@ def test_compile_unified_mission_path_emits_segment_pointing_spans(monkeypatch):
     assert len(spans) == 2
     assert spans[0]["segment_type"] == "transfer"
     assert spans[0]["context_source"] == "transfer_next_scan"
+    assert spans[0]["pointing_policy"] == "transit_free"
     assert spans[0]["scan_axis"] == [0.0, 0.0, 1.0]
     assert spans[1]["segment_type"] == "scan"
+    assert spans[1]["pointing_policy"] == "scan_locked"
     assert spans[1]["scan_axis"] == [0.0, 0.0, 1.0]
     assert float(spans[1]["s_start"]) >= float(spans[0]["s_end"])
 
@@ -273,11 +275,14 @@ def test_compile_unified_mission_path_transfer_after_last_scan_uses_previous_axi
 
     assert len(spans) == 3
     assert spans[0]["context_source"] == "transfer_next_scan"
+    assert spans[0]["pointing_policy"] == "transit_free"
     assert spans[0]["scan_axis"] == [0.0, 1.0, 0.0]
     assert spans[1]["segment_type"] == "scan"
+    assert spans[1]["pointing_policy"] == "scan_locked"
     assert spans[1]["scan_axis"] == [0.0, 1.0, 0.0]
     assert spans[2]["segment_type"] == "transfer"
     assert spans[2]["context_source"] == "transfer_previous_scan"
+    assert spans[2]["pointing_policy"] == "transit_free"
     assert spans[2]["scan_axis"] == [0.0, 1.0, 0.0]
 
 
@@ -340,6 +345,9 @@ def test_compile_unified_mission_path_manual_path_remaps_pointing_spans(monkeypa
     assert len(spans) == 3
     assert spans[0]["context_source"] == "transfer_next_scan"
     assert spans[2]["context_source"] == "transfer_previous_scan"
+    assert spans[0]["pointing_policy"] == "transit_free"
+    assert spans[1]["pointing_policy"] == "scan_locked"
+    assert spans[2]["pointing_policy"] == "transit_free"
     assert spans[0]["scan_axis"] == [0.0, 1.0, 0.0]
     assert spans[1]["scan_axis"] == [0.0, 1.0, 0.0]
     assert spans[2]["scan_axis"] == [0.0, 1.0, 0.0]

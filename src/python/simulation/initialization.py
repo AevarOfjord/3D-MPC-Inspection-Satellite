@@ -663,13 +663,81 @@ class SimulationInitializer:
 
     def _initialize_tolerances(self) -> None:
         """Initialize tolerance values."""
+        import math
+
         from config.constants import Constants
 
-        self.simulation.position_tolerance = Constants.POSITION_TOLERANCE
-        self.simulation.angle_tolerance = Constants.ANGLE_TOLERANCE
-        self.simulation.velocity_tolerance = Constants.VELOCITY_TOLERANCE
-        self.simulation.angular_velocity_tolerance = (
-            Constants.ANGULAR_VELOCITY_TOLERANCE
+        contracts_cfg = getattr(
+            getattr(self.simulation_config, "app_config", None),
+            "controller_contracts",
+            None,
+        )
+
+        self.simulation.position_tolerance = float(
+            getattr(contracts_cfg, "position_error_m_max", Constants.POSITION_TOLERANCE)
+        )
+        self.simulation.angle_tolerance = float(
+            math.radians(
+                float(
+                    getattr(
+                        contracts_cfg,
+                        "angle_error_deg_max",
+                        math.degrees(Constants.ANGLE_TOLERANCE),
+                    )
+                )
+            )
+        )
+        self.simulation.velocity_tolerance = float(
+            getattr(
+                contracts_cfg, "velocity_error_mps_max", Constants.VELOCITY_TOLERANCE
+            )
+        )
+        self.simulation.angular_velocity_tolerance = float(
+            math.radians(
+                float(
+                    getattr(
+                        contracts_cfg,
+                        "angular_velocity_error_degps_max",
+                        math.degrees(Constants.ANGULAR_VELOCITY_TOLERANCE),
+                    )
+                )
+            )
+        )
+        self.simulation.position_hold_exit_tolerance = float(
+            getattr(
+                contracts_cfg,
+                "position_error_exit_m_max",
+                Constants.TERMINAL_POSITION_EXIT_TOLERANCE_M,
+            )
+        )
+        self.simulation.angle_hold_exit_tolerance = float(
+            math.radians(
+                float(
+                    getattr(
+                        contracts_cfg,
+                        "angle_error_exit_deg_max",
+                        Constants.TERMINAL_ANGLE_EXIT_TOLERANCE_DEG,
+                    )
+                )
+            )
+        )
+        self.simulation.velocity_hold_exit_tolerance = float(
+            getattr(
+                contracts_cfg,
+                "velocity_error_exit_mps_max",
+                Constants.TERMINAL_VELOCITY_EXIT_TOLERANCE_MPS,
+            )
+        )
+        self.simulation.angular_velocity_hold_exit_tolerance = float(
+            math.radians(
+                float(
+                    getattr(
+                        contracts_cfg,
+                        "angular_velocity_error_exit_degps_max",
+                        Constants.TERMINAL_ANGULAR_VELOCITY_EXIT_TOLERANCE_DEGPS,
+                    )
+                )
+            )
         )
 
     def _initialize_mpc_controller(self, app_config: Any) -> None:
@@ -699,6 +767,16 @@ class SimulationInitializer:
                 "angle_tolerance": self.simulation.angle_tolerance,
                 "velocity_tolerance": self.simulation.velocity_tolerance,
                 "angular_velocity_tolerance": self.simulation.angular_velocity_tolerance,
+                "position_hold_exit_tolerance": (
+                    self.simulation.position_hold_exit_tolerance
+                ),
+                "angle_hold_exit_tolerance": self.simulation.angle_hold_exit_tolerance,
+                "velocity_hold_exit_tolerance": (
+                    self.simulation.velocity_hold_exit_tolerance
+                ),
+                "angular_velocity_hold_exit_tolerance": (
+                    self.simulation.angular_velocity_hold_exit_tolerance
+                ),
             },
             app_config=(
                 self.simulation_config.app_config if self.simulation_config else None
@@ -796,6 +874,7 @@ class SimulationInitializer:
         )
         self.simulation.pointing_status = {
             "pointing_context_source": "none",
+            "pointing_policy": "transit_free",
             "pointing_axis_world": [0.0, 0.0, 1.0],
             "z_axis_error_deg": 0.0,
             "x_axis_error_deg": 0.0,
