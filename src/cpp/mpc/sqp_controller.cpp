@@ -411,6 +411,109 @@ void SQPController::apply_mode_scaling() {
     }
 }
 
+Vector3d SQPController::get_smooth_tangent(double s_query) const {
+    if (!path_.valid) {
+        return Vector3d::UnitX();
+    }
+    return path_.get_tangent_lookahead(
+        s_query,
+        params_.ref_tangent_lookahead_m,
+        params_.ref_tangent_lookback_m
+    );
+}
+
+double SQPController::mode_ref_quat_max_step_rad() const {
+    const double base_rate = std::max(0.0, params_.ref_quat_max_rate_rad_s);
+    double scale = 1.0;
+    switch (mode_) {
+        case RuntimeMode::SETTLE:
+        case RuntimeMode::HOLD:
+        case RuntimeMode::COMPLETE:
+            scale = std::max(0.0, params_.ref_quat_terminal_rate_scale);
+            break;
+        case RuntimeMode::TRACK:
+        case RuntimeMode::RECOVER:
+        default:
+            break;
+    }
+    return base_rate * std::max(0.0, scale) * std::max(0.0, dt_);
+}
+
+double SQPController::quaternion_step_angle_rad(
+    const Vector4d& q_from,
+    const Vector4d& q_to
+) {
+    Vector4d qa = q_from;
+    Vector4d qb = q_to;
+    const double na = qa.norm();
+    const double nb = qb.norm();
+    if (na <= 1e-12 || nb <= 1e-12) {
+        return 0.0;
+    }
+    qa /= na;
+    qb /= nb;
+    double dot = std::abs(qa.dot(qb));
+    dot = std::max(-1.0, std::min(1.0, dot));
+    return 2.0 * std::acos(dot);
+}
+
+Vector4d SQPController::apply_quaternion_slew_limit(
+    const Vector4d& q_prev,
+    const Vector4d& q_desired,
+    double max_step_rad,
+    bool* limited,
+    double* step_rad
+) const {
+    if (limited) {
+        *limited = false;
+    }
+    if (step_rad) {
+        *step_rad = 0.0;
+    }
+
+    Vector4d q_prev_n = q_prev;
+    Vector4d q_des_n = q_desired;
+    const double n_prev = q_prev_n.norm();
+    const double n_des = q_des_n.norm();
+    if (n_prev <= 1e-12 || n_des <= 1e-12) {
+        return q_desired;
+    }
+    q_prev_n /= n_prev;
+    q_des_n /= n_des;
+    if (q_prev_n.dot(q_des_n) < 0.0) {
+        q_des_n = -q_des_n;
+    }
+
+    const double theta = quaternion_step_angle_rad(q_prev_n, q_des_n);
+    if (step_rad) {
+        *step_rad = theta;
+    }
+    if (theta <= 1e-12) {
+        return q_des_n;
+    }
+
+    const double step_cap = std::max(0.0, max_step_rad);
+    if (step_cap <= 1e-12) {
+        if (limited) {
+            *limited = true;
+        }
+        return q_prev_n;
+    }
+    if (theta <= step_cap) {
+        return q_des_n;
+    }
+
+    const double alpha = std::max(0.0, std::min(1.0, step_cap / theta));
+    Eigen::Quaterniond q_prev_e(q_prev_n[0], q_prev_n[1], q_prev_n[2], q_prev_n[3]);
+    Eigen::Quaterniond q_des_e(q_des_n[0], q_des_n[1], q_des_n[2], q_des_n[3]);
+    Eigen::Quaterniond q_interp = q_prev_e.slerp(alpha, q_des_e);
+    q_interp.normalize();
+    if (limited) {
+        *limited = true;
+    }
+    return Vector4d(q_interp.w(), q_interp.x(), q_interp.y(), q_interp.z());
+}
+
 // ============================================================================
 // Main control loop
 // ============================================================================
@@ -481,7 +584,7 @@ ControlResultV2 SQPController::get_control_action(const VectorXd& x_current) {
     auto t5 = std::chrono::steady_clock::now();
 
     // 6. Solve
-    c_int solve_flag = osqp_solve(osqp_work_);
+    osqp_solve(osqp_work_);
     auto t6 = std::chrono::steady_clock::now();
 
     // 7. Extract result
@@ -562,6 +665,11 @@ ControlResultV2 SQPController::get_control_action(const VectorXd& x_current) {
     result.t_constraint_update_s = to_sec(t3, t4);
     result.t_matrix_update_s = to_sec(t4, t5);
     result.t_solve_only_s = to_sec(t5, t6);
+    result.ref_heading_step_deg = last_ref_heading_step_deg_;
+    result.ref_quat_step_deg_max_horizon = last_ref_quat_step_deg_max_horizon_;
+    result.ref_slew_limited_fraction = last_ref_slew_limited_fraction_;
+    result.terminal_progress_reward_active = last_terminal_progress_reward_active_;
+    result.degenerate_tangent_fallback_count = last_degenerate_tangent_fallback_count_;
 
     control_step_counter_++;
     return result;
@@ -696,12 +804,33 @@ void SQPController::linearise_dynamics() {
 void SQPController::update_cost(const VectorXd& x_current) {
     // Zero out
     q_qp_.setZero();
+    path_.reset_degenerate_fallback_counter();
+    last_ref_heading_step_deg_ = 0.0;
+    last_ref_quat_step_deg_max_horizon_ = 0.0;
+    last_ref_slew_limited_fraction_ = 0.0;
+    last_terminal_progress_reward_active_ = false;
+    last_degenerate_tangent_fallback_count_ = 0;
 
     // Reset ALL P_qp_ values to zero (not just P_data_) so that
     // off-diagonal entries (thrust pairs, smoothness) don't accumulate.
     for (int i = 0; i < P_qp_.nonZeros(); ++i) {
         P_qp_.valuePtr()[i] = 0.0;
     }
+
+    constexpr double kRadToDeg = 57.29577951308232;
+    Vector3d prev_tangent = Vector3d::Zero();
+    bool have_prev_tangent = false;
+    int slew_limited_count = 0;
+    int quat_step_count = 0;
+    Vector4d q_prev_ref(1.0, 0.0, 0.0, 0.0);
+    if (x_current.size() >= 7) {
+        q_prev_ref = x_current.segment<4>(3);
+        const double qn = q_prev_ref.norm();
+        if (qn > 1e-12) {
+            q_prev_ref /= qn;
+        }
+    }
+    const double max_quat_step_rad = mode_ref_quat_max_step_rad();
 
     int u_base = (N_ + 1) * nx_;
 
@@ -759,7 +888,17 @@ void SQPController::update_cost(const VectorXd& x_current) {
             s_k = path_.clamp_s(s_k);
 
             Vector3d p_ref = path_.get_point(s_k);
-            Vector3d t_ref = path_.get_tangent(s_k);
+            Vector3d t_ref = get_smooth_tangent(s_k);
+            if (have_prev_tangent) {
+                double dot = prev_tangent.dot(t_ref);
+                dot = std::max(-1.0, std::min(1.0, dot));
+                last_ref_heading_step_deg_ = std::max(
+                    last_ref_heading_step_deg_,
+                    std::acos(dot) * kRadToDeg
+                );
+            }
+            prev_tangent = t_ref;
+            have_prev_tangent = true;
 
             // Linear position term: q_pos = -2 * Q * p_ref
             for (int i = 0; i < 3; ++i) {
@@ -772,9 +911,33 @@ void SQPController::update_cost(const VectorXd& x_current) {
             q_qp_[x_offset + 16] = -2.0 * w_s * s_k;
 
             // Quaternion reference (linear term for attitude)
-            if (x_traj_[0].size() >= 7) {
-                Vector4d q_curr = x_traj_[0].segment<4>(3);
-                Vector4d q_ref = build_reference_quaternion(p_ref, t_ref, q_curr);
+            if (x_current.size() >= 7) {
+                Vector4d q_ref_des = build_reference_quaternion(
+                    p_ref,
+                    t_ref,
+                    q_prev_ref
+                );
+                bool slew_limited = false;
+                Vector4d q_ref = apply_quaternion_slew_limit(
+                    q_prev_ref,
+                    q_ref_des,
+                    max_quat_step_rad,
+                    &slew_limited,
+                    nullptr
+                );
+                const double applied_step_rad = quaternion_step_angle_rad(
+                    q_prev_ref,
+                    q_ref
+                );
+                last_ref_quat_step_deg_max_horizon_ = std::max(
+                    last_ref_quat_step_deg_max_horizon_,
+                    applied_step_rad * kRadToDeg
+                );
+                if (slew_limited) {
+                    ++slew_limited_count;
+                }
+                ++quat_step_count;
+                q_prev_ref = q_ref;
                 for (int i = 0; i < 4; ++i) {
                     q_qp_[x_offset + 3 + i] =
                         -2.0 * (scale * active_Q_attitude_ + params_.Q_quat_norm)
@@ -797,6 +960,13 @@ void SQPController::update_cost(const VectorXd& x_current) {
     }
 
     // Control costs
+    const bool terminal_mode =
+        (mode_ == RuntimeMode::SETTLE
+         || mode_ == RuntimeMode::HOLD
+         || mode_ == RuntimeMode::COMPLETE);
+    const double progress_reward_term = terminal_mode ? 0.0 : params_.progress_reward;
+    last_terminal_progress_reward_active_ =
+        terminal_mode && (progress_reward_term > 0.0);
     for (int k = 0; k < N_; ++k) {
         int u_offset = u_base + k * nu_;
 
@@ -824,7 +994,7 @@ void SQPController::update_cost(const VectorXd& x_current) {
         // Linear: -2*Q_progress*v_ref  (quadratic tracking)
         //         - progress_reward    (pure linear incentive, no 2× factor)
         q_qp_[vs_idx] = -2.0 * active_Q_progress_ * active_path_speed_
-                         - params_.progress_reward;
+                         - progress_reward_term;
 
         // Opposing thruster pairs (P = 2w for OSQP ½z^TPz)
         // For pair (i, j): P[i,i] += 2w, P[j,j] += 2w, P[i,j] += 2w (upper tri)
@@ -858,6 +1028,12 @@ void SQPController::update_cost(const VectorXd& x_current) {
     }
 
     // Update CSC data
+    last_ref_slew_limited_fraction_ =
+        (quat_step_count > 0)
+            ? static_cast<double>(slew_limited_count) / quat_step_count
+            : 0.0;
+    last_degenerate_tangent_fallback_count_ =
+        path_.get_degenerate_fallback_counter();
     std::copy(P_qp_.valuePtr(), P_qp_.valuePtr() + P_qp_.nonZeros(), P_data_.data());
 }
 
@@ -1231,6 +1407,18 @@ void SQPController::set_path_data(
     scan_ctx_.ref_prev_z = Vector3d::Zero();
 }
 
+void SQPController::set_current_path_s(double s_value) {
+    if (!std::isfinite(s_value)) {
+        return;
+    }
+    if (path_.valid) {
+        s_runtime_ = path_.clamp_s(s_value);
+    } else {
+        s_runtime_ = std::max(0.0, s_value);
+    }
+    s_initialized_ = path_.valid;
+}
+
 void SQPController::set_scan_attitude_context(
     const Vector3d& center,
     const Vector3d& axis,
@@ -1280,7 +1468,7 @@ std::tuple<Vector3d, Vector3d, Vector4d> SQPController::get_reference_at_s(
 
     s_query = path_.clamp_s(s_query);
     Vector3d pos = path_.get_point(s_query);
-    Vector3d tan = path_.get_tangent(s_query);
+    Vector3d tan = get_smooth_tangent(s_query);
     Vector4d q_ref = build_reference_quaternion(pos, tan, q_current);
 
     return {pos, tan, q_ref};

@@ -79,6 +79,7 @@ public:
     double path_length() const { return path_.total_length; }
     bool has_path() const { return path_.valid; }
     double current_path_s() const { return s_runtime_; }
+    void set_current_path_s(double s_value);
 
     // ----- Configuration -------------------------------------------------
 
@@ -247,6 +248,11 @@ private:
     // Set to 0 in SETTLE/HOLD/COMPLETE so the MPC does not incentivise
     // further path progress once the endpoint has been reached.
     double active_path_speed_ = 0.0;
+    double last_ref_heading_step_deg_ = 0.0;
+    double last_ref_quat_step_deg_max_horizon_ = 0.0;
+    double last_ref_slew_limited_fraction_ = 0.0;
+    bool last_terminal_progress_reward_active_ = false;
+    int last_degenerate_tangent_fallback_count_ = 0;
 
     // ----- Initialisation helpers ----------------------------------------
     void init_qp();
@@ -263,6 +269,19 @@ private:
     void extract_solution(const c_float* primal);
     void apply_mode_scaling();
     double compute_dynamic_vs_min(double s_curr) const;
+    Vector3d get_smooth_tangent(double s_query) const;
+    double mode_ref_quat_max_step_rad() const;
+    Vector4d apply_quaternion_slew_limit(
+        const Vector4d& q_prev,
+        const Vector4d& q_desired,
+        double max_step_rad,
+        bool* limited,
+        double* step_rad
+    ) const;
+    static double quaternion_step_angle_rad(
+        const Vector4d& q_from,
+        const Vector4d& q_to
+    );
 
     // ----- Reference generation ------------------------------------------
     Vector4d build_reference_quaternion(

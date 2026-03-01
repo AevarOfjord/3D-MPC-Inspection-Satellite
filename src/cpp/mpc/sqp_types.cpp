@@ -11,6 +11,55 @@
 namespace satellite_control {
 namespace v2 {
 
+namespace {
+
+Vector3d robust_tangent_from_index(
+    const PathData& path,
+    int idx,
+    double s_query,
+    bool* used_fallback
+) {
+    if (used_fallback) {
+        *used_fallback = false;
+    }
+    const int n = static_cast<int>(path.points.size());
+    if (n < 2) {
+        return Vector3d::UnitX();
+    }
+    idx = std::max(0, std::min(idx, n - 2));
+
+    Vector3d seg = path.points[idx + 1] - path.points[idx];
+    double seg_norm = seg.norm();
+    if (seg_norm > 1e-12) {
+        return seg / seg_norm;
+    }
+
+    if (used_fallback) {
+        *used_fallback = true;
+    }
+    for (int j = idx + 1; j + 1 < n; ++j) {
+        seg = path.points[j + 1] - path.points[j];
+        seg_norm = seg.norm();
+        if (seg_norm > 1e-12) {
+            return seg / seg_norm;
+        }
+    }
+    for (int j = idx - 1; j >= 0; --j) {
+        seg = path.points[j + 1] - path.points[j];
+        seg_norm = seg.norm();
+        if (seg_norm > 1e-12) {
+            return seg / seg_norm;
+        }
+    }
+
+    std::cerr << "[PathData] WARNING: all path segments near s="
+              << s_query << " are degenerate (<1e-12 m); "
+              << "falling back to UnitX tangent. Check path waypoints.\n";
+    return Vector3d::UnitX();
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // PathData implementation
 // ---------------------------------------------------------------------------
@@ -40,23 +89,37 @@ Vector3d PathData::get_tangent(double s_query) const {
     auto it = std::upper_bound(s.begin(), s.end(), s_query);
     int idx = static_cast<int>(it - s.begin()) - 1;
     idx = std::max(0, std::min(idx, static_cast<int>(points.size()) - 2));
+    bool used_fallback = false;
+    Vector3d tangent = robust_tangent_from_index(*this, idx, s_query, &used_fallback);
+    if (used_fallback) {
+        ++degenerate_fallback_count;
+    }
+    return tangent;
+}
 
-    Vector3d seg = points[idx + 1] - points[idx];
-    double seg_norm = seg.norm();
-    if (seg_norm < 1e-12) {
-        // Degenerate segment — try adjacent
-        if (idx + 2 < static_cast<int>(points.size())) {
-            seg = points[idx + 2] - points[idx];
-            seg_norm = seg.norm();
-        }
-        if (seg_norm < 1e-12) {
-            std::cerr << "[PathData] WARNING: all path segments near s="
-                      << s_query << " are degenerate (<1e-12 m); "
-                      << "falling back to UnitX tangent. Check path waypoints.\n";
-            return Vector3d::UnitX();
+Vector3d PathData::get_tangent_lookahead(
+    double s_query,
+    double lookahead_m,
+    double lookback_m
+) const {
+    if (!valid || points.size() < 2) return Vector3d::UnitX();
+    s_query = clamp_s(s_query);
+    const double lookahead = std::max(0.0, lookahead_m);
+    const double lookback = std::max(0.0, lookback_m);
+    double s_lo = clamp_s(s_query - lookback);
+    double s_hi = clamp_s(s_query + lookahead);
+    if (s_hi < s_lo) {
+        std::swap(s_hi, s_lo);
+    }
+
+    if (std::abs(s_hi - s_lo) > 1e-12) {
+        Vector3d sec = get_point(s_hi) - get_point(s_lo);
+        double sec_norm = sec.norm();
+        if (sec_norm > 1e-9) {
+            return sec / sec_norm;
         }
     }
-    return seg / seg_norm;
+    return get_tangent(s_query);
 }
 
 double PathData::clamp_s(double s_query) const {

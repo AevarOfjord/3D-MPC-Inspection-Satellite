@@ -177,6 +177,137 @@ def test_update_mode_state_uses_max_progress_for_mode_transitions():
     assert mode_manager.last_update_kwargs["path_s"] == pytest.approx(10.0)
 
 
+def test_update_mode_state_caps_projection_lead_for_progress_fusion():
+    class _CaptureModeManager:
+        def __init__(self):
+            self.last_update_kwargs: dict | None = None
+
+        def update(self, **kwargs):
+            self.last_update_kwargs = kwargs
+            return SimpleNamespace(current_mode="TRACK", time_in_mode_s=0.0)
+
+        @staticmethod
+        def profile_for_mode(_mode: str) -> SimpleNamespace:
+            return SimpleNamespace()
+
+    class _FakeMPC:
+        def __init__(self):
+            self.s = 0.0
+
+        @staticmethod
+        def get_path_progress(_pos: np.ndarray) -> dict[str, float]:
+            return {"s": 2.0, "path_error": 0.0, "endpoint_error": 0.4}
+
+        @staticmethod
+        def set_scan_attitude_context(_center, _axis, _direction) -> None:
+            return None
+
+    sim = SimpleNamespace(
+        mode_manager=_CaptureModeManager(),
+        mpc_controller=_FakeMPC(),
+        position_tolerance=0.1,
+        completion_gate=SimpleNamespace(all_thresholds_ok=False),
+        completion_reached=False,
+        solver_health=SimpleNamespace(status="ok", last_fallback_reason=None),
+        simulation_time=12.0,
+        simulation_config=SimpleNamespace(
+            mission_state=SimpleNamespace(
+                path_hold_schedule=[],
+                path_waypoints=[],
+                path_hold_active_index=None,
+                path_hold_started_at_s=None,
+                path_hold_completed=[],
+            ),
+            app_config=SimpleNamespace(
+                controller_contracts=SimpleNamespace(
+                    enable_pointing_contract=False,
+                    pointing_scope="all_missions",
+                    path_projection_lead_cap_m=0.25,
+                )
+            ),
+        ),
+        pointing_guardrail=None,
+        mode_timeline=None,
+    )
+    sim._get_mission_path_length = lambda compute_if_missing=True: 10.0
+    sim._append_capped_history = lambda *_args, **_kwargs: None
+
+    _update_mode_state(sim, np.zeros(13, dtype=float))
+
+    assert sim.mode_manager.last_update_kwargs is not None
+    assert sim.mode_manager.last_update_kwargs["path_s"] == pytest.approx(0.25)
+    assert sim.path_progress_debug["path_s_projected_capped"] == pytest.approx(0.25)
+    assert sim.path_progress_debug["path_s_fused"] == pytest.approx(0.25)
+
+
+def test_update_mode_state_uses_cpp_path_setter_for_waypoint_hold():
+    class _CaptureModeManager:
+        def __init__(self):
+            self.last_update_kwargs: dict | None = None
+
+        def update(self, **kwargs):
+            self.last_update_kwargs = kwargs
+            return SimpleNamespace(current_mode="TRACK", time_in_mode_s=0.0)
+
+        @staticmethod
+        def profile_for_mode(_mode: str) -> SimpleNamespace:
+            return SimpleNamespace()
+
+    class _FakeMPC:
+        def __init__(self):
+            self.s = 0.9
+            self.set_s_calls: list[float] = []
+
+        @staticmethod
+        def get_path_progress(_pos: np.ndarray) -> dict[str, float]:
+            return {"s": 1.0, "path_error": 0.0, "endpoint_error": 0.01}
+
+        @staticmethod
+        def set_scan_attitude_context(_center, _axis, _direction) -> None:
+            return None
+
+        def set_current_path_s(self, s_value: float) -> None:
+            self.set_s_calls.append(float(s_value))
+            self.s = float(s_value)
+
+    mission_state = SimpleNamespace(
+        path_hold_schedule=[{"path_index": 1, "duration_s": 5.0}],
+        path_waypoints=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        path_hold_active_index=None,
+        path_hold_started_at_s=None,
+        path_hold_completed=[],
+    )
+    sim = SimpleNamespace(
+        mode_manager=_CaptureModeManager(),
+        mpc_controller=_FakeMPC(),
+        position_tolerance=0.1,
+        completion_gate=SimpleNamespace(all_thresholds_ok=False),
+        completion_reached=False,
+        solver_health=SimpleNamespace(status="ok", last_fallback_reason=None),
+        simulation_time=12.0,
+        simulation_config=SimpleNamespace(
+            mission_state=mission_state,
+            app_config=SimpleNamespace(
+                controller_contracts=SimpleNamespace(
+                    enable_pointing_contract=False,
+                    pointing_scope="all_missions",
+                    path_projection_lead_cap_m=0.25,
+                )
+            ),
+        ),
+        pointing_guardrail=None,
+        mode_timeline=None,
+    )
+    sim._get_mission_path_length = lambda compute_if_missing=True: 1.0
+    sim._append_capped_history = lambda *_args, **_kwargs: None
+
+    _update_mode_state(sim, np.zeros(13, dtype=float))
+
+    assert sim.mpc_controller.set_s_calls
+    assert sim.mpc_controller.set_s_calls[-1] == pytest.approx(1.0)
+    assert sim.mode_state.current_mode == "HOLD"
+
+
 def test_update_mode_state_forces_transit_free_pointing_near_terminal_settle():
     class _CaptureModeManager:
         def __init__(self):

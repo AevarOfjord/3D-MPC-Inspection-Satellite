@@ -416,6 +416,30 @@ class MPCParams(BaseModel):
         le=1.0,
         description="Maximum path speed [m/s]",
     )
+    ref_tangent_lookahead_m: float = Field(
+        constants.Constants.REF_TANGENT_LOOKAHEAD_M,
+        ge=0.0,
+        le=10.0,
+        description="Heading tangent lookahead distance [m].",
+    )
+    ref_tangent_lookback_m: float = Field(
+        constants.Constants.REF_TANGENT_LOOKBACK_M,
+        ge=0.0,
+        le=10.0,
+        description="Heading tangent lookback distance [m].",
+    )
+    ref_quat_max_rate_rad_s: float = Field(
+        constants.Constants.REF_QUAT_MAX_RATE_RAD_S,
+        ge=0.0,
+        le=100.0,
+        description="Maximum reference quaternion slew rate [rad/s].",
+    )
+    ref_quat_terminal_rate_scale: float = Field(
+        constants.Constants.REF_QUAT_TERMINAL_RATE_SCALE,
+        ge=0.0,
+        le=100.0,
+        description="Reference quaternion slew-rate multiplier in terminal modes.",
+    )
     max_linear_velocity: float = Field(
         constants.Constants.MAX_LINEAR_VELOCITY,
         ge=0.0,
@@ -534,6 +558,10 @@ class MPCParams(BaseModel):
         "Q_s_anchor",
         "path_speed_min",
         "path_speed_max",
+        "ref_tangent_lookahead_m",
+        "ref_tangent_lookback_m",
+        "ref_quat_max_rate_rad_s",
+        "ref_quat_terminal_rate_scale",
         "Q_terminal_pos",
         "Q_terminal_s",
         "Q_terminal_vel",
@@ -1012,6 +1040,14 @@ class ControllerContractsParams(BaseModel):
         ge=0.0,
         le=60.0,
         description="RECOVER->TRACK threshold hold time [s].",
+    )
+    path_projection_lead_cap_m: float = Field(
+        constants.Constants.PATH_PROJECTION_LEAD_CAP_M,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Maximum allowed projected path-s lead over controller path-s [m]."
+        ),
     )
     allow_mission_override: bool = Field(
         True,

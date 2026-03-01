@@ -189,6 +189,12 @@ class _MPCVueMechanicsDefaults:
     # PATH_SPEED_MAX limits how fast the satellite is driven along the reference.
     PATH_SPEED_MIN: float = 0.05  # m/s — lower bound on v_s; relaxed to 0 near endpoint
     PATH_SPEED_MAX: float = 0.2  # m/s — upper bound on v_s
+    REF_TANGENT_LOOKAHEAD_M: float = 0.35  # m — lookahead for smooth heading secant
+    REF_TANGENT_LOOKBACK_M: float = 0.10  # m — lookback for smooth heading secant
+    REF_QUAT_MAX_RATE_RAD_S: float = 1.57  # rad/s — max reference quaternion slew rate
+    REF_QUAT_TERMINAL_RATE_SCALE: float = (
+        2.0  # multiplier for ref quaternion slew in SETTLE/HOLD/COMPLETE
+    )
 
     # Progress policy — governs how path speed bounds adapt at runtime.
     #   "speed_tracking" : v_s tracks PATH_SPEED_MAX; pure speed reference
@@ -362,6 +368,9 @@ class _MPCContractsDefaults:
     TERMINAL_BYPASS_BAND_M: float = (
         0.35  # m — position error within which SETTLE mode activates
     )
+    PATH_PROJECTION_LEAD_CAP_M: float = (
+        0.25  # m — maximum allowed projected-s lead over controller s
+    )
     TERMINAL_POSITION_EXIT_TOLERANCE_M: float = (
         0.12  # m — hold reset only after exceeding this (hysteresis exit)
     )
@@ -498,6 +507,10 @@ class Constants:
     Q_S_ANCHOR = MPCTuningDefaults.Q_S_ANCHOR
     PATH_SPEED_MIN = MPCVueMechanicsDefaults.PATH_SPEED_MIN
     PATH_SPEED_MAX = MPCVueMechanicsDefaults.PATH_SPEED_MAX
+    REF_TANGENT_LOOKAHEAD_M = MPCVueMechanicsDefaults.REF_TANGENT_LOOKAHEAD_M
+    REF_TANGENT_LOOKBACK_M = MPCVueMechanicsDefaults.REF_TANGENT_LOOKBACK_M
+    REF_QUAT_MAX_RATE_RAD_S = MPCVueMechanicsDefaults.REF_QUAT_MAX_RATE_RAD_S
+    REF_QUAT_TERMINAL_RATE_SCALE = MPCVueMechanicsDefaults.REF_QUAT_TERMINAL_RATE_SCALE
     Q_SMOOTH = MPCTuningDefaults.Q_SMOOTH
     Q_ATTITUDE = MPCTuningDefaults.Q_ATTITUDE
     Q_AXIS_ALIGN = MPCTuningDefaults.Q_AXIS_ALIGN
@@ -539,6 +552,7 @@ class Constants:
     RECOVER_EXIT_HOLD_S = MPCContractsDefaults.RECOVER_EXIT_HOLD_S
     DURATION_MARGIN_S = MPCContractsDefaults.DURATION_MARGIN_S
     TERMINAL_BYPASS_BAND_M = MPCContractsDefaults.TERMINAL_BYPASS_BAND_M
+    PATH_PROJECTION_LEAD_CAP_M = MPCContractsDefaults.PATH_PROJECTION_LEAD_CAP_M
     TERMINAL_POSITION_EXIT_TOLERANCE_M = (
         MPCContractsDefaults.TERMINAL_POSITION_EXIT_TOLERANCE_M
     )

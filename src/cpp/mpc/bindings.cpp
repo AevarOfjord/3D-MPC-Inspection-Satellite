@@ -52,6 +52,10 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("path_speed",           &MPCV2Params::path_speed)
         .def_readwrite("path_speed_min",       &MPCV2Params::path_speed_min)
         .def_readwrite("path_speed_max",       &MPCV2Params::path_speed_max)
+        .def_readwrite("ref_tangent_lookahead_m", &MPCV2Params::ref_tangent_lookahead_m)
+        .def_readwrite("ref_tangent_lookback_m", &MPCV2Params::ref_tangent_lookback_m)
+        .def_readwrite("ref_quat_max_rate_rad_s", &MPCV2Params::ref_quat_max_rate_rad_s)
+        .def_readwrite("ref_quat_terminal_rate_scale", &MPCV2Params::ref_quat_terminal_rate_scale)
         // Terminal
         .def_readwrite("Q_terminal_pos",       &MPCV2Params::Q_terminal_pos)
         .def_readwrite("Q_terminal_s",         &MPCV2Params::Q_terminal_s)
@@ -111,6 +115,11 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def_readwrite("path_s_pred",          &ControlResultV2::path_s_pred)
         .def_readwrite("path_error",           &ControlResultV2::path_error)
         .def_readwrite("path_endpoint_error",  &ControlResultV2::path_endpoint_error)
+        .def_readwrite("ref_heading_step_deg", &ControlResultV2::ref_heading_step_deg)
+        .def_readwrite("ref_quat_step_deg_max_horizon", &ControlResultV2::ref_quat_step_deg_max_horizon)
+        .def_readwrite("ref_slew_limited_fraction", &ControlResultV2::ref_slew_limited_fraction)
+        .def_readwrite("terminal_progress_reward_active", &ControlResultV2::terminal_progress_reward_active)
+        .def_readwrite("degenerate_tangent_fallback_count", &ControlResultV2::degenerate_tangent_fallback_count)
         .def_readwrite("fallback_active",      &ControlResultV2::fallback_active)
         .def_readwrite("fallback_age_s",       &ControlResultV2::fallback_age_s)
         .def_readwrite("fallback_scale",       &ControlResultV2::fallback_scale)
@@ -164,6 +173,8 @@ PYBIND11_MODULE(_cpp_mpc, m) {
         .def("clear_scan_attitude_context", &SQPController::clear_scan_attitude_context)
         .def("set_runtime_mode", &SQPController::set_runtime_mode,
              py::arg("mode"))
+        .def("set_current_path_s", &SQPController::set_current_path_s,
+             py::arg("s_value"))
         .def("project_onto_path", &SQPController::project_onto_path,
              py::arg("position"))
         .def("get_reference_at_s", &SQPController::get_reference_at_s,
