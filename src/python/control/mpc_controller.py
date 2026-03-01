@@ -141,6 +141,10 @@ class MPCController(Controller):
         mpc_p.path_speed = self.path_speed
         mpc_p.path_speed_min = float(self.path_speed_min)
         mpc_p.path_speed_max = float(self.path_speed_max)
+        mpc_p.ref_tangent_lookahead_m = float(self.ref_tangent_lookahead_m)
+        mpc_p.ref_tangent_lookback_m = float(self.ref_tangent_lookback_m)
+        mpc_p.ref_quat_max_rate_rad_s = float(self.ref_quat_max_rate_rad_s)
+        mpc_p.ref_quat_terminal_rate_scale = float(self.ref_quat_terminal_rate_scale)
 
         # Terminal
         mpc_p.Q_terminal_pos = self.Q_terminal_pos
@@ -369,6 +373,21 @@ class MPCController(Controller):
             if endpoint_error is not None
             else None,
             "path_s_pred": path_s_pred,
+            "ref_heading_step_deg": float(
+                getattr(result, "ref_heading_step_deg", 0.0) or 0.0
+            ),
+            "ref_quat_step_deg_max_horizon": float(
+                getattr(result, "ref_quat_step_deg_max_horizon", 0.0) or 0.0
+            ),
+            "ref_slew_limited_fraction": float(
+                getattr(result, "ref_slew_limited_fraction", 0.0) or 0.0
+            ),
+            "terminal_progress_reward_active": bool(
+                getattr(result, "terminal_progress_reward_active", False)
+            ),
+            "degenerate_tangent_fallback_count": int(
+                getattr(result, "degenerate_tangent_fallback_count", 0) or 0
+            ),
         }
         return u_phys, extras
 
@@ -440,6 +459,14 @@ class MPCController(Controller):
             self._cpp.set_runtime_mode(mode_name)
         except Exception:
             logger.debug("Failed to set runtime mode in SQP core", exc_info=True)
+
+    def set_current_path_s(self, s_value: float) -> None:
+        s_next = float(max(0.0, s_value))
+        self.s = s_next
+        try:
+            self._cpp.set_current_path_s(s_next)
+        except Exception:
+            logger.debug("Failed to set current path s in SQP core", exc_info=True)
 
     def get_path_progress(self, position: np.ndarray | None = None) -> dict[str, float]:
         if not self._path_data or len(self._path_data) < 2:
@@ -651,6 +678,18 @@ class MPCController(Controller):
         self.path_speed = mpc.path_speed
         self.path_speed_min = mpc.path_speed_min
         self.path_speed_max = mpc.path_speed_max
+        self.ref_tangent_lookahead_m = float(
+            getattr(mpc, "ref_tangent_lookahead_m", 0.35)
+        )
+        self.ref_tangent_lookback_m = float(
+            getattr(mpc, "ref_tangent_lookback_m", 0.10)
+        )
+        self.ref_quat_max_rate_rad_s = float(
+            getattr(mpc, "ref_quat_max_rate_rad_s", 1.57)
+        )
+        self.ref_quat_terminal_rate_scale = float(
+            getattr(mpc, "ref_quat_terminal_rate_scale", 2.0)
+        )
 
         self.recover_contour_scale = mpc_core.recover_contour_scale
         self.recover_lag_scale = mpc_core.recover_lag_scale

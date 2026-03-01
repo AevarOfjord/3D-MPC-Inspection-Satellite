@@ -795,7 +795,14 @@ def _build_compiled_path_and_spans(
                 previous_scan_context = scan_context
 
         elif segment.type == SegmentType.HOLD:
-            path.append(tuple(current))
+            hold_point = tuple(current)
+            if not path:
+                path.append(hold_point)
+            else:
+                prev = np.array(path[-1], dtype=float)
+                curr = np.array(hold_point, dtype=float)
+                if float(np.linalg.norm(curr - prev)) > 1e-6:
+                    path.append(hold_point)
 
     return path, _compute_path_length(path), pointing_spans
 

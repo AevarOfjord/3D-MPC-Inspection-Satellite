@@ -72,8 +72,26 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
             path_error = float(metrics.get("path_error", path_error))
             endpoint_error = float(metrics.get("endpoint_error", endpoint_error))
 
+    contracts_cfg = getattr(
+        getattr(getattr(sim, "simulation_config", None), "app_config", None),
+        "controller_contracts",
+        None,
+    )
+    lead_cap_m = max(
+        0.0,
+        float(getattr(contracts_cfg, "path_projection_lead_cap_m", 0.25) or 0.25),
+    )
+    path_s_projected_raw = float(path_s)
+    path_s_projected_capped = min(
+        path_s_projected_raw,
+        float(path_s_controller) + float(lead_cap_m),
+    )
     pos_tol = float(getattr(sim, "position_tolerance", 0.05))
-    path_s_progress = max(path_s, path_s_controller)
+    path_s_progress = max(path_s_projected_capped, path_s_controller)
+    if path_len > 0.0:
+        path_s_progress = float(np.clip(path_s_progress, 0.0, float(path_len)))
+    else:
+        path_s_progress = max(0.0, float(path_s_progress))
     progress_ok = path_s_progress >= (path_len - pos_tol)
     pos_ok = bool(endpoint_error <= pos_tol)
     validator_available = False
@@ -195,6 +213,9 @@ def get_path_completion_status(sim: Any) -> dict[str, Any]:
         "path_s": float(path_s),
         "path_s_controller": float(path_s_controller),
         "path_s_progress": float(path_s_progress),
+        "path_s_projected_raw": float(path_s_projected_raw),
+        "path_s_projected_capped": float(path_s_projected_capped),
+        "projection_lead_cap_m": float(lead_cap_m),
         "path_length": float(path_len),
         "path_error": float(path_error),
         "endpoint_error": float(endpoint_error),

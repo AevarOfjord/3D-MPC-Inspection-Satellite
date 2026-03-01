@@ -76,6 +76,10 @@ struct MPCV2Params {
     double path_speed = 0.1;
     double path_speed_min = 0.05;
     double path_speed_max = 0.2;
+    double ref_tangent_lookahead_m = 0.35;
+    double ref_tangent_lookback_m = 0.10;
+    double ref_quat_max_rate_rad_s = 1.57;
+    double ref_quat_terminal_rate_scale = 2.0;
 
     // Terminal
     double Q_terminal_pos = 0.0;   // 0 = auto
@@ -146,6 +150,11 @@ struct ControlResultV2 {
     double path_s_pred = 0.0;
     double path_error = std::numeric_limits<double>::infinity();
     double path_endpoint_error = std::numeric_limits<double>::infinity();
+    double ref_heading_step_deg = 0.0;
+    double ref_quat_step_deg_max_horizon = 0.0;
+    double ref_slew_limited_fraction = 0.0;
+    bool terminal_progress_reward_active = false;
+    int degenerate_tangent_fallback_count = 0;
 
     // Fallback state
     bool fallback_active = false;
@@ -174,6 +183,7 @@ struct PathData {
     std::vector<Vector3d> points;         ///< Position samples
     double total_length = 0.0;
     bool valid = false;
+    mutable int degenerate_fallback_count = 0;
 
     /// Interpolate position at arc-length s_query.
     Vector3d get_point(double s_query) const;
@@ -181,8 +191,19 @@ struct PathData {
     /// Interpolate unit tangent at arc-length s_query.
     Vector3d get_tangent(double s_query) const;
 
+    /// Interpolate smooth unit tangent via lookahead/lookback secant.
+    Vector3d get_tangent_lookahead(
+        double s_query,
+        double lookahead_m,
+        double lookback_m
+    ) const;
+
     /// Clamp s to [0, total_length].
     double clamp_s(double s_query) const;
+
+    /// Reset/get degenerate tangent fallback counter.
+    void reset_degenerate_fallback_counter() const { degenerate_fallback_count = 0; }
+    int get_degenerate_fallback_counter() const { return degenerate_fallback_count; }
 
     /// Project position onto path: returns (s, closest_point, distance, endpoint_error).
     std::tuple<double, Vector3d, double, double> project(const Vector3d& pos) const;

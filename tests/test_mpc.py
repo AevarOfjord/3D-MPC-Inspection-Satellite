@@ -100,7 +100,12 @@ class TestMPCController:
         assert hasattr(params, "settle_progress_scale")
         assert hasattr(params, "hold_smoothness_scale")
         assert hasattr(params, "terminal_cost_profile")
+        assert hasattr(params, "ref_tangent_lookahead_m")
+        assert hasattr(params, "ref_tangent_lookback_m")
+        assert hasattr(params, "ref_quat_max_rate_rad_s")
+        assert hasattr(params, "ref_quat_terminal_rate_scale")
         assert hasattr(_cpp_mpc.SQPController, "set_runtime_mode")
+        assert hasattr(_cpp_mpc.SQPController, "set_current_path_s")
 
     def test_core_is_default_and_runtime_mode_is_settable(self):
         """SQP core should be active and runtime mode updates should be accepted."""
@@ -167,7 +172,7 @@ class TestMPCController:
         assert np.dot(x_axis, np.array(t_ref, dtype=float)) > 0.999
 
     def test_tangent_uses_next_segment_at_interior_waypoint(self, controller):
-        """At exact interior waypoint, heading should face next waypoint segment."""
+        """At exact interior waypoint, lookahead tangent should bias toward next segment."""
         controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)])
 
         _p_ref, t_ref, _q_ref = controller.get_path_reference_state(
@@ -176,7 +181,28 @@ class TestMPCController:
         )
         t = np.array(t_ref, dtype=float)
         t /= np.linalg.norm(t)
-        assert np.dot(t, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.999
+        assert np.dot(t, np.array([0.0, 1.0, 0.0], dtype=float)) > 0.95
+        assert np.dot(t, np.array([1.0, 0.0, 0.0], dtype=float)) > 0.2
+
+    def test_lookahead_tangent_stays_continuous_through_corner(self, controller):
+        """Lookahead tangent should avoid hard heading jumps across a corner."""
+        controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)])
+
+        _p0, t0, _q0 = controller.get_path_reference_state(
+            s_query=0.999,
+            q_current=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+        )
+        _p1, t1, _q1 = controller.get_path_reference_state(
+            s_query=1.001,
+            q_current=np.array([1.0, 0.0, 0.0, 0.0], dtype=float),
+        )
+        t0 = np.array(t0, dtype=float)
+        t1 = np.array(t1, dtype=float)
+        t0 /= np.linalg.norm(t0)
+        t1 /= np.linalg.norm(t1)
+        dot = float(np.clip(np.dot(t0, t1), -1.0, 1.0))
+        angle_deg = float(np.degrees(np.arccos(dot)))
+        assert angle_deg < 10.0
 
     def test_non_scan_reference_quaternion_is_continuous_on_sway_path(self, controller):
         """Minimal-twist non-scan reference should stay continuous through tangent reversals."""
@@ -217,6 +243,26 @@ class TestMPCController:
             q_prev = q_ref
 
         assert min_abs_dot > 0.70
+
+    def test_set_current_path_s_updates_cpp_progress_state(self, controller):
+        controller.set_current_path_s(3.25)
+        assert controller.s == pytest.approx(3.25)
+        assert float(controller._cpp.current_path_s) == pytest.approx(3.25)
+
+    def test_control_info_reports_reference_slew_and_terminal_progress_fields(
+        self, controller
+    ):
+        controller.set_runtime_mode("SETTLE")
+        x_current = np.zeros(16)
+        x_current[3] = 1.0
+        x_current[0] = 9.5
+        _, info = controller.get_control_action(x_current)
+        assert "ref_heading_step_deg" in info
+        assert "ref_quat_step_deg_max_horizon" in info
+        assert "ref_slew_limited_fraction" in info
+        assert "terminal_progress_reward_active" in info
+        assert "degenerate_tangent_fallback_count" in info
+        assert info["terminal_progress_reward_active"] is False
 
     def test_cpp_loader_uses_only_canonical_namespace(self, monkeypatch):
         """cpp extension loader should only probe the canonical cpp.* namespace."""

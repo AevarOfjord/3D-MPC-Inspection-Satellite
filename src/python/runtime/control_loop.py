@@ -187,12 +187,33 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     except Exception:
         contour_error = 0.0
 
+    contracts_cfg = getattr(
+        getattr(getattr(sim, "simulation_config", None), "app_config", None),
+        "controller_contracts",
+        None,
+    )
+    lead_cap_m = max(
+        0.0,
+        float(getattr(contracts_cfg, "path_projection_lead_cap_m", 0.25) or 0.25),
+    )
+    path_s_projected_raw = float(path_s_projected)
+    path_s_projected_capped = min(
+        path_s_projected_raw, float(path_s_controller) + float(lead_cap_m)
+    )
+
     path_len = float(sim._get_mission_path_length(compute_if_missing=True) or 0.0)
-    path_s_progress = max(path_s_projected, path_s_controller)
+    path_s_progress = max(path_s_projected_capped, path_s_controller)
     if path_len > 0.0:
         path_s_progress = float(np.clip(path_s_progress, 0.0, path_len))
     else:
         path_s_progress = max(0.0, path_s_progress)
+    sim.path_progress_debug = {
+        "path_s_fused": float(path_s_progress),
+        "path_s_projected_raw": float(path_s_projected_raw),
+        "path_s_projected_capped": float(path_s_projected_capped),
+        "path_s_controller": float(path_s_controller),
+        "projection_lead_cap_m": float(lead_cap_m),
+    }
     pos_tol = float(getattr(sim, "position_tolerance", 0.1) or 0.1)
     at_path_end = bool(path_len > 0.0 and path_s_progress >= (path_len - pos_tol))
     mode_for_override = str(
@@ -219,11 +240,6 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     if not solver_fallback_reason:
         solver_fallback_reason = None
 
-    contracts_cfg = getattr(
-        getattr(getattr(sim, "simulation_config", None), "app_config", None),
-        "controller_contracts",
-        None,
-    )
     pointing_scope = (
         str(getattr(contracts_cfg, "pointing_scope", "all_missions")).strip().lower()
     )
@@ -322,12 +338,17 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
         solver_degraded=solver_degraded_for_mode,
         solver_fallback_reason=solver_fallback_reason,
     )
-    hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s_projected)
+    hold_active, hold_s = _resolve_waypoint_hold(sim, path_s=path_s_progress)
     if hold_active:
         try:
-            sim.mpc_controller.s = float(
+            hold_s_clamped = float(
                 min(max(0.0, hold_s), path_len if path_len > 0.0 else hold_s)
             )
+            set_current_path_s = getattr(sim.mpc_controller, "set_current_path_s", None)
+            if callable(set_current_path_s):
+                set_current_path_s(hold_s_clamped)
+            else:
+                sim.mpc_controller.s = hold_s_clamped
         except Exception:
             pass
         sim.mode_state.current_mode = "HOLD"
@@ -352,6 +373,9 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
                 "time_in_mode_s": float(sim.mode_state.time_in_mode_s),
                 "path_s": float(path_s_progress),
                 "path_s_proj": float(path_s_projected),
+                "path_s_proj_raw": float(path_s_projected_raw),
+                "path_s_proj_capped": float(path_s_projected_capped),
+                "path_projection_lead_cap_m": float(lead_cap_m),
                 "path_s_controller": float(path_s_controller),
                 "path_error_m": float(contour_error),
                 "endpoint_error_m": (
@@ -482,6 +506,21 @@ def update_mpc_control_step(sim: Any) -> None:
     if isinstance(hold_status, dict):
         mpc_info["studio_hold_active"] = bool(hold_status.get("active", False))
         mpc_info["studio_hold_index"] = hold_status.get("hold_index")
+    path_progress_debug = getattr(sim, "path_progress_debug", None)
+    if isinstance(path_progress_debug, dict):
+        mpc_info["path_s_fused"] = float(path_progress_debug.get("path_s_fused", 0.0))
+        mpc_info["path_s_projected_raw"] = float(
+            path_progress_debug.get("path_s_projected_raw", 0.0)
+        )
+        mpc_info["path_s_projected_capped"] = float(
+            path_progress_debug.get("path_s_projected_capped", 0.0)
+        )
+        mpc_info["path_s_controller"] = float(
+            path_progress_debug.get("path_s_controller", 0.0)
+        )
+        mpc_info["projection_lead_cap_m"] = float(
+            path_progress_debug.get("projection_lead_cap_m", 0.0)
+        )
 
     solver_health = getattr(sim, "solver_health", None)
     if solver_health is not None:

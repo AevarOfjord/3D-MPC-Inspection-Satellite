@@ -5,6 +5,7 @@ Termination contract tests for strict last-waypoint completion behavior.
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from runtime.path_completion import check_path_complete, get_path_completion_status
 from simulation.loop import SimulationLoop
 
@@ -197,6 +198,23 @@ def test_path_completion_reports_gate_specific_failure_reason():
     )
     status = get_path_completion_status(sim)
     assert status["terminal_gate_fail_reason"] == "progress"
+
+
+def test_progress_fusion_caps_projected_lead():
+    sim = _FakeCompletionSimulation(
+        validator=None,
+        path_len=2.0,
+        s_val=0.0,
+        projected_s=2.0,
+        endpoint_error=0.01,
+        position_tolerance=0.1,
+    )
+    status = get_path_completion_status(sim)
+    assert status["progress_ok"] is False
+    assert status["path_s_projected_raw"] == pytest.approx(2.0)
+    assert status["path_s_projected_capped"] == pytest.approx(0.25)
+    assert status["path_s_progress"] == pytest.approx(0.25)
+    assert status["projection_lead_cap_m"] == pytest.approx(0.25)
 
 
 def test_path_completion_uses_controller_progress_when_projection_lags():
