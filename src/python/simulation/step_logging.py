@@ -42,6 +42,39 @@ def _wrap_delta_deg(delta_deg: np.ndarray) -> np.ndarray:
     return (delta_deg + 180.0) % 360.0 - 180.0
 
 
+def _fmt_metric_row(
+    label: str,
+    value: float,
+    unit: str,
+    vec: str,
+    *,
+    color_prefix: str,
+    color_reset: str,
+    left_width: int = 26,
+) -> str:
+    """Format a metric row with aligned `| Vec:` separators."""
+    value_str = f"{value:.3f}"
+    if unit in {"°", "°/s"}:
+        value_str = f"{value:.1f}"
+    left_plain = f"{label}: {value_str}{unit}"
+    pad = max(1, left_width - len(left_plain))
+    left = f"{color_prefix}{label}:{color_reset} {value_str}{unit}" + (" " * pad)
+    return left + f"{color_prefix}| Vec:{color_reset} {vec}"
+
+
+def _fmt_state_row(
+    label: str,
+    value: str,
+    *,
+    color_prefix: str,
+    color_reset: str,
+    label_width: int = 8,
+) -> str:
+    """Format state lines with aligned labels for quick Sat/Ref comparison."""
+    lbl = f"{label}:".ljust(label_width)
+    return f"{color_prefix}{lbl}{color_reset} {value}"
+
+
 def log_simulation_step(
     sim: Any,
     logger_obj: logging.Logger,
@@ -113,12 +146,28 @@ def log_simulation_step(
     mode_label = str(getattr(getattr(sim, "mode_state", None), "current_mode", "TRACK"))
     status_msg = f"Following Path [{mode_label}] (t={sim.simulation_time:.1f}s)"
 
-    path_s = getattr(sim.mpc_controller, "s", None)
+    path_s_ref = mpc_info.get("path_s", getattr(sim.mpc_controller, "s", None))
+    path_s_sat = mpc_info.get("path_s_proj")
+    if path_s_sat is None:
+        try:
+            path_metrics = sim.mpc_controller.get_path_progress(current_state[:3])
+            if isinstance(path_metrics, dict):
+                path_s_sat = path_metrics.get("s")
+        except Exception:
+            path_s_sat = None
     path_len = sim._get_mission_path_length(compute_if_missing=True)
-    if path_s is not None and path_len:
+    if path_s_sat is not None and path_s_ref is not None and path_len:
         status_msg = (
             f"Following Path [{mode_label}] "
-            f"(s={path_s:.2f}/{path_len:.2f}m, t={sim.simulation_time:.1f}s)"
+            f"(sat s={float(path_s_sat):.2f}/{path_len:.2f}m, "
+            f"ref s={float(path_s_ref):.2f}/{path_len:.2f}m, "
+            f"t={sim.simulation_time:.1f}s)"
+        )
+    elif path_s_ref is not None and path_len:
+        status_msg = (
+            f"Following Path [{mode_label}] "
+            f"(ref s={float(path_s_ref):.2f}/{path_len:.2f}m, "
+            f"t={sim.simulation_time:.1f}s)"
         )
 
     # Prepare display variables and update command history.
@@ -150,10 +199,17 @@ def log_simulation_step(
     ang_err_deg_scalar = np.degrees(ang_error_scalar)
     vel_error = 0.0
     ang_vel_error = 0.0
+    vel_err_vec = np.zeros(3, dtype=float)
+    ang_vel_err_vec = np.zeros(3, dtype=float)
     if current_state.shape[0] >= 13 and safe_reference.shape[0] >= 13:
-        vel_error = _norm3(current_state[7:10] - safe_reference[7:10])
-        ang_vel_error = _norm3(current_state[10:13] - safe_reference[10:13])
+        vel_err_vec = np.array(current_state[7:10] - safe_reference[7:10], dtype=float)
+        ang_vel_err_vec = np.array(
+            current_state[10:13] - safe_reference[10:13], dtype=float
+        )
+        vel_error = _norm3(vel_err_vec)
+        ang_vel_error = _norm3(ang_vel_err_vec)
     ang_vel_err_deg = np.degrees(ang_vel_error)
+    ang_vel_err_vec_deg = np.degrees(ang_vel_err_vec)
     solve_ms = mpc_info.get("solve_time", 0) * 1000
 
     # Show duty cycle for each active thruster (matching active_thruster_ids).
@@ -208,6 +264,14 @@ def log_simulation_step(
     diff_y = float(diff_deg[2])
 
     ang_err_str = f"[Yaw:{diff_y:.1f}, Roll:{diff_r:.1f}, Pitch:{diff_p:.1f}]°"
+    vel_err_str = (
+        f"[vx:{vel_err_vec[0]:.3f}, vy:{vel_err_vec[1]:.3f}, "
+        f"vz:{vel_err_vec[2]:.3f}]m/s"
+    )
+    ang_vel_err_str = (
+        f"[wx:{ang_vel_err_vec_deg[0]:.1f}, wy:{ang_vel_err_vec_deg[1]:.1f}, "
+        f"wz:{ang_vel_err_vec_deg[2]:.1f}]°/s"
+    )
 
     # ANSI colors only when terminal supports them and NO_COLOR is not set.
     use_color = bool(getattr(sys.stdout, "isatty", lambda: False)()) and not bool(
@@ -220,34 +284,77 @@ def log_simulation_step(
     BOLD = "\033[1m" if use_color else ""
 
     # Time and Status Header
-    header_line = f"{status_msg} | Solve: {solve_ms:.1f}ms"
+    status_split_idx = status_msg.find(" (")
+    if status_split_idx > 0:
+        header_line_top = status_msg[:status_split_idx]
+        header_line_bottom = (
+            status_msg[status_split_idx:].lstrip() + f" | Solve: {solve_ms:.1f}ms"
+        )
+    else:
+        header_line_top = status_msg
+        header_line_bottom = f"(t={sim.simulation_time:.1f}s) | Solve: {solve_ms:.1f}ms"
 
     # Error Metrics formatted with colors
     # We can use simple thresholding for colors, or just keep labels colored for readability.
     # Let's stick to colored labels for now to ensure readability without confusing thresholds.
 
-    row_pos = (
-        f"{CYAN}POS ERR:{RESET} {pos_error_scalar:.3f}m".ljust(25)
-        + f"{CYAN}| Vec:{RESET} {pos_err_str}"
+    row_pos = _fmt_metric_row(
+        "POS ERR",
+        pos_error_scalar,
+        "m",
+        pos_err_str,
+        color_prefix=CYAN,
+        color_reset=RESET,
     )
-    row_ang = (
-        f"{CYAN}ANG ERR:{RESET} {ang_err_deg_scalar:.1f}°".ljust(25)
-        + f"{CYAN}| Vec:{RESET} {ang_err_str}"
+    row_ang = _fmt_metric_row(
+        "ANG ERR",
+        ang_err_deg_scalar,
+        "°",
+        ang_err_str,
+        color_prefix=CYAN,
+        color_reset=RESET,
     )
-    row_vel = (
-        f"{CYAN}VEL ERR:{RESET} {vel_error:.3f}m/s".ljust(25)
-        + f"{CYAN}| Ang Vel Err:{RESET} {ang_vel_err_deg:.1f}°/s"
+    row_vel = _fmt_metric_row(
+        "VEL ERR",
+        vel_error,
+        "m/s",
+        vel_err_str,
+        color_prefix=CYAN,
+        color_reset=RESET,
+    )
+    row_ang_vel = _fmt_metric_row(
+        "ANG VEL ERR",
+        ang_vel_err_deg,
+        "°/s",
+        ang_vel_err_str,
+        color_prefix=CYAN,
+        color_reset=RESET,
     )
 
-    # State Data
-    row_state_pos = (
-        f"{BLUE}Pos:{RESET} {_fmt_position_mm(current_state)}".ljust(45)
-        + f"{BLUE}(Ref:{RESET} {_fmt_position_mm(safe_reference)})"
+    # State Data (satellite and reference broken into explicit sections)
+    row_sat_pos = _fmt_state_row(
+        "Sat Pos",
+        _fmt_position_mm(current_state),
+        color_prefix=BLUE,
+        color_reset=RESET,
     )
-    row_state_ang = (
-        f"{BLUE}Ang:{RESET} "
-        f"[Yaw:{curr_euler_deg[2]:.1f}, Roll:{curr_euler_deg[0]:.1f}, "
-        f"Pitch:{curr_euler_deg[1]:.1f}]°"
+    row_sat_ang = _fmt_state_row(
+        "Sat Ang",
+        f"[Yaw:{curr_euler_deg[2]:.1f}, Roll:{curr_euler_deg[0]:.1f}, Pitch:{curr_euler_deg[1]:.1f}]°",
+        color_prefix=BLUE,
+        color_reset=RESET,
+    )
+    row_ref_pos = _fmt_state_row(
+        "Ref Pos",
+        _fmt_position_mm(safe_reference),
+        color_prefix=BLUE,
+        color_reset=RESET,
+    )
+    row_ref_ang = _fmt_state_row(
+        "Ref Ang",
+        f"[Yaw:{ref_euler_deg[2]:.1f}, Roll:{ref_euler_deg[0]:.1f}, Pitch:{ref_euler_deg[1]:.1f}]°",
+        color_prefix=BLUE,
+        color_reset=RESET,
     )
 
     # Actuators
@@ -260,15 +367,21 @@ def log_simulation_step(
     if do_log:
         logger_obj.info(
             f"\n{BOLD}{block_sep}{RESET}\n"
-            f"{header_line}\n"
+            f"{header_line_top}\n"
+            f"{header_line_bottom}\n"
             f"{sep}\n"
             f"{row_pos}\n"
             f"{row_ang}\n"
             f"{row_vel}\n"
+            f"{row_ang_vel}\n"
             f"{sep}\n"
-            f"{row_state_pos}\n"
-            f"{row_state_ang}\n"
+            f"\n"
+            f"{row_sat_pos}\n"
+            f"{row_sat_ang}\n"
+            f"{row_ref_pos}\n"
+            f"{row_ref_ang}\n"
             f"{sep}\n"
+            f"\n"
             f"{row_thrusters}\n"
             f"{row_rw}\n\n\n"
         )
