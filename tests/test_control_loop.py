@@ -104,6 +104,16 @@ class TestSolverHealthTransitions:
 
         assert sim.next_control_simulation_time == pytest.approx(-1.0 + interval)
 
+    def test_control_step_refreshes_reference_before_logging(self):
+        """Control-step logging should use the current reference snapshot."""
+        sim = _make_sim()
+        sim.solver_health = None
+
+        update_mpc_control_step(sim)
+
+        sim.update_path_reference_state.assert_called_once()
+        sim.log_simulation_step.assert_called_once()
+
 
 def test_update_mode_state_uses_max_progress_for_mode_transitions():
     class _CaptureModeManager:
@@ -165,3 +175,80 @@ def test_update_mode_state_uses_max_progress_for_mode_transitions():
 
     assert mode_manager.last_update_kwargs is not None
     assert mode_manager.last_update_kwargs["path_s"] == pytest.approx(10.0)
+
+
+def test_update_mode_state_forces_transit_free_pointing_near_terminal_settle():
+    class _CaptureModeManager:
+        def __init__(self):
+            self.last_update_kwargs: dict | None = None
+            self.state = SimpleNamespace(current_mode="SETTLE")
+
+        def update(self, **kwargs):
+            self.last_update_kwargs = kwargs
+            return SimpleNamespace(current_mode="SETTLE", time_in_mode_s=0.0)
+
+        @staticmethod
+        def profile_for_mode(_mode: str) -> SimpleNamespace:
+            return SimpleNamespace()
+
+    class _FakeMPC:
+        def __init__(self):
+            self.s = 10.0
+            self.scan_context_calls: list[tuple[object, object, str]] = []
+
+        @staticmethod
+        def get_path_progress(_pos: np.ndarray) -> dict[str, float]:
+            return {"s": 9.95, "path_error": 0.0, "endpoint_error": 0.2}
+
+        def set_scan_attitude_context(self, center, axis, direction) -> None:
+            self.scan_context_calls.append((center, axis, direction))
+
+    mode_manager = _CaptureModeManager()
+    mission_state = SimpleNamespace(
+        path_hold_schedule=[],
+        path_waypoints=[],
+        path_hold_active_index=None,
+        path_hold_started_at_s=None,
+        path_hold_completed=[],
+        pointing_path_spans=[
+            {
+                "segment_type": "scan",
+                "pointing_policy": "scan_locked",
+                "s_start": 0.0,
+                "s_end": 10.0,
+                "scan_axis": [0.0, 0.0, 1.0],
+                "scan_direction": "CW",
+                "source_segment_index": 0,
+                "context_source": "scan_segment",
+            }
+        ],
+    )
+    sim = SimpleNamespace(
+        mode_manager=mode_manager,
+        mpc_controller=_FakeMPC(),
+        position_tolerance=0.1,
+        completion_gate=SimpleNamespace(all_thresholds_ok=False),
+        completion_reached=False,
+        solver_health=SimpleNamespace(status="ok", last_fallback_reason=None),
+        simulation_time=12.0,
+        simulation_config=SimpleNamespace(
+            mission_state=mission_state,
+            app_config=SimpleNamespace(
+                controller_contracts=SimpleNamespace(
+                    enable_pointing_contract=True,
+                    pointing_scope="all_missions",
+                )
+            ),
+        ),
+        pointing_guardrail=None,
+        mode_timeline=None,
+    )
+    sim._get_mission_path_length = lambda compute_if_missing=True: 10.0
+    sim._append_capped_history = lambda *_args, **_kwargs: None
+
+    _update_mode_state(sim, np.zeros(13, dtype=float))
+
+    assert sim.pointing_status["pointing_policy"] == "transit_free"
+    assert sim.pointing_status["pointing_context_source"] == "terminal_settle_override"
+    assert sim.mpc_controller.scan_context_calls
+    assert sim.mpc_controller.scan_context_calls[-1] == (None, None, "CW")

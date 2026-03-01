@@ -532,6 +532,44 @@ def test_pointing_context_marks_transfer_spans_as_transit_free() -> None:
     assert context.source == "transit_free"
 
 
+def test_pointing_context_force_transit_free_overrides_scan_span() -> None:
+    class _MissionState:
+        path_frame = "LVLH"
+        frame_origin = (0.0, 0.0, 0.0)
+        pointing_path_spans = [
+            {
+                "segment_type": "scan",
+                "pointing_policy": "scan_locked",
+                "s_start": 0.0,
+                "s_end": 2.0,
+                "scan_axis": [0.0, 1.0, 0.0],
+                "scan_direction": "CW",
+                "source_segment_index": 0,
+                "context_source": "scan_segment",
+            }
+        ]
+
+    class _SimConfig:
+        mission_state = _MissionState()
+
+    class _Sim:
+        simulation_config = _SimConfig()
+
+    state = np.array(
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+    context = resolve_pointing_context(
+        sim=_Sim(),
+        current_state=state,
+        path_s=1.0,
+        force_transit_free=True,
+    )
+    assert context.policy == "transit_free"
+    assert context.enforced is False
+    assert context.source == "terminal_settle_override"
+
+
 def test_pointing_context_uses_nearest_valid_scan_axis_before_radial_fallback() -> None:
     class _MissionState:
         path_frame = "LVLH"

@@ -716,6 +716,7 @@ void SQPController::update_cost(const VectorXd& x_current) {
         // we need P = 2Q and q = -2Q*ref so min is at x = ref.
         for (int i = 0; i < 3; ++i) {
             double w_pos = scale * (active_Q_contour_ + active_Q_lag_);
+            if (is_terminal) w_pos += params_.Q_terminal_pos;
             P_qp_.coeffRef(x_offset + i, x_offset + i) = 2.0 * w_pos + 1e-6;
         }
 
@@ -763,6 +764,7 @@ void SQPController::update_cost(const VectorXd& x_current) {
             // Linear position term: q_pos = -2 * Q * p_ref
             for (int i = 0; i < 3; ++i) {
                 double w_pos = scale * (active_Q_contour_ + active_Q_lag_);
+                if (is_terminal) w_pos += params_.Q_terminal_pos;
                 q_qp_[x_offset + i] = -2.0 * w_pos * p_ref[i];
             }
 

@@ -199,11 +199,23 @@ def resolve_pointing_context(
     sim: Any,
     current_state: np.ndarray,
     path_s: float,
+    force_transit_free: bool = False,
 ) -> PointingContext:
     """Resolve segment-aware pointing context for the current path arc-length."""
     mission_state = _extract_mission_state(sim)
     spans = list(getattr(mission_state, "pointing_path_spans", []) or [])
     s_query = max(0.0, float(path_s))
+    if force_transit_free:
+        return PointingContext(
+            axis_world=np.array([0.0, 0.0, 1.0], dtype=float),
+            center_world=None,
+            direction_cw=True,
+            source="terminal_settle_override",
+            span_index=None,
+            source_segment_index=None,
+            policy="transit_free",
+            enforced=False,
+        )
 
     def _axis_from_span(span: dict[str, Any] | None) -> np.ndarray | None:
         if not isinstance(span, dict):

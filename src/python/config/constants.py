@@ -245,7 +245,7 @@ class _MPCTuningDefaults:
 
     # ----- Terminal-stage extra weights (added on top of 10× stage scaling) -----
     Q_TERMINAL_POS: float = (
-        0.0  # additional terminal position weight (0 = use stage scaling only)
+        8000.0  # additional terminal position weight (0 = use stage scaling only)
     )
     Q_TERMINAL_S: float = 0.0  # additional terminal progress weight
     Q_TERMINAL_VEL: float = 0.0  # additional terminal velocity weight — penalises residual speed at endpoint
@@ -360,7 +360,7 @@ class _MPCContractsDefaults:
 
     # ----- SETTLE / terminal zone -----
     TERMINAL_BYPASS_BAND_M: float = (
-        0.20  # m — position error within which SETTLE mode activates
+        0.35  # m — position error within which SETTLE mode activates
     )
     TERMINAL_POSITION_EXIT_TOLERANCE_M: float = (
         0.12  # m — hold reset only after exceeding this (hysteresis exit)
@@ -391,7 +391,7 @@ class _MPCContractsDefaults:
     SETTLE_PROGRESS_SCALE: float = (
         0.0  # 0 = stop advancing (no forward progress in SETTLE)
     )
-    SETTLE_TERMINAL_POS_SCALE: float = 2.0  # ↑ terminal position pull to endpoint
+    SETTLE_TERMINAL_POS_SCALE: float = 3.0  # ↑ terminal position pull to endpoint
     SETTLE_TERMINAL_ATTITUDE_SCALE: float = 1.5  # ↑ terminal attitude tracking
     SETTLE_VELOCITY_ALIGN_SCALE: float = 1.5  # ↑ velocity damping (come to rest)
     SETTLE_ANGULAR_VELOCITY_SCALE: float = 2.0  # ↑ angular rate damping (stop spinning)

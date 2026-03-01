@@ -100,12 +100,14 @@ def _set_runtime_pointing_context(
     *,
     current_state: np.ndarray,
     path_s: float,
+    force_transit_free: bool = False,
 ) -> tuple[Any, float | None, float | None, str | None, str]:
     """Resolve and forward current pointing context to MPC core."""
     context = resolve_pointing_context(
         sim=sim,
         current_state=current_state,
         path_s=float(path_s),
+        force_transit_free=bool(force_transit_free),
     )
     pointing_policy = str(getattr(context, "policy", "scan_locked")).strip().lower()
     enforced = bool(getattr(context, "enforced", True))
@@ -192,6 +194,15 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     else:
         path_s_progress = max(0.0, path_s_progress)
     pos_tol = float(getattr(sim, "position_tolerance", 0.1) or 0.1)
+    at_path_end = bool(path_len > 0.0 and path_s_progress >= (path_len - pos_tol))
+    mode_for_override = str(
+        getattr(
+            getattr(sim, "mode_state", None),
+            "current_mode",
+            getattr(getattr(mode_manager, "state", None), "current_mode", "TRACK"),
+        )
+    ).upper()
+    force_transit_free = bool(at_path_end and mode_for_override in {"SETTLE", "HOLD"})
     gate = getattr(sim, "completion_gate", None)
     completion_gate_state_ok = bool(getattr(gate, "all_thresholds_ok", False))
     completion_reached = bool(getattr(sim, "completion_reached", False))
@@ -254,6 +265,7 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
             sim,
             current_state=current_state,
             path_s=path_s_progress,
+            force_transit_free=force_transit_free,
         )
         context_source = getattr(context, "source", None)
     else:
@@ -530,6 +542,16 @@ def update_mpc_control_step(sim: Any) -> None:
     # Log data
     command_sent_sim_time = sim.simulation_time
     control_loop_duration = command_sent_wall_time - mpc_start_wall_time
+    update_ref = getattr(sim, "update_path_reference_state", None)
+    if callable(update_ref):
+        try:
+            # Keep terminal/CSV reference snapshot aligned with controller state
+            # used for this control step.
+            update_ref(current_state)
+        except Exception:
+            logger.debug(
+                "Failed to refresh reference state before logging", exc_info=True
+            )
 
     sim.log_simulation_step(
         mpc_start_sim_time=mpc_start_sim_time,

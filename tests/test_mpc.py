@@ -110,6 +110,33 @@ class TestMPCController:
         controller.set_runtime_mode("RECOVER")
         assert controller._runtime_mode == "RECOVER"
 
+    def test_terminal_position_weight_increases_endpoint_correction(self):
+        """Higher Q_terminal_pos should increase corrective effort in SETTLE near endpoint."""
+        cfg_zero = SimulationConfig.create_with_overrides(
+            {"mpc": {"Q_terminal_pos": 0.0}}
+        )
+        cfg_high = SimulationConfig.create_with_overrides(
+            {"mpc": {"Q_terminal_pos": 8000.0}}
+        )
+        ctrl_zero = MPCController(cfg_zero.app_config)
+        ctrl_high = MPCController(cfg_high.app_config)
+        path = [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)]
+        ctrl_zero.set_path(path)
+        ctrl_high.set_path(path)
+        ctrl_zero.set_runtime_mode("SETTLE")
+        ctrl_high.set_runtime_mode("SETTLE")
+        ctrl_zero.s = 9.95
+        ctrl_high.s = 9.95
+
+        x_current = np.zeros(16)
+        x_current[3] = 1.0
+        x_current[0] = 9.7  # retain endpoint position offset
+
+        u_zero, _ = ctrl_zero.get_control_action(x_current)
+        u_high, _ = ctrl_high.get_control_action(x_current)
+
+        assert not np.allclose(u_high, u_zero, atol=1e-6)
+
     def test_reference_quaternion_keeps_z_locked_to_scan_axis(self, controller):
         """Scan context should lock +Z to configured axis while keeping +X path-forward."""
         controller.set_path([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)])
