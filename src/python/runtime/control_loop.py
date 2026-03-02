@@ -228,10 +228,25 @@ def _update_mode_state(sim: Any, current_state: np.ndarray) -> None:
     completion_gate_state_ok = bool(getattr(gate, "all_thresholds_ok", False))
     completion_reached = bool(getattr(sim, "completion_reached", False))
     solver_health = getattr(sim, "solver_health", None)
-    solver_degraded = bool(
-        solver_health is not None
-        and str(getattr(solver_health, "status", "ok")).lower() != "ok"
+    # Mode transitions should react to active/recent fallback, not to a
+    # historical hard-limit latch that can persist for the whole run.
+    solver_fallback_active = bool(
+        solver_health is not None and getattr(solver_health, "fallback_active", False)
     )
+    solver_fallback_age_s = float(
+        getattr(solver_health, "fallback_age_s", 0.0)
+        if solver_health is not None
+        else 0.0
+    )
+    solver_fallback_count = int(
+        getattr(solver_health, "fallback_count", 0) if solver_health is not None else 0
+    )
+    solver_recent_fallback = bool(
+        solver_fallback_count > 0
+        and solver_fallback_age_s > 0.0
+        and solver_fallback_age_s <= 1.0
+    )
+    solver_degraded = bool(solver_fallback_active or solver_recent_fallback)
     solver_fallback_reason = (
         str(getattr(solver_health, "last_fallback_reason", "") or "")
         if solver_health is not None

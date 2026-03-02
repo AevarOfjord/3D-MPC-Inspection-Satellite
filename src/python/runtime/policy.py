@@ -553,7 +553,7 @@ class ControllerModeManager:
         recover_contour_scale: float = 2.0,
         recover_lag_scale: float = 2.0,
         recover_progress_scale: float = 0.6,
-        recover_attitude_scale: float = 0.8,
+        recover_attitude_scale: float = 2.0,
         settle_progress_scale: float = 0.0,
         settle_terminal_pos_scale: float = 2.0,
         settle_terminal_attitude_scale: float = 1.5,

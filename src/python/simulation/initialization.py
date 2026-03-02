@@ -810,7 +810,7 @@ class SimulationInitializer:
                 getattr(mpc_core_cfg, "recover_progress_scale", 0.6)
             ),
             recover_attitude_scale=float(
-                getattr(mpc_core_cfg, "recover_attitude_scale", 0.8)
+                getattr(mpc_core_cfg, "recover_attitude_scale", 2.0)
             ),
             settle_progress_scale=float(
                 getattr(mpc_core_cfg, "settle_progress_scale", 0.0)
