@@ -45,6 +45,17 @@ export interface MpcCoreSettings {
   [key: string]: unknown;
 }
 
+export interface MpcProfileOverrideSettings {
+  base_overrides: Partial<MpcSettings>;
+  profile_specific: Record<string, unknown>;
+}
+
+export interface MpcProfileOverridesSettings {
+  hybrid: MpcProfileOverrideSettings;
+  nonlinear: MpcProfileOverrideSettings;
+  linear: MpcProfileOverrideSettings;
+}
+
 export interface SimulationSettings {
   dt: number;
   max_duration: number;
@@ -55,6 +66,7 @@ export interface SimulationSettings {
 export interface SettingsConfig {
   mpc: MpcSettings;
   mpc_core: MpcCoreSettings;
+  mpc_profile_overrides: MpcProfileOverridesSettings;
   simulation: SimulationSettings;
   physics?: Record<string, unknown>;
   reference_scheduler?: Record<string, unknown>;

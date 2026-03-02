@@ -55,15 +55,15 @@ add_mpc_profile_module(_cpp_mpc
 add_mpc_profile_module(_cpp_mpc_nonlinear
     controller/nonlinear/cpp/bindings.cpp
     controller/nonlinear/cpp/sqp_controller.cpp
-    controller/hybrid/cpp/sqp_controller.cpp
-    controller/hybrid/cpp/sqp_types.cpp
+    controller/nonlinear/cpp/nonlinear_sqp_controller.cpp
+    controller/nonlinear/cpp/nonlinear_sqp_types.cpp
 )
 
 add_mpc_profile_module(_cpp_mpc_linear
     controller/linear/cpp/bindings.cpp
     controller/linear/cpp/sqp_controller.cpp
-    controller/hybrid/cpp/sqp_controller.cpp
-    controller/hybrid/cpp/sqp_types.cpp
+    controller/linear/cpp/linear_sqp_controller.cpp
+    controller/linear/cpp/linear_sqp_types.cpp
 )
 
 # Helper macro for future modules

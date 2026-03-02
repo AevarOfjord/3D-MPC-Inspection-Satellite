@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../hybrid/cpp/sqp_controller.hpp"
+#include "nonlinear_sqp_controller.hpp"
 
 namespace satellite_control {
 namespace nonlinear {

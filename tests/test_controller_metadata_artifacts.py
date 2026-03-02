@@ -32,3 +32,8 @@ def test_controller_emits_profile_and_linearization_metadata(
     assert info["controller_core"] == controller.controller_core
     assert info["solver_backend"] == controller.solver_backend
     assert info["linearization_mode"] == expected_mode
+    assert isinstance(info["shared_params_hash"], str) and info["shared_params_hash"]
+    assert (
+        isinstance(info["effective_params_hash"], str) and info["effective_params_hash"]
+    )
+    assert isinstance(info["override_diff"], dict)

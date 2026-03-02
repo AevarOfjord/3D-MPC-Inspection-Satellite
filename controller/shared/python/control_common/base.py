@@ -112,6 +112,12 @@ class Controller(ABC):
         signature = getattr(contract, "signature", None)
         return str(signature) if signature is not None else None
 
+    def get_effective_contract_signature(self) -> str | None:
+        """Return effective per-profile contract signature when available."""
+        contract = getattr(self, "effective_contract", None)
+        signature = getattr(contract, "effective_signature", None)
+        return str(signature) if signature is not None else None
+
     def validate_state(self, state: np.ndarray) -> bool:
         """
         Validate state vector format.

@@ -405,6 +405,15 @@ class SimulationIO:
             getattr(self.sim, "linearization_mode", None)
             or getattr(mpc_controller, "linearization_mode", "hybrid_tolerant_stage")
         )
+        config_meta["shared_params_hash"] = str(
+            getattr(mpc_controller, "shared_params_hash", "unknown")
+        )
+        config_meta["effective_params_hash"] = str(
+            getattr(mpc_controller, "effective_params_hash", "unknown")
+        )
+        config_meta["override_diff"] = dict(
+            getattr(mpc_controller, "profile_override_diff", {})
+        )
 
         payload.setdefault("schema_version", "run_status_v1")
         payload.setdefault("run_id", run_dir.name)
@@ -1303,6 +1312,13 @@ class SimulationIO:
                     mpc_controller, "linearization_mode", "hybrid_tolerant_stage"
                 )
             ),
+            "shared_params_hash": str(
+                getattr(mpc_controller, "shared_params_hash", "unknown")
+            ),
+            "effective_params_hash": str(
+                getattr(mpc_controller, "effective_params_hash", "unknown")
+            ),
+            "override_diff": dict(getattr(mpc_controller, "profile_override_diff", {})),
             "solver_health": {
                 "status": str(getattr(solver_health, "status", "ok")),
                 "fallback_count": int(getattr(solver_health, "fallback_count", 0)),

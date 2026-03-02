@@ -11,6 +11,7 @@ import {
 import { RUNNER_API_URL } from '../config/endpoints';
 
 import type {
+  MpcSettings,
   SettingsConfig,
   RunnerSystemStatus,
   PackageJobStatus,
@@ -18,7 +19,10 @@ import type {
   MPCSettingsViewProps,
   PresetPayload,
 } from './mpc-settings/mpcSettingsTypes';
-import { SETTING_REFERENCE_SECTIONS } from './mpc-settings/mpcSettingsDefaults';
+import {
+  DEFAULT_MPC_PROFILE_OVERRIDES,
+  SETTING_REFERENCE_SECTIONS,
+} from './mpc-settings/mpcSettingsDefaults';
 import {
   asRecord,
   normalizeConfig,
@@ -72,6 +76,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const isDirty = useMemo(
     () => (config ? stableSerializeConfig(config) !== savedSnapshot : false),
     [config, savedSnapshot]
+  );
+  const activeControllerProfile = useMemo<'hybrid' | 'nonlinear' | 'linear'>(
+    () => {
+      const profile = String(config?.mpc_core.controller_profile ?? 'hybrid');
+      if (profile === 'nonlinear' || profile === 'linear') return profile;
+      return 'hybrid';
+    },
+    [config?.mpc_core.controller_profile]
   );
 
   useEffect(() => {
@@ -443,6 +455,78 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     setConfig(newConfig as unknown as SettingsConfig);
   };
 
+  const ensureProfileOverrides = (
+    root: Record<string, unknown>
+  ): Record<'hybrid' | 'nonlinear' | 'linear', Record<string, unknown>> => {
+    const existing = asRecord(root.mpc_profile_overrides);
+    const normalized: Record<'hybrid' | 'nonlinear' | 'linear', Record<string, unknown>> = {
+      hybrid: {
+        ...DEFAULT_MPC_PROFILE_OVERRIDES.hybrid,
+        ...(asRecord(existing?.hybrid) ?? {}),
+      },
+      nonlinear: {
+        ...DEFAULT_MPC_PROFILE_OVERRIDES.nonlinear,
+        ...(asRecord(existing?.nonlinear) ?? {}),
+      },
+      linear: {
+        ...DEFAULT_MPC_PROFILE_OVERRIDES.linear,
+        ...(asRecord(existing?.linear) ?? {}),
+      },
+    };
+    root.mpc_profile_overrides = normalized;
+    return normalized;
+  };
+
+  const updateSelectedProfileBaseOverride = (
+    field: keyof MpcSettings,
+    rawValue: string
+  ) => {
+    if (!config) return;
+    const newConfig = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+    const overrides = ensureProfileOverrides(newConfig);
+    const selected = overrides[activeControllerProfile];
+    const base = asRecord(selected.base_overrides) ?? {};
+    const baseline = asRecord(newConfig.mpc)?.[String(field)];
+    const trimmed = rawValue.trim();
+    if (trimmed === '') {
+      delete base[String(field)];
+    } else if (typeof baseline === 'number') {
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed)) return;
+      base[String(field)] = parsed;
+    } else if (typeof baseline === 'boolean') {
+      base[String(field)] = trimmed.toLowerCase() === 'true';
+    } else {
+      base[String(field)] = trimmed;
+    }
+    selected.base_overrides = base;
+    setConfig(newConfig as unknown as SettingsConfig);
+  };
+
+  const updateSelectedProfileSpecific = (
+    key: string,
+    rawValue: string | boolean
+  ) => {
+    if (!config) return;
+    const newConfig = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+    const overrides = ensureProfileOverrides(newConfig);
+    const selected = overrides[activeControllerProfile];
+    const profileSpecific = asRecord(selected.profile_specific) ?? {};
+    if (typeof rawValue === 'boolean') {
+      profileSpecific[key] = rawValue;
+    } else {
+      const trimmed = rawValue.trim();
+      if (trimmed === '') {
+        delete profileSpecific[key];
+      } else {
+        const numeric = Number(trimmed);
+        profileSpecific[key] = Number.isFinite(numeric) ? numeric : trimmed;
+      }
+    }
+    selected.profile_specific = profileSpecific;
+    setConfig(newConfig as unknown as SettingsConfig);
+  };
+
   const handleSavePreset = async () => {
     if (!config) return;
     const name = presetName.trim();
@@ -525,6 +609,18 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       </div>
     );
   }
+
+  const selectedProfileOverrideEntry = (
+    asRecord(config?.mpc_profile_overrides)?.[activeControllerProfile] ??
+    DEFAULT_MPC_PROFILE_OVERRIDES[activeControllerProfile]
+  ) as unknown;
+  const selectedBaseOverrides =
+    asRecord(asRecord(selectedProfileOverrideEntry)?.base_overrides) ?? {};
+  const selectedProfileSpecific =
+    asRecord(asRecord(selectedProfileOverrideEntry)?.profile_specific) ?? {};
+  const selectedOverrideDiff = Object.entries(selectedBaseOverrides)
+    .filter(([key, value]) => asRecord(config?.mpc)?.[key] !== value)
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-950 text-slate-200 overflow-hidden">
@@ -1104,6 +1200,153 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                         { label: 'Linear MPC', value: 'linear' },
                       ]}
                     />
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
+                    Selected Profile Overrides ({activeControllerProfile})
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <ConfigField
+                      label="Override Prediction Horizon"
+                      value={selectedBaseOverrides.prediction_horizon ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('prediction_horizon', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Control Horizon"
+                      value={selectedBaseOverrides.control_horizon ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('control_horizon', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Solver Time Limit (s)"
+                      value={selectedBaseOverrides.solver_time_limit ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('solver_time_limit', v)}
+                      isNumber
+                      step={0.001}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Q_contour"
+                      value={selectedBaseOverrides.Q_contour ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('Q_contour', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Q_progress"
+                      value={selectedBaseOverrides.Q_progress ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('Q_progress', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Q_attitude"
+                      value={selectedBaseOverrides.Q_attitude ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('Q_attitude', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Q_smooth"
+                      value={selectedBaseOverrides.Q_smooth ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('Q_smooth', v)}
+                      isNumber
+                      step={1}
+                      desc="Blank = inherit shared baseline"
+                    />
+                    <ConfigField
+                      label="Override Path Speed"
+                      value={selectedBaseOverrides.path_speed ?? ''}
+                      onChange={(v) => updateSelectedProfileBaseOverride('path_speed', v)}
+                      isNumber
+                      step={0.001}
+                      desc="Blank = inherit shared baseline"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-5">
+                    {activeControllerProfile === 'hybrid' && (
+                      <ToggleField
+                        label="allow_stale_stage_reuse"
+                        checked={Boolean(
+                          selectedProfileSpecific.allow_stale_stage_reuse ?? true
+                        )}
+                        onChange={(checked) =>
+                          updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
+                        }
+                      />
+                    )}
+                    {activeControllerProfile === 'nonlinear' && (
+                      <>
+                        <ConfigField
+                          label="sqp_max_iter"
+                          value={selectedProfileSpecific.sqp_max_iter ?? 2}
+                          onChange={(v) =>
+                            updateSelectedProfileSpecific('sqp_max_iter', v)
+                          }
+                          isNumber
+                          step={1}
+                        />
+                        <ConfigField
+                          label="sqp_tol"
+                          value={selectedProfileSpecific.sqp_tol ?? 0.0001}
+                          onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
+                          isNumber
+                          step={0.0001}
+                        />
+                        <ToggleField
+                          label="strict_integrity"
+                          checked={Boolean(selectedProfileSpecific.strict_integrity ?? true)}
+                          onChange={(checked) =>
+                            updateSelectedProfileSpecific('strict_integrity', checked)
+                          }
+                        />
+                      </>
+                    )}
+                    {activeControllerProfile === 'linear' && (
+                      <ConfigField
+                        label="freeze_refresh_interval_steps"
+                        value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
+                        onChange={(v) =>
+                          updateSelectedProfileSpecific('freeze_refresh_interval_steps', v)
+                        }
+                        isNumber
+                        step={1}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">
+                      Override Diff Preview
+                    </p>
+                    {selectedOverrideDiff.length === 0 &&
+                    Object.keys(selectedProfileSpecific).length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        No profile-specific deltas. This profile inherits shared baseline.
+                      </p>
+                    ) : (
+                      <div className="text-xs font-mono text-emerald-300 space-y-1">
+                        {selectedOverrideDiff.map(([key, value]) => (
+                          <p key={key}>
+                            {key}: {String(value)}
+                          </p>
+                        ))}
+                        {Object.entries(selectedProfileSpecific)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([key, value]) => (
+                            <p key={key}>profile_specific.{key}: {String(value)}</p>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 </section>
 

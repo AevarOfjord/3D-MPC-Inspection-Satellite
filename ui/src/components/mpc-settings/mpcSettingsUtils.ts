@@ -1,11 +1,14 @@
 import type {
   MpcCoreSettings,
+  MpcProfileOverrideSettings,
+  MpcProfileOverridesSettings,
   MpcSettings,
   SimulationSettings,
   SettingsConfig,
 } from './mpcSettingsTypes';
 import {
   DEFAULT_MPC_CORE_SETTINGS,
+  DEFAULT_MPC_PROFILE_OVERRIDES,
   DEFAULT_MPC_SETTINGS,
   DEFAULT_SIMULATION_SETTINGS,
   MPC_CANONICAL_KEYS,
@@ -56,6 +59,47 @@ function sanitizeMpcCore(
   return normalized;
 }
 
+function sanitizeProfileOverrideEntry(
+  entry: unknown,
+  fallback: MpcProfileOverrideSettings
+): MpcProfileOverrideSettings {
+  const entryObj = asRecord(entry);
+  const rawBase = asRecord(entryObj?.base_overrides);
+  const rawSpecific = asRecord(entryObj?.profile_specific);
+  const base_overrides: Partial<MpcSettings> = {};
+  Object.entries(rawBase ?? {}).forEach(([key, value]) => {
+    if (MPC_CANONICAL_KEYS.has(key)) {
+      (base_overrides as Record<string, unknown>)[key] = value;
+    }
+  });
+  return {
+    base_overrides,
+    profile_specific: {
+      ...(fallback.profile_specific ?? {}),
+      ...(rawSpecific ?? {}),
+    },
+  };
+}
+
+function sanitizeMpcProfileOverrides(
+  profileOverrides: Record<string, unknown> | null | undefined
+): MpcProfileOverridesSettings {
+  return {
+    hybrid: sanitizeProfileOverrideEntry(
+      profileOverrides?.hybrid,
+      DEFAULT_MPC_PROFILE_OVERRIDES.hybrid
+    ),
+    nonlinear: sanitizeProfileOverrideEntry(
+      profileOverrides?.nonlinear,
+      DEFAULT_MPC_PROFILE_OVERRIDES.nonlinear
+    ),
+    linear: sanitizeProfileOverrideEntry(
+      profileOverrides?.linear,
+      DEFAULT_MPC_PROFILE_OVERRIDES.linear
+    ),
+  };
+}
+
 export function normalizeConfig(raw: unknown): SettingsConfig | null {
   const root = asRecord(raw);
   if (!root) return null;
@@ -65,6 +109,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
   const mpcCore = asRecord(source.mpc_core);
   const mpc = mpcCore ?? asRecord(source.mpc);
   const simulation = asRecord(source.simulation);
+  const mpcProfileOverrides = asRecord(source.mpc_profile_overrides);
   const physics = asRecord(source.physics);
   const referenceScheduler = asRecord(source.reference_scheduler);
   const actuatorPolicy = asRecord(source.actuator_policy);
@@ -85,6 +130,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
       ...(simulation as Partial<SimulationSettings>),
     };
     const normalizedMpcCore = sanitizeMpcCore(mpcCore);
+    const normalizedProfileOverrides = sanitizeMpcProfileOverrides(mpcProfileOverrides);
     if (typeof normalizedMpc.dt === 'number') {
       normalizedSimulation.control_dt = normalizedMpc.dt;
     }
@@ -102,6 +148,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
     return {
       mpc: normalizedMpc,
       mpc_core: normalizedMpcCore,
+      mpc_profile_overrides: normalizedProfileOverrides,
       simulation: normalizedSimulation,
       physics: physics ?? undefined,
       reference_scheduler: referenceScheduler ?? undefined,
@@ -163,6 +210,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
   return {
     mpc: normalizedMpc,
     mpc_core: sanitizeMpcCore(legacyMpc),
+    mpc_profile_overrides: sanitizeMpcProfileOverrides(undefined),
     simulation: normalizedSimulation,
     physics: undefined,
     reference_scheduler: undefined,
@@ -175,6 +223,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
 export function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
   const sanitizedMpc = stripRemovedMpcFields(config.mpc as Record<string, unknown>);
   const mpcCore = sanitizeMpcCore(asRecord(config.mpc_core));
+  const profileOverrides = sanitizeMpcProfileOverrides(asRecord(config.mpc_profile_overrides));
   const mergedMpcCore: Record<string, unknown> = {
     ...sanitizedMpc,
     ...mpcCore,
@@ -191,6 +240,7 @@ export function buildV3Envelope(config: SettingsConfig): Record<string, unknown>
 
   const appConfig: Record<string, unknown> = {
     mpc_core: mergedMpcCore,
+    mpc_profile_overrides: profileOverrides,
     actuator_policy: mergedActuatorPolicy,
     simulation: {
       ...config.simulation,
@@ -296,6 +346,17 @@ export function validateConfig(config: SettingsConfig): string[] {
   }
   if (!['hybrid', 'nonlinear', 'linear'].includes(mpcCore.controller_profile)) {
     issues.push('Controller profile must be one of: hybrid, nonlinear, linear.');
+  }
+  const profileOverrides = sanitizeMpcProfileOverrides(asRecord(config.mpc_profile_overrides));
+  const selectedProfile = mpcCore.controller_profile;
+  const selectedProfileSpecific = profileOverrides[selectedProfile].profile_specific;
+  const sqpMaxIter = Number(selectedProfileSpecific.sqp_max_iter);
+  if (Number.isFinite(sqpMaxIter) && sqpMaxIter < 1) {
+    issues.push('Profile-specific sqp_max_iter must be >= 1.');
+  }
+  const freezeInterval = Number(selectedProfileSpecific.freeze_refresh_interval_steps);
+  if (Number.isFinite(freezeInterval) && freezeInterval < 1) {
+    issues.push('Profile-specific freeze_refresh_interval_steps must be >= 1.');
   }
 
   const nonNegativeWeights: Array<[string, number]> = [

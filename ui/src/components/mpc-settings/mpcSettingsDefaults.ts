@@ -1,5 +1,6 @@
 import type {
   MpcCoreSettings,
+  MpcProfileOverridesSettings,
   MpcSettings,
   SimulationSettings,
   SettingReferenceSection,
@@ -54,6 +55,29 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
 export const DEFAULT_MPC_CORE_SETTINGS: MpcCoreSettings = {
   controller_profile: 'hybrid',
   solver_backend: 'OSQP',
+};
+
+export const DEFAULT_MPC_PROFILE_OVERRIDES: MpcProfileOverridesSettings = {
+  hybrid: {
+    base_overrides: {},
+    profile_specific: {
+      allow_stale_stage_reuse: true,
+    },
+  },
+  nonlinear: {
+    base_overrides: {},
+    profile_specific: {
+      strict_integrity: true,
+      sqp_max_iter: 2,
+      sqp_tol: 1e-4,
+    },
+  },
+  linear: {
+    base_overrides: {},
+    profile_specific: {
+      freeze_refresh_interval_steps: 1,
+    },
+  },
 };
 
 export const MPC_CANONICAL_KEYS = new Set(Object.keys(DEFAULT_MPC_SETTINGS));

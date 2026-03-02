@@ -27,6 +27,10 @@ import numpy as np
 from controller.configs.models import AppConfig
 
 from .base import Controller
+from .profile_params import (
+    EffectiveMPCProfileContract,
+    resolve_effective_mpc_profile_contract,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +193,9 @@ class _HybridLinearizationStrategy(_LinearizationStrategy):
     ) -> LinearizationInfo:
         return controller._evaluate_casadi_linearisation_stagewise(
             x_current=x_current,
-            strict_integrity=False,
+            strict_integrity=not bool(
+                getattr(controller, "allow_stale_stage_reuse", True)
+            ),
             linearization_mode=self.linearization_mode,
         )
 
@@ -207,7 +213,9 @@ class _NonlinearLinearizationStrategy(_LinearizationStrategy):
     ) -> LinearizationInfo:
         return controller._evaluate_casadi_linearisation_stagewise(
             x_current=x_current,
-            strict_integrity=True,
+            strict_integrity=bool(
+                getattr(controller, "strict_linearization_integrity", True)
+            ),
             linearization_mode=self.linearization_mode,
         )
 
@@ -260,9 +268,6 @@ class MPCController(Controller):
             )
 
         self._cfg = cfg
-        self.shared_contract = SharedMPCContract.from_app_config(cfg)
-        self._shared_contract_signature = self.shared_contract.signature
-        self._extract_params(cfg)
         # Profile metadata can be overridden by subclasses/factory adapters.
         self.controller_profile = str(
             getattr(self, "controller_profile", self.__class__.controller_profile)
@@ -279,6 +284,25 @@ class MPCController(Controller):
         )
         self.cpp_module_name = str(
             getattr(self, "cpp_module_name", self.__class__.cpp_module_name)
+        )
+
+        self.effective_contract: EffectiveMPCProfileContract = (
+            resolve_effective_mpc_profile_contract(
+                cfg=cfg,
+                profile=self.controller_profile,
+            )
+        )
+        self.shared_params_hash = str(self.effective_contract.shared_signature)
+        self.effective_params_hash = str(self.effective_contract.effective_signature)
+        self.profile_override_diff = dict(self.effective_contract.override_diff)
+        self.profile_specific_params = dict(self.effective_contract.profile_specific)
+        self._effective_contract_signature = self.effective_params_hash
+        self.shared_contract = SharedMPCContract.from_app_config(cfg)
+        self._shared_contract_signature = self.shared_contract.signature
+        self._extract_params(
+            cfg,
+            effective_mpc=dict(self.effective_contract.effective_mpc),
+            profile_specific=dict(self.effective_contract.profile_specific),
         )
         (
             self._satellite_params_cls,
@@ -364,6 +388,10 @@ class MPCController(Controller):
             self.error_priority_error_speed_gain
         )
 
+        # SQP
+        mpc_p.sqp_max_iter = int(self.sqp_max_iter)
+        mpc_p.sqp_tol = float(self.sqp_tol)
+
         # OSQP
         mpc_p.osqp_max_iter = _OSQP_MAX_ITER_DEFAULT
         mpc_p.osqp_eps_abs = _OSQP_EPS_DEFAULT
@@ -423,6 +451,10 @@ class MPCController(Controller):
 
         self.nx = 17
         self.nu = self.num_rw_axes + self.num_thrusters
+        self._linear_frozen_cache: (
+            tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]] | None
+        ) = None
+        self._linear_step_counter = 0
 
         # Convenience scalar used by legacy code paths for RW denormalization.
         # Per-wheel limits are in self.rw_torque_limits (preferred).
@@ -464,6 +496,11 @@ class MPCController(Controller):
     def _assert_shared_contract_integrity(self) -> None:
         if self.shared_contract.signature != self._shared_contract_signature:
             raise RuntimeError("Shared MPC contract integrity guard failed.")
+        if (
+            self.effective_contract.effective_signature
+            != self._effective_contract_signature
+        ):
+            raise RuntimeError("Effective MPC profile contract integrity guard failed.")
 
     def get_control_action(
         self,
@@ -498,27 +535,122 @@ class MPCController(Controller):
             except Exception:
                 pass
 
-        # --- CasADi linearisation (Python-side) ---
+        # --- CasADi linearisation (Python-side) + profile-specific solve orchestration ---
         linearization_info = LinearizationInfo(
             linearization_mode=self.linearization_mode
         )
-        if self._f_and_jacs is not None:
-            linearization_info = self._linearization_strategy.prepare_linearization(
-                controller=self,
-                x_current=x_input,
-            )
-            if self._linearization_strategy.handle_linearization_failure(
-                controller=self,
-                info=linearization_info,
-            ):
-                return self._build_integrity_failure_fallback(
-                    previous_thrusters=previous_thrusters,
-                    s_for_state=s_for_state,
-                    linearization_info=linearization_info,
-                )
+        nonlinear_outer_iterations = 1
+        nonlinear_outer_residual: float | None = None
+        nonlinear_outer_converged = False
+        result = None
 
-        # --- Solve QP in C++ ---
-        result = self._cpp.get_control_action(x_input)
+        # Nonlinear profile: run a true outer loop in Python orchestration.
+        # Each iteration re-evaluates stage Jacobians, solves once, and
+        # warm-starts the next iteration.
+        if (
+            self.linearization_mode == "nonlinear_exact_stage"
+            and self._f_and_jacs is not None
+            and int(self.sqp_max_iter) > 1
+        ):
+            max_outer_iter = max(1, int(self.sqp_max_iter))
+            total_attempted_stages = 0
+            total_failed_stages = 0
+            used_stale_fallback = False
+            total_solve_time = 0.0
+            last_u_full: np.ndarray | None = None
+
+            for outer_idx in range(max_outer_iter):
+                iter_info = self._linearization_strategy.prepare_linearization(
+                    controller=self,
+                    x_current=x_input,
+                )
+                total_attempted_stages += int(iter_info.attempted_stages)
+                total_failed_stages += int(iter_info.failed_stages)
+                used_stale_fallback = used_stale_fallback or bool(
+                    iter_info.used_stale_fallback
+                )
+                linearization_info = iter_info
+
+                if self._linearization_strategy.handle_linearization_failure(
+                    controller=self,
+                    info=iter_info,
+                ):
+                    linearization_info.attempted_stages = int(total_attempted_stages)
+                    linearization_info.failed_stages = int(total_failed_stages)
+                    linearization_info.used_stale_fallback = bool(used_stale_fallback)
+                    return self._build_integrity_failure_fallback(
+                        previous_thrusters=previous_thrusters,
+                        s_for_state=s_for_state,
+                        linearization_info=linearization_info,
+                    )
+
+                iter_result = self._cpp.get_control_action(x_input)
+                result = iter_result
+                nonlinear_outer_iterations = int(outer_idx + 1)
+                total_solve_time += float(getattr(iter_result, "solve_time", 0.0))
+
+                u_candidate = np.array(iter_result.u, dtype=float)
+                if last_u_full is not None and u_candidate.shape == last_u_full.shape:
+                    nonlinear_outer_residual = float(
+                        np.linalg.norm(u_candidate - last_u_full, ord=np.inf)
+                    )
+                    if nonlinear_outer_residual <= float(self.sqp_tol):
+                        nonlinear_outer_converged = True
+                        break
+                last_u_full = u_candidate
+
+                if outer_idx < max_outer_iter - 1:
+                    try:
+                        self._cpp.set_warm_start_control(u_candidate)
+                    except Exception:
+                        pass
+                    if self._path_set:
+                        try:
+                            # Keep run-level path progress consistent while iterating
+                            # internally within one control step.
+                            self._cpp.set_current_path_s(float(s_for_state))
+                            self.s = float(s_for_state)
+                        except Exception:
+                            pass
+
+            linearization_info.attempted_stages = int(total_attempted_stages)
+            linearization_info.failed_stages = int(total_failed_stages)
+            linearization_info.used_stale_fallback = bool(used_stale_fallback)
+
+            if result is None:
+                result = self._cpp.get_control_action(x_input)
+                nonlinear_outer_iterations = 1
+            try:
+                result.solve_time = float(total_solve_time)
+            except Exception:
+                pass
+            try:
+                result.sqp_iterations = int(nonlinear_outer_iterations)
+            except Exception:
+                pass
+            if nonlinear_outer_residual is not None:
+                try:
+                    result.sqp_kkt_residual = float(nonlinear_outer_residual)
+                except Exception:
+                    pass
+        else:
+            if self._f_and_jacs is not None:
+                linearization_info = self._linearization_strategy.prepare_linearization(
+                    controller=self,
+                    x_current=x_input,
+                )
+                if self._linearization_strategy.handle_linearization_failure(
+                    controller=self,
+                    info=linearization_info,
+                ):
+                    return self._build_integrity_failure_fallback(
+                        previous_thrusters=previous_thrusters,
+                        s_for_state=s_for_state,
+                        linearization_info=linearization_info,
+                    )
+
+            # --- Solve QP in C++ ---
+            result = self._cpp.get_control_action(x_input)
 
         self.solve_times.append(result.solve_time)
 
@@ -591,9 +723,18 @@ class MPCController(Controller):
             "timing_solve_only_s": float(getattr(result, "t_solve_only_s", 0.0)),
             "sqp_iterations": getattr(result, "sqp_iterations", 1),
             "sqp_kkt_residual": getattr(result, "sqp_kkt_residual", 0.0),
+            "sqp_outer_iterations": int(nonlinear_outer_iterations),
+            "sqp_outer_residual": nonlinear_outer_residual,
+            "sqp_outer_converged": bool(nonlinear_outer_converged),
             "controller_core": self.controller_core,
             "controller_profile": self.controller_profile,
             "cpp_backend_module": self._cpp_backend_module,
+            "shared_params_hash": self.shared_params_hash,
+            "effective_params_hash": self.effective_params_hash,
+            "override_diff": dict(self.profile_override_diff),
+            "profile_specific_params": dict(self.profile_specific_params),
+            "sqp_max_iter_config": int(self.sqp_max_iter),
+            "sqp_tol_config": float(self.sqp_tol),
             "path_s": path_s,
             "path_s_proj": float(path_s_proj) if path_s_proj is not None else None,
             "path_v_s": v_s,
@@ -624,6 +765,21 @@ class MPCController(Controller):
             extras=extras,
             info=linearization_info,
         )
+        if self.linearization_mode == "linear_frozen_step":
+            extras["linear_frozen_refresh_interval_steps"] = int(
+                self.freeze_refresh_interval_steps
+            )
+            extras["linear_frozen_refreshed"] = bool(
+                linearization_info.attempted_stages > 0
+            )
+        if self.linearization_mode == "hybrid_tolerant_stage":
+            extras["hybrid_allow_stale_stage_reuse"] = bool(
+                self.allow_stale_stage_reuse
+            )
+        if self.linearization_mode == "nonlinear_exact_stage":
+            extras["nonlinear_strict_integrity"] = bool(
+                self.strict_linearization_integrity
+            )
         return u_phys, extras
 
     def reset(self) -> None:
@@ -780,6 +936,8 @@ class MPCController(Controller):
         )
         if self._f_and_jacs is None:
             return info
+        if not hasattr(self._cpp, "set_stage_linearisation"):
+            return info
 
         N = self._cpp.prediction_horizon
         p = self._casadi_params
@@ -846,9 +1004,27 @@ class MPCController(Controller):
         )
         if self._f_and_jacs is None:
             return info
+        if not hasattr(self._cpp, "set_all_linearisations"):
+            return info
 
         N = self._cpp.prediction_horizon
         p = self._casadi_params
+        refresh_interval = max(
+            1, int(getattr(self, "freeze_refresh_interval_steps", 1))
+        )
+        self._linear_step_counter += 1
+        should_refresh = (
+            self._linear_frozen_cache is None
+            or refresh_interval == 1
+            or ((self._linear_step_counter - 1) % refresh_interval == 0)
+        )
+
+        if not should_refresh and self._linear_frozen_cache is not None:
+            As, Bs, ds = self._linear_frozen_cache
+            self._cpp.set_all_linearisations(As, Bs, ds)
+            info.attempted_stages = 0
+            return info
+
         info.attempted_stages = int(N)
 
         x0 = np.array(self._cpp.get_stage_state(0), dtype=float)
@@ -868,7 +1044,11 @@ class MPCController(Controller):
             ):
                 raise ValueError("Frozen-step linearization produced non-finite values")
             d0 = x_next0 - A0 @ x0 - B0 @ u0
-            self._cpp.set_all_linearisations([A0] * N, [B0] * N, [d0] * N)
+            As = [A0] * N
+            Bs = [B0] * N
+            ds = [d0] * N
+            self._cpp.set_all_linearisations(As, Bs, ds)
+            self._linear_frozen_cache = (As, Bs, ds)
         except Exception:
             info.failed_stages = int(N)
             info.used_stale_fallback = True
@@ -930,9 +1110,18 @@ class MPCController(Controller):
             "timing_solve_only_s": 0.0,
             "sqp_iterations": 0,
             "sqp_kkt_residual": 0.0,
+            "sqp_outer_iterations": 0,
+            "sqp_outer_residual": None,
+            "sqp_outer_converged": False,
             "controller_core": self.controller_core,
             "controller_profile": self.controller_profile,
             "cpp_backend_module": self._cpp_backend_module,
+            "shared_params_hash": self.shared_params_hash,
+            "effective_params_hash": self.effective_params_hash,
+            "override_diff": dict(self.profile_override_diff),
+            "profile_specific_params": dict(self.profile_specific_params),
+            "sqp_max_iter_config": int(self.sqp_max_iter),
+            "sqp_tol_config": float(self.sqp_tol),
             "path_s": path_s,
             "path_s_proj": self._last_path_projection.get("s_proj"),
             "path_v_s": 0.0,
@@ -951,6 +1140,21 @@ class MPCController(Controller):
             extras=extras,
             info=linearization_info,
         )
+        if self.linearization_mode == "linear_frozen_step":
+            extras["linear_frozen_refresh_interval_steps"] = int(
+                self.freeze_refresh_interval_steps
+            )
+            extras["linear_frozen_refreshed"] = bool(
+                linearization_info.attempted_stages > 0
+            )
+        if self.linearization_mode == "hybrid_tolerant_stage":
+            extras["hybrid_allow_stale_stage_reuse"] = bool(
+                self.allow_stale_stage_reuse
+            )
+        if self.linearization_mode == "nonlinear_exact_stage":
+            extras["nonlinear_strict_integrity"] = bool(
+                self.strict_linearization_integrity
+            )
         return u_phys, extras
 
     # ------------------------------------------------------------------
@@ -973,11 +1177,25 @@ class MPCController(Controller):
     # Config extraction  (mirrors V1)
     # ------------------------------------------------------------------
 
-    def _extract_params(self, cfg: AppConfig) -> None:
+    def _extract_params(
+        self,
+        cfg: AppConfig,
+        effective_mpc: dict[str, Any] | None = None,
+        profile_specific: dict[str, Any] | None = None,
+    ) -> None:
         physics = cfg.physics
         mpc = cfg.mpc
         mpc_core = cfg.mpc_core
         contracts = cfg.controller_contracts
+        resolved_mpc = dict(effective_mpc or {})
+        resolved_specific = dict(profile_specific or {})
+
+        def mpc_val(name: str, fallback: Any = None) -> Any:
+            if name in resolved_mpc:
+                return resolved_mpc[name]
+            if hasattr(mpc, name):
+                return getattr(mpc, name)
+            return fallback
 
         self.total_mass = physics.total_mass
         I_val = physics.moment_of_inertia
@@ -1013,57 +1231,71 @@ class MPCController(Controller):
             self.rw_speed_limits = []
             self.rw_axes = []
 
-        self.N = mpc.prediction_horizon
-        self._dt = mpc.dt
-        self.solver_time_limit = mpc.solver_time_limit
-        self.control_horizon = max(1, min(int(mpc.control_horizon), self.N))
-        self.verbose_mpc = mpc.verbose_mpc
+        self.N = int(mpc_val("prediction_horizon"))
+        self._dt = float(mpc_val("dt"))
+        self.solver_time_limit = float(mpc_val("solver_time_limit"))
+        self.control_horizon = max(1, min(int(mpc_val("control_horizon")), self.N))
+        self.verbose_mpc = bool(mpc_val("verbose_mpc"))
 
-        self.Q_contour = mpc.Q_contour
+        self.Q_contour = float(mpc_val("Q_contour"))
         # Auto-resolve Q_lag: when 0 (default), use Q_lag_default
-        _q_lag = mpc.Q_lag
+        _q_lag = float(mpc_val("Q_lag"))
         if _q_lag <= 0.0:
-            _q_lag = float(getattr(mpc, "Q_lag_default", 0.0) or 0.0)
+            _q_lag = float(mpc_val("Q_lag_default", 0.0) or 0.0)
             logger.debug("Q_lag=0 detected; substituting Q_lag_default=%s", _q_lag)
         self.Q_lag = _q_lag
-        self.Q_progress = mpc.Q_progress
-        self.progress_reward = mpc.progress_reward
-        self.Q_velocity_align = mpc.Q_velocity_align
-        self.Q_s_anchor = mpc.Q_s_anchor
-        self.Q_smooth = mpc.Q_smooth
-        self.Q_terminal_pos = mpc.Q_terminal_pos
-        self.Q_terminal_s = mpc.Q_terminal_s
-        self.Q_terminal_vel = mpc.Q_terminal_vel
-        self.Q_angvel = mpc.q_angular_velocity
-        self.Q_attitude = mpc.Q_attitude
-        self.Q_axis_align = mpc.Q_axis_align
-        self.Q_quat_norm = mpc.Q_quat_norm
-        self.R_thrust = mpc.r_thrust
-        self.R_rw_torque = mpc.r_rw_torque
-        self.thrust_l1_weight = mpc.thrust_l1_weight
-        self.thrust_pair_weight = mpc.thrust_pair_weight
-        self.max_linear_velocity = mpc.max_linear_velocity
-        self.max_angular_velocity = mpc.max_angular_velocity
-        self.enable_online_dare_terminal = mpc.enable_online_dare_terminal
-        self.dare_update_period_steps = mpc.dare_update_period_steps
-        self.terminal_cost_profile = mpc.terminal_cost_profile
-        self.progress_policy = mpc.progress_policy
-        self.error_priority_min_vs = mpc.error_priority_min_vs
-        self.error_priority_error_speed_gain = mpc.error_priority_error_speed_gain
-        self.path_speed = mpc.path_speed
-        self.path_speed_min = mpc.path_speed_min
-        self.path_speed_max = mpc.path_speed_max
-        self.ref_tangent_lookahead_m = float(
-            getattr(mpc, "ref_tangent_lookahead_m", 0.35)
+        self.Q_progress = float(mpc_val("Q_progress"))
+        self.progress_reward = float(mpc_val("progress_reward"))
+        self.Q_velocity_align = float(mpc_val("Q_velocity_align"))
+        self.Q_s_anchor = float(mpc_val("Q_s_anchor"))
+        self.Q_smooth = float(mpc_val("Q_smooth"))
+        self.Q_terminal_pos = float(mpc_val("Q_terminal_pos"))
+        self.Q_terminal_s = float(mpc_val("Q_terminal_s"))
+        self.Q_terminal_vel = float(mpc_val("Q_terminal_vel"))
+        self.Q_angvel = float(mpc_val("q_angular_velocity"))
+        self.Q_attitude = float(mpc_val("Q_attitude"))
+        self.Q_axis_align = float(mpc_val("Q_axis_align"))
+        self.Q_quat_norm = float(mpc_val("Q_quat_norm"))
+        self.R_thrust = float(mpc_val("r_thrust"))
+        self.R_rw_torque = float(mpc_val("r_rw_torque"))
+        self.thrust_l1_weight = float(mpc_val("thrust_l1_weight"))
+        self.thrust_pair_weight = float(mpc_val("thrust_pair_weight"))
+        self.max_linear_velocity = float(mpc_val("max_linear_velocity"))
+        self.max_angular_velocity = float(mpc_val("max_angular_velocity"))
+        self.enable_online_dare_terminal = bool(mpc_val("enable_online_dare_terminal"))
+        self.dare_update_period_steps = int(mpc_val("dare_update_period_steps"))
+        self.terminal_cost_profile = str(mpc_val("terminal_cost_profile"))
+        self.progress_policy = str(mpc_val("progress_policy"))
+        self.error_priority_min_vs = float(mpc_val("error_priority_min_vs"))
+        self.error_priority_error_speed_gain = float(
+            mpc_val("error_priority_error_speed_gain")
         )
-        self.ref_tangent_lookback_m = float(
-            getattr(mpc, "ref_tangent_lookback_m", 0.10)
-        )
-        self.ref_quat_max_rate_rad_s = float(
-            getattr(mpc, "ref_quat_max_rate_rad_s", 1.57)
-        )
+        self.path_speed = float(mpc_val("path_speed"))
+        self.path_speed_min = float(mpc_val("path_speed_min"))
+        self.path_speed_max = float(mpc_val("path_speed_max"))
+        self.ref_tangent_lookahead_m = float(mpc_val("ref_tangent_lookahead_m", 0.35))
+        self.ref_tangent_lookback_m = float(mpc_val("ref_tangent_lookback_m", 0.10))
+        self.ref_quat_max_rate_rad_s = float(mpc_val("ref_quat_max_rate_rad_s", 1.57))
         self.ref_quat_terminal_rate_scale = float(
-            getattr(mpc, "ref_quat_terminal_rate_scale", 2.0)
+            mpc_val("ref_quat_terminal_rate_scale", 2.0)
+        )
+
+        self.sqp_max_iter = int(max(1, resolved_specific.get("sqp_max_iter", 1)))
+        self.sqp_tol = float(max(1e-9, resolved_specific.get("sqp_tol", 1e-4)))
+        self.strict_linearization_integrity = bool(
+            resolved_specific.get(
+                "strict_integrity",
+                self.linearization_mode == "nonlinear_exact_stage",
+            )
+        )
+        self.allow_stale_stage_reuse = bool(
+            resolved_specific.get(
+                "allow_stale_stage_reuse",
+                self.linearization_mode != "nonlinear_exact_stage",
+            )
+        )
+        self.freeze_refresh_interval_steps = int(
+            max(1, resolved_specific.get("freeze_refresh_interval_steps", 1))
         )
 
         self.recover_contour_scale = mpc_core.recover_contour_scale
