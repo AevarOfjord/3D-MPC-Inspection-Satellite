@@ -48,6 +48,7 @@ def _fmt_metric_row(
     unit: str,
     vec: str,
     *,
+    limit_suffix: str = "",
     color_prefix: str,
     color_reset: str,
     left_width: int = 26,
@@ -56,9 +57,11 @@ def _fmt_metric_row(
     value_str = f"{value:.3f}"
     if unit in {"°", "°/s"}:
         value_str = f"{value:.1f}"
-    left_plain = f"{label}: {value_str}{unit}"
+    left_plain = f"{label}: {value_str}{unit}{limit_suffix}"
     pad = max(1, left_width - len(left_plain))
-    left = f"{color_prefix}{label}:{color_reset} {value_str}{unit}" + (" " * pad)
+    left = f"{color_prefix}{label}:{color_reset} {value_str}{unit}{limit_suffix}" + (
+        " " * pad
+    )
     return left + f"{color_prefix}| Vec:{color_reset} {vec}"
 
 
@@ -268,10 +271,17 @@ def log_simulation_step(
         if np.isfinite(limit) and limit > 1e-9:
             rw_activity[i] = float(np.clip(rw_torque_vec[i] / limit, -1.0, 1.0))
 
-    thr_out_str = _fmt_compact_vector(thr_out, decimals=2)
-    thr_force_out_str = _fmt_compact_vector(thr_force_out, decimals=2)
-    rw_activity_str = _fmt_compact_vector(rw_activity, decimals=2)
-    rw_torque_str = _fmt_compact_vector(rw_torque_vec, decimals=2)
+    thr_out_str = _fmt_compact_vector(thr_out, decimals=3)
+    thr_force_out_str = _fmt_compact_vector(thr_force_out, decimals=3)
+    rw_activity_str = _fmt_compact_vector(rw_activity, decimals=3)
+    rw_torque_str = _fmt_compact_vector(rw_torque_vec, decimals=3)
+    thr_force_total = float(
+        np.sum(
+            np.clip(np.array(display_thrusters, dtype=float), 0.0, None)
+            * thruster_force_limits
+        )
+    )
+    rw_tau_total = float(np.linalg.norm(rw_torque_vec))
 
     # Calculate detailed error vectors
     # Position Error Vector (Current - Reference)
@@ -353,6 +363,28 @@ def log_simulation_step(
         )
     else:
         header_line_bottom = f"t={sim.simulation_time:.1f}s | Solve: {solve_ms:.1f}ms"
+    mode_time_s = float(mpc_info.get("mode_time_in_mode_s", 0.0) or 0.0)
+    gate_pos = "Y" if bool(mpc_info.get("completion_gate_position_ok", False)) else "N"
+    gate_ang = "Y" if bool(mpc_info.get("completion_gate_angle_ok", False)) else "N"
+    gate_vel = "Y" if bool(mpc_info.get("completion_gate_velocity_ok", False)) else "N"
+    gate_w = (
+        "Y" if bool(mpc_info.get("completion_gate_angular_velocity_ok", False)) else "N"
+    )
+    fallback_active = bool(mpc_info.get("fallback_active", False))
+    fallback_age_s = float(mpc_info.get("fallback_age_s", 0.0) or 0.0)
+    fallback_flag = f"Y({fallback_age_s:.1f}s)" if fallback_active else "N"
+    timeout_flag = "Y" if bool(mpc_info.get("time_limit_exceeded", False)) else "N"
+    row_health = (
+        f"Health: mode_t={mode_time_s:.1f}s | Gate[P/A/V/W]={gate_pos}/{gate_ang}/"
+        f"{gate_vel}/{gate_w} | Fallback={fallback_flag} | TLE={timeout_flag}"
+    )
+    ref_heading_step = float(mpc_info.get("ref_heading_step_deg", 0.0) or 0.0)
+    ref_quat_step = float(mpc_info.get("ref_quat_step_deg_max_horizon", 0.0) or 0.0)
+    ref_slew_frac = float(mpc_info.get("ref_slew_limited_fraction", 0.0) or 0.0)
+    row_ref_quality = (
+        f"Ref Step: heading={ref_heading_step:.2f}° | quat_max={ref_quat_step:.2f}° | "
+        f"slew={100.0 * ref_slew_frac:.0f}%"
+    )
 
     # Error Metrics formatted with colors
     # We can use simple thresholding for colors, or just keep labels colored for readability.
@@ -365,7 +397,7 @@ def log_simulation_step(
         pos_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
-        left_width=30,
+        left_width=20,
     )
     row_ang = _fmt_metric_row(
         "ANG ERR",
@@ -374,7 +406,7 @@ def log_simulation_step(
         ang_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
-        left_width=30,
+        left_width=20,
     )
     row_vel = _fmt_metric_row(
         "VEL ERR",
@@ -383,7 +415,7 @@ def log_simulation_step(
         vel_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
-        left_width=30,
+        left_width=20,
     )
     row_ang_vel = _fmt_metric_row(
         "ANG VEL ERR",
@@ -392,7 +424,7 @@ def log_simulation_step(
         ang_vel_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
-        left_width=30,
+        left_width=20,
     )
 
     # State Data (satellite and reference broken into explicit sections)
@@ -452,8 +484,10 @@ def log_simulation_step(
     row_thruster_force = (
         f"{YELLOW}Thruster Force {active_thruster_ids}:{RESET} {thr_force_out_str}N"
     )
+    row_thruster_total = f"{YELLOW}Total:{RESET} {thr_force_total:.3f}N"
     row_rw_activity = f"{RED}RW Activity [X,Y,Z]:{RESET}   {rw_activity_str}"
     row_rw_torque = f"{RED}RW Torque [X,Y,Z]:{RESET}   {rw_torque_str}N*m"
+    row_rw_total = f"{RED}Total:{RESET} {rw_tau_total:.3f}N*m"
 
     sep = "-" * 80
 
@@ -462,6 +496,8 @@ def log_simulation_step(
             f"\n{BOLD}{sep}{RESET}\n"
             f"{header_line_top}\n"
             f"{header_line_bottom}\n"
+            f"{row_health}\n"
+            f"{row_ref_quality}\n"
             f"{sep}\n"
             f"{row_sat_pos}\n"
             f"{row_sat_ang}\n"
@@ -481,9 +517,11 @@ def log_simulation_step(
             f"\n"
             f"{row_thrusters_activity}\n"
             f"{row_thruster_force}\n"
+            f"{row_thruster_total}\n"
             f"\n"
             f"{row_rw_activity}\n"
-            f"{row_rw_torque}\n\n"
+            f"{row_rw_torque}\n"
+            f"{row_rw_total}\n\n"
         )
 
     if do_log:
