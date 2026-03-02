@@ -91,10 +91,12 @@ def test_step_logging_prints_physical_actuator_rows():
     )
 
     printed = logger.info.call_args[0][0]
-    assert "Thrusters Activity [1, 4, 5]: [0.33, 0.10, 0.35]" in printed
-    assert "Thruster Force [1, 4, 5]: [0.33, 0.25, 1.05]N" in printed
-    assert "RW Activity [X,Y,Z]:   [0.50, 0.20, -0.50]" in printed
-    assert "RW Torque [X,Y,Z]:   [0.05, 0.04, -0.20]N*m" in printed
+    assert "Thrusters Activity [1, 4, 5]: [0.330, 0.100, 0.350]" in printed
+    assert "Thruster Force [1, 4, 5]: [0.330, 0.250, 1.050]N" in printed
+    assert "Total: 1.630N" in printed
+    assert "RW Activity [X,Y,Z]:   [0.500, 0.200, -0.500]" in printed
+    assert "RW Torque [X,Y,Z]:   [0.050, 0.040, -0.200]N*m" in printed
+    assert "Total: 0.210N*m" in printed
 
 
 def test_step_logging_actuator_rows_fallback_without_limits():
@@ -116,8 +118,10 @@ def test_step_logging_actuator_rows_fallback_without_limits():
     )
 
     printed = logger.info.call_args[0][0]
-    assert "Thruster Force [1, 4, 5]: [0.00, 0.00, 0.00]N" in printed
-    assert "RW Activity [X,Y,Z]:   [0.00, 0.00, 0.00]" in printed
+    assert "Thruster Force [1, 4, 5]: [0.000, 0.000, 0.000]N" in printed
+    assert "Total: 0.000N" in printed
+    assert "RW Activity [X,Y,Z]:   [0.000, 0.000, 0.000]" in printed
+    assert "Total: 0.210N*m" in printed
 
 
 def test_step_logging_actuator_rows_with_no_active_thrusters():
@@ -144,3 +148,5 @@ def test_step_logging_actuator_rows_with_no_active_thrusters():
     printed = logger.info.call_args[0][0]
     assert "Thrusters Activity []: []" in printed
     assert "Thruster Force []: []N" in printed
+    assert "Total: 0.000N" in printed
+    assert "Total: 0.000N*m" in printed
