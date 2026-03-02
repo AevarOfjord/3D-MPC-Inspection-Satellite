@@ -44,7 +44,7 @@ def main() -> int:
     cmd = [
         str(python_exec),
         "-m",
-        "cli",
+        "controller.cli",
         "serve",
         "--host",
         args.host,

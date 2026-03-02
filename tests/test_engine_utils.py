@@ -10,8 +10,12 @@ import math
 from types import SimpleNamespace
 
 import pytest
-from simulation.engine import SatelliteMPCLinearizedSimulation
-from utils.navigation_utils import angle_difference, normalize_angle
+
+from controller.shared.python.simulation.engine import SatelliteMPCLinearizedSimulation
+from controller.shared.python.utils.navigation_utils import (
+    angle_difference,
+    normalize_angle,
+)
 
 
 class TestNormalizeAngle:

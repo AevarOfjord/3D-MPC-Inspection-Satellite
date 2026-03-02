@@ -35,11 +35,14 @@ describe('MPC settings serialization', () => {
 
     expect(normalized).not.toBeNull();
     const mpc = normalized!.mpc as Record<string, unknown>;
+    const mpcCore = normalized!.mpc_core as Record<string, unknown>;
     expect(mpc.coast_pos_tolerance).toBeUndefined();
     expect(mpc.coast_vel_tolerance).toBeUndefined();
     expect(mpc.coast_min_speed).toBeUndefined();
     expect(mpc.progress_taper_distance).toBeUndefined();
     expect(mpc.progress_slowdown_distance).toBeUndefined();
+    expect(mpcCore.controller_profile).toBeDefined();
+    expect(mpcCore.controller_backend).toBeUndefined();
   });
 
   it('never emits removed MPC fields in v3 payload builder', async () => {
@@ -73,5 +76,7 @@ describe('MPC settings serialization', () => {
     const mpcCore = appConfig.mpc_core as Record<string, unknown>;
     expect(mpcCore.coast_pos_tolerance).toBeUndefined();
     expect(mpcCore.progress_taper_distance).toBeUndefined();
+    expect(mpcCore.controller_profile).toBe('hybrid');
+    expect(mpcCore.controller_backend).toBeUndefined();
   });
 });

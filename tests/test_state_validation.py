@@ -7,8 +7,9 @@ Trims down `test_simulation_state_validator.py`.
 
 import numpy as np
 import pytest
-from config.constants import Constants
-from simulation.state_validator import (
+
+from controller.configs.constants import Constants
+from controller.shared.python.simulation.state_validator import (
     create_state_validator_from_config,
 )
 

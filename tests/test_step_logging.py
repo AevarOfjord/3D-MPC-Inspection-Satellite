@@ -2,7 +2,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
-from simulation.step_logging import log_simulation_step
+
+from controller.shared.python.simulation.step_logging import log_simulation_step
 
 
 def _make_sim(*, thruster_forces=None, rw_torque_limits=None):

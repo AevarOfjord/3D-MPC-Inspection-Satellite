@@ -7,16 +7,17 @@ Tests configuration validation and model integrity.
 from pathlib import Path
 
 import pytest
-from config import physics as physics_cfg
-from config.models import (
+from pydantic import ValidationError
+
+from controller.configs import physics as physics_cfg
+from controller.configs.models import (
     ActuatorPolicyParams,
     ControllerContractsParams,
     MPCParams,
     SatellitePhysicalParams,
 )
-from config.simulation_config import SimulationConfig
-from mission.state import DEFAULT_PATH_HOLD_END_S
-from pydantic import ValidationError
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.mission.state import DEFAULT_PATH_HOLD_END_S
 
 
 class TestConfigValidation:
@@ -118,9 +119,9 @@ class TestConfigValidation:
             "progress_slowdown_distance",
         )
         repo_root = Path(__file__).resolve().parents[1]
-        allowed = {repo_root / "src/python/dashboard/runner_manager.py"}
+        allowed = {repo_root / "controller/shared/python/dashboard/runner_manager.py"}
 
-        for base in ("src/python", "src/cpp", "ui/src"):
+        for base in ("controller", "ui/src"):
             for path in (repo_root / base).rglob("*"):
                 if not path.is_file():
                     continue
@@ -146,10 +147,25 @@ class TestConfigValidation:
         app_cfg = config.app_config
         assert app_cfg.reference_scheduler.speed_policy == "min_non_hold_segment_speed"
         assert app_cfg.mpc_core.solver_backend == "OSQP"
+        assert app_cfg.mpc_core.controller_profile == "hybrid"
         assert app_cfg.actuator_policy.enable_thruster_hysteresis is True
         assert app_cfg.controller_contracts.hold_duration_s == pytest.approx(
             DEFAULT_PATH_HOLD_END_S
         )
+
+    def test_mpc_core_rejects_legacy_backend_field(self):
+        """Canonical schema must reject deprecated controller_backend field."""
+        with pytest.raises(ValidationError):
+            SimulationConfig.create_with_overrides(
+                {"mpc_core": {"controller_backend": "v1"}}
+            )
+
+    def test_mpc_core_rejects_profile_specific_extra_fields(self):
+        """Shared-parameter contract forbids profile-specific public config fields."""
+        with pytest.raises(ValidationError):
+            SimulationConfig.create_with_overrides(
+                {"mpc_core": {"nonlinear_specific_gain": 1.25}}
+            )
 
     def test_actuator_policy_validation(self):
         """Actuator-policy on-threshold must exceed off-threshold."""

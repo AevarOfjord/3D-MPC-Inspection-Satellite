@@ -6,7 +6,8 @@ These cover code paths not exercised by the existing test_runtime_policy.py suit
 
 import numpy as np
 import pytest
-from runtime.policy import ActuatorPolicy, PointingGuardrail
+
+from controller.shared.python.runtime.policy import ActuatorPolicy, PointingGuardrail
 
 
 class TestActuatorPolicyHysteresis:

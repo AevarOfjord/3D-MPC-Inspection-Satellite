@@ -71,9 +71,10 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 # Skip scikit-build editable runtime rebuild checks by default for faster startup.
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
-CPP_IMPORT_CHECK_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -c "from cpp import _cpp_mpc, _cpp_sim, _cpp_physics"
-LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check src/python tests
-TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=src/python --cov-report=term-missing --cov-fail-under=30
+SIM_CONTROLLER_PROFILE ?=
+CPP_IMPORT_CHECK_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -c "from controller.shared.python.cpp import _cpp_mpc, _cpp_mpc_nonlinear, _cpp_mpc_linear, _cpp_sim, _cpp_physics"
+LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check controller tests
+TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=controller --cov-report=term-missing --cov-fail-under=30
 
 # ============================================================================
 # Help
@@ -100,7 +101,7 @@ help:
 	@echo "  make package-pyinstaller Build OS-native PyInstaller bundle + archive under ./release"
 	@echo "  make smoke-pyinstaller Launch smoke test on latest PyInstaller bundle"
 	@echo "  make package-clean Remove generated app bundles in ./release"
-	@echo "  make sim          Run CLI simulation (prompts to run tests first)"
+	@echo "  make sim          Run CLI simulation (prompts for controller profile, then tests)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make test-cov     Run pytest with coverage gate (>=30%)"
 	@echo "  make test-ui      Run frontend unit/component tests (Vitest)"
@@ -172,7 +173,7 @@ backend:
 			exit 1; \
 		fi; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve --dev
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli serve --dev
 
 # Start backend in packaged-app mode (no Vite, serves ui/dist on :8000).
 backend-prod:
@@ -196,7 +197,7 @@ backend-prod:
 			exit 1; \
 		fi; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli serve
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli serve
 
 # Install frontend dependencies only when lockfiles change.
 $(UI_DEPS_STAMP): $(UI_LOCKFILES)
@@ -298,13 +299,13 @@ package-pyinstaller: ui-build
 		echo "PyInstaller missing in $(VENV_DIR); installing..."; \
 		$(VENV_PY) -m pip install "pyinstaller>=6.0.0" || exit $$?; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" \
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
 		$(VENV_PY) scripts/build_pyinstaller_bundle.py --max-mb "$(PYINSTALLER_MAX_MB)"
 
 # Launch latest PyInstaller output and verify HTTP readiness.
 smoke-pyinstaller:
 	@$(MAKE) venv
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" \
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
 		$(VENV_PY) scripts/smoke_test_packaged_app.py
 
 # Run CLI simulation, repairing Python/build prerequisites when needed.
@@ -344,13 +345,29 @@ sim:
 			exit 1; \
 		fi; \
 	fi
-	@printf "Run tests before simulation? [y/N] "; \
+	@controller_profile="$(SIM_CONTROLLER_PROFILE)"; \
+	if [ -z "$$controller_profile" ]; then \
+		printf "Select controller profile [1=hybrid, 2=nonlinear, 3=linear] (default 1): "; \
+		read controller_ans; \
+		case "$$controller_ans" in \
+			2|nonlinear|NONLINEAR) controller_profile="nonlinear" ;; \
+			3|linear|LINEAR) controller_profile="linear" ;; \
+			""|1|hybrid|HYBRID) controller_profile="hybrid" ;; \
+			*) echo "Invalid selection '$$controller_ans'. Falling back to hybrid."; controller_profile="hybrid" ;; \
+		esac; \
+	fi; \
+	case "$$controller_profile" in \
+		hybrid|nonlinear|linear) ;; \
+		*) echo "Invalid SIM_CONTROLLER_PROFILE='$$controller_profile'. Falling back to hybrid."; controller_profile="hybrid" ;; \
+	esac; \
+	echo "Using controller profile: $$controller_profile"; \
+	printf "Run tests before simulation? [y/N] "; \
 	read ans; \
 	case "$$ans" in \
 		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
 		*) echo "Skipping tests."; ;; \
-	esac
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m cli run
+	esac; \
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --controller-profile "$$controller_profile"
 
 # ============================================================================
 # Build targets
@@ -406,7 +423,7 @@ install: venv check-cmake
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
 		$(VENV_PY) -m pip install --no-build-isolation -e ".[dev]"
-	@$(VENV_PY) -c "from cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
+	@$(VENV_PY) -c "from controller.shared.python.cpp import _cpp_mpc, _cpp_mpc_nonlinear, _cpp_mpc_linear, _cpp_sim, _cpp_physics; print('C++ modules loaded OK')"
 
 # ============================================================================
 # Quality targets
@@ -414,7 +431,7 @@ install: venv check-cmake
 
 # Run test suite.
 test:
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short
 
 # Run test suite with coverage quality gate.
 test-cov:
@@ -435,7 +452,7 @@ docs-build:
 		echo "Missing docs dependencies. Install with: $(VENV_PY) -m pip install -e \".[docs]\""; \
 		exit 1; \
 	fi
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)/src/python$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_ACTIVATE) && mkdocs build --strict
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_ACTIVATE) && mkdocs build --strict
 
 # Run full V4 beta release verification and packaging.
 release-v4-beta: lint test-cov test-ui test-ui-e2e docs-build package-app package-pyinstaller
@@ -468,8 +485,8 @@ lint: lint-backend lint-ui docs-check
 
 # Remove local build, venv, and cache artifacts.
 clean:
-	@rm -rf $(VENV_DIR) build dist src/lib
-	@rm -f src/python/cpp/*$(EXT_SUFFIX)
+	@rm -rf $(VENV_DIR) build dist
+	@rm -f controller/shared/python/cpp/*$(EXT_SUFFIX)
 	@rm -rf ui/node_modules/.vite
 	@rm -rf .pytest_cache .ruff_cache
 	@echo "Cleaned."

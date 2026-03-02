@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from benchmarks.mpc_quality import run_mpc_quality_suite
+from controller.shared.python.benchmarks.mpc_quality import run_mpc_quality_suite
 
 
 def parse_args() -> argparse.Namespace:

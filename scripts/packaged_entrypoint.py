@@ -44,7 +44,7 @@ def main() -> int:
         ).start()
 
     uvicorn.run(
-        "dashboard.app:app",
+        "controller.shared.python.dashboard.app:app",
         host=args.host,
         port=args.port,
         reload=False,

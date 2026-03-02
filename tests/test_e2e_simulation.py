@@ -9,10 +9,11 @@ import json
 import os
 
 import pytest
-from config.simulation_config import SimulationConfig
-from simulation.artifact_paths import artifact_path
-from simulation.engine import SatelliteMPCLinearizedSimulation
-from simulation.loop import SimulationLoop
+
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.simulation.artifact_paths import artifact_path
+from controller.shared.python.simulation.engine import SatelliteMPCLinearizedSimulation
+from controller.shared.python.simulation.loop import SimulationLoop
 
 
 @pytest.mark.slow

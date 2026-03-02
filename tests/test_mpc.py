@@ -7,11 +7,11 @@ Consolidates `test_mpc_controller.py` and `test_mpc_controller_path.py`.
 
 import numpy as np
 import pytest
-from config.simulation_config import SimulationConfig
-from control.mpc_controller import MPCController
-from runtime.mpc_runner import MPCRunner
 
-import cpp
+import controller.shared.python.cpp as cpp
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.control_common.mpc_controller import MPCController
+from controller.shared.python.runtime.mpc_runner import MPCRunner
 
 
 class TestMPCController:
@@ -93,7 +93,7 @@ class TestMPCController:
 
     def test_cpp_binding_exposes_mode_profile_fields(self):
         """C++ binding should expose MPCV2Params and mode profile fields."""
-        from cpp import _cpp_mpc
+        from controller.shared.python.cpp import _cpp_mpc
 
         params = _cpp_mpc.MPCV2Params()
         assert hasattr(params, "recover_contour_scale")

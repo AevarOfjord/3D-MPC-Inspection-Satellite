@@ -15,10 +15,10 @@ import sys
 import numpy as np
 import pytest
 
-# Ensure src/ is importable
-_SRC_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "src" / "python")
-if _SRC_DIR not in sys.path:
-    sys.path.insert(0, _SRC_DIR)
+# Ensure project root is importable
+_PROJECT_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # --------------------------------------------------------------------------
 # Skip markers
@@ -34,7 +34,7 @@ except ImportError:
 skip_no_casadi = pytest.mark.skipif(not HAS_CASADI, reason="CasADi not installed")
 
 try:
-    from cpp import _cpp_mpc  # noqa: F401
+    from controller.shared.python.cpp import _cpp_mpc  # noqa: F401
 
     HAS_CPP_MPC = True
 except ImportError:
@@ -87,7 +87,9 @@ class TestCasADiDynamics:
 
     @pytest.fixture
     def dynamics(self):
-        from control.codegen.satellite_dynamics import SatelliteDynamicsSymbolic
+        from controller.shared.python.control_common.codegen.satellite_dynamics import (
+            SatelliteDynamicsSymbolic,
+        )
 
         return SatelliteDynamicsSymbolic(num_thrusters=6, num_rw=3)
 
@@ -173,7 +175,9 @@ class TestJacobianAccuracy:
 
     @pytest.fixture
     def dynamics(self):
-        from control.codegen.satellite_dynamics import SatelliteDynamicsSymbolic
+        from controller.shared.python.control_common.codegen.satellite_dynamics import (
+            SatelliteDynamicsSymbolic,
+        )
 
         return SatelliteDynamicsSymbolic(num_thrusters=6, num_rw=3)
 
@@ -259,7 +263,10 @@ class TestCostFunctions:
     def test_contouring_cost_zero_at_path(self):
         """Contouring cost = 0 when satellite is on the path."""
         import casadi as ca
-        from control.codegen.cost_functions import contouring_cost
+
+        from controller.shared.python.control_common.codegen.cost_functions import (
+            contouring_cost,
+        )
 
         pos = ca.DM([1.0, 0.0, 0.0])
         p_ref = ca.DM([1.0, 0.0, 0.0])
@@ -271,7 +278,10 @@ class TestCostFunctions:
     def test_contouring_cost_positive_off_path(self):
         """Contouring cost > 0 when satellite is off the path."""
         import casadi as ca
-        from control.codegen.cost_functions import contouring_cost
+
+        from controller.shared.python.control_common.codegen.cost_functions import (
+            contouring_cost,
+        )
 
         pos = ca.DM([1.0, 0.0, 0.5])  # 0.5m off path
         p_ref = ca.DM([1.0, 0.0, 0.0])
@@ -283,7 +293,10 @@ class TestCostFunctions:
     def test_lag_cost_zero_at_ref(self):
         """Lag cost = 0 when satellite is at path reference point."""
         import casadi as ca
-        from control.codegen.cost_functions import lag_cost
+
+        from controller.shared.python.control_common.codegen.cost_functions import (
+            lag_cost,
+        )
 
         pos = ca.DM([1.0, 2.0, 0.0])
         p_ref = ca.DM([1.0, 2.0, 0.0])
@@ -294,7 +307,9 @@ class TestCostFunctions:
 
     def test_stage_cost_H_shape(self):
         """Stage cost should build without errors."""
-        from control.codegen.cost_functions import MPCCStageCost
+        from controller.shared.python.control_common.codegen.cost_functions import (
+            MPCCStageCost,
+        )
 
         sc = MPCCStageCost(num_thrusters=6, num_rw=3)
         assert sc.stage_cost is not None
@@ -303,7 +318,10 @@ class TestCostFunctions:
     def test_quat_error_shortest_path(self):
         """Quaternion error should choose shortest rotation path."""
         import casadi as ca
-        from control.codegen.cost_functions import quat_error_vec
+
+        from controller.shared.python.control_common.codegen.cost_functions import (
+            quat_error_vec,
+        )
 
         q = ca.DM([1, 0, 0, 0])
         q_ref = ca.DM([-1, 0, 0, 0])  # equivalent orientation
@@ -324,7 +342,7 @@ class TestCppSQPController:
 
     @pytest.fixture
     def controller(self):
-        from cpp import _cpp_mpc
+        from controller.shared.python.cpp import _cpp_mpc
 
         sat = _cpp_mpc.SatelliteParams()
         sat.mass = 10.0
@@ -435,13 +453,13 @@ class TestMPCController:
 
     @pytest.fixture
     def app_config(self):
-        from config.defaults import create_default_app_config
+        from controller.configs.defaults import create_default_app_config
 
         return create_default_app_config()
 
     def test_construction(self, app_config):
         """MPCController should construct from default AppConfig."""
-        from control.mpc_controller import MPCController
+        from controller.shared.python.control_common.mpc_controller import MPCController
 
         ctrl = MPCController(app_config)
         assert ctrl.dt > 0
@@ -449,7 +467,7 @@ class TestMPCController:
 
     def test_get_control_action_shape(self, app_config):
         """Control output should have correct dimension."""
-        from control.mpc_controller import MPCController
+        from controller.shared.python.control_common.mpc_controller import MPCController
 
         ctrl = MPCController(app_config)
 
@@ -465,7 +483,7 @@ class TestMPCController:
 
     def test_path_following_workflow(self, app_config):
         """Full workflow: set path -> solve -> get progress."""
-        from control.mpc_controller import MPCController
+        from controller.shared.python.control_common.mpc_controller import MPCController
 
         ctrl = MPCController(app_config)
 
@@ -482,8 +500,8 @@ class TestMPCController:
 
     def test_implements_controller_abc(self, app_config):
         """MPCController should be a valid Controller."""
-        from control.base import Controller
-        from control.mpc_controller import MPCController
+        from controller.shared.python.control_common.base import Controller
+        from controller.shared.python.control_common.mpc_controller import MPCController
 
         ctrl = MPCController(app_config)
         assert isinstance(ctrl, Controller)

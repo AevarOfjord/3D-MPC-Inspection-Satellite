@@ -1,4 +1,9 @@
-import type { MpcSettings, SimulationSettings, SettingReferenceSection } from './mpcSettingsTypes';
+import type {
+  MpcCoreSettings,
+  MpcSettings,
+  SimulationSettings,
+  SettingReferenceSection,
+} from './mpcSettingsTypes';
 
 export const DEFAULT_MPC_SETTINGS: MpcSettings = {
   prediction_horizon: 50,
@@ -44,6 +49,11 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   dt: 0.001,
   max_duration: 0.0,
   control_dt: 0.05,
+};
+
+export const DEFAULT_MPC_CORE_SETTINGS: MpcCoreSettings = {
+  controller_profile: 'hybrid',
+  solver_backend: 'OSQP',
 };
 
 export const MPC_CANONICAL_KEYS = new Set(Object.keys(DEFAULT_MPC_SETTINGS));

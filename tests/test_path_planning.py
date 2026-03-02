@@ -4,8 +4,9 @@ Path planning tests for point-to-point polyline generation.
 
 import numpy as np
 import pytest
-from mission.path_following import build_point_to_point_path
-from utils.navigation_utils import point_to_line_distance
+
+from controller.shared.python.mission.path_following import build_point_to_point_path
+from controller.shared.python.utils.navigation_utils import point_to_line_distance
 
 
 class TestPathPlanning:

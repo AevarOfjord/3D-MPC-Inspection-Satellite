@@ -1094,6 +1094,16 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={0.001}
                     />
+                    <SelectField
+                      label="Controller Profile"
+                      value={String(config?.mpc_core.controller_profile ?? 'hybrid')}
+                      onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
+                      options={[
+                        { label: 'Hybrid MPC', value: 'hybrid' },
+                        { label: 'Nonlinear MPC', value: 'nonlinear' },
+                        { label: 'Linear MPC', value: 'linear' },
+                      ]}
+                    />
                   </div>
                 </section>
 
