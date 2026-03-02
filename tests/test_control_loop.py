@@ -9,8 +9,12 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from runtime.control_loop import _update_mode_state, update_mpc_control_step
-from runtime.policy import SolverHealth
+
+from controller.shared.python.runtime.control_loop import (
+    _update_mode_state,
+    update_mpc_control_step,
+)
+from controller.shared.python.runtime.policy import SolverHealth
 
 
 def _make_sim(

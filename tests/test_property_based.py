@@ -43,7 +43,7 @@ class TestMathInvariants:
     @settings(max_examples=50)
     def test_angle_normalization_range(self, theta):
         """Normalized angle is always within [-pi, pi]."""
-        from utils.navigation_utils import normalize_angle
+        from controller.shared.python.utils.navigation_utils import normalize_angle
 
         norm = normalize_angle(theta)
         assert -np.pi <= norm <= np.pi
@@ -55,7 +55,7 @@ class TestMathInvariants:
     @settings(max_examples=50)
     def test_angle_difference_symmetry(self, angle1, angle2):
         """Angle difference is antisymmetric (diff(a,b) == -diff(b,a))."""
-        from utils.navigation_utils import angle_difference
+        from controller.shared.python.utils.navigation_utils import angle_difference
 
         d1 = angle_difference(angle1, angle2)
         d2 = angle_difference(angle2, angle1)
@@ -74,7 +74,9 @@ class TestMathInvariants:
     @settings(max_examples=50)
     def test_quaternion_normalization(self, roll, pitch, yaw):
         """Quaternions from Euler angles are always unit length."""
-        from utils.orientation_utils import euler_xyz_to_quat_wxyz
+        from controller.shared.python.utils.orientation_utils import (
+            euler_xyz_to_quat_wxyz,
+        )
 
         q = euler_xyz_to_quat_wxyz((roll, pitch, yaw))
         assert np.isclose(np.linalg.norm(q), 1.0, atol=1e-9)
@@ -92,8 +94,8 @@ class TestStateInvariants:
     @settings(max_examples=20)
     def test_state_validator_completeness(self, x, y, z):
         """Validator should handle any finite float input without crashing."""
-        from config.simulation_config import SimulationConfig
-        from simulation.state_validator import (
+        from controller.configs.simulation_config import SimulationConfig
+        from controller.shared.python.simulation.state_validator import (
             create_state_validator_from_config,
         )
 

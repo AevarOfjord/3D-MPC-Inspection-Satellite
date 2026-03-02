@@ -8,8 +8,9 @@ Combines `test_dashboard.py` and `test_mission_saving.py`.
 import json
 
 import pytest
-from dashboard.app import app
 from fastapi.testclient import TestClient
+
+from controller.shared.python.dashboard.app import app
 
 
 class TestDashboardAPI:
@@ -94,6 +95,7 @@ class TestDashboardAPI:
         assert base_cfg.get("schema_version") == "app_config_v3"
         assert isinstance(base_cfg.get("app_config"), dict)
         assert isinstance(base_cfg["app_config"].get("mpc_core"), dict)
+        assert base_cfg["app_config"]["mpc_core"].get("controller_profile") == "hybrid"
         assert base_cfg.get("config_meta", {}).get("overrides_active") is False
         assert base_cfg.get("config_meta", {}).get("config_version") == "app_config_v3"
 
@@ -193,6 +195,19 @@ class TestDashboardAPI:
         assert cfg.get("schema_version") == "app_config_v3"
         assert cfg["mpc"]["prediction_horizon"] == 45
         assert cfg["simulation"]["max_duration"] == 93.0
+
+        profile_resp = client.post(
+            "/runner/config",
+            json={
+                "schema_version": "app_config_v3",
+                "app_config": {
+                    "mpc_core": {"controller_profile": "nonlinear"},
+                },
+            },
+        )
+        assert profile_resp.status_code == 200
+        cfg = client.get("/runner/config").json()
+        assert cfg["app_config"]["mpc_core"]["controller_profile"] == "nonlinear"
 
     def test_runner_config_warn_ignores_removed_mpc_fields(self, client):
         """Removed MPC fields should be ignored with deprecation metadata."""

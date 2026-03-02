@@ -1,4 +1,8 @@
-from visualization.plot_catalog import GROUP_BY_ID, PLOT_GROUPS, PLOT_SPECS
+from controller.shared.python.visualization.plot_catalog import (
+    GROUP_BY_ID,
+    PLOT_GROUPS,
+    PLOT_SPECS,
+)
 
 
 def test_plot_catalog_integrity() -> None:

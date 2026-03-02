@@ -6,8 +6,12 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from runtime.path_completion import check_path_complete, get_path_completion_status
-from simulation.loop import SimulationLoop
+
+from controller.shared.python.runtime.path_completion import (
+    check_path_complete,
+    get_path_completion_status,
+)
+from controller.shared.python.simulation.loop import SimulationLoop
 
 
 class _FakeMPCController:

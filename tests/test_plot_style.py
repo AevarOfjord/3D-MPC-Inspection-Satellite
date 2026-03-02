@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
-from visualization.plot_style import PlotStyle
+
+from controller.shared.python.visualization.plot_style import PlotStyle
 
 
 def test_apply_global_theme_sets_core_rcparams() -> None:

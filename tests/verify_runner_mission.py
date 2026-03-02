@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from dashboard.runner_manager import RunnerManager
+from controller.shared.python.dashboard.runner_manager import RunnerManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

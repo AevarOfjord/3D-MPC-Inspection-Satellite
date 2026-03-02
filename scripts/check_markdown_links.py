@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 INLINE_CODE_RE = re.compile(r"`([^`]+)`")
 PATH_TOKEN_RE = re.compile(
-    r"(?<![\w./-])(?P<path>(?:\./)?(?:src|ui|tests|docs|scripts|missions|data)/[A-Za-z0-9._/\-]+/?)(?![\w./-])"
+    r"(?<![\w./-])(?P<path>(?:\./)?(?:controller|ui|tests|docs|scripts|missions|data)/[A-Za-z0-9._/\-]+/?)(?![\w./-])"
 )
 
 
@@ -31,8 +31,6 @@ def _path_candidates(raw: str) -> list[Path]:
     rel = token[2:] if token.startswith("./") else token
 
     candidates = [REPO_ROOT / rel]
-    if rel.startswith("src/"):
-        candidates.append(REPO_ROOT / "ui" / rel)
     if rel.startswith("tests/"):
         candidates.append(REPO_ROOT / "ui" / rel)
     return candidates

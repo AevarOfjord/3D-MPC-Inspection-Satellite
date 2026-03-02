@@ -69,6 +69,8 @@ export interface TelemetryData {
     pointing_guardrail_reason?: string | null;
   } | null;
   controller_core?: string;
+  controller_profile?: 'hybrid' | 'nonlinear' | 'linear' | string;
+  linearization_mode?: 'hybrid_tolerant_stage' | 'nonlinear_exact_stage' | 'linear_frozen_step' | string;
 }
 
 type TelemetryCallback = (data: TelemetryData) => void;

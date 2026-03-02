@@ -4,10 +4,11 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from dashboard.app import app
-from dashboard.routes import runner as runner_routes
 from fastapi.testclient import TestClient
-from mission import repository as mission_repo
+
+from controller.shared.python.dashboard.app import app
+from controller.shared.python.dashboard.routes import runner as runner_routes
+from controller.shared.python.mission import repository as mission_repo
 
 
 def _zip_bytes(entries: dict[str, bytes | str]) -> bytes:

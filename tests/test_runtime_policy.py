@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from runtime.policy import (
+
+from controller.shared.python.runtime.policy import (
     ActuatorPolicy,
     ControllerModeManager,
     PointingGuardrail,
@@ -12,7 +13,7 @@ from runtime.policy import (
     estimate_required_duration_s,
     resolve_pointing_context,
 )
-from simulation.reference import update_path_reference_state
+from controller.shared.python.simulation.reference import update_path_reference_state
 
 
 def test_mode_manager_track_recover_hysteresis() -> None:

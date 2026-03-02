@@ -8,21 +8,22 @@ import pathlib
 import sys
 
 # ---------------------------------------------------------------------------
-# Ensure ``src/`` is importable even when the editable install is broken.
+# Ensure project root is importable even when the editable install is broken.
 #
 # macOS APFS marks every file inside a dot-prefixed directory (like .venv311)
 # with UF_HIDDEN, causing Python's ``site.py`` to skip all ``.pth`` files.
-# Prepending ``src/`` to ``sys.path`` and symlinking the C++ ``.so`` files
-# into ``src/python/cpp/`` is the most reliable cross-platform
+# Prepending project root to ``sys.path`` and resolving compiled extension
+# modules through ``controller.shared.python.cpp`` is the most reliable cross-platform
 # workaround.
 # ---------------------------------------------------------------------------
-_SRC_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "src" / "python")
-if _SRC_DIR not in sys.path:
-    sys.path.insert(0, _SRC_DIR)
+_PROJECT_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 import matplotlib.pyplot as plt
 import pytest
-from config.simulation_config import SimulationConfig
+
+from controller.configs.simulation_config import SimulationConfig
 
 # ============================================================================
 # Configuration Reset Fixture

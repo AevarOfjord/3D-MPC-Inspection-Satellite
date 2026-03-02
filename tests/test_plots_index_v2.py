@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from simulation.io import SimulationIO
+from controller.shared.python.simulation.io import SimulationIO
 
 
 def _write(path: Path, content: str = "x") -> None:

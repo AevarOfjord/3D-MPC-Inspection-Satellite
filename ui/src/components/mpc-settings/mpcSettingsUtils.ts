@@ -1,5 +1,15 @@
-import type { MpcSettings, SimulationSettings, SettingsConfig } from './mpcSettingsTypes';
-import { DEFAULT_MPC_SETTINGS, DEFAULT_SIMULATION_SETTINGS, MPC_CANONICAL_KEYS } from './mpcSettingsDefaults';
+import type {
+  MpcCoreSettings,
+  MpcSettings,
+  SimulationSettings,
+  SettingsConfig,
+} from './mpcSettingsTypes';
+import {
+  DEFAULT_MPC_CORE_SETTINGS,
+  DEFAULT_MPC_SETTINGS,
+  DEFAULT_SIMULATION_SETTINGS,
+  MPC_CANONICAL_KEYS,
+} from './mpcSettingsDefaults';
 
 export function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -19,6 +29,31 @@ function stripRemovedMpcFields(
     }
   });
   return sanitized;
+}
+
+function normalizeControllerProfileValue(
+  mpcCore: Record<string, unknown> | null | undefined
+): MpcCoreSettings['controller_profile'] {
+  const profile = mpcCore?.controller_profile;
+  if (profile === 'hybrid' || profile === 'nonlinear' || profile === 'linear') {
+    return profile;
+  }
+  const legacyBackend = mpcCore?.controller_backend;
+  if (legacyBackend === 'v1') return 'linear';
+  return 'hybrid';
+}
+
+function sanitizeMpcCore(
+  mpcCore: Record<string, unknown> | null | undefined
+): MpcCoreSettings {
+  const normalized: MpcCoreSettings = {
+    ...DEFAULT_MPC_CORE_SETTINGS,
+    ...(mpcCore as Partial<MpcCoreSettings>),
+    controller_profile: normalizeControllerProfileValue(mpcCore),
+  };
+  // Deprecated legacy backend field must never survive normalization/emission.
+  delete (normalized as Record<string, unknown>).controller_backend;
+  return normalized;
 }
 
 export function normalizeConfig(raw: unknown): SettingsConfig | null {
@@ -49,6 +84,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
       ...DEFAULT_SIMULATION_SETTINGS,
       ...(simulation as Partial<SimulationSettings>),
     };
+    const normalizedMpcCore = sanitizeMpcCore(mpcCore);
     if (typeof normalizedMpc.dt === 'number') {
       normalizedSimulation.control_dt = normalizedMpc.dt;
     }
@@ -65,6 +101,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
     }
     return {
       mpc: normalizedMpc,
+      mpc_core: normalizedMpcCore,
       simulation: normalizedSimulation,
       physics: physics ?? undefined,
       reference_scheduler: referenceScheduler ?? undefined,
@@ -125,6 +162,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
 
   return {
     mpc: normalizedMpc,
+    mpc_core: sanitizeMpcCore(legacyMpc),
     simulation: normalizedSimulation,
     physics: undefined,
     reference_scheduler: undefined,
@@ -136,6 +174,12 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
 
 export function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
   const sanitizedMpc = stripRemovedMpcFields(config.mpc as Record<string, unknown>);
+  const mpcCore = sanitizeMpcCore(asRecord(config.mpc_core));
+  const mergedMpcCore: Record<string, unknown> = {
+    ...sanitizedMpc,
+    ...mpcCore,
+  };
+  delete mergedMpcCore.controller_backend;
   const actuatorPolicy =
     asRecord(config.actuator_policy) ?? {};
   const mergedActuatorPolicy: Record<string, unknown> = {
@@ -146,7 +190,7 @@ export function buildV3Envelope(config: SettingsConfig): Record<string, unknown>
   };
 
   const appConfig: Record<string, unknown> = {
-    mpc_core: sanitizedMpc,
+    mpc_core: mergedMpcCore,
     actuator_policy: mergedActuatorPolicy,
     simulation: {
       ...config.simulation,
@@ -210,6 +254,7 @@ function isNonNegative(n: number): boolean {
 export function validateConfig(config: SettingsConfig): string[] {
   const issues: string[] = [];
   const { mpc, simulation } = config;
+  const mpcCore = config.mpc_core;
 
   if (mpc.prediction_horizon < 1) issues.push('Prediction horizon must be >= 1.');
   if (mpc.control_horizon < 1) issues.push('Control horizon must be >= 1.');
@@ -248,6 +293,9 @@ export function validateConfig(config: SettingsConfig): string[] {
   }
   if (mpc.thruster_hysteresis_on <= mpc.thruster_hysteresis_off) {
     issues.push('Thruster hysteresis on-threshold must be greater than off-threshold.');
+  }
+  if (!['hybrid', 'nonlinear', 'linear'].includes(mpcCore.controller_profile)) {
+    issues.push('Controller profile must be one of: hybrid, nonlinear, linear.');
   }
 
   const nonNegativeWeights: Array<[string, number]> = [

@@ -95,7 +95,7 @@ def _build_pyinstaller(root: Path, dist_dir: Path, work_dir: Path) -> Path:
         "--name",
         "SatelliteControl",
         "--paths",
-        str(root / "src" / "python"),
+        str(root),
         "--distpath",
         str(dist_dir),
         "--workpath",

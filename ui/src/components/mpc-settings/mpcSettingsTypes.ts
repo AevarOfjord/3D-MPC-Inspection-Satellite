@@ -39,6 +39,12 @@ export interface MpcSettings {
   [key: string]: unknown;
 }
 
+export interface MpcCoreSettings {
+  controller_profile: 'hybrid' | 'nonlinear' | 'linear';
+  solver_backend: 'OSQP';
+  [key: string]: unknown;
+}
+
 export interface SimulationSettings {
   dt: number;
   max_duration: number;
@@ -48,6 +54,7 @@ export interface SimulationSettings {
 
 export interface SettingsConfig {
   mpc: MpcSettings;
+  mpc_core: MpcCoreSettings;
   simulation: SimulationSettings;
   physics?: Record<string, unknown>;
   reference_scheduler?: Record<string, unknown>;

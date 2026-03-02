@@ -4,9 +4,10 @@ Monte Carlo regression harness for MPC robustness and timing.
 
 import numpy as np
 import pytest
-from config.simulation_config import SimulationConfig
-from control.mpc_controller import MPCController
-from simulation.cpp_backend import CppSatelliteSimulator
+
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.control_common.mpc_controller import MPCController
+from controller.shared.python.simulation.cpp_backend import CppSatelliteSimulator
 
 
 @pytest.mark.slow

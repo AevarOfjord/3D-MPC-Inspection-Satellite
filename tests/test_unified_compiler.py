@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
-from config.simulation_config import SimulationConfig
-from mission import unified_compiler
-from mission.unified_mission import (
+
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.mission import unified_compiler
+from controller.shared.python.mission.unified_mission import (
     Frame,
     MissionDefinition,
     MissionOverrides,

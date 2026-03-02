@@ -2,8 +2,8 @@
 
 import json
 
-from config.simulation_config import SimulationConfig
-from runtime.performance_monitor import PerformanceMonitor
+from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.runtime.performance_monitor import PerformanceMonitor
 
 
 def test_default_simulation_timing_contract_config() -> None:

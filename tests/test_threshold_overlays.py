@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from visualization.threshold_overlays import add_limit_band, add_limit_overlay
+
+from controller.shared.python.visualization.threshold_overlays import (
+    add_limit_band,
+    add_limit_overlay,
+)
 
 
 def test_add_limit_overlay_draws_lines_and_fill() -> None:

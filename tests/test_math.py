@@ -7,7 +7,8 @@ Consolidates `test_math_utils.py`, `test_orbital_mechanics.py`, and parts of `ph
 
 import numpy as np
 import pytest
-from utils.navigation_utils import (
+
+from controller.shared.python.utils.navigation_utils import (
     angle_difference,
     normalize_angle,
     point_to_line_distance,
