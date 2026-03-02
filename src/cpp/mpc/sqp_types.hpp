@@ -63,7 +63,7 @@ struct MPCV2Params {
     double Q_velocity_align = 160.0;
     double Q_s_anchor = 500.0;
     double Q_attitude = 3500.0;
-    double Q_axis_align = 3000.0;
+    double Q_axis_align = 7000.0;
     double Q_quat_norm = 20.0;
     double Q_angvel = 1200.0;
     double R_thrust = 0.02;
@@ -78,7 +78,7 @@ struct MPCV2Params {
     double path_speed_max = 0.2;
     double ref_tangent_lookahead_m = 0.35;
     double ref_tangent_lookback_m = 0.10;
-    double ref_quat_max_rate_rad_s = 1.57;
+    double ref_quat_max_rate_rad_s = 4.0;
     double ref_quat_terminal_rate_scale = 2.0;
 
     // Terminal
@@ -116,7 +116,7 @@ struct MPCV2Params {
     double recover_contour_scale = 2.0;
     double recover_lag_scale = 2.0;
     double recover_progress_scale = 0.6;
-    double recover_attitude_scale = 0.8;
+    double recover_attitude_scale = 2.0;
     double settle_progress_scale = 0.0;
     double settle_terminal_pos_scale = 2.0;
     double settle_terminal_attitude_scale = 1.5;

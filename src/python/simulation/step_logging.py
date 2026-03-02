@@ -75,6 +75,29 @@ def _fmt_state_row(
     return f"{color_prefix}{lbl}{color_reset} {value}"
 
 
+def _fmt_velocity_row(state: np.ndarray) -> str:
+    """Format translational velocity row in m/s."""
+    if state.shape[0] < 10:
+        return "[vx:0.000, vy:0.000, vz:0.000]m/s"
+    return f"[vx:{state[7]:.3f}, vy:{state[8]:.3f}, vz:{state[9]:.3f}]m/s"
+
+
+def _fmt_ang_velocity_row_deg(state: np.ndarray) -> str:
+    """Format angular velocity row in deg/s."""
+    if state.shape[0] < 13:
+        return "[wx:0.0, wy:0.0, wz:0.0]°/s"
+    w_deg = np.degrees(np.array(state[10:13], dtype=float))
+    return f"[wx:{w_deg[0]:.1f}, wy:{w_deg[1]:.1f}, wz:{w_deg[2]:.1f}]°/s"
+
+
+def _fmt_compact_vector(values: list[float] | np.ndarray, decimals: int = 2) -> str:
+    """Format numeric vectors with fixed decimals and compact bracket style."""
+    arr = np.array(values, dtype=float).reshape(-1)
+    if arr.size == 0:
+        return "[]"
+    return "[" + ", ".join(f"{v:.{decimals}f}" for v in arr) + "]"
+
+
 def log_simulation_step(
     sim: Any,
     logger_obj: logging.Logger,
@@ -144,7 +167,7 @@ def log_simulation_step(
     # Determine status message (path-only).
     mission_phase = "PATH_FOLLOWING"
     mode_label = str(getattr(getattr(sim, "mode_state", None), "current_mode", "TRACK"))
-    status_msg = f"Following Path [{mode_label}] (t={sim.simulation_time:.1f}s)"
+    status_msg = f"Following Path [{mode_label}]"
 
     path_s_ref = mpc_info.get("path_s", getattr(sim.mpc_controller, "s", None))
     path_s_sat = mpc_info.get("path_s_proj")
@@ -157,18 +180,9 @@ def log_simulation_step(
             path_s_sat = None
     path_len = sim._get_mission_path_length(compute_if_missing=True)
     if path_s_sat is not None and path_s_ref is not None and path_len:
-        status_msg = (
-            f"Following Path [{mode_label}] "
-            f"(sat s={float(path_s_sat):.2f}/{path_len:.2f}m, "
-            f"ref s={float(path_s_ref):.2f}/{path_len:.2f}m, "
-            f"t={sim.simulation_time:.1f}s)"
-        )
+        status_msg = f"Following Path [{mode_label}]"
     elif path_s_ref is not None and path_len:
-        status_msg = (
-            f"Following Path [{mode_label}] "
-            f"(ref s={float(path_s_ref):.2f}/{path_len:.2f}m, "
-            f"t={sim.simulation_time:.1f}s)"
-        )
+        status_msg = f"Following Path [{mode_label}]"
 
     # Prepare display variables and update command history.
     if thruster_action.ndim > 1:
@@ -213,12 +227,51 @@ def log_simulation_step(
     solve_ms = mpc_info.get("solve_time", 0) * 1000
 
     # Show duty cycle for each active thruster (matching active_thruster_ids).
-    thr_out = [round(float(display_thrusters[i - 1]), 2) for i in active_thruster_ids]
-    rw_norm = np.zeros(3, dtype=float)
+    thr_out = [float(display_thrusters[i - 1]) for i in active_thruster_ids]
+
+    # Resolve per-thruster max forces [N] for physical output.
+    thruster_force_limits = np.zeros_like(display_thrusters, dtype=float)
+    raw_thruster_force_limits = getattr(sim.mpc_controller, "thruster_forces", None)
+    if raw_thruster_force_limits is not None:
+        try:
+            parsed_force_limits = np.array(
+                raw_thruster_force_limits, dtype=float
+            ).reshape(-1)
+            n = min(thruster_force_limits.size, parsed_force_limits.size)
+            if n > 0:
+                thruster_force_limits[:n] = parsed_force_limits[:n]
+        except Exception:
+            pass
+    thr_force_out = [
+        float(display_thrusters[i - 1]) * float(thruster_force_limits[i - 1])
+        for i in active_thruster_ids
+    ]
+
+    # RW physical torque command [N*m] and normalized activity [-1, 1].
+    rw_torque_vec = np.zeros(3, dtype=float)
     if rw_torque is not None:
         rw_vals = np.array(rw_torque, dtype=float)
-        rw_norm[: min(3, len(rw_vals))] = rw_vals[:3]
-    rw_out_str = f"[{rw_norm[0]:.2f}, {rw_norm[1]:.2f}, {rw_norm[2]:.2f}]"
+        rw_torque_vec[: min(3, len(rw_vals))] = rw_vals[:3]
+    rw_activity = np.zeros(3, dtype=float)
+    rw_limits = np.zeros(3, dtype=float)
+    raw_rw_limits = getattr(sim.mpc_controller, "rw_torque_limits", None)
+    if raw_rw_limits is not None:
+        try:
+            parsed_rw_limits = np.array(raw_rw_limits, dtype=float).reshape(-1)
+            n = min(3, parsed_rw_limits.size)
+            if n > 0:
+                rw_limits[:n] = parsed_rw_limits[:n]
+        except Exception:
+            pass
+    for i in range(3):
+        limit = float(rw_limits[i])
+        if np.isfinite(limit) and limit > 1e-9:
+            rw_activity[i] = float(np.clip(rw_torque_vec[i] / limit, -1.0, 1.0))
+
+    thr_out_str = _fmt_compact_vector(thr_out, decimals=2)
+    thr_force_out_str = _fmt_compact_vector(thr_force_out, decimals=2)
+    rw_activity_str = _fmt_compact_vector(rw_activity, decimals=2)
+    rw_torque_str = _fmt_compact_vector(rw_torque_vec, decimals=2)
 
     # Calculate detailed error vectors
     # Position Error Vector (Current - Reference)
@@ -278,21 +331,28 @@ def log_simulation_step(
         os.environ.get("NO_COLOR")
     )
     BLUE = "\033[94m" if use_color else ""
+    GREEN = "\033[92m" if use_color else ""
+    RED = "\033[91m" if use_color else ""
     YELLOW = "\033[93m" if use_color else ""
     RESET = "\033[0m" if use_color else ""
     CYAN = "\033[96m" if use_color else ""
     BOLD = "\033[1m" if use_color else ""
 
-    # Time and Status Header
-    status_split_idx = status_msg.find(" (")
-    if status_split_idx > 0:
-        header_line_top = status_msg[:status_split_idx]
+    # Time and status header (fixed two-line style).
+    header_line_top = status_msg
+    if path_s_sat is not None and path_s_ref is not None and path_len:
         header_line_bottom = (
-            status_msg[status_split_idx:].lstrip() + f" | Solve: {solve_ms:.1f}ms"
+            f"Sat s={float(path_s_sat):.2f}/{path_len:.2f}m | "
+            f"Ref s={float(path_s_ref):.2f}/{path_len:.2f}m | "
+            f"t={sim.simulation_time:.1f}s | Solve: {solve_ms:.1f}ms"
+        )
+    elif path_s_ref is not None and path_len:
+        header_line_bottom = (
+            f"Ref s={float(path_s_ref):.2f}/{path_len:.2f}m | "
+            f"t={sim.simulation_time:.1f}s | Solve: {solve_ms:.1f}ms"
         )
     else:
-        header_line_top = status_msg
-        header_line_bottom = f"(t={sim.simulation_time:.1f}s) | Solve: {solve_ms:.1f}ms"
+        header_line_bottom = f"t={sim.simulation_time:.1f}s | Solve: {solve_ms:.1f}ms"
 
     # Error Metrics formatted with colors
     # We can use simple thresholding for colors, or just keep labels colored for readability.
@@ -305,6 +365,7 @@ def log_simulation_step(
         pos_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
+        left_width=30,
     )
     row_ang = _fmt_metric_row(
         "ANG ERR",
@@ -313,6 +374,7 @@ def log_simulation_step(
         ang_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
+        left_width=30,
     )
     row_vel = _fmt_metric_row(
         "VEL ERR",
@@ -321,6 +383,7 @@ def log_simulation_step(
         vel_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
+        left_width=30,
     )
     row_ang_vel = _fmt_metric_row(
         "ANG VEL ERR",
@@ -329,6 +392,7 @@ def log_simulation_step(
         ang_vel_err_str,
         color_prefix=CYAN,
         color_reset=RESET,
+        left_width=30,
     )
 
     # State Data (satellite and reference broken into explicit sections)
@@ -344,46 +408,82 @@ def log_simulation_step(
         color_prefix=BLUE,
         color_reset=RESET,
     )
+    row_sat_vel = _fmt_state_row(
+        "Sat Vel",
+        _fmt_velocity_row(current_state),
+        color_prefix=BLUE,
+        color_reset=RESET,
+    )
+    row_sat_ang_vel = _fmt_state_row(
+        "Sat Ang Vel",
+        _fmt_ang_velocity_row_deg(current_state),
+        color_prefix=BLUE,
+        color_reset=RESET,
+    )
     row_ref_pos = _fmt_state_row(
         "Ref Pos",
         _fmt_position_mm(safe_reference),
-        color_prefix=BLUE,
+        color_prefix=GREEN,
         color_reset=RESET,
     )
     row_ref_ang = _fmt_state_row(
         "Ref Ang",
         f"[Yaw:{ref_euler_deg[2]:.1f}, Roll:{ref_euler_deg[0]:.1f}, Pitch:{ref_euler_deg[1]:.1f}]°",
-        color_prefix=BLUE,
+        color_prefix=GREEN,
+        color_reset=RESET,
+    )
+    row_ref_vel = _fmt_state_row(
+        "Ref Vel",
+        _fmt_velocity_row(safe_reference),
+        color_prefix=GREEN,
+        color_reset=RESET,
+    )
+    row_ref_ang_vel = _fmt_state_row(
+        "Ref Ang Vel",
+        _fmt_ang_velocity_row_deg(safe_reference),
+        color_prefix=GREEN,
         color_reset=RESET,
     )
 
     # Actuators
-    row_thrusters = f"{YELLOW}Thrusters {active_thruster_ids}:{RESET} {thr_out}"
-    row_rw = f"{YELLOW}RW Torque [X,Y,Z]:{RESET}   {rw_out_str}"
+    row_thrusters_activity = (
+        f"{YELLOW}Thrusters Activity {active_thruster_ids}:{RESET} {thr_out_str}"
+    )
+    row_thruster_force = (
+        f"{YELLOW}Thruster Force {active_thruster_ids}:{RESET} {thr_force_out_str}N"
+    )
+    row_rw_activity = f"{RED}RW Activity [X,Y,Z]:{RESET}   {rw_activity_str}"
+    row_rw_torque = f"{RED}RW Torque [X,Y,Z]:{RESET}   {rw_torque_str}N*m"
 
     sep = "-" * 80
-    block_sep = "=" * 80
 
     if do_log:
         logger_obj.info(
-            f"\n{BOLD}{block_sep}{RESET}\n"
+            f"\n{BOLD}{sep}{RESET}\n"
             f"{header_line_top}\n"
             f"{header_line_bottom}\n"
             f"{sep}\n"
+            f"{row_sat_pos}\n"
+            f"{row_sat_ang}\n"
+            f"{row_sat_vel}\n"
+            f"{row_sat_ang_vel}\n"
+            f"\n"
+            f"{row_ref_pos}\n"
+            f"{row_ref_ang}\n"
+            f"{row_ref_vel}\n"
+            f"{row_ref_ang_vel}\n"
+            f"\n"
             f"{row_pos}\n"
             f"{row_ang}\n"
             f"{row_vel}\n"
             f"{row_ang_vel}\n"
             f"{sep}\n"
             f"\n"
-            f"{row_sat_pos}\n"
-            f"{row_sat_ang}\n"
-            f"{row_ref_pos}\n"
-            f"{row_ref_ang}\n"
-            f"{sep}\n"
+            f"{row_thrusters_activity}\n"
+            f"{row_thruster_force}\n"
             f"\n"
-            f"{row_thrusters}\n"
-            f"{row_rw}\n\n\n"
+            f"{row_rw_activity}\n"
+            f"{row_rw_torque}\n\n"
         )
 
     if do_log:

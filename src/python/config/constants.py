@@ -191,7 +191,7 @@ class _MPCVueMechanicsDefaults:
     PATH_SPEED_MAX: float = 0.2  # m/s — upper bound on v_s
     REF_TANGENT_LOOKAHEAD_M: float = 0.35  # m — lookahead for smooth heading secant
     REF_TANGENT_LOOKBACK_M: float = 0.10  # m — lookback for smooth heading secant
-    REF_QUAT_MAX_RATE_RAD_S: float = 1.57  # rad/s — max reference quaternion slew rate
+    REF_QUAT_MAX_RATE_RAD_S: float = 4.0  # rad/s — max reference quaternion slew rate
     REF_QUAT_TERMINAL_RATE_SCALE: float = (
         2.0  # multiplier for ref quaternion slew in SETTLE/HOLD/COMPLETE
     )
@@ -258,7 +258,9 @@ class _MPCTuningDefaults:
 
     # ----- Attitude -----
     Q_ATTITUDE: float = 3500.0  # attitude tracking ||q - q_ref||²
-    Q_AXIS_ALIGN: float = 3000.0  # added to Q_ATTITUDE for scan-axis alignment emphasis
+    Q_AXIS_ALIGN: float = (
+        7000.0  # added to Q_ATTITUDE for stronger +X path-alignment emphasis
+    )
     Q_QUAT_NORM: float = (
         20.0  # soft quaternion normalisation penalty ||q - q_current||²
     )
@@ -393,7 +395,7 @@ class _MPCContractsDefaults:
         0.6  # ↓ speed pressure (recovery takes priority over progress)
     )
     RECOVER_ATTITUDE_SCALE: float = (
-        0.8  # ↓ attitude weight (allow body rotation to recover faster)
+        2.0  # ↑ attitude pull in RECOVER to actively re-acquire +X path heading
     )
 
     # ----- SETTLE mode weight scales -----
