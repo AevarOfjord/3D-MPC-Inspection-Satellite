@@ -351,6 +351,27 @@ class SimulationManager:
                     ),
                 )
             ),
+            "shared_params_hash": str(
+                getattr(
+                    getattr(self.sim_instance, "mpc_controller", None),
+                    "shared_params_hash",
+                    "unknown",
+                )
+            ),
+            "effective_params_hash": str(
+                getattr(
+                    getattr(self.sim_instance, "mpc_controller", None),
+                    "effective_params_hash",
+                    "unknown",
+                )
+            ),
+            "override_diff": dict(
+                getattr(
+                    getattr(self.sim_instance, "mpc_controller", None),
+                    "profile_override_diff",
+                    {},
+                )
+            ),
             "scan_object": scan_object,
             "frame": frame,
             "frame_origin": frame_origin,

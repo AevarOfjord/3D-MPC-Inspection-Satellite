@@ -912,6 +912,47 @@ class MPCCoreParams(BaseModel):
     )
 
 
+class MPCProfileOverrides(BaseModel):
+    """Per-profile parameter overrides for fair baseline-vs-delta comparison."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Overrides applied on top of shared AppConfig.mpc baseline for this profile."
+        ),
+    )
+    profile_specific: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Profile-local parameters that are not part of shared AppConfig.mpc fields."
+        ),
+    )
+
+    @field_validator("base_overrides")
+    @classmethod
+    def validate_base_override_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
+        allowed_keys = set(MPCParams.model_fields.keys())
+        invalid = sorted(key for key in value.keys() if key not in allowed_keys)
+        if invalid:
+            raise ValueError(
+                "mpc_profile_overrides.base_overrides contains unknown keys: "
+                + ", ".join(invalid)
+            )
+        return value
+
+
+class MPCProfileOverridesByProfile(BaseModel):
+    """Container for explicit per-profile override payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hybrid: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    nonlinear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    linear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+
+
 class ActuatorPolicyParams(BaseModel):
     """Actuator shaping policy."""
 
@@ -1163,6 +1204,9 @@ class AppConfig(BaseModel):
         default_factory=ReferenceSchedulerParams
     )
     mpc_core: MPCCoreParams = Field(default_factory=MPCCoreParams)
+    mpc_profile_overrides: MPCProfileOverridesByProfile = Field(
+        default_factory=MPCProfileOverridesByProfile
+    )
     actuator_policy: ActuatorPolicyParams = Field(default_factory=ActuatorPolicyParams)
     controller_contracts: ControllerContractsParams = Field(
         default_factory=ControllerContractsParams

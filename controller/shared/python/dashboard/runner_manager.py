@@ -249,7 +249,7 @@ class RunnerManager:
         Extract canonical app_config sections from legacy payloads.
 
         Canonical sections:
-            physics, reference_scheduler, mpc_core, actuator_policy,
+            physics, reference_scheduler, mpc_core, mpc_profile_overrides, actuator_policy,
             controller_contracts, simulation, input_file_path
         """
         if not isinstance(payload, dict):
@@ -265,6 +265,7 @@ class RunnerManager:
             "physics",
             "reference_scheduler",
             "mpc_core",
+            "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
@@ -334,6 +335,7 @@ class RunnerManager:
             "mpc",
             "reference_scheduler",
             "mpc_core",
+            "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
@@ -381,6 +383,7 @@ class RunnerManager:
             mpc_core = app_cfg.get("mpc", {})
         mirrored["physics"] = app_cfg.get("physics", {})
         mirrored["mpc"] = mpc_core
+        mirrored["mpc_profile_overrides"] = app_cfg.get("mpc_profile_overrides", {})
         mirrored["simulation"] = app_cfg.get("simulation", {})
         mirrored["input_file_path"] = app_cfg.get("input_file_path")
         return mirrored
@@ -473,6 +476,7 @@ class RunnerManager:
         for section in (
             "physics",
             "reference_scheduler",
+            "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
@@ -517,6 +521,7 @@ class RunnerManager:
             "physics",
             "reference_scheduler",
             "mpc_core",
+            "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",

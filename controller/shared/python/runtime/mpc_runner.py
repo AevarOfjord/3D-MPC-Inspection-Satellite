@@ -196,6 +196,13 @@ class MPCRunner:
                 "solver_backend": str(getattr(self.mpc, "solver_backend", "OSQP")),
                 "solver_type": str(getattr(self.mpc, "solver_type", "OSQP")),
                 "solver_time_limit": float(getattr(self.mpc, "solver_time_limit", 0.0)),
+                "shared_params_hash": str(
+                    getattr(self.mpc, "shared_params_hash", "unknown")
+                ),
+                "effective_params_hash": str(
+                    getattr(self.mpc, "effective_params_hash", "unknown")
+                ),
+                "override_diff": dict(getattr(self.mpc, "profile_override_diff", {})),
             }
 
         end_compute_time = time.perf_counter()

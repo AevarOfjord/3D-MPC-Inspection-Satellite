@@ -6,6 +6,9 @@ import importlib
 import sys
 from pathlib import Path
 
+# Canonical extension namespace alias.
+sys.modules.setdefault("cpp", sys.modules[__name__])
+
 
 def _inject_local_build_paths() -> None:
     root = Path(__file__).resolve().parents[4]
@@ -22,13 +25,11 @@ def _inject_local_build_paths() -> None:
 
 def _load_extension(name: str):
     _inject_local_build_paths()
+    module_name = f"cpp.{name}"
     try:
-        return importlib.import_module(f"{__name__}.{name}")
+        return importlib.import_module(module_name)
     except Exception:
-        try:
-            return importlib.import_module(name)
-        except Exception:
-            return None
+        return None
 
 
 for _mod in (
@@ -42,5 +43,6 @@ for _mod in (
     if _module is None:
         continue
     globals()[_mod] = _module
-    # Backward-compat alias
+    # Backward-compat aliases for both old and new import paths.
     sys.modules.setdefault(f"cpp.{_mod}", _module)
+    sys.modules.setdefault(f"{__name__}.{_mod}", _module)

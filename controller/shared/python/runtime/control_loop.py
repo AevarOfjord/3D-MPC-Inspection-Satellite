@@ -491,6 +491,24 @@ def update_mpc_control_step(sim: Any) -> None:
             ),
         )
     )
+    mpc_ctrl = getattr(sim, "mpc_controller", None)
+    mpc_info["shared_params_hash"] = str(
+        getattr(
+            mpc_ctrl,
+            "shared_params_hash",
+            mpc_info.get("shared_params_hash", "unknown"),
+        )
+    )
+    mpc_info["effective_params_hash"] = str(
+        getattr(
+            mpc_ctrl,
+            "effective_params_hash",
+            mpc_info.get("effective_params_hash", "unknown"),
+        )
+    )
+    mpc_info["override_diff"] = dict(
+        getattr(mpc_ctrl, "profile_override_diff", mpc_info.get("override_diff", {}))
+    )
     gate = getattr(sim, "completion_gate", None)
     if gate is not None:
         mpc_info["completion_gate_position_ok"] = bool(

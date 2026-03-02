@@ -37,3 +37,34 @@ def test_nonlinear_fail_closed_on_invalid_linearization():
     assert info["solver_success"] is False
     assert info["fallback_active"] is True
     assert u.shape[0] == controller.num_rw_axes + controller.num_thrusters
+
+
+def test_nonlinear_profile_runs_outer_sqp_iterations():
+    cfg = SimulationConfig.create_default().app_config.model_copy(deep=True)
+    cfg.mpc_core.controller_profile = "nonlinear"
+    controller = create_controller(cfg)
+
+    call_count = {"n": 0}
+
+    def stable_f_and_jacs(x, u, p, dt):  # noqa: ANN001
+        call_count["n"] += 1
+        nx = len(x)
+        nu = len(u)
+        x_next = np.array(x, dtype=float).copy()
+        A = np.eye(nx, dtype=float)
+        B = np.zeros((nx, nu), dtype=float)
+        return x_next, A, B
+
+    controller._f_and_jacs = stable_f_and_jacs  # noqa: SLF001 - intentional test hook
+
+    x = np.zeros(16, dtype=float)
+    x[3] = 1.0
+    _, info = controller.get_control_action(
+        x_current=x,
+        previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
+    )
+
+    assert info["controller_profile"] == "nonlinear"
+    assert info["linearization_mode"] == "nonlinear_exact_stage"
+    assert info["sqp_outer_iterations"] >= 2
+    assert call_count["n"] >= controller.prediction_horizon * 2
