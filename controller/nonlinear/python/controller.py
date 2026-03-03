@@ -1,4 +1,4 @@
-"""Nonlinear controller profile adapter."""
+"""Nonlinear controller profile adapter (Python orchestration + C++ SQP core)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,13 @@ from controller.shared.python.control_common.mpc_controller import MPCController
 
 
 class NonlinearMPCController(MPCController):
-    """Nonlinear profile built on the shared RTI-SQP execution stack."""
+    """
+    Nonlinear profile wired to the shared mixed runtime stack.
+
+    Primary execution path:
+    - Python: stage-wise exact CasADi linearization + nonlinear strategy orchestration
+    - C++: profile-specific SQP/OSQP core (`_cpp_mpc_nonlinear`) for the control solve
+    """
 
     controller_profile = "nonlinear"
     controller_core = "nonlinear-sqp"

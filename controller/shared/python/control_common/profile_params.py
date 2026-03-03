@@ -21,8 +21,6 @@ _PROFILE_SPECIFIC_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "nonlinear": {
         "strict_integrity": True,
-        "sqp_max_iter": 2,
-        "sqp_tol": 1e-4,
     },
     "linear": {
         "freeze_refresh_interval_steps": 1,

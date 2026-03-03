@@ -494,6 +494,21 @@ class MPCParams(BaseModel):
         le=1000,
         description="Control steps between online DARE terminal updates",
     )
+    sqp_max_iter: int = Field(
+        constants.Constants.SQP_MAX_ITER,
+        ge=1,
+        le=20,
+        description=(
+            "Outer RTI-SQP iterations per control step (1 = single-pass RTI). "
+            "Shared across all profiles to ensure a fair scientific comparison."
+        ),
+    )
+    sqp_tol: float = Field(
+        constants.Constants.SQP_TOL,
+        gt=0.0,
+        le=1.0,
+        description="Outer-loop convergence tolerance (inf-norm on Δu)",
+    )
     terminal_cost_profile: str = Field(
         constants.Constants.TERMINAL_COST_PROFILE,
         description='Terminal cost profile ("diagonal" or "dense_terminal")',

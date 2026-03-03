@@ -22,13 +22,12 @@ make sync-ui-model-assets  # Mirror canonical model assets into the built UI bun
 make package-app   # Create distributable .tar.gz bundle
 ```
 
-**Running a single test** — Python working directory must be `src/python`:
+**Running a single test** — run from the repo root (conftest.py adds it to sys.path):
 ```bash
-cd src/python
-python -m pytest ../../tests/test_mpc.py::TestMPCController::test_basic_solve -q --tb=short
+python -m pytest tests/test_mpc.py::TestMPCController::test_basic_solve -q --tb=short
 
 # Skip slow/e2e tests:
-python -m pytest ../../tests/ -m "not slow and not e2e" -q
+python -m pytest tests/ -m "not slow and not e2e" -q
 ```
 
 **Frontend tests:**
@@ -41,33 +40,35 @@ npm run test:e2e      # Playwright e2e (requires running server on :5173 or :800
 
 **Verifying C++ build:**
 ```bash
-cd src/python && python -c "from cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('OK')"
+python -c "from controller.shared.python.cpp import _cpp_mpc, _cpp_sim, _cpp_physics; print('OK')"
 ```
 
 **Codegen** (CasADi → C Jacobians, auto-cached by source hash):
 ```bash
-cd src/python && python -m control.codegen.generate         # regenerate if stale
-cd src/python && python -m control.codegen.generate --force # force full rebuild
+python -m controller.shared.python.control_common.codegen.generate         # regenerate if stale
+python -m controller.shared.python.control_common.codegen.generate --force # force full rebuild
 ```
-Codegen must be rerun if `control/codegen/satellite_dynamics.py` or `cost_functions.py` change. Output goes to `codegen_cache/` (not committed).
+Codegen must be rerun if `controller/shared/python/control_common/codegen/satellite_dynamics.py` or `cost_functions.py` change. Output goes to `codegen_cache/` (not committed).
 
 ## Architecture Overview
 
 This is a **hybrid Python + C++ + React** satellite simulation and control system.
 
-### C++ Extension Modules (`src/cpp/`)
+### C++ Extension Modules
 
-Three pybind11 modules compiled via CMake + scikit-build-core:
+Five pybind11 modules compiled via CMake + scikit-build-core, loaded through `controller/shared/python/cpp/__init__.py`:
 
-| Module | Source Dir | Purpose |
-|--------|-----------|---------|
-| `_cpp_mpc` | `src/cpp/mpc/` | RTI-SQP MPC solver (OSQP-backed) |
-| `_cpp_sim` | `src/cpp/sim/` | RK4 physics integrator (16-state plant) |
-| `_cpp_physics` | `src/cpp/sim/` | Orbital mechanics utilities |
+| Module | Purpose |
+| ------ | ------- |
+| `_cpp_mpc` | RTI-SQP MPC solver (hybrid/default) |
+| `_cpp_mpc_nonlinear` | SQP solver for exact nonlinear linearization |
+| `_cpp_mpc_linear` | SQP solver for linear profile |
+| `_cpp_sim` | RK4 physics integrator (16-state plant) |
+| `_cpp_physics` | Orbital mechanics utilities |
 
 C++ dependencies (fetched by CMake): Eigen3 3.4.0, OSQP 0.6.3. Python bindings via pybind11.
 
-Clangd LSP will show `'Eigen/Dense' file not found` — this is a false positive because clangd lacks the CMake FetchContent build environment. Ignore these; the actual build works fine.
+Clangd LSP will show `'Eigen/Dense' file not found` — false positive, ignore. The actual build works fine.
 
 ### Plant State (16-dimensional)
 
@@ -80,31 +81,78 @@ x = [r(3), q(4), v(3), w(3), wr(3)]
   wr  = reaction-wheel speeds (rad/s, 3 wheels)
 ```
 
-The MPC augments this to 17D by adding `s` (path progress parameter).
+The MPC augments this to 17D by adding `s` (path progress parameter). Control vector is 10D: `[τ_rw(3), u_thr(6), v_s(1)]`.
 
-### Python Package Layout (`src/python/`)
+### Controller Profiles
 
-- **`simulation/`** — `engine.py` (main sim class), `loop.py`, `context.py`, `initialization.py`, `cpp_backend.py`, telemetry utilities
-- **`runtime/`** — `control_loop.py`, `mpc_runner.py`, `thruster_manager.py`, `path_completion.py`, `policy.py`, `performance_monitor.py`
-- **`control/`** — `mpc_controller.py` (Python wrapper around `_cpp_mpc`), `codegen/` (CasADi symbolic dynamics & Jacobian generation)
-- **`mission/`** — `runtime_loader.py` (parse/compile missions), `state.py` (MissionState), `unified_compiler.py`, `unified_mission.py` (Pydantic schema)
-- **`config/`** — Pydantic models (`models.py`), constants, physics/timing parameters
-- **`physics/`** — `orbital_config.py` (OrbitalConfig), `orbital_dynamics.py`
-- **`dashboard/`** — FastAPI app (`app.py`), routes (`simulations.py`, `runner.py`, `missions.py`, `missions_api.py`, `assets.py`)
-- **`exceptions.py`** — Top-level `SimulationError` and siblings (not in a subpackage)
+Three profiles selectable via `AppConfig.mpc_core.controller_profile`:
 
-Key import paths:
-```python
-from simulation.engine import SatelliteMPCLinearizedSimulation
-from runtime.mpc_runner import MPCRunner
-from runtime.control_loop import ControlLoop
-from exceptions import SimulationError
-from mission.state import MissionState
-from physics.orbital_config import OrbitalConfig
-from config.simulation_config import SimulationConfig
+| Profile | Class | C++ Backend | Linearization |
+| ------- | ----- | ----------- | ------------- |
+| `hybrid` (default) | `HybridMPCController` | `_cpp_mpc` | Mixed |
+| `nonlinear` | `NonlinearMPCController` | `_cpp_mpc_nonlinear` | Exact CasADi stage-wise |
+| `linear` | `LinearMPCController` | `_cpp_mpc_linear` | Fixed linearization |
+
+Entry point: `controller.factory.create_controller(cfg)` dispatches based on profile. Profile constants in `controller/registry.py`.
+
+### Package Layout
+
+```
+controller/
+  factory.py              # create_controller() dispatcher
+  registry.py             # profile constants (HYBRID_PROFILE, etc.)
+  exceptions.py           # SimulationError and siblings
+  cli.py                  # CLI entry point
+  configs/                # Pydantic config models, constants, physics/timing params
+    models.py             # AppConfig (top-level config with mpc_core field)
+    simulation_config.py  # SimulationConfig.create_default()
+  linear/python/controller.py
+  nonlinear/python/controller.py
+  hybrid/python/controller.py
+  shared/python/
+    control_common/
+      base.py             # Controller ABC
+      mpc_controller.py   # Shared MPCController base class
+      codegen/            # CasADi symbolic dynamics & Jacobian generation
+        satellite_dynamics.py
+        cost_functions.py
+        generate.py
+    simulation/
+      engine.py           # SatelliteMPCLinearizedSimulation (main sim class)
+      loop.py             # run_simulation() step loop
+      context.py, initialization.py, cpp_backend.py
+      logger.py, step_logging.py, data_logger.py
+    runtime/
+      mpc_runner.py, thruster_manager.py, path_completion.py
+      policy.py           # Mode state machine
+      performance_monitor.py
+    mission/
+      runtime_loader.py   # parse_unified_mission_payload()
+      unified_compiler.py # compile_unified_mission_runtime()
+      unified_mission.py  # Pydantic schema (v2)
+      state.py            # MissionState
+    physics/
+      orbital_config.py   # OrbitalConfig
+      orbital_dynamics.py
+    dashboard/
+      app.py              # FastAPI app
+      routes/             # simulations.py, runner.py, missions.py, missions_api.py, assets.py
+    cpp/
+      __init__.py         # Loads all _cpp_* extensions; adds build/ to sys.path
+    utils/, visualization/, benchmarks/
 ```
 
-When running Python modules manually, ensure `src/python` is on `PYTHONPATH` (or run from `src/python`). `make` targets already set this correctly.
+Key import paths (import from repo root):
+
+```python
+from controller.factory import create_controller
+from controller.shared.python.simulation.engine import SatelliteMPCLinearizedSimulation
+from controller.shared.python.runtime.mpc_runner import MPCRunner
+from controller.shared.python.mission.state import MissionState
+from controller.shared.python.physics.orbital_config import OrbitalConfig
+from controller.configs.simulation_config import SimulationConfig
+from controller.exceptions import SimulationError
+```
 
 ### Control Loop Data Flow
 
@@ -113,8 +161,9 @@ Mission JSON
   → RuntimeLoader.parse_unified_mission_payload()
   → UnifiedCompiler.compile_unified_mission_runtime()
   → SatelliteMPCLinearizedSimulation (engine.py)
-      ├─ MPCController  →  C++ SQPController (RTI-SQP + OSQP)
-      ├─ SimulationEngine  →  C++ RK4 integrator
+      ├─ create_controller(cfg)  →  [Linear|Nonlinear|Hybrid]MPCController
+      │                              └─ C++ SQPController (profile-specific)
+      ├─ SimulationEngine  →  C++ RK4 integrator (_cpp_sim)
       ├─ ThrusterManager  (PWM / continuous actuation)
       └─ PerformanceMonitor
   → sim.run_simulation()  (loop.py)
@@ -132,14 +181,14 @@ Mission JSON
 Modes: `TRACK → RECOVER → SETTLE → HOLD → COMPLETE` — managed by `policy.py` and `control_loop.py`.
 
 | Transition | Trigger |
-|-----------|---------|
+| ---------- | ------- |
 | TRACK → RECOVER | Solver degraded or tracking error exceeds tolerance |
 | RECOVER → TRACK | Errors subside (hysteretic — different entry/exit thresholds) |
 | TRACK/RECOVER → SETTLE | Path arc-length exhausted (all waypoints traversed) |
 | SETTLE → HOLD | Position/angle/velocity within completion gates for `hold_required_s` |
 | SETTLE/HOLD → COMPLETE | All contract gates satisfied for `hold_duration_s` |
 
-Solver health escalation: `ok → degraded → hard_limit_breach` (latched, prevents flapping). Mode is logged to telemetry as `mode_state.current_mode`.
+Solver health escalation: `ok → degraded → hard_limit_breach` (latched). Mode logged to telemetry as `mode_state.current_mode`.
 
 ### Mission JSON Schema
 
@@ -163,39 +212,40 @@ Two versions coexist; compiler auto-migrates v1 → v2. Current schema (`schema_
 
 FastAPI served on `:8000`. Key route groups:
 
-- `GET /simulations` — list runs; `GET /simulations/{id}/telemetry` — CSV physics data with continuous Euler unwrapping
+- `GET /simulations` — list runs; `GET /simulations/{id}/telemetry` — CSV physics data
 - `GET/POST /runner/config` — read/update MPC params, physics, actuator policy at runtime
 - `GET/POST/DELETE /runner/presets` — save/load/apply named config presets
-- `GET /runner/workspace/export` / `POST /runner/workspace/import` — ZIP bundle missions + presets + sim data
-- `WS /ws` — live telemetry stream; `WS /runner/ws` — simulation log stream; `WS /simulations/runs/ws` — run list push updates
+- `GET /runner/workspace/export` / `POST /runner/workspace/import` — ZIP bundle
+- `WS /ws` — live telemetry; `WS /runner/ws` — simulation log; `WS /simulations/runs/ws` — run list updates
 
-SPA fallback: requests not matching known API prefixes → `index.html`.
+SPA fallback: requests not matching API prefixes → `index.html`.
 
 ### Frontend (`ui/`)
 
 React 19 + Three.js (`@react-three/fiber`) for 3D visualization. Zustand for state, Vite for bundling, Vitest + Playwright for tests. Dev server on `:5173`.
 
 **Three Zustand stores** (`ui/src/store/`):
+
 - **`telemetryStore`** — `latest` frame, 1200-point rolling `history`, full `playbackData[]`, `playbackIndex`, `events[]` (100-event log)
 - **`cameraStore`** — `focusTarget`, `focusDistance`, `viewPreset`, `controls` (OrbitControls ref)
 - **`viewportStore`** — `canvas` ref, `recording` flag
 
-**Inside a `<Canvas>`** (React Three Fiber), only 3D elements are valid — wrap fallbacks in `<ErrorBoundary>` + `<Suspense>` for components that use `useLoader`. Lazy-loaded models (OBJ) must have both.
+**Inside a `<Canvas>`** (React Three Fiber), only 3D elements are valid — wrap fallbacks in `<ErrorBoundary>` + `<Suspense>`. Lazy-loaded OBJ models must have both.
 
 ### Tests
 
 Pytest markers defined in `tests/conftest.py`:
+
 - `slow`, `e2e` — manual
 - `unit`, `integration`, `hardware` — auto-applied by file name pattern
 
-Fixtures auto-applied to every test: `fresh_config` (default `SimulationConfig`), `cleanup_matplotlib` (closes pyplot figures).
+Fixtures auto-applied to every test: `fresh_config` (yields `SimulationConfig.create_default()`), `cleanup_matplotlib` (closes pyplot figures).
 
-Do not rely on fixed test-count baselines in this file; use current gate outputs (`make test`, `npm --prefix ui run test`) as the source of truth.
+Do not rely on fixed test-count baselines; use current gate outputs (`make test`, `npm --prefix ui run test`) as the source of truth.
 
 ## Environment Variables
 
 - `SATELLITE_HEADLESS=0` — Enable GUI windows (default: headless)
-- `PYTHONPATH` — Set automatically by `make` targets; manual runs need `cd src/python`
 - `VITE_API_BASE` / `VITE_WS_BASE` — Override API/WebSocket base URL in frontend (default: auto-detect from `window.location`)
 
 ## Documentation
