@@ -9,11 +9,17 @@ ControllerProfile = str
 HYBRID_PROFILE: Final[str] = "hybrid"
 NONLINEAR_PROFILE: Final[str] = "nonlinear"
 LINEAR_PROFILE: Final[str] = "linear"
+NMPC_PROFILE: Final[str] = "nmpc"
+ACADOS_RTI_PROFILE: Final[str] = "acados_rti"
+ACADOS_SQP_PROFILE: Final[str] = "acados_sqp"
 
 SUPPORTED_CONTROLLER_PROFILES: Final[tuple[str, ...]] = (
     HYBRID_PROFILE,
     NONLINEAR_PROFILE,
     LINEAR_PROFILE,
+    NMPC_PROFILE,
+    ACADOS_RTI_PROFILE,
+    ACADOS_SQP_PROFILE,
 )
 
 

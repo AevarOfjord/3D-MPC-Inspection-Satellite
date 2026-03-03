@@ -7,7 +7,10 @@ from controller.hybrid.python.controller import HybridMPCController
 from controller.linear.python.controller import LinearMPCController
 from controller.nonlinear.python.controller import NonlinearMPCController
 from controller.registry import (
+    ACADOS_RTI_PROFILE,
+    ACADOS_SQP_PROFILE,
     LINEAR_PROFILE,
+    NMPC_PROFILE,
     NONLINEAR_PROFILE,
     normalize_controller_profile,
 )
@@ -24,6 +27,18 @@ def create_controller(cfg: AppConfig) -> Controller:
         return NonlinearMPCController(cfg)
     if profile == LINEAR_PROFILE:
         return LinearMPCController(cfg)
+    if profile == NMPC_PROFILE:
+        from controller.nmpc.python.controller import NmpcController
+
+        return NmpcController(cfg)
+    if profile == ACADOS_RTI_PROFILE:
+        from controller.acados_rti.python.controller import AcadosRtiController
+
+        return AcadosRtiController(cfg)
+    if profile == ACADOS_SQP_PROFILE:
+        from controller.acados_sqp.python.controller import AcadosSqpController
+
+        return AcadosSqpController(cfg)
     return HybridMPCController(cfg)
 
 

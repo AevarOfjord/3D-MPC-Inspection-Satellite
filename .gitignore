@@ -92,3 +92,8 @@ src/python/cpp/*.dylib
 
 # Ignore oversized mission artifacts that are kept out-of-repo
 missions/ISS-FullScan.json
+
+# acados code-generation output (compiled per-profile OCP solvers)
+codegen_cache/acados_rti/
+codegen_cache/acados_sqp/
+c_generated_code/
