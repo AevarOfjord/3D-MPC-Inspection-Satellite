@@ -168,6 +168,14 @@ class _MPCTimingDefaults:
     )
     # lower = more current but slightly more CPU per step
 
+    # ----- RTI-SQP outer loop -----
+    # sqp_max_iter controls the Python-level outer RTI loop: how many times
+    # the horizon is re-linearized and re-solved in one control step.
+    # 1 = classic single-pass RTI (fastest; all profiles share this baseline).
+    # Keep identical across profiles for a fair scientific comparison.
+    SQP_MAX_ITER: int = 1
+    SQP_TOL: float = 1e-4  # outer-loop convergence tolerance (inf-norm on Δu)
+
 
 @dataclass(frozen=True)
 class _MPCVueMechanicsDefaults:
@@ -531,6 +539,8 @@ class Constants:
     ENABLE_AUTO_STATE_BOUNDS = MPCAdaptiveDefaults.ENABLE_AUTO_STATE_BOUNDS
     ENABLE_ONLINE_DARE_TERMINAL = MPCAdaptiveDefaults.ENABLE_ONLINE_DARE_TERMINAL
     DARE_UPDATE_PERIOD_STEPS = MPCTimingDefaults.DARE_UPDATE_PERIOD_STEPS
+    SQP_MAX_ITER = MPCTimingDefaults.SQP_MAX_ITER
+    SQP_TOL = MPCTimingDefaults.SQP_TOL
     TERMINAL_COST_PROFILE = MPCAdaptiveDefaults.TERMINAL_COST_PROFILE
     ENABLE_VARIABLE_SCALING = MPCAdaptiveDefaults.ENABLE_VARIABLE_SCALING
     PROGRESS_POLICY = MPCVueMechanicsDefaults.PROGRESS_POLICY

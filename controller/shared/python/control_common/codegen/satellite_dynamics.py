@@ -328,8 +328,9 @@ class SatelliteDynamicsSymbolic:
 
         # Re-normalise quaternion
         q_next = x_next[3:7]
-        q_norm = ca.norm_2(q_next)
-        q_normalised = q_next / ca.fmax(q_norm, 1e-10)
+        # Use smooth norm regularization for stable derivatives in NLP mode.
+        q_norm = ca.sqrt(ca.dot(q_next, q_next) + 1e-12)
+        q_normalised = q_next / q_norm
         x_next = ca.vertcat(
             x_next[0:3],  # pos
             q_normalised,  # quat (normalised)

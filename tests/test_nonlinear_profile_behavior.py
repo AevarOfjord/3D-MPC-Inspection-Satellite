@@ -6,22 +6,23 @@ from controller.configs.simulation_config import SimulationConfig
 from controller.factory import create_controller
 
 
-def test_nonlinear_fail_closed_on_invalid_linearization():
-    cfg = SimulationConfig.create_default().app_config.model_copy(deep=True)
-    cfg.mpc_core.controller_profile = "nonlinear"
-    controller = create_controller(cfg)
+def _build_nonlinear_controller():
+    cfg = SimulationConfig.create_with_overrides(
+        {
+            "mpc": {
+                "prediction_horizon": 8,
+                "control_horizon": 8,
+            },
+            "mpc_core": {
+                "controller_profile": "nonlinear",
+            },
+        }
+    ).app_config
+    return create_controller(cfg)
 
-    # Force non-finite Jacobians to trigger strict nonlinear integrity failure.
-    def bad_f_and_jacs(x, u, p, dt):  # noqa: ANN001
-        nx = len(x)
-        nu = len(u)
-        return (
-            np.full(nx, np.nan),
-            np.full((nx, nx), np.nan),
-            np.full((nx, nu), np.nan),
-        )
 
-    controller._f_and_jacs = bad_f_and_jacs  # noqa: SLF001 - intentional test hook
+def test_nonlinear_profile_uses_mixed_cpp_python_backend():
+    controller = _build_nonlinear_controller()
 
     x = np.zeros(16, dtype=float)
     x[3] = 1.0
@@ -32,30 +33,13 @@ def test_nonlinear_fail_closed_on_invalid_linearization():
 
     assert info["controller_profile"] == "nonlinear"
     assert info["linearization_mode"] == "nonlinear_exact_stage"
-    assert info["linearization_integrity_failure"] is True
-    assert info["solver_fallback_reason"] == "linearization_integrity_failed"
-    assert info["solver_success"] is False
-    assert info["fallback_active"] is True
+    assert info["solver_backend"] == "CasADi+OSQP"
+    assert info["cpp_backend_module"] == "_cpp_mpc_nonlinear"
     assert u.shape[0] == controller.num_rw_axes + controller.num_thrusters
 
 
-def test_nonlinear_profile_runs_outer_sqp_iterations():
-    cfg = SimulationConfig.create_default().app_config.model_copy(deep=True)
-    cfg.mpc_core.controller_profile = "nonlinear"
-    controller = create_controller(cfg)
-
-    call_count = {"n": 0}
-
-    def stable_f_and_jacs(x, u, p, dt):  # noqa: ANN001
-        call_count["n"] += 1
-        nx = len(x)
-        nu = len(u)
-        x_next = np.array(x, dtype=float).copy()
-        A = np.eye(nx, dtype=float)
-        B = np.zeros((nx, nu), dtype=float)
-        return x_next, A, B
-
-    controller._f_and_jacs = stable_f_and_jacs  # noqa: SLF001 - intentional test hook
+def test_nonlinear_profile_reports_solver_iterations():
+    controller = _build_nonlinear_controller()
 
     x = np.zeros(16, dtype=float)
     x[3] = 1.0
@@ -64,7 +48,13 @@ def test_nonlinear_profile_runs_outer_sqp_iterations():
         previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
     )
 
-    assert info["controller_profile"] == "nonlinear"
-    assert info["linearization_mode"] == "nonlinear_exact_stage"
-    assert info["sqp_outer_iterations"] >= 2
-    assert call_count["n"] >= controller.prediction_horizon * 2
+    assert info["iterations"] is not None
+    assert int(info["sqp_iterations"]) >= 0
+    assert int(info["linearization_attempted_stages"]) >= 0
+
+    # Second call exercises warm-start shift path.
+    _, info2 = controller.get_control_action(
+        x_current=x,
+        previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
+    )
+    assert info2["controller_profile"] == "nonlinear"

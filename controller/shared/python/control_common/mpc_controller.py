@@ -1280,8 +1280,8 @@ class MPCController(Controller):
             mpc_val("ref_quat_terminal_rate_scale", 2.0)
         )
 
-        self.sqp_max_iter = int(max(1, resolved_specific.get("sqp_max_iter", 1)))
-        self.sqp_tol = float(max(1e-9, resolved_specific.get("sqp_tol", 1e-4)))
+        self.sqp_max_iter = int(max(1, mpc_val("sqp_max_iter", 1)))
+        self.sqp_tol = float(max(1e-9, mpc_val("sqp_tol", 1e-4)))
         self.strict_linearization_integrity = bool(
             resolved_specific.get(
                 "strict_integrity",
