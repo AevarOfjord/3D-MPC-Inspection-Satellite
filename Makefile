@@ -347,17 +347,20 @@ sim:
 	fi
 	@controller_profile="$(SIM_CONTROLLER_PROFILE)"; \
 	if [ -z "$$controller_profile" ]; then \
-		printf "Select controller profile [1=hybrid, 2=nonlinear, 3=linear] (default 1): "; \
+		printf "Select controller profile [1=hybrid, 2=nonlinear, 3=linear, 4=nmpc, 5=acados_rti, 6=acados_sqp] (default 1): "; \
 		read controller_ans; \
 		case "$$controller_ans" in \
 			2|nonlinear|NONLINEAR) controller_profile="nonlinear" ;; \
 			3|linear|LINEAR) controller_profile="linear" ;; \
+			4|nmpc|NMPC) controller_profile="nmpc" ;; \
+			5|acados_rti|ACADOS_RTI) controller_profile="acados_rti" ;; \
+			6|acados_sqp|ACADOS_SQP) controller_profile="acados_sqp" ;; \
 			""|1|hybrid|HYBRID) controller_profile="hybrid" ;; \
 			*) echo "Invalid selection '$$controller_ans'. Falling back to hybrid."; controller_profile="hybrid" ;; \
 		esac; \
 	fi; \
 	case "$$controller_profile" in \
-		hybrid|nonlinear|linear) ;; \
+		hybrid|nonlinear|linear|nmpc|acados_rti|acados_sqp) ;; \
 		*) echo "Invalid SIM_CONTROLLER_PROFILE='$$controller_profile'. Falling back to hybrid."; controller_profile="hybrid" ;; \
 	esac; \
 	echo "Using controller profile: $$controller_profile"; \
@@ -367,6 +370,9 @@ sim:
 		y|Y|yes|YES) $(MAKE) test || exit $$? ;; \
 		*) echo "Skipping tests."; ;; \
 	esac; \
+	if [ -n "$$ACADOS_SOURCE_DIR" ]; then \
+		export DYLD_LIBRARY_PATH="$$ACADOS_SOURCE_DIR/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"; \
+	fi; \
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --controller-profile "$$controller_profile"
 
 # ============================================================================

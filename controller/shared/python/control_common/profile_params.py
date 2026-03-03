@@ -13,7 +13,14 @@ from controller.configs.models import AppConfig
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_PROFILES: tuple[str, ...] = ("hybrid", "nonlinear", "linear")
+_SUPPORTED_PROFILES: tuple[str, ...] = (
+    "hybrid",
+    "nonlinear",
+    "linear",
+    "nmpc",
+    "acados_rti",
+    "acados_sqp",
+)
 
 _PROFILE_SPECIFIC_DEFAULTS: dict[str, dict[str, Any]] = {
     "hybrid": {
@@ -25,12 +32,30 @@ _PROFILE_SPECIFIC_DEFAULTS: dict[str, dict[str, Any]] = {
     "linear": {
         "freeze_refresh_interval_steps": 1,
     },
+    "nmpc": {
+        "ipopt_max_iter": 3000,
+    },
+    "acados_rti": {
+        "acados_max_iter": 1,
+        "acados_tol_stat": 1e-2,
+        "acados_tol_eq": 1e-2,
+        "acados_tol_ineq": 1e-2,
+    },
+    "acados_sqp": {
+        "acados_max_iter": 50,
+        "acados_tol_stat": 1e-2,
+        "acados_tol_eq": 1e-2,
+        "acados_tol_ineq": 1e-2,
+    },
 }
 
 _PROFILE_SPECIFIC_ALLOWED_KEYS: dict[str, set[str]] = {
     "hybrid": set(_PROFILE_SPECIFIC_DEFAULTS["hybrid"].keys()),
     "nonlinear": set(_PROFILE_SPECIFIC_DEFAULTS["nonlinear"].keys()),
     "linear": set(_PROFILE_SPECIFIC_DEFAULTS["linear"].keys()),
+    "nmpc": set(_PROFILE_SPECIFIC_DEFAULTS["nmpc"].keys()),
+    "acados_rti": set(_PROFILE_SPECIFIC_DEFAULTS["acados_rti"].keys()),
+    "acados_sqp": set(_PROFILE_SPECIFIC_DEFAULTS["acados_sqp"].keys()),
 }
 
 

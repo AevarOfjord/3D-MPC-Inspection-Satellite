@@ -99,7 +99,7 @@ def run(
     controller_profile: str | None = typer.Option(
         None,
         "--controller-profile",
-        help="Controller profile override: hybrid, nonlinear, or linear.",
+        help="Controller profile override: hybrid, nonlinear, linear, nmpc, acados_rti, or acados_sqp.",
     ),
 ):
     """
@@ -279,9 +279,16 @@ def run(
                 )
     if controller_profile:
         profile = str(controller_profile).strip().lower()
-        if profile not in {"hybrid", "nonlinear", "linear"}:
+        if profile not in {
+            "hybrid",
+            "nonlinear",
+            "linear",
+            "nmpc",
+            "acados_rti",
+            "acados_sqp",
+        }:
             console.print(
-                "[red]Invalid controller profile. Use one of: hybrid, nonlinear, linear.[/red]"
+                "[red]Invalid controller profile. Use one of: hybrid, nonlinear, linear, nmpc, acados_rti, acados_sqp.[/red]"
             )
             raise typer.Exit(code=1)
         if config_overrides is None:

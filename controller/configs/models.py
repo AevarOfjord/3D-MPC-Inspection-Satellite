@@ -853,10 +853,10 @@ class MPCCoreParams(BaseModel):
     )
     controller_profile: str = Field(
         "hybrid",
-        pattern="^(hybrid|nonlinear|linear)$",
+        pattern="^(hybrid|nonlinear|linear|nmpc|acados_rti|acados_sqp)$",
         description=(
             "Controller profile selector: 'hybrid' (current production), "
-            "'nonlinear', or 'linear'."
+            "'nonlinear', 'linear', or 'nmpc' (true nonlinear MPC via IPOPT)."
         ),
     )
     recover_contour_scale: float = Field(
@@ -966,6 +966,9 @@ class MPCProfileOverridesByProfile(BaseModel):
     hybrid: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
     nonlinear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
     linear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    nmpc: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    acados_rti: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    acados_sqp: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
 
 
 class ActuatorPolicyParams(BaseModel):
