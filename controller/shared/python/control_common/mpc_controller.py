@@ -18,6 +18,7 @@ import logging
 import sys
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
@@ -45,6 +46,15 @@ _OSQP_EPS_DEFAULT: float = 5e-3
 # --------------------------------------------------------------------------
 _DEFAULT_CPP_MPC_MODULE = "_cpp_mpc"
 
+_RUNTIME_PROFILE_ENUM_BY_ID: dict[str, str] = {
+    "cpp_hybrid_rti_osqp": "CPP_HYBRID_RTI_OSQP",
+    "cpp_nonlinear_rti_osqp": "CPP_NONLINEAR_RTI_OSQP",
+    "cpp_linearized_rti_osqp": "CPP_LINEARIZED_RTI_OSQP",
+    "cpp_nonlinear_rti_hpipm": "CPP_NONLINEAR_RTI_HPIPM",
+    "cpp_nonlinear_sqp_hpipm": "CPP_NONLINEAR_SQP_HPIPM",
+    "cpp_nonlinear_fullnlp_ipopt": "CPP_NONLINEAR_FULLNLP_IPOPT",
+}
+
 # --------------------------------------------------------------------------
 # CasADi codegen (optional — gracefully skip if not yet generated)
 # --------------------------------------------------------------------------
@@ -57,7 +67,10 @@ except ImportError:
     pass
 
 
-def _resolve_cpp_bindings(module_name: str) -> tuple[type, type, type, str]:
+def _resolve_cpp_bindings(
+    module_name: str,
+    controller_profile: str,
+) -> tuple[type, type, Callable[[Any, Any], Any], str]:
     """
     Resolve C++ MPC bindings for a profile-specific module with safe fallback.
 
@@ -80,6 +93,35 @@ def _resolve_cpp_bindings(module_name: str) -> tuple[type, type, type, str]:
         try:
             sat_cls = module.SatelliteParams
             mpc_params_cls = module.MPCV2Params
+            # Unified runtime path (single runtime module for multiple profiles).
+            runtime_cls = getattr(module, "UnifiedMpcRuntime", None)
+            runtime_cfg_cls = getattr(module, "RuntimeConfig", None)
+            runtime_profile_enum = getattr(module, "RuntimeProfile", None)
+            if (
+                runtime_cls is not None
+                and runtime_cfg_cls is not None
+                and runtime_profile_enum is not None
+            ):
+                runtime_profile_name = _RUNTIME_PROFILE_ENUM_BY_ID.get(
+                    controller_profile,
+                    "CPP_HYBRID_RTI_OSQP",
+                )
+                runtime_profile = getattr(runtime_profile_enum, runtime_profile_name)
+
+                def _build_runtime(sat_params: Any, mpc_params: Any) -> Any:
+                    cfg = runtime_cfg_cls()
+                    cfg.profile = runtime_profile
+                    runtime = runtime_cls(sat_params, mpc_params, cfg)
+                    if not bool(getattr(runtime, "backend_available", True)):
+                        raise RuntimeError(
+                            "Unified MPC runtime backend unavailable for profile "
+                            f"{controller_profile}: "
+                            f"{getattr(runtime, 'unavailable_reason', 'unknown reason')}"
+                        )
+                    return runtime
+
+                return sat_cls, mpc_params_cls, _build_runtime, candidate
+
             controller_cls = module.SQPController
             return sat_cls, mpc_params_cls, controller_cls, candidate
         except Exception as exc:
@@ -250,7 +292,7 @@ class MPCController(Controller):
     Control: [τ_rw(3), u_thr(N), v_s(1)]  (num_rw + num_thrusters + 1)
     """
 
-    controller_profile: str = "hybrid"
+    controller_profile: str = "cpp_hybrid_rti_osqp"
     controller_core: str = "v2-sqp"
     solver_type: str = "RTI-SQP"
     solver_backend: str = "CasADi+OSQP"
@@ -309,7 +351,10 @@ class MPCController(Controller):
             self._mpc_params_cls,
             self._sqp_controller_cls,
             self._cpp_backend_module,
-        ) = _resolve_cpp_bindings(self.cpp_module_name)
+        ) = _resolve_cpp_bindings(
+            self.cpp_module_name,
+            self.controller_profile,
+        )
         self._linearization_strategy = self._build_linearization_strategy(
             self.linearization_mode
         )
