@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
+from controller.registry import rewrite_profile_identifiers_in_payload
 from controller.shared.python.mission.repository import (
     MISSIONS_DIR,
     list_mission_entries,
@@ -99,7 +100,12 @@ def run(
     controller_profile: str | None = typer.Option(
         None,
         "--controller-profile",
-        help="Controller profile override: hybrid, nonlinear, linear, nmpc, acados_rti, or acados_sqp.",
+        help=(
+            "Controller profile override: cpp_hybrid_rti_osqp, "
+            "cpp_nonlinear_rti_osqp, cpp_linearized_rti_osqp, "
+            "cpp_nonlinear_fullnlp_ipopt, cpp_nonlinear_rti_hpipm, or "
+            "cpp_nonlinear_sqp_hpipm."
+        ),
     ),
 ):
     """
@@ -135,6 +141,7 @@ def run(
             if not isinstance(loaded_overrides, dict):
                 console.print("[red]Config file must contain a JSON object.[/red]")
                 raise typer.Exit(code=1)
+            rewrite_profile_identifiers_in_payload(loaded_overrides)
             config_overrides = loaded_overrides
             console.print(
                 f"[green]Loaded configuration overrides from {cfg_path}[/green]"
@@ -280,15 +287,18 @@ def run(
     if controller_profile:
         profile = str(controller_profile).strip().lower()
         if profile not in {
-            "hybrid",
-            "nonlinear",
-            "linear",
-            "nmpc",
-            "acados_rti",
-            "acados_sqp",
+            "cpp_hybrid_rti_osqp",
+            "cpp_nonlinear_rti_osqp",
+            "cpp_linearized_rti_osqp",
+            "cpp_nonlinear_fullnlp_ipopt",
+            "cpp_nonlinear_rti_hpipm",
+            "cpp_nonlinear_sqp_hpipm",
         }:
             console.print(
-                "[red]Invalid controller profile. Use one of: hybrid, nonlinear, linear, nmpc, acados_rti, acados_sqp.[/red]"
+                "[red]Invalid controller profile. Use one of: "
+                "cpp_hybrid_rti_osqp, cpp_nonlinear_rti_osqp, "
+                "cpp_linearized_rti_osqp, cpp_nonlinear_fullnlp_ipopt, "
+                "cpp_nonlinear_rti_hpipm, cpp_nonlinear_sqp_hpipm.[/red]"
             )
             raise typer.Exit(code=1)
         if config_overrides is None:

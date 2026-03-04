@@ -10,9 +10,9 @@ from controller.factory import create_controller
 @pytest.mark.parametrize(
     ("profile", "expected_mode"),
     [
-        ("hybrid", "hybrid_tolerant_stage"),
-        ("nonlinear", "nonlinear_exact_stage"),
-        ("linear", "linear_frozen_step"),
+        ("cpp_hybrid_rti_osqp", "hybrid_tolerant_stage"),
+        ("cpp_nonlinear_rti_osqp", "nonlinear_exact_stage"),
+        ("cpp_linearized_rti_osqp", "linear_frozen_step"),
     ],
 )
 def test_controller_emits_profile_and_linearization_metadata(

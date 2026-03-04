@@ -8,7 +8,7 @@ from controller.factory import create_controller
 
 def test_linear_profile_uses_frozen_step_linearization():
     cfg = SimulationConfig.create_default().app_config.model_copy(deep=True)
-    cfg.mpc_core.controller_profile = "linear"
+    cfg.mpc_core.controller_profile = "cpp_linearized_rti_osqp"
     controller = create_controller(cfg)
 
     call_count = {"n": 0}
@@ -31,8 +31,9 @@ def test_linear_profile_uses_frozen_step_linearization():
         previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
     )
 
-    assert info["controller_profile"] == "linear"
+    assert info["controller_profile"] == "cpp_linearized_rti_osqp"
     assert info["linearization_mode"] == "linear_frozen_step"
+    assert info["cpp_backend_module"] == "_cpp_mpc_runtime"
     assert info["linearization_attempted_stages"] == controller.prediction_horizon
     assert info["linearization_failed_stages"] == 0
     assert call_count["n"] == 1

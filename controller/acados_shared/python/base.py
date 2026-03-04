@@ -147,7 +147,12 @@ class AcadosBaseController(Controller):
         self._step_count: int = 0
 
         # Build and compile the acados OCP solver (done once at construction)
-        self._build_acados_solver()
+        try:
+            self._build_acados_solver()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Controller profile {self.controller_profile} backend unavailable: {exc}"
+            ) from exc
 
         logger.info(
             "%s initialized: N=%d, nu=%d, solver=%s, max_iter=%d",

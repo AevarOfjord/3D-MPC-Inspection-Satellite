@@ -146,7 +146,7 @@ def create_default_app_config() -> AppConfig:
 
     mpc_core = MPCCoreParams(
         solver_backend="OSQP",
-        controller_profile="hybrid",
+        controller_profile="cpp_hybrid_rti_osqp",
         recover_contour_scale=constants.Constants.RECOVER_CONTOUR_SCALE,
         recover_lag_scale=constants.Constants.RECOVER_LAG_SCALE,
         recover_progress_scale=constants.Constants.RECOVER_PROGRESS_SCALE,

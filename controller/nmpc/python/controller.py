@@ -56,7 +56,7 @@ class NmpcController(Controller):
     exact RK4-discretized nonlinear equations from SatelliteDynamicsSymbolic.
     """
 
-    controller_profile = "nmpc"
+    controller_profile = "cpp_nonlinear_fullnlp_ipopt"
     controller_core = "casadi-opti-ipopt"
     solver_type = "NMPC-IPOPT"
     solver_backend = "CasADi+IPOPT"
@@ -73,7 +73,10 @@ class NmpcController(Controller):
         self._extract_params(cfg)
 
         # Fairness hashes — same mechanism as RTI-SQP profiles
-        self.effective_contract = resolve_effective_mpc_profile_contract(cfg, "nmpc")
+        self.effective_contract = resolve_effective_mpc_profile_contract(
+            cfg,
+            "cpp_nonlinear_fullnlp_ipopt",
+        )
         self.shared_params_hash = str(self.effective_contract.shared_signature)
         self.effective_params_hash = str(self.effective_contract.effective_signature)
         self.profile_override_diff = dict(self.effective_contract.override_diff)
@@ -105,14 +108,37 @@ class NmpcController(Controller):
         self.solve_times: deque[float] = deque(maxlen=10_000)
         self._step_count: int = 0
 
+        self._assert_ipopt_backend_available()
+
         # Build the CasADi Opti NLP (done once at construction)
-        self._build_opti_problem()
+        try:
+            self._build_opti_problem()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Controller profile {self.controller_profile} backend unavailable: {exc}"
+            ) from exc
 
         logger.info(
             "NmpcController initialized: N=%d, nu=%d, ipopt_max_iter=%d",
             self.N,
             self.nu,
             self._ipopt_max_iter,
+        )
+
+    def _assert_ipopt_backend_available(self) -> None:
+        """
+        Fail fast with deterministic messaging if the CasADi IPOPT plugin is unavailable.
+        """
+        try:
+            has_ipopt = bool(ca.has_nlpsol("ipopt"))
+        except Exception:
+            has_ipopt = False
+        if has_ipopt:
+            return
+        raise RuntimeError(
+            f"Controller profile {self.controller_profile} requires CasADi IPOPT backend, "
+            "but the IPOPT plugin is unavailable in this environment. "
+            "Install CasADi with IPOPT support and ensure IPOPT runtime libraries are discoverable."
         )
 
     # ------------------------------------------------------------------

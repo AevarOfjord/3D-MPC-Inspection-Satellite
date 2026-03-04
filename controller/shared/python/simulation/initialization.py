@@ -757,7 +757,11 @@ class SimulationInitializer:
                 getattr(self.simulation.mpc_controller, "controller_core", "sqp")
             )
             self.simulation.controller_profile_mode = str(
-                getattr(self.simulation.mpc_controller, "controller_profile", "hybrid")
+                getattr(
+                    self.simulation.mpc_controller,
+                    "controller_profile",
+                    "cpp_hybrid_rti_osqp",
+                )
             )
             self.simulation.linearization_mode = str(
                 getattr(
@@ -774,7 +778,11 @@ class SimulationInitializer:
             getattr(self.simulation.mpc_controller, "controller_core", "sqp")
         )
         self.simulation.controller_profile_mode = str(
-            getattr(self.simulation.mpc_controller, "controller_profile", "hybrid")
+            getattr(
+                self.simulation.mpc_controller,
+                "controller_profile",
+                "cpp_hybrid_rti_osqp",
+            )
         )
         self.simulation.linearization_mode = str(
             getattr(

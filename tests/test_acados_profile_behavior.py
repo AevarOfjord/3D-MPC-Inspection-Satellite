@@ -85,7 +85,10 @@ def _build_controller_for_hash(profile: str):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_profile_construction(profile):
     controller = _build_acados_controller(profile)
 
@@ -99,13 +102,13 @@ def test_acados_profile_construction(profile):
 
 
 def test_acados_rti_class_vars():
-    controller = _build_acados_controller("acados_rti")
+    controller = _build_acados_controller("cpp_nonlinear_rti_hpipm")
     assert controller.solver_type == "ACADOS-SQP_RTI"
     assert controller._acados_nlp_solver_type == "SQP_RTI"
 
 
 def test_acados_sqp_class_vars():
-    controller = _build_acados_controller("acados_sqp")
+    controller = _build_acados_controller("cpp_nonlinear_sqp_hpipm")
     assert controller.solver_type == "ACADOS-SQP"
     assert controller._acados_nlp_solver_type == "SQP"
 
@@ -118,14 +121,14 @@ def test_acados_sqp_class_vars():
 def test_acados_rti_registered_via_factory():
     from controller.acados_rti.python.controller import AcadosRtiController
 
-    controller = _build_acados_controller("acados_rti")
+    controller = _build_acados_controller("cpp_nonlinear_rti_hpipm")
     assert isinstance(controller, AcadosRtiController)
 
 
 def test_acados_sqp_registered_via_factory():
     from controller.acados_sqp.python.controller import AcadosSqpController
 
-    controller = _build_acados_controller("acados_sqp")
+    controller = _build_acados_controller("cpp_nonlinear_sqp_hpipm")
     assert isinstance(controller, AcadosSqpController)
 
 
@@ -134,7 +137,10 @@ def test_acados_sqp_registered_via_factory():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_get_control_action_returns_correct_shape(profile):
     controller = _build_acados_controller(profile)
     x = _zero_state()
@@ -155,7 +161,10 @@ def test_acados_get_control_action_returns_correct_shape(profile):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_info_keys_present(profile):
     controller = _build_acados_controller(profile)
     x = _zero_state()
@@ -193,7 +202,10 @@ def test_acados_info_keys_present(profile):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_control_changes_with_different_states(profile):
     """
     Regression for x0 pinning:
@@ -220,7 +232,10 @@ def test_acados_control_changes_with_different_states(profile):
     )
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_failed_solve_freezes_progress_and_holds_safe(monkeypatch, profile):
     controller = _build_acados_controller(profile)
     controller.set_path([(1.0, 1.0, 0.0), (0.0, 0.0, 0.0)])
@@ -242,7 +257,10 @@ def test_acados_failed_solve_freezes_progress_and_holds_safe(monkeypatch, profil
     assert np.allclose(u, 0.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_path_progress_reports_finite_projection_metrics(profile):
     controller = _build_acados_controller(profile)
     controller.set_path([(0.0, 0.0, 0.0), (1.0, 1.0, 0.0), (2.0, 1.0, 0.0)])
@@ -310,12 +328,38 @@ def test_acados_preload_runtime_libs_failure_message(monkeypatch):
     assert "/missing/acados/lib" in msg
 
 
+def test_acados_backend_unavailable_error_is_explicit(monkeypatch):
+    from controller.acados_shared.python.base import AcadosBaseController
+
+    monkeypatch.setattr(
+        AcadosBaseController,
+        "_resolve_acados_lib_dirs",
+        classmethod(lambda cls, _mod: []),
+    )
+
+    cfg = SimulationConfig.create_with_overrides(
+        {
+            "mpc": {"prediction_horizon": 3, "control_horizon": 3},
+            "mpc_core": {"controller_profile": "cpp_nonlinear_rti_hpipm"},
+        }
+    ).app_config
+
+    with pytest.raises(RuntimeError) as exc:
+        create_controller(cfg)
+    msg = str(exc.value)
+    assert "cpp_nonlinear_rti_hpipm" in msg
+    assert "ACADOS_SOURCE_DIR" in msg
+
+
 # ---------------------------------------------------------------------------
 # Warm-start on second call
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_second_call_uses_warm_start(profile):
     controller = _build_acados_controller(profile)
     x = _zero_state()
@@ -338,10 +382,10 @@ def test_acados_shared_contract_hash_matches_other_profiles():
     All profiles must share the same shared_contract hash — physics, weights,
     and horizons must be identical for a fair paper comparison.
     """
-    hybrid = _build_controller_for_hash("hybrid")
-    nmpc = _build_controller_for_hash("nmpc")
-    rti = _build_controller_for_hash("acados_rti")
-    sqp = _build_controller_for_hash("acados_sqp")
+    hybrid = _build_controller_for_hash("cpp_hybrid_rti_osqp")
+    nmpc = _build_controller_for_hash("cpp_nonlinear_fullnlp_ipopt")
+    rti = _build_controller_for_hash("cpp_nonlinear_rti_hpipm")
+    sqp = _build_controller_for_hash("cpp_nonlinear_sqp_hpipm")
 
     hybrid_sig = hybrid.get_shared_contract_signature()
     nmpc_sig = nmpc.get_shared_contract_signature()
@@ -369,9 +413,9 @@ def test_acados_effective_contract_differs_across_profiles():
     Effective contract includes profile name and profile-specific settings,
     so each profile must have a distinct effective signature.
     """
-    hybrid = _build_controller_for_hash("hybrid")
-    rti = _build_controller_for_hash("acados_rti")
-    sqp = _build_controller_for_hash("acados_sqp")
+    hybrid = _build_controller_for_hash("cpp_hybrid_rti_osqp")
+    rti = _build_controller_for_hash("cpp_nonlinear_rti_hpipm")
+    sqp = _build_controller_for_hash("cpp_nonlinear_sqp_hpipm")
 
     hybrid_eff = hybrid.get_effective_contract_signature()
     rti_eff = rti.get_effective_contract_signature()
@@ -392,14 +436,14 @@ def test_acados_effective_contract_differs_across_profiles():
 
 
 def test_acados_rti_profile_specific_defaults():
-    controller = _build_acados_controller("acados_rti")
+    controller = _build_acados_controller("cpp_nonlinear_rti_hpipm")
     ps = controller.profile_specific_params
     assert ps["acados_max_iter"] == 1
     assert ps["acados_tol_stat"] == pytest.approx(1e-2)
 
 
 def test_acados_sqp_profile_specific_defaults():
-    controller = _build_acados_controller("acados_sqp")
+    controller = _build_acados_controller("cpp_nonlinear_sqp_hpipm")
     ps = controller.profile_specific_params
     assert ps["acados_max_iter"] == 50
     assert ps["acados_tol_stat"] == pytest.approx(1e-2)
@@ -410,7 +454,10 @@ def test_acados_sqp_profile_specific_defaults():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_set_path_enables_reference_building(profile):
     controller = _build_acados_controller(profile)
 
@@ -426,7 +473,10 @@ def test_acados_set_path_enables_reference_building(profile):
     assert "remaining" in progress
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_set_current_path_s(profile):
     controller = _build_acados_controller(profile)
     controller.set_current_path_s(2.71)
@@ -438,7 +488,10 @@ def test_acados_set_current_path_s(profile):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("profile", ["acados_rti", "acados_sqp"])
+@pytest.mark.parametrize(
+    "profile",
+    ["cpp_nonlinear_rti_hpipm", "cpp_nonlinear_sqp_hpipm"],
+)
 def test_acados_reset_clears_state(profile):
     controller = _build_acados_controller(profile)
     x = _zero_state()

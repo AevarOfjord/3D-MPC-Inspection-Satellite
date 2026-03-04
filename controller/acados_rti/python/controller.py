@@ -13,6 +13,6 @@ class AcadosRtiController(AcadosBaseController):
     on warm-start).
     """
 
-    controller_profile = "acados_rti"
+    controller_profile = "cpp_nonlinear_rti_hpipm"
     solver_type = "ACADOS-SQP_RTI"
     _acados_nlp_solver_type = "SQP_RTI"

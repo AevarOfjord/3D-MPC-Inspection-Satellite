@@ -12,15 +12,15 @@ class NonlinearMPCController(MPCController):
 
     Primary execution path:
     - Python: stage-wise exact CasADi linearization + nonlinear strategy orchestration
-    - C++: profile-specific SQP/OSQP core (`_cpp_mpc_nonlinear`) for the control solve
+    - C++: unified runtime SQP/OSQP core (`_cpp_mpc_runtime`) for the control solve
     """
 
-    controller_profile = "nonlinear"
+    controller_profile = "cpp_nonlinear_rti_osqp"
     controller_core = "nonlinear-sqp"
     solver_type = "RTI-SQP-Nonlinear"
     solver_backend = "CasADi+OSQP"
     linearization_mode = "nonlinear_exact_stage"
-    cpp_module_name = "_cpp_mpc_nonlinear"
+    cpp_module_name = "_cpp_mpc_runtime"
 
     def __init__(self, cfg: AppConfig):
         super().__init__(cfg)
