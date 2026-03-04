@@ -330,8 +330,13 @@ def discover_run_candidates(runs_root: Path) -> list[RunCandidate]:
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     ):
+        # Skip aggregate/non-run directories at the root.
+        if run_dir.name.lower() in {"comparisons", "comparison"}:
+            continue
         status = _load_json(_status_path(run_dir))
         kpi = _load_json(_kpi_path(run_dir))
+        if not status:
+            continue
 
         mission, controller_profile, run_status = _extract_run_identity(run_dir, status)
         final_time_s = float(kpi.get("final_time_s") or 0.0)
@@ -361,6 +366,8 @@ def _normalize_steps_df(df: pd.DataFrame, kpi: dict[str, Any]) -> pd.DataFrame:
         "Solve_Time_ms": "solve_time_ms",
         "Timing_Violation": "timing_violation",
         "MPC_Time_Limit_Exceeded": "time_limit_exceeded",
+        "Path_S_m": "path_s_m",
+        "Path_Progress": "path_progress",
         "Path_Error_m": "path_error_m",
         "Path_Remaining_m": "path_remaining_m",
     }
@@ -385,6 +392,27 @@ def _normalize_steps_df(df: pd.DataFrame, kpi: dict[str, Any]) -> pd.DataFrame:
     out["solve_time_ms_smooth"] = (
         out["solve_time_ms"].rolling(window=5, min_periods=1).median()
     )
+    path_length_hint = float(kpi.get("path_length_m") or 0.0)
+    if path_length_hint <= 0.0:
+        s_plus_rem = pd.to_numeric(out["path_s_m"], errors="coerce") + pd.to_numeric(
+            out["path_remaining_m"], errors="coerce"
+        )
+        s_plus_rem = s_plus_rem[np.isfinite(s_plus_rem.to_numpy(dtype=float))]
+        if not s_plus_rem.empty:
+            path_length_hint = float(np.nanmedian(s_plus_rem.to_numpy(dtype=float)))
+
+    path_s_axis = pd.to_numeric(out["path_s_m"], errors="coerce")
+    if not _series_has_signal(path_s_axis) and path_length_hint > 0.0:
+        path_s_axis = path_length_hint - pd.to_numeric(
+            out["path_remaining_m"], errors="coerce"
+        )
+
+    path_s_axis = pd.to_numeric(path_s_axis, errors="coerce")
+    path_s_axis = (
+        path_s_axis.where(np.isfinite(path_s_axis), np.nan).ffill().fillna(0.0)
+    )
+    path_s_axis = path_s_axis.clip(lower=0.0)
+    out["path_s_plot"] = np.maximum.accumulate(path_s_axis.to_numpy(dtype=float))
 
     fallback_flag = 1 if float(kpi.get("solver_fallback_count", 0.0) or 0.0) > 0 else 0
     out["fallback_flag"] = fallback_flag
@@ -445,6 +473,8 @@ def _palette(count: int) -> list[Any]:
 def _plot_overlay(
     bundles: list[RunBundle],
     *,
+    x_col: str,
+    xlabel: str,
     y_col: str,
     ylabel: str,
     title: str,
@@ -457,9 +487,9 @@ def _plot_overlay(
 
     for idx, bundle in enumerate(bundles):
         df = bundle.step_df
-        if y_col not in df.columns:
+        if y_col not in df.columns or x_col not in df.columns:
             continue
-        x = pd.to_numeric(df["time_s"], errors="coerce").to_numpy()
+        x = pd.to_numeric(df[x_col], errors="coerce").to_numpy()
         y = pd.to_numeric(df[y_col], errors="coerce").to_numpy()
 
         valid = np.isfinite(x) & np.isfinite(y)
@@ -492,7 +522,7 @@ def _plot_overlay(
             ax.set_ylim(bottom=max(0.0, lo), top=hi * 1.05)
 
     ax.set_title(title)
-    ax.set_xlabel("Time (s)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(True, alpha=0.25)
     ax.legend(loc="best", fontsize=8)
@@ -704,108 +734,130 @@ def _write_summary_markdown(summary_df: pd.DataFrame, out_path: Path) -> None:
 
 
 def _generate_plots(
-    bundles: list[RunBundle], summary_df: pd.DataFrame, plots_dir: Path
+    bundles: list[RunBundle],
+    summary_df: pd.DataFrame,
+    plots_time_dir: Path,
+    plots_path_s_dir: Path,
 ) -> None:
-    plots_dir.mkdir(parents=True, exist_ok=True)
+    plots_time_dir.mkdir(parents=True, exist_ok=True)
+    plots_path_s_dir.mkdir(parents=True, exist_ok=True)
 
+    # Time-domain plots (existing set).
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="pos_error_m",
         ylabel="Position Error (m)",
         title="Position Error vs Time",
         filename="01_position_error_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
         mark_final=True,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="ang_error_deg",
         ylabel="Angular Error (deg)",
         title="Angular Error vs Time",
         filename="02_angular_error_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
         mark_final=True,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="vel_error_mps",
         ylabel="Velocity Error (m/s)",
         title="Velocity Error vs Time",
         filename="03_velocity_error_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
         mark_final=True,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="ang_vel_error_degps",
         ylabel="Angular Velocity Error (deg/s)",
         title="Angular Velocity Error vs Time",
         filename="04_angular_velocity_error_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
         mark_final=True,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="linear_speed_mps",
         ylabel="Linear Speed (m/s)",
         title="Linear Speed vs Time",
         filename="05_linear_speed_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="angular_rate_degps",
         ylabel="Angular Rate (deg/s)",
         title="Angular Rate vs Time",
         filename="06_angular_rate_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="path_error_m",
         ylabel="Path Error (m)",
         title="Path Error vs Time",
         filename="07_path_error_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="path_remaining_m",
         ylabel="Path Remaining (m)",
         title="Path Remaining vs Time",
         filename="08_path_remaining_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_overlay(
         bundles,
+        x_col="time_s",
+        xlabel="Time (s)",
         y_col="solve_time_ms_smooth",
         ylabel="MPC Solve Time (ms)",
         title="MPC Solve Time vs Time (Rolling Median)",
         filename="09_mpc_solve_time_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_event_raster(
         bundles,
         event_col="timing_violation",
         title="Control Timing Violation Events vs Time",
         filename="10_timing_violation_events_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_event_raster(
         bundles,
         event_col="time_limit_exceeded",
         title="Solver Time-Limit Exceeded Events vs Time",
         filename="11_solver_time_limit_exceeded_events_vs_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
-
     _plot_summary_bars(
         summary_df,
         metric="final_position_error_m",
         ylabel="m",
         title="Final Position Error by Run",
         filename="12_kpi_summary_bar_final_position_error.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_summary_bars(
         summary_df,
@@ -813,7 +865,7 @@ def _generate_plots(
         ylabel="deg",
         title="Final Angular Error by Run",
         filename="13_kpi_summary_bar_final_angle_error.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_summary_bars(
         summary_df,
@@ -821,7 +873,7 @@ def _generate_plots(
         ylabel="ms",
         title="MPC Mean Solve Time by Run",
         filename="14_kpi_summary_bar_mean_solve_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_summary_bars(
         summary_df,
@@ -829,7 +881,7 @@ def _generate_plots(
         ylabel="ms",
         title="MPC Max Solve Time by Run",
         filename="15_kpi_summary_bar_max_solve_time.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
     )
     _plot_summary_bars(
         summary_df,
@@ -837,7 +889,103 @@ def _generate_plots(
         ylabel="count",
         title="Solver Fallback Count by Run",
         filename="16_kpi_summary_bar_fallback_count.png",
-        plots_dir=plots_dir,
+        plots_dir=plots_time_dir,
+    )
+
+    # Path-distance-domain plots.
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="pos_error_m",
+        ylabel="Position Error (m)",
+        title="Position Error vs Path Distance",
+        filename="01_position_error_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+        mark_final=True,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="ang_error_deg",
+        ylabel="Angular Error (deg)",
+        title="Angular Error vs Path Distance",
+        filename="02_angular_error_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+        mark_final=True,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="vel_error_mps",
+        ylabel="Velocity Error (m/s)",
+        title="Velocity Error vs Path Distance",
+        filename="03_velocity_error_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+        mark_final=True,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="ang_vel_error_degps",
+        ylabel="Angular Velocity Error (deg/s)",
+        title="Angular Velocity Error vs Path Distance",
+        filename="04_angular_velocity_error_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+        mark_final=True,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="linear_speed_mps",
+        ylabel="Linear Speed (m/s)",
+        title="Linear Speed vs Path Distance",
+        filename="05_linear_speed_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="angular_rate_degps",
+        ylabel="Angular Rate (deg/s)",
+        title="Angular Rate vs Path Distance",
+        filename="06_angular_rate_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="path_error_m",
+        ylabel="Path Error (m)",
+        title="Path Error vs Path Distance",
+        filename="07_path_error_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="path_remaining_m",
+        ylabel="Path Remaining (m)",
+        title="Path Remaining vs Path Distance",
+        filename="08_path_remaining_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
+    )
+    _plot_overlay(
+        bundles,
+        x_col="path_s_plot",
+        xlabel="Path Distance s (m)",
+        y_col="solve_time_ms_smooth",
+        ylabel="MPC Solve Time (ms)",
+        title="MPC Solve Time vs Path Distance (Rolling Median)",
+        filename="09_mpc_solve_time_vs_path_s.png",
+        plots_dir=plots_path_s_dir,
     )
 
 
@@ -1063,13 +1211,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     report_dir = out_root / f"{_now_utc_stamp()}_compare_{len(bundles)}runs"
-    plots_dir = report_dir / "plots"
+    plots_time_dir = report_dir / "plots"
+    plots_path_s_dir = report_dir / "plots_path_s"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     summary_rows = _build_summary_rows(bundles)
     summary_df = pd.DataFrame(summary_rows)
 
-    _generate_plots(bundles, summary_df, plots_dir)
+    _generate_plots(
+        bundles=bundles,
+        summary_df=summary_df,
+        plots_time_dir=plots_time_dir,
+        plots_path_s_dir=plots_path_s_dir,
+    )
 
     summary_csv_path = report_dir / "comparison_summary.csv"
     summary_md_path = report_dir / "comparison_summary.md"
@@ -1084,7 +1238,9 @@ def main(argv: list[str] | None = None) -> int:
         "selected_inputs": [str(path) for path in selected_dirs],
         "included_runs": [bundle.run_id for bundle in bundles],
         "excluded_count": len(selected_dirs) - len(bundles),
-        "plot_count": 16,
+        "plot_count_time": 16,
+        "plot_count_path_s": 9,
+        "plot_count_total": 25,
         "output_dir": str(report_dir),
     }
     (report_dir / "comparison_meta.json").write_text(

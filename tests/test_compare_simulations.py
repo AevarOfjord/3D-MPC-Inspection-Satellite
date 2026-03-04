@@ -139,6 +139,10 @@ def test_compare_generates_expected_report_files(tmp_path: Path) -> None:
     assert (report_dir / "comparison_summary.csv").exists()
     assert (report_dir / "comparison_summary.md").exists()
     assert (report_dir / "comparison_meta.json").exists()
+    meta = json.loads((report_dir / "comparison_meta.json").read_text(encoding="utf-8"))
+    assert meta["plot_count_time"] == 16
+    assert meta["plot_count_path_s"] == 9
+    assert meta["plot_count_total"] == 25
 
     plots_dir = report_dir / "plots"
     expected = [f"{i:02d}_" for i in range(1, 17)]
@@ -146,6 +150,13 @@ def test_compare_generates_expected_report_files(tmp_path: Path) -> None:
     assert len(created) >= 16
     for prefix in expected:
         assert any(name.startswith(prefix) for name in created)
+
+    plots_path_s_dir = report_dir / "plots_path_s"
+    expected_path_s = [f"{i:02d}_" for i in range(1, 10)]
+    created_path_s = [p.name for p in plots_path_s_dir.glob("*.png")]
+    assert len(created_path_s) >= 9
+    for prefix in expected_path_s:
+        assert any(name.startswith(prefix) for name in created_path_s)
 
 
 def test_compare_handles_invalid_run_and_writes_warnings(tmp_path: Path) -> None:
