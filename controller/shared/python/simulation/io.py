@@ -57,30 +57,86 @@ class SimulationIO:
         """
         self.sim = simulation
 
+    @staticmethod
+    def _sanitize_run_token(raw: str, *, default: str = "unknown") -> str:
+        """Normalize token strings for filesystem-safe run directory names."""
+        token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(raw or "").strip())
+        token = re.sub(r"_+", "_", token).strip("._-")
+        return token or default
+
+    def _resolve_controller_profile_token(self) -> str:
+        """Best-effort controller profile token for run directory naming."""
+        profile_raw = str(
+            getattr(self.sim, "controller_profile_mode", None)
+            or getattr(
+                getattr(self.sim, "mpc_controller", None), "controller_profile", ""
+            )
+            or "unknown"
+        )
+        # Directory labels do not need the stack prefix when all profiles are C++-backed.
+        profile = profile_raw[4:] if profile_raw.startswith("cpp_") else profile_raw
+        return self._sanitize_run_token(profile, default="unknown")
+
+    def _resolve_mission_token(self) -> str:
+        """Best-effort mission token for run directory naming."""
+        env_name = str(os.environ.get("SATCTRL_RUNNER_MISSION_NAME", "")).strip()
+        if env_name:
+            return self._sanitize_run_token(env_name, default="auto")
+
+        env_path = str(os.environ.get("SATCTRL_RUNNER_MISSION_PATH", "")).strip()
+        if env_path:
+            return self._sanitize_run_token(Path(env_path).stem, default="auto")
+
+        sim_config = getattr(self.sim, "simulation_config", None)
+        app_config = getattr(sim_config, "app_config", None)
+        input_path = getattr(app_config, "input_file_path", None)
+        if isinstance(input_path, str) and input_path.strip():
+            return self._sanitize_run_token(Path(input_path).stem, default="auto")
+
+        return "auto"
+
+    def _build_run_dir_name(self) -> str:
+        """Build deterministic run directory name: <timestamp>__<profile>__<mission>."""
+        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        profile_token = self._resolve_controller_profile_token()
+        mission_token = self._resolve_mission_token()
+        return f"{timestamp}__{profile_token}__{mission_token}"
+
+    def _resolve_unique_run_dir(self, base_dir: Path, run_name: str) -> Path:
+        """Ensure run directory name uniqueness when multiple runs start within a second."""
+        candidate = base_dir / run_name
+        if not candidate.exists():
+            return candidate
+
+        suffix = 2
+        while True:
+            alt = base_dir / f"{run_name}__{suffix:02d}"
+            if not alt.exists():
+                return alt
+            suffix += 1
+
     def create_data_directories(self) -> Path:
         """
         Create the directory structure for saving data.
 
         Returns:
-            Path to the timestamped subdirectory
+            Path to the run subdirectory
         """
-        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-
-        # Canonical directory path: data/simulation_data/<timestamp>
-        timestamped_path = SIMULATION_DATA_ROOT / timestamp
+        run_name = self._build_run_dir_name()
+        run_path = self._resolve_unique_run_dir(SIMULATION_DATA_ROOT, run_name)
 
         # Create directories
-        timestamped_path.mkdir(parents=True, exist_ok=True)
-        ensure_artifact_directories(timestamped_path)
+        run_path.mkdir(parents=True, exist_ok=True)
+        ensure_artifact_directories(run_path)
         self._write_run_status(
-            run_dir=timestamped_path,
+            run_dir=run_path,
             status="running",
             status_detail="Simulation initialized and data directory created",
             final=False,
         )
 
-        logger.info(f"Created data directory: {timestamped_path}")
-        return timestamped_path
+        logger.info(f"Created data directory: {run_path}")
+        return run_path
 
     def _artifact_path(self, run_dir: Path, name: str) -> Path:
         """Resolve canonical output path for a run artifact."""
@@ -1801,7 +1857,11 @@ class SimulationIO:
         latest_run_path.write_text(run_dir.name + "\n", encoding="utf-8")
 
         runs: list[dict[str, Any]] = []
-        for candidate in sorted(base_dir.iterdir(), reverse=True):
+        for candidate in sorted(
+            base_dir.iterdir(),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+            reverse=True,
+        ):
             if not candidate.is_dir():
                 continue
             status_path = self._artifact_existing_path(

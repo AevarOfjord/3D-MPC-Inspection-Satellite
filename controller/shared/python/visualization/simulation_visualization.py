@@ -1532,12 +1532,15 @@ class SimulationVisualizationManager:
         # Reset trajectory
         self.satellite.trajectory = [self.satellite.position.copy()]
 
-    def auto_generate_visualizations(self, generate_animation: bool = False):
+    def auto_generate_visualizations(
+        self, generate_animation: bool = False, generate_plots: bool = True
+    ):
         """
-        Automatically generate performance plots (always) and animation (optional).
+        Automatically generate performance plots (optional) and animation (optional).
 
         Args:
             generate_animation: Whether to generate the MP4 animation (default: False).
+            generate_plots: Whether to generate performance plots (default: True).
         """
         if UnifiedVisualizationGenerator is None:
             print(
@@ -1550,9 +1553,10 @@ class SimulationVisualizationManager:
             return
 
         try:
-            print("\n Plots and Summary will now be generated!")
+            if generate_plots:
+                print("\n Plots and Summary will now be generated!")
             if generate_animation:
-                print(" Animation will also be generated.")
+                print(" Animation will be generated.")
 
             # Check for MissionState.
             mission_state = getattr(self.controller, "mission_state", None)
@@ -1592,22 +1596,25 @@ class SimulationVisualizationManager:
             finally:
                 sys.stdout = old_stdout
 
-            # Generate performance plots (ALWAYS)
-            try:
-                print("\nCreating Plots...")
-                plots_path = self.data_save_path / "Plots"
-                print(f"Saving Plots to: {plots_path}")
-
-                sys.stdout = io.StringIO()  # Suppress output
+            # Generate performance plots (OPTIONAL)
+            if generate_plots:
                 try:
-                    generator.generate_performance_plots()
-                finally:
-                    sys.stdout = old_stdout
+                    print("\nCreating Plots...")
+                    plots_path = self.data_save_path / "Plots"
+                    print(f"Saving Plots to: {plots_path}")
 
-                print(" Plots saved successfully!")
-                print(f" File location: {plots_path}")
-            except Exception as plots_err:
-                print(f"  Performance plots generation failed: {plots_err}")
+                    sys.stdout = io.StringIO()  # Suppress output
+                    try:
+                        generator.generate_performance_plots()
+                    finally:
+                        sys.stdout = old_stdout
+
+                    print(" Plots saved successfully!")
+                    print(f" File location: {plots_path}")
+                except Exception as plots_err:
+                    print(f"  Performance plots generation failed: {plots_err}")
+            else:
+                print(" Skipping plots generation.")
 
             # Generate matplotlib-based animation with X-Y and X-Z panels (OPTIONAL)
             if generate_animation:
