@@ -29,6 +29,20 @@ app = typer.Typer(
 console = Console()
 
 
+def _set_run_mission_env(mission_path: str | None) -> None:
+    """Populate mission context env vars used by SimulationIO naming/metadata."""
+    if not mission_path:
+        os.environ.pop("SATCTRL_RUNNER_MISSION_NAME", None)
+        os.environ.pop("SATCTRL_RUNNER_MISSION_PATH", None)
+        return
+
+    from pathlib import Path
+
+    mission_name = Path(mission_path).stem
+    os.environ["SATCTRL_RUNNER_MISSION_NAME"] = mission_name
+    os.environ["SATCTRL_RUNNER_MISSION_PATH"] = mission_path
+
+
 def _prompt_saved_mission_file() -> str | None:
     """Prompt user to select a saved mission file for simulation."""
     entries = list_mission_entries(source_priority=("local",))
@@ -41,6 +55,15 @@ def _prompt_saved_mission_file() -> str | None:
     try:
         import questionary
 
+        select_style = questionary.Style(
+            [
+                ("qmark", ""),
+                ("question", "bold"),
+                ("pointer", "fg:#ffffff bg:#005f87 bold"),
+                ("highlighted", "fg:#ffffff bg:#005f87 bold"),
+                ("selected", "fg:#ffffff bg:#005f87"),
+            ]
+        )
         choices = []
         for entry in entries:
             source = source_labels.get(entry.source, entry.source)
@@ -55,6 +78,8 @@ def _prompt_saved_mission_file() -> str | None:
         selected = questionary.select(
             "Select mission to run:",
             choices=choices,
+            qmark="",
+            style=select_style,
         ).ask()
         if selected in (None, "cancel"):
             return None
@@ -101,8 +126,8 @@ def run(
         None,
         "--controller-profile",
         help=(
-            "Controller profile override: cpp_hybrid_rti_osqp, "
-            "cpp_nonlinear_rti_osqp, cpp_linearized_rti_osqp, "
+            "Controller profile override: cpp_linearized_rti_osqp, "
+            "cpp_hybrid_rti_osqp, cpp_nonlinear_rti_osqp, "
             "cpp_nonlinear_fullnlp_ipopt, cpp_nonlinear_rti_hpipm, or "
             "cpp_nonlinear_sqp_hpipm."
         ),
@@ -161,6 +186,7 @@ def run(
             raise typer.Exit()
 
     if auto:
+        _set_run_mission_env(None)
         console.print(
             "[yellow]Running in AUTO mode with default parameters...[/yellow]"
         )
@@ -202,6 +228,7 @@ def run(
             raise typer.Exit(code=1)
 
         console.print(f"[green]Loading mission from {m_path}[/green]")
+        _set_run_mission_env(str(m_path))
 
         # Load JSON and detect format
         if MISSIONS_DIR in m_path.parents:
@@ -210,6 +237,7 @@ def run(
             mission_data = json.loads(m_path.read_text())
 
         simulation_config = SimulationConfig.create_default()
+        simulation_config.app_config.input_file_path = str(m_path)
         from controller.shared.python.mission.runtime_loader import (
             compile_unified_mission_runtime,
             parse_unified_mission_payload,
@@ -227,6 +255,7 @@ def run(
             simulation_config=simulation_config,
         )
         simulation_config = mission_runtime.simulation_config
+        simulation_config.app_config.input_file_path = str(m_path)
         if mission_runtime.runtime_plan is not None:
             required_duration_hint = float(
                 mission_runtime.runtime_plan.required_duration_s
@@ -287,17 +316,17 @@ def run(
     if controller_profile:
         profile = str(controller_profile).strip().lower()
         if profile not in {
+            "cpp_linearized_rti_osqp",
             "cpp_hybrid_rti_osqp",
             "cpp_nonlinear_rti_osqp",
-            "cpp_linearized_rti_osqp",
             "cpp_nonlinear_fullnlp_ipopt",
             "cpp_nonlinear_rti_hpipm",
             "cpp_nonlinear_sqp_hpipm",
         }:
             console.print(
                 "[red]Invalid controller profile. Use one of: "
-                "cpp_hybrid_rti_osqp, cpp_nonlinear_rti_osqp, "
-                "cpp_linearized_rti_osqp, cpp_nonlinear_fullnlp_ipopt, "
+                "cpp_linearized_rti_osqp, cpp_hybrid_rti_osqp, "
+                "cpp_nonlinear_rti_osqp, cpp_nonlinear_fullnlp_ipopt, "
                 "cpp_nonlinear_rti_hpipm, cpp_nonlinear_sqp_hpipm.[/red]"
             )
             raise typer.Exit(code=1)
@@ -317,6 +346,8 @@ def run(
         simulation_config = SimulationConfig.create_with_overrides(
             config_overrides, base_config=simulation_config
         )
+    if mission_file:
+        simulation_config.app_config.input_file_path = str(mission_file)
 
     console.print("[green]Loaded Pydantic configuration[/green]")
 

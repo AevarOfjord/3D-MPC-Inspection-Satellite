@@ -567,11 +567,14 @@ class SatelliteMPCLinearizedSimulation:
         """Legacy alias for reset()."""
         self.reset()
 
-    def auto_generate_visualizations(self, generate_animation: bool = False) -> None:
+    def auto_generate_visualizations(
+        self, generate_animation: bool = False, generate_plots: bool = True
+    ) -> None:
         """Generate all visualizations after simulation completion."""
         self.visualizer.sync_from_controller()
         self.visualizer.auto_generate_visualizations(
-            generate_animation=generate_animation
+            generate_animation=generate_animation,
+            generate_plots=generate_plots,
         )
 
     def run_simulation(self, show_animation: bool = True) -> None:

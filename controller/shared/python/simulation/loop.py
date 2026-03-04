@@ -191,16 +191,24 @@ class SimulationLoop:
             logger.info("Simulation finished. Data saving in progress...")
             self.simulation.save_simulation_data()  # Consolidated save call
 
-            # Use the new prompt for MP4 only
-            if self._prompt_for_mp4():
+            generate_mp4 = self._prompt_for_mp4()
+            if generate_mp4:
                 self.simulation.save_animation_mp4(fig, ani)
             else:
                 logger.info("Skipping MP4 animation generation.")
 
-            # Always generate static visualizations
-            logger.info("Auto-generating visualizations...")
-            self.simulation.auto_generate_visualizations(generate_animation=False)
-            logger.info("All visualizations complete!")
+            generate_plots = self._prompt_for_plots()
+            if generate_plots:
+                logger.info("Generating plots...")
+            else:
+                logger.info("Skipping plots generation (user request or default).")
+
+            if generate_plots:
+                self.simulation.auto_generate_visualizations(
+                    generate_animation=False,
+                    generate_plots=True,
+                )
+                logger.info("Visualization generation complete!")
             logger.info("Data saved to: %s", self.simulation.data_save_path)
 
             self.simulation.finalize_run_artifacts(
@@ -277,20 +285,23 @@ class SimulationLoop:
             logger.info("Simulation finished. Data saving in progress...")
             self.simulation.save_simulation_data()  # Consolidated save call
 
-            # Always generate visualizations in batch mode contexts.
-            # We prompt for MP4 animation because it is slow to render.
-            logger.info("Auto-generating visualizations...")
-
             generate_mp4 = self._prompt_for_mp4()
             if not generate_mp4:
                 logger.info(
                     "Skipping MP4 animation generation (user request or default)."
                 )
+            generate_plots = self._prompt_for_plots()
+            if not generate_plots:
+                logger.info("Skipping plots generation (user request or default).")
 
-            self.simulation.auto_generate_visualizations(
-                generate_animation=generate_mp4
-            )
-            logger.info("All visualizations complete!")
+            if generate_mp4 or generate_plots:
+                self.simulation.auto_generate_visualizations(
+                    generate_animation=generate_mp4,
+                    generate_plots=generate_plots,
+                )
+                logger.info("Visualization generation complete!")
+            else:
+                logger.info("No visualization artifacts requested.")
             logger.info("Data saved to: %s", self.simulation.data_save_path)
 
             self.simulation.finalize_run_artifacts(
@@ -317,6 +328,24 @@ class SimulationLoop:
 
         try:
             print("\nGenerate MP4 animation? [y/N]: ", end="", flush=True)
+            choice = sys.stdin.readline().strip().lower()
+            return choice in ("y", "yes")
+        except (KeyboardInterrupt, EOFError):
+            return False
+
+    def _prompt_for_plots(self) -> bool:
+        """
+        Prompt the user whether to generate post-run plots.
+
+        Returns:
+            True if user inputs 'y' or 'yes' (case insensitive), False otherwise.
+            Default is False (on simple Enter).
+        """
+        if not sys.stdin.isatty():
+            return False
+
+        try:
+            print("\nGenerate plots? [y/N]: ", end="", flush=True)
             choice = sys.stdin.readline().strip().lower()
             return choice in ("y", "yes")
         except (KeyboardInterrupt, EOFError):

@@ -72,6 +72,7 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
 SIM_CONTROLLER_PROFILE ?=
+COMPARE_ARGS ?=
 CPP_IMPORT_CHECK_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -c "from controller.shared.python.cpp import _cpp_mpc, _cpp_mpc_nonlinear, _cpp_mpc_linear, _cpp_sim, _cpp_physics"
 LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check controller tests
 TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=controller --cov-report=term-missing --cov-fail-under=30
@@ -81,7 +82,7 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PY
 # ============================================================================
 
 .PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
-	sim install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
+	sim comparison install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -102,6 +103,7 @@ help:
 	@echo "  make smoke-pyinstaller Launch smoke test on latest PyInstaller bundle"
 	@echo "  make package-clean Remove generated app bundles in ./release"
 	@echo "  make sim          Run CLI simulation (prompts for controller profile, then tests)"
+	@echo "  make comparison   Run multi-run comparison report generator"
 	@echo "  make test         Run pytest suite"
 	@echo "  make test-cov     Run pytest with coverage gate (>=30%)"
 	@echo "  make test-ui      Run frontend unit/component tests (Vitest)"
@@ -347,21 +349,22 @@ sim:
 	fi
 	@controller_profile="$(SIM_CONTROLLER_PROFILE)"; \
 	if [ -z "$$controller_profile" ]; then \
-		printf "Select controller profile [1=hybrid, 2=nonlinear, 3=linear, 4=nmpc, 5=acados_rti, 6=acados_sqp] (default 1): "; \
-		read controller_ans; \
-		case "$$controller_ans" in \
-			2|nonlinear|NONLINEAR) controller_profile="nonlinear" ;; \
-			3|linear|LINEAR) controller_profile="linear" ;; \
-			4|nmpc|NMPC) controller_profile="nmpc" ;; \
-			5|acados_rti|ACADOS_RTI) controller_profile="acados_rti" ;; \
-			6|acados_sqp|ACADOS_SQP) controller_profile="acados_sqp" ;; \
-			""|1|hybrid|HYBRID) controller_profile="hybrid" ;; \
-			*) echo "Invalid selection '$$controller_ans'. Falling back to hybrid."; controller_profile="hybrid" ;; \
-		esac; \
+		controller_profile_file="$$(mktemp)"; \
+		PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) controller/shared/python/simulation/profile_prompt.py --output "$$controller_profile_file" || exit $$?; \
+		controller_profile="$$(tr -d '\r\n' < "$$controller_profile_file" 2>/dev/null)"; \
+		rm -f "$$controller_profile_file"; \
 	fi; \
 	case "$$controller_profile" in \
-		hybrid|nonlinear|linear|nmpc|acados_rti|acados_sqp) ;; \
-		*) echo "Invalid SIM_CONTROLLER_PROFILE='$$controller_profile'. Falling back to hybrid."; controller_profile="hybrid" ;; \
+		hybrid) controller_profile="cpp_hybrid_rti_osqp" ;; \
+		nonlinear) controller_profile="cpp_nonlinear_rti_osqp" ;; \
+		linear) controller_profile="cpp_linearized_rti_osqp" ;; \
+		nmpc) controller_profile="cpp_nonlinear_fullnlp_ipopt" ;; \
+		acados_rti) controller_profile="cpp_nonlinear_rti_hpipm" ;; \
+		acados_sqp) controller_profile="cpp_nonlinear_sqp_hpipm" ;; \
+	esac; \
+	case "$$controller_profile" in \
+		cpp_hybrid_rti_osqp|cpp_nonlinear_rti_osqp|cpp_linearized_rti_osqp|cpp_nonlinear_fullnlp_ipopt|cpp_nonlinear_rti_hpipm|cpp_nonlinear_sqp_hpipm) ;; \
+		*) echo "Invalid SIM_CONTROLLER_PROFILE='$$controller_profile'. Falling back to cpp_hybrid_rti_osqp."; controller_profile="cpp_hybrid_rti_osqp" ;; \
 	esac; \
 	echo "Using controller profile: $$controller_profile"; \
 	printf "Run tests before simulation? [y/N] "; \
@@ -374,6 +377,20 @@ sim:
 		export DYLD_LIBRARY_PATH="$$ACADOS_SOURCE_DIR/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"; \
 	fi; \
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --controller-profile "$$controller_profile"
+
+# Run multi-run comparison report generator.
+comparison:
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -c "import pandas, matplotlib" >/dev/null 2>&1; then \
+		echo "Comparison dependencies are missing in $(VENV_DIR)."; \
+		echo "Running 'make install' to repair the environment..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(VENV_PY) -c "import pandas, matplotlib" >/dev/null 2>&1; then \
+			echo "Error: comparison dependencies are still missing after install."; \
+			exit 1; \
+		fi; \
+	fi
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/compare_simulations.py $(COMPARE_ARGS)
 
 # ============================================================================
 # Build targets

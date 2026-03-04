@@ -14,9 +14,9 @@ ACADOS_RTI_PROFILE: Final[str] = "cpp_nonlinear_rti_hpipm"
 ACADOS_SQP_PROFILE: Final[str] = "cpp_nonlinear_sqp_hpipm"
 
 SUPPORTED_CONTROLLER_PROFILES: Final[tuple[str, ...]] = (
+    LINEAR_PROFILE,
     HYBRID_PROFILE,
     NONLINEAR_PROFILE,
-    LINEAR_PROFILE,
     NMPC_PROFILE,
     ACADOS_RTI_PROFILE,
     ACADOS_SQP_PROFILE,
