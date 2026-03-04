@@ -36,6 +36,7 @@ for _mod in (
     "_cpp_mpc",
     "_cpp_mpc_nonlinear",
     "_cpp_mpc_linear",
+    "_cpp_mpc_runtime",
     "_cpp_sim",
     "_cpp_physics",
 ):
@@ -46,3 +47,19 @@ for _mod in (
     # Backward-compat aliases for both old and new import paths.
     sys.modules.setdefault(f"cpp.{_mod}", _module)
     sys.modules.setdefault(f"{__name__}.{_mod}", _module)
+
+HAS_ACADOS_BACKEND = bool(
+    getattr(globals().get("_cpp_mpc_runtime"), "HAS_ACADOS_BACKEND", False)
+)
+HAS_IPOPT_BACKEND = bool(
+    getattr(globals().get("_cpp_mpc_runtime"), "HAS_IPOPT_BACKEND", False)
+)
+HAS_ACADOS_DEPENDENCIES = bool(
+    getattr(globals().get("_cpp_mpc_runtime"), "HAS_ACADOS_DEPENDENCIES", False)
+)
+HAS_IPOPT_DEPENDENCIES = bool(
+    getattr(globals().get("_cpp_mpc_runtime"), "HAS_IPOPT_DEPENDENCIES", False)
+)
+HAS_CASADI_CPP_DEPENDENCIES = bool(
+    getattr(globals().get("_cpp_mpc_runtime"), "HAS_CASADI_CPP_DEPENDENCIES", False)
+)
