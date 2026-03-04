@@ -21,6 +21,10 @@ from controller.configs.paths import (
     PROJECT_ROOT,
     SCRIPTS_DIR,
 )
+from controller.registry import (
+    LEGACY_PROFILE_REWRITE_MAP,
+    rewrite_legacy_controller_profile,
+)
 from controller.shared.python.simulation.artifact_paths import (
     artifact_path,
     resolve_existing_artifact_path,
@@ -44,8 +48,8 @@ REMOVED_MPC_FIELDS = (
     "progress_slowdown_distance",
 )
 _LEGACY_CONTROLLER_BACKEND_MAP = {
-    "v2": "hybrid",
-    "v1": "linear",
+    "v2": "cpp_hybrid_rti_osqp",
+    "v1": "cpp_linearized_rti_osqp",
 }
 _MPC_CORE_FIELDS = frozenset(MPCCoreParams.model_fields.keys())
 _MPC_RUNTIME_FIELDS = frozenset(MPCParams.model_fields.keys())
@@ -432,7 +436,17 @@ class RunnerManager:
                 normalized["simulation"] = {"control_dt": mpc_core_section["dt"]}
         if isinstance(mpc_core_section, dict):
             self._migrate_legacy_mpc_core_section(mpc_core_section)
+            profile_raw = mpc_core_section.get("controller_profile")
+            rewritten = rewrite_legacy_controller_profile(profile_raw)
+            if rewritten != profile_raw:
+                mpc_core_section["controller_profile"] = rewritten
             self._track_removed_mpc_fields(mpc_core_section)
+
+        profile_overrides = normalized.get("mpc_profile_overrides")
+        if isinstance(profile_overrides, dict):
+            for old_key, new_key in LEGACY_PROFILE_REWRITE_MAP.items():
+                if old_key in profile_overrides and new_key not in profile_overrides:
+                    profile_overrides[new_key] = profile_overrides.pop(old_key)
 
         if "actuator_policy" not in normalized and isinstance(mpc_core_section, dict):
             inferred_actuator = self._actuator_policy_from_mpc_core(mpc_core_section)

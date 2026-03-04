@@ -13,9 +13,9 @@ def _build_controller(profile: str):
 
 
 def test_shared_contract_signature_matches_across_profiles():
-    hybrid = _build_controller("hybrid")
-    nonlinear = _build_controller("nonlinear")
-    linear = _build_controller("linear")
+    hybrid = _build_controller("cpp_hybrid_rti_osqp")
+    nonlinear = _build_controller("cpp_nonlinear_rti_osqp")
+    linear = _build_controller("cpp_linearized_rti_osqp")
 
     assert hybrid.get_shared_contract_signature()
     assert (
@@ -28,23 +28,23 @@ def test_shared_contract_signature_matches_across_profiles():
 
 
 def test_shared_contract_is_immutable():
-    hybrid = _build_controller("hybrid")
+    hybrid = _build_controller("cpp_hybrid_rti_osqp")
     with pytest.raises(TypeError):
         hybrid.shared_contract.mpc["Q_contour"] = 1.0
 
 
 def test_effective_contract_changes_only_with_profile_overrides():
     base_cfg = SimulationConfig.create_default().app_config.model_copy(deep=True)
-    base_cfg.mpc_core.controller_profile = "nonlinear"
+    base_cfg.mpc_core.controller_profile = "cpp_nonlinear_rti_osqp"
     baseline = create_controller(base_cfg)
 
     tuned_cfg = base_cfg.model_copy(deep=True)
-    tuned_cfg.mpc_profile_overrides.nonlinear.base_overrides["Q_contour"] = (
-        float(tuned_cfg.mpc.Q_contour) + 111.0
-    )
-    tuned_cfg.mpc_profile_overrides.nonlinear.profile_specific["strict_integrity"] = (
-        False
-    )
+    tuned_cfg.mpc_profile_overrides.cpp_nonlinear_rti_osqp.base_overrides[
+        "Q_contour"
+    ] = float(tuned_cfg.mpc.Q_contour) + 111.0
+    tuned_cfg.mpc_profile_overrides.cpp_nonlinear_rti_osqp.profile_specific[
+        "strict_integrity"
+    ] = False
     tuned = create_controller(tuned_cfg)
 
     # Fairness baseline remains identical across profile variants.
@@ -69,9 +69,9 @@ def test_sqp_budget_is_identical_across_profiles():
     not profile-specific overrides, ensuring a fair scientific comparison of
     linearization strategies.
     """
-    hybrid = _build_controller("hybrid")
-    nonlinear = _build_controller("nonlinear")
-    linear = _build_controller("linear")
+    hybrid = _build_controller("cpp_hybrid_rti_osqp")
+    nonlinear = _build_controller("cpp_nonlinear_rti_osqp")
+    linear = _build_controller("cpp_linearized_rti_osqp")
 
     assert hybrid.sqp_max_iter == nonlinear.sqp_max_iter == linear.sqp_max_iter, (
         f"SQP outer iterations differ across profiles: "

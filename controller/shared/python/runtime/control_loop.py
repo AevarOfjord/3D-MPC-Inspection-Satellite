@@ -476,7 +476,9 @@ def update_mpc_control_step(sim: Any) -> None:
             sim,
             "controller_profile_mode",
             getattr(
-                getattr(sim, "mpc_controller", None), "controller_profile", "hybrid"
+                getattr(sim, "mpc_controller", None),
+                "controller_profile",
+                "cpp_hybrid_rti_osqp",
             ),
         )
     )

@@ -147,7 +147,7 @@ class TestConfigValidation:
         app_cfg = config.app_config
         assert app_cfg.reference_scheduler.speed_policy == "min_non_hold_segment_speed"
         assert app_cfg.mpc_core.solver_backend == "OSQP"
-        assert app_cfg.mpc_core.controller_profile == "hybrid"
+        assert app_cfg.mpc_core.controller_profile == "cpp_hybrid_rti_osqp"
         assert app_cfg.actuator_policy.enable_thruster_hysteresis is True
         assert app_cfg.controller_contracts.hold_duration_s == pytest.approx(
             DEFAULT_PATH_HOLD_END_S

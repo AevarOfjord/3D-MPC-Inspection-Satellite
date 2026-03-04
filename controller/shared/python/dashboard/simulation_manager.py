@@ -336,7 +336,7 @@ class SimulationManager:
                     getattr(
                         getattr(self.sim_instance, "mpc_controller", None),
                         "controller_profile",
-                        "hybrid",
+                        "cpp_hybrid_rti_osqp",
                     ),
                 )
             ),

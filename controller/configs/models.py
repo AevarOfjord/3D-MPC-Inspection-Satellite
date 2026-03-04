@@ -852,11 +852,11 @@ class MPCCoreParams(BaseModel):
         description="Certified solver backend.",
     )
     controller_profile: str = Field(
-        "hybrid",
-        pattern="^(hybrid|nonlinear|linear|nmpc|acados_rti|acados_sqp)$",
+        "cpp_hybrid_rti_osqp",
+        pattern="^(cpp_hybrid_rti_osqp|cpp_nonlinear_rti_osqp|cpp_linearized_rti_osqp|cpp_nonlinear_fullnlp_ipopt|cpp_nonlinear_rti_hpipm|cpp_nonlinear_sqp_hpipm)$",
         description=(
-            "Controller profile selector: 'hybrid' (current production), "
-            "'nonlinear', 'linear', or 'nmpc' (true nonlinear MPC via IPOPT)."
+            "Controller profile selector using canonical naming "
+            "(stack_model_iter_solver)."
         ),
     )
     recover_contour_scale: float = Field(
@@ -963,12 +963,24 @@ class MPCProfileOverridesByProfile(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    hybrid: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
-    nonlinear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
-    linear: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
-    nmpc: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
-    acados_rti: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
-    acados_sqp: MPCProfileOverrides = Field(default_factory=MPCProfileOverrides)
+    cpp_hybrid_rti_osqp: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
+    cpp_nonlinear_rti_osqp: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
+    cpp_linearized_rti_osqp: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
+    cpp_nonlinear_fullnlp_ipopt: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
+    cpp_nonlinear_rti_hpipm: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
+    cpp_nonlinear_sqp_hpipm: MPCProfileOverrides = Field(
+        default_factory=MPCProfileOverrides
+    )
 
 
 class ActuatorPolicyParams(BaseModel):

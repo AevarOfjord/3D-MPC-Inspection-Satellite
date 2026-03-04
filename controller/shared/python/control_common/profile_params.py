@@ -14,34 +14,34 @@ from controller.configs.models import AppConfig
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_PROFILES: tuple[str, ...] = (
-    "hybrid",
-    "nonlinear",
-    "linear",
-    "nmpc",
-    "acados_rti",
-    "acados_sqp",
+    "cpp_hybrid_rti_osqp",
+    "cpp_nonlinear_rti_osqp",
+    "cpp_linearized_rti_osqp",
+    "cpp_nonlinear_fullnlp_ipopt",
+    "cpp_nonlinear_rti_hpipm",
+    "cpp_nonlinear_sqp_hpipm",
 )
 
 _PROFILE_SPECIFIC_DEFAULTS: dict[str, dict[str, Any]] = {
-    "hybrid": {
+    "cpp_hybrid_rti_osqp": {
         "allow_stale_stage_reuse": True,
     },
-    "nonlinear": {
+    "cpp_nonlinear_rti_osqp": {
         "strict_integrity": True,
     },
-    "linear": {
+    "cpp_linearized_rti_osqp": {
         "freeze_refresh_interval_steps": 1,
     },
-    "nmpc": {
+    "cpp_nonlinear_fullnlp_ipopt": {
         "ipopt_max_iter": 3000,
     },
-    "acados_rti": {
+    "cpp_nonlinear_rti_hpipm": {
         "acados_max_iter": 1,
         "acados_tol_stat": 1e-2,
         "acados_tol_eq": 1e-2,
         "acados_tol_ineq": 1e-2,
     },
-    "acados_sqp": {
+    "cpp_nonlinear_sqp_hpipm": {
         "acados_max_iter": 50,
         "acados_tol_stat": 1e-2,
         "acados_tol_eq": 1e-2,
@@ -50,12 +50,24 @@ _PROFILE_SPECIFIC_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 _PROFILE_SPECIFIC_ALLOWED_KEYS: dict[str, set[str]] = {
-    "hybrid": set(_PROFILE_SPECIFIC_DEFAULTS["hybrid"].keys()),
-    "nonlinear": set(_PROFILE_SPECIFIC_DEFAULTS["nonlinear"].keys()),
-    "linear": set(_PROFILE_SPECIFIC_DEFAULTS["linear"].keys()),
-    "nmpc": set(_PROFILE_SPECIFIC_DEFAULTS["nmpc"].keys()),
-    "acados_rti": set(_PROFILE_SPECIFIC_DEFAULTS["acados_rti"].keys()),
-    "acados_sqp": set(_PROFILE_SPECIFIC_DEFAULTS["acados_sqp"].keys()),
+    "cpp_hybrid_rti_osqp": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_hybrid_rti_osqp"].keys()
+    ),
+    "cpp_nonlinear_rti_osqp": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_nonlinear_rti_osqp"].keys()
+    ),
+    "cpp_linearized_rti_osqp": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_linearized_rti_osqp"].keys()
+    ),
+    "cpp_nonlinear_fullnlp_ipopt": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_nonlinear_fullnlp_ipopt"].keys()
+    ),
+    "cpp_nonlinear_rti_hpipm": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_nonlinear_rti_hpipm"].keys()
+    ),
+    "cpp_nonlinear_sqp_hpipm": set(
+        _PROFILE_SPECIFIC_DEFAULTS["cpp_nonlinear_sqp_hpipm"].keys()
+    ),
 }
 
 
@@ -88,7 +100,7 @@ class EffectiveMPCProfileContract:
 def _normalize_profile(profile: str | None) -> str:
     if isinstance(profile, str) and profile in _SUPPORTED_PROFILES:
         return profile
-    return "hybrid"
+    return "cpp_hybrid_rti_osqp"
 
 
 def _extract_profile_override_payload(

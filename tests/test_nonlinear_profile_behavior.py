@@ -14,7 +14,7 @@ def _build_nonlinear_controller():
                 "control_horizon": 8,
             },
             "mpc_core": {
-                "controller_profile": "nonlinear",
+                "controller_profile": "cpp_nonlinear_rti_osqp",
             },
         }
     ).app_config
@@ -31,10 +31,10 @@ def test_nonlinear_profile_uses_mixed_cpp_python_backend():
         previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
     )
 
-    assert info["controller_profile"] == "nonlinear"
+    assert info["controller_profile"] == "cpp_nonlinear_rti_osqp"
     assert info["linearization_mode"] == "nonlinear_exact_stage"
     assert info["solver_backend"] == "CasADi+OSQP"
-    assert info["cpp_backend_module"] == "_cpp_mpc_nonlinear"
+    assert info["cpp_backend_module"] == "_cpp_mpc_runtime"
     assert u.shape[0] == controller.num_rw_axes + controller.num_thrusters
 
 
@@ -57,4 +57,4 @@ def test_nonlinear_profile_reports_solver_iterations():
         x_current=x,
         previous_thrusters=np.zeros(controller.num_thrusters, dtype=float),
     )
-    assert info2["controller_profile"] == "nonlinear"
+    assert info2["controller_profile"] == "cpp_nonlinear_rti_osqp"

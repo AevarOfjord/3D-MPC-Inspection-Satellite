@@ -12,7 +12,7 @@ class AcadosSqpController(AcadosBaseController):
     MPC block structure (O(N) Riccati factorization vs. IPOPT's O(N³) sparse LU).
     """
 
-    controller_profile = "acados_sqp"
+    controller_profile = "cpp_nonlinear_sqp_hpipm"
     solver_type = "ACADOS-SQP"
     _acados_nlp_solver_type = "SQP"
     _acados_globalization = "MERIT_BACKTRACKING"  # line-search like IPOPT

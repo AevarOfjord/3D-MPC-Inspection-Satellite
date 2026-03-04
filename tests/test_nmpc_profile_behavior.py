@@ -8,6 +8,7 @@ Verifies the true-NMPC (CasADi Opti + IPOPT) controller:
   - registers correctly through the factory
 """
 
+import casadi as ca
 import numpy as np
 import pytest
 
@@ -24,7 +25,7 @@ def _build_nmpc_controller(horizon: int = 3):
                 "control_horizon": horizon,
             },
             "mpc_core": {
-                "controller_profile": "nmpc",
+                "controller_profile": "cpp_nonlinear_fullnlp_ipopt",
             },
         }
     ).app_config
@@ -46,7 +47,7 @@ def _zero_state(controller) -> np.ndarray:
 def test_nmpc_profile_construction():
     controller = _build_nmpc_controller()
 
-    assert controller.controller_profile == "nmpc"
+    assert controller.controller_profile == "cpp_nonlinear_fullnlp_ipopt"
     assert controller.controller_core == "casadi-opti-ipopt"
     assert controller.solver_type == "NMPC-IPOPT"
     assert controller.solver_backend == "CasADi+IPOPT"
@@ -94,7 +95,7 @@ def test_nmpc_info_keys_present():
     )
 
     # Core identification keys
-    assert info["controller_profile"] == "nmpc"
+    assert info["controller_profile"] == "cpp_nonlinear_fullnlp_ipopt"
     assert info["solver_backend"] == "CasADi+IPOPT"
     assert info["linearization_mode"] == "none"
     assert info["cpp_backend_module"] is None
@@ -122,7 +123,7 @@ def test_nmpc_second_call_warm_starts():
     assert controller._last_X_sol is not None or True  # warm-start is best-effort
 
     _, info2 = controller.get_control_action(x_current=x)
-    assert info2["controller_profile"] == "nmpc"
+    assert info2["controller_profile"] == "cpp_nonlinear_fullnlp_ipopt"
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +149,9 @@ def test_nmpc_shared_contract_hash_matches_rtiSqp_profiles():
     RTI-SQP profiles — it covers physics, MPC weights, and horizons.
     A mismatch would indicate unfair comparison parameters.
     """
-    hybrid = _build_controller_for_hash("hybrid")
-    nonlinear = _build_controller_for_hash("nonlinear")
-    nmpc = _build_controller_for_hash("nmpc")
+    hybrid = _build_controller_for_hash("cpp_hybrid_rti_osqp")
+    nonlinear = _build_controller_for_hash("cpp_nonlinear_rti_osqp")
+    nmpc = _build_controller_for_hash("cpp_nonlinear_fullnlp_ipopt")
 
     hybrid_sig = hybrid.get_shared_contract_signature()
     nonlinear_sig = nonlinear.get_shared_contract_signature()
@@ -175,8 +176,8 @@ def test_nmpc_effective_contract_differs_from_rtiSqp():
     The effective contract (which includes profile-specific settings like
     ipopt_max_iter) must differ from the RTI-SQP effective contract.
     """
-    hybrid = _build_controller_for_hash("hybrid")
-    nmpc = _build_controller_for_hash("nmpc")
+    hybrid = _build_controller_for_hash("cpp_hybrid_rti_osqp")
+    nmpc = _build_controller_for_hash("cpp_nonlinear_fullnlp_ipopt")
 
     hybrid_eff = hybrid.get_effective_contract_signature()
     nmpc_eff = nmpc.get_effective_contract_signature()
@@ -225,3 +226,20 @@ def test_nmpc_reset_clears_state():
     assert controller._last_X_sol is None
     assert controller._last_U_sol is None
     assert controller._step_count == 0
+
+
+def test_nmpc_backend_unavailable_error_is_explicit(monkeypatch):
+    monkeypatch.setattr(ca, "has_nlpsol", lambda _name: False)
+
+    cfg = SimulationConfig.create_with_overrides(
+        {
+            "mpc": {"prediction_horizon": 3, "control_horizon": 3},
+            "mpc_core": {"controller_profile": "cpp_nonlinear_fullnlp_ipopt"},
+        }
+    ).app_config
+
+    with pytest.raises(RuntimeError) as exc:
+        create_controller(cfg)
+    msg = str(exc.value)
+    assert "cpp_nonlinear_fullnlp_ipopt" in msg
+    assert "IPOPT" in msg

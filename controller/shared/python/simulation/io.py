@@ -396,7 +396,7 @@ class SimulationIO:
         )
         config_meta["controller_profile"] = str(
             getattr(self.sim, "controller_profile_mode", None)
-            or getattr(mpc_controller, "controller_profile", "hybrid")
+            or getattr(mpc_controller, "controller_profile", "cpp_hybrid_rti_osqp")
         )
         config_meta["solver_backend"] = str(
             getattr(mpc_controller, "solver_backend", "OSQP")
@@ -1303,7 +1303,7 @@ class SimulationIO:
             ),
             "controller_profile": str(
                 getattr(self.sim, "controller_profile_mode", None)
-                or getattr(mpc_controller, "controller_profile", "hybrid")
+                or getattr(mpc_controller, "controller_profile", "cpp_hybrid_rti_osqp")
             ),
             "solver_backend": str(getattr(mpc_controller, "solver_backend", "OSQP")),
             "linearization_mode": str(
