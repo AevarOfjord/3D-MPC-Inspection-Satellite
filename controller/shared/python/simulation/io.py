@@ -294,6 +294,16 @@ class SimulationIO:
                         "SATCTRL_RUNNER_OVERRIDES_ACTIVE"
                     )
                     == "1",
+                    "shared_parameters": os.environ.get(
+                        "SATCTRL_SHARED_PARAMETERS", "0"
+                    )
+                    in {"1", "true", "TRUE"},
+                    "active_controller_profile_requested": os.environ.get(
+                        "SATCTRL_ACTIVE_CONTROLLER_PROFILE"
+                    ),
+                    "profile_parameter_file": os.environ.get(
+                        "SATCTRL_PROFILE_PARAMETER_FILE"
+                    ),
                     "app_config": app_config_dict,
                 },
                 "solver": {
@@ -469,6 +479,18 @@ class SimulationIO:
         )
         config_meta["override_diff"] = dict(
             getattr(mpc_controller, "profile_override_diff", {})
+        )
+        config_meta["shared_parameters"] = os.environ.get(
+            "SATCTRL_SHARED_PARAMETERS", "0"
+        ) in {"1", "true", "TRUE"}
+        config_meta["active_controller_profile_requested"] = os.environ.get(
+            "SATCTRL_ACTIVE_CONTROLLER_PROFILE"
+        )
+        config_meta["profile_parameter_file_applied"] = bool(
+            os.environ.get("SATCTRL_PROFILE_PARAMETER_FILE")
+        )
+        config_meta["profile_parameter_file"] = os.environ.get(
+            "SATCTRL_PROFILE_PARAMETER_FILE"
         )
 
         payload.setdefault("schema_version", "run_status_v1")
@@ -1375,6 +1397,9 @@ class SimulationIO:
                 getattr(mpc_controller, "effective_params_hash", "unknown")
             ),
             "override_diff": dict(getattr(mpc_controller, "profile_override_diff", {})),
+            "shared_parameters": os.environ.get("SATCTRL_SHARED_PARAMETERS", "0")
+            in {"1", "true", "TRUE"},
+            "profile_parameter_file": os.environ.get("SATCTRL_PROFILE_PARAMETER_FILE"),
             "solver_health": {
                 "status": str(getattr(solver_health, "status", "ok")),
                 "fallback_count": int(getattr(solver_health, "fallback_count", 0)),

@@ -310,7 +310,10 @@ def get_config():
 def update_config(overrides: dict):
     """Update the simulation configuration overrides."""
     manager = get_runner_manager()
-    manager.update_config(overrides)
+    try:
+        manager.update_config(overrides)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "updated", "config": manager.get_config()}
 
 

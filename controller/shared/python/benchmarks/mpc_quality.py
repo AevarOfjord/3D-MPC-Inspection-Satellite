@@ -35,6 +35,7 @@ MISSION_PLANNER_2M = PROJECT_ROOT / "missions" / "Starlink2mScan.json"
 ENV_MISSION_M4 = "SATCTRL_QUALITY_MISSION_M4"
 ENV_MISSION_2M = "SATCTRL_QUALITY_MISSION_2M"
 ENV_MISSION_FALLBACK = "SATCTRL_QUALITY_MISSION_FALLBACK"
+FAIRNESS_BASELINE_CONFIG = SCRIPTS_DIR / "configs" / "thesis_fairness_baseline.json"
 
 
 @dataclass(frozen=True)
@@ -502,6 +503,8 @@ def _run_scenario(
         "--duration",
         str(scenario.duration_s),
     ]
+    if FAIRNESS_BASELINE_CONFIG.exists():
+        command.extend(["--config", str(FAIRNESS_BASELINE_CONFIG)])
     if scenario.use_auto:
         command.append("--auto")
     elif mission_path is not None:

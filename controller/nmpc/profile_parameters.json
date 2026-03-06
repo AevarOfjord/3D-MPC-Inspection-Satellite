@@ -1,0 +1,11 @@
+{
+  "mpc_core": {
+    "controller_profile": "cpp_nonlinear_fullnlp_ipopt"
+  },
+  "mpc_profile_overrides": {
+    "cpp_nonlinear_fullnlp_ipopt": {
+      "base_overrides": {},
+      "profile_specific": {}
+    }
+  }
+}

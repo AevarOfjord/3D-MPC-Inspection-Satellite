@@ -94,8 +94,12 @@ class TestDashboardAPI:
         assert isinstance(base_horizon, int)
         assert base_cfg.get("schema_version") == "app_config_v3"
         assert isinstance(base_cfg.get("app_config"), dict)
+        assert isinstance(base_cfg["app_config"].get("mpc"), dict)
         assert isinstance(base_cfg["app_config"].get("mpc_core"), dict)
-        assert base_cfg["app_config"]["mpc_core"].get("controller_profile") == "hybrid"
+        assert (
+            base_cfg["app_config"]["mpc_core"].get("controller_profile")
+            == "cpp_hybrid_rti_osqp"
+        )
         assert base_cfg.get("config_meta", {}).get("overrides_active") is False
         assert base_cfg.get("config_meta", {}).get("config_version") == "app_config_v3"
 
@@ -180,7 +184,7 @@ class TestDashboardAPI:
             json={
                 "schema_version": "app_config_v3",
                 "app_config": {
-                    "mpc_core": {"prediction_horizon": 45},
+                    "mpc": {"prediction_horizon": 45},
                     "simulation": {"max_duration": 93.0},
                     "actuator_policy": {
                         "enable_thruster_hysteresis": True,
@@ -201,13 +205,17 @@ class TestDashboardAPI:
             json={
                 "schema_version": "app_config_v3",
                 "app_config": {
+                    "shared": {"parameters": False},
                     "mpc_core": {"controller_profile": "nonlinear"},
                 },
             },
         )
         assert profile_resp.status_code == 200
         cfg = client.get("/runner/config").json()
-        assert cfg["app_config"]["mpc_core"]["controller_profile"] == "nonlinear"
+        assert (
+            cfg["app_config"]["mpc_core"]["controller_profile"]
+            == "cpp_nonlinear_rti_osqp"
+        )
 
     def test_runner_config_warn_ignores_removed_mpc_fields(self, client):
         """Removed MPC fields should be ignored with deprecation metadata."""
@@ -219,7 +227,7 @@ class TestDashboardAPI:
             json={
                 "schema_version": "app_config_v3",
                 "app_config": {
-                    "mpc_core": {
+                    "mpc": {
                         "prediction_horizon": 46,
                         "coast_pos_tolerance": 0.25,
                         "progress_taper_distance": 1.5,
@@ -266,6 +274,28 @@ class TestDashboardAPI:
         }.issubset(seen)
         assert deprecations.get("removed_mpc_fields_policy") == "warn_ignore"
         assert deprecations.get("removed_mpc_fields_sunset") == "next_major"
+
+    def test_runner_config_rejects_profile_overrides_in_shared_mode(self, client):
+        reset_resp = client.post("/runner/config/reset")
+        assert reset_resp.status_code == 200
+
+        update_resp = client.post(
+            "/runner/config",
+            json={
+                "schema_version": "app_config_v3",
+                "app_config": {
+                    "shared": {"parameters": True},
+                    "mpc_profile_overrides": {
+                        "cpp_hybrid_rti_osqp": {
+                            "base_overrides": {"Q_contour": 999.0},
+                            "profile_specific": {},
+                        }
+                    },
+                },
+            },
+        )
+        assert update_resp.status_code == 400
+        assert "shared.parameters" in update_resp.json()["detail"]
 
     def test_runner_presets_crud_and_apply(self, client):
         """Runner presets should persist via API and be applicable."""

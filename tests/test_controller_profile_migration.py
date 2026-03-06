@@ -58,6 +58,7 @@ def test_runner_preserves_profile_overrides_on_save(tmp_path: Path):
         "profile-overrides",
         {
             "app_config": {
+                "shared": {"parameters": False},
                 "mpc_core": {
                     "controller_profile": "cpp_nonlinear_rti_osqp",
                     "solver_backend": "OSQP",

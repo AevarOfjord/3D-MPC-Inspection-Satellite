@@ -17,6 +17,9 @@ from controller.configs.models import (
     SatellitePhysicalParams,
 )
 from controller.configs.simulation_config import SimulationConfig
+from controller.shared.python.control_common.parameter_policy import (
+    default_profile_parameter_files,
+)
 from controller.shared.python.mission.state import DEFAULT_PATH_HOLD_END_S
 
 
@@ -148,6 +151,10 @@ class TestConfigValidation:
         assert app_cfg.reference_scheduler.speed_policy == "min_non_hold_segment_speed"
         assert app_cfg.mpc_core.solver_backend == "OSQP"
         assert app_cfg.mpc_core.controller_profile == "cpp_hybrid_rti_osqp"
+        assert app_cfg.shared.parameters is True
+        assert (
+            app_cfg.shared.profile_parameter_files == default_profile_parameter_files()
+        )
         assert app_cfg.actuator_policy.enable_thruster_hysteresis is True
         assert app_cfg.controller_contracts.hold_duration_s == pytest.approx(
             DEFAULT_PATH_HOLD_END_S

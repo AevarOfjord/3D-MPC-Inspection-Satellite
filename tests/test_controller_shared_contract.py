@@ -39,6 +39,7 @@ def test_effective_contract_changes_only_with_profile_overrides():
     baseline = create_controller(base_cfg)
 
     tuned_cfg = base_cfg.model_copy(deep=True)
+    tuned_cfg.shared.parameters = False
     tuned_cfg.mpc_profile_overrides.cpp_nonlinear_rti_osqp.base_overrides[
         "Q_contour"
     ] = float(tuned_cfg.mpc.Q_contour) + 111.0

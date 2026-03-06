@@ -25,6 +25,9 @@ from controller.registry import (
     LEGACY_PROFILE_REWRITE_MAP,
     rewrite_legacy_controller_profile,
 )
+from controller.shared.python.control_common.parameter_policy import (
+    apply_profile_parameter_file_if_needed,
+)
 from controller.shared.python.simulation.artifact_paths import (
     artifact_path,
     resolve_existing_artifact_path,
@@ -253,8 +256,8 @@ class RunnerManager:
         Extract canonical app_config sections from legacy payloads.
 
         Canonical sections:
-            physics, reference_scheduler, mpc_core, mpc_profile_overrides, actuator_policy,
-            controller_contracts, simulation, input_file_path
+            physics, mpc, reference_scheduler, mpc_core, mpc_profile_overrides, actuator_policy,
+            controller_contracts, simulation, shared, input_file_path
         """
         if not isinstance(payload, dict):
             return {}
@@ -267,18 +270,20 @@ class RunnerManager:
         sections: dict[str, Any] = {}
         for section in (
             "physics",
+            "mpc",
             "reference_scheduler",
             "mpc_core",
             "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
+            "shared",
         ):
             section_payload = RunnerManager._clone_section(source.get(section))
             if section_payload is not None:
                 sections[section] = section_payload
 
-        # Legacy compatibility: map `mpc` to canonical `mpc_core`.
+        # Legacy compatibility: map `mpc` to canonical `mpc_core` when needed.
         if "mpc_core" not in sections:
             mpc_payload = RunnerManager._clone_section(source.get("mpc"))
             if mpc_payload is not None:
@@ -343,6 +348,7 @@ class RunnerManager:
             "actuator_policy",
             "controller_contracts",
             "simulation",
+            "shared",
         ):
             value = sections.get(section)
             if isinstance(value, dict):
@@ -382,12 +388,11 @@ class RunnerManager:
         mirrored = dict(payload)
         app_config = payload.get("app_config")
         app_cfg = app_config if isinstance(app_config, dict) else {}
-        mpc_core = app_cfg.get("mpc_core")
-        if not isinstance(mpc_core, dict):
-            mpc_core = app_cfg.get("mpc", {})
         mirrored["physics"] = app_cfg.get("physics", {})
-        mirrored["mpc"] = mpc_core
+        mirrored["mpc"] = app_cfg.get("mpc", {})
+        mirrored["mpc_core"] = app_cfg.get("mpc_core", {})
         mirrored["mpc_profile_overrides"] = app_cfg.get("mpc_profile_overrides", {})
+        mirrored["shared"] = app_cfg.get("shared", {})
         mirrored["simulation"] = app_cfg.get("simulation", {})
         mirrored["input_file_path"] = app_cfg.get("input_file_path")
         return mirrored
@@ -405,11 +410,11 @@ class RunnerManager:
             if isinstance(legacy_mpc, dict):
                 mapped_mpc = self._map_legacy_mpc_overrides(legacy_mpc)
                 if mapped_mpc:
-                    existing_mpc_core = normalized.get("mpc_core")
-                    if isinstance(existing_mpc_core, dict):
-                        existing_mpc_core.update(mapped_mpc)
+                    existing_mpc = normalized.get("mpc")
+                    if isinstance(existing_mpc, dict):
+                        existing_mpc.update(mapped_mpc)
                     else:
-                        normalized["mpc_core"] = mapped_mpc
+                        normalized["mpc"] = mapped_mpc
 
         legacy_sim = overrides.get("sim")
         if isinstance(legacy_sim, dict):
@@ -442,14 +447,18 @@ class RunnerManager:
                 mpc_core_section["controller_profile"] = rewritten
             self._track_removed_mpc_fields(mpc_core_section)
 
+        mpc_section = normalized.get("mpc")
+        if isinstance(mpc_section, dict):
+            self._track_removed_mpc_fields(mpc_section)
+
         profile_overrides = normalized.get("mpc_profile_overrides")
         if isinstance(profile_overrides, dict):
             for old_key, new_key in LEGACY_PROFILE_REWRITE_MAP.items():
                 if old_key in profile_overrides and new_key not in profile_overrides:
                     profile_overrides[new_key] = profile_overrides.pop(old_key)
 
-        if "actuator_policy" not in normalized and isinstance(mpc_core_section, dict):
-            inferred_actuator = self._actuator_policy_from_mpc_core(mpc_core_section)
+        if "actuator_policy" not in normalized and isinstance(mpc_section, dict):
+            inferred_actuator = self._actuator_policy_from_mpc_core(mpc_section)
             if inferred_actuator:
                 normalized["actuator_policy"] = inferred_actuator
 
@@ -489,37 +498,31 @@ class RunnerManager:
         app_config: dict[str, Any] = {}
         for section in (
             "physics",
+            "mpc",
             "reference_scheduler",
             "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
+            "shared",
         ):
             value = app_config_payload.get(section)
             if isinstance(value, dict):
                 app_config[section] = dict(value)
 
-        # Canonical v3 mpc_core payload is derived from controller.shared.python.runtime.`mpc` so legacy and
-        # current UI consumers receive a complete MPC editable section.
         mpc_runtime = app_config_payload.get("mpc")
-        mpc_core_profile = app_config_payload.get("mpc_core")
-        mpc_core_payload: dict[str, Any] = {}
         if isinstance(mpc_runtime, dict):
-            mpc_core_payload.update(dict(mpc_runtime))
+            app_config["mpc"] = dict(mpc_runtime)
+        mpc_core_profile = app_config_payload.get("mpc_core")
         if isinstance(mpc_core_profile, dict):
-            for key, value in mpc_core_profile.items():
-                if key not in mpc_core_payload:
-                    mpc_core_payload[key] = value
-        mpc_core_payload.pop("controller_backend", None)
-        if mpc_core_payload:
+            mpc_core_payload = dict(mpc_core_profile)
+            mpc_core_payload.pop("controller_backend", None)
             app_config["mpc_core"] = mpc_core_payload
 
         if "actuator_policy" not in app_config and isinstance(
-            app_config.get("mpc_core"), dict
+            app_config.get("mpc"), dict
         ):
-            inferred = RunnerManager._actuator_policy_from_mpc_core(
-                app_config["mpc_core"]
-            )
+            inferred = RunnerManager._actuator_policy_from_mpc_core(app_config["mpc"])
             if inferred:
                 app_config["actuator_policy"] = inferred
 
@@ -533,12 +536,14 @@ class RunnerManager:
         app_config: dict[str, Any] = {}
         for section in (
             "physics",
+            "mpc",
             "reference_scheduler",
             "mpc_core",
             "mpc_profile_overrides",
             "actuator_policy",
             "controller_contracts",
             "simulation",
+            "shared",
         ):
             value = sections.get(section)
             if isinstance(value, dict):
@@ -617,6 +622,24 @@ class RunnerManager:
     def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
         normalized = self._normalize_to_envelope(overrides)
+        if normalized:
+            try:
+                from controller.configs.simulation_config import SimulationConfig
+
+                base = SimulationConfig.create_default()
+                runtime_overrides = self._extract_runtime_overrides(normalized)
+                resolved = SimulationConfig.create_with_overrides(
+                    runtime_overrides,
+                    base_config=base,
+                )
+                normalized = {
+                    "schema_version": APP_CONFIG_SCHEMA_VERSION,
+                    "app_config": self._build_app_config_payload(
+                        resolved.app_config.model_dump()
+                    ),
+                }
+            except Exception as exc:
+                raise ValueError(str(exc)) from exc
         self._custom_config = normalized if normalized else None
         self._active_preset_name = active_preset_name if self._custom_config else None
         sections = list(normalized.get("app_config", {}).keys()) if normalized else []
@@ -794,6 +817,18 @@ class RunnerManager:
                 runtime_overrides = self._extract_runtime_overrides(self._custom_config)
                 if not runtime_overrides:
                     runtime_overrides = {}
+                from controller.configs.simulation_config import SimulationConfig
+
+                base_config = SimulationConfig.create_default()
+                (
+                    runtime_overrides,
+                    applied_profile_file,
+                    shared_parameters_enabled,
+                    resolved_profile,
+                ) = apply_profile_parameter_file_if_needed(
+                    config_overrides=runtime_overrides,
+                    default_profile=base_config.app_config.mpc_core.controller_profile,
+                )
                 # Create a temporary file to store the config overrides
                 # We use a named temporary file that persists until we delete it
                 # Note: On Windows, opening a temp file twice can be an issue, but we're passing path to subprocess
@@ -806,6 +841,14 @@ class RunnerManager:
                 cmd_args.extend(["--config", config_path])
                 self._temp_config_path = config_path  # Store to clean up later
                 await self._broadcast(">>> Using custom configuration overrides\n")
+                os.environ["SATCTRL_SHARED_PARAMETERS"] = (
+                    "1" if shared_parameters_enabled else "0"
+                )
+                os.environ["SATCTRL_ACTIVE_CONTROLLER_PROFILE"] = str(resolved_profile)
+                if applied_profile_file:
+                    os.environ["SATCTRL_PROFILE_PARAMETER_FILE"] = applied_profile_file
+                else:
+                    os.environ.pop("SATCTRL_PROFILE_PARAMETER_FILE", None)
             except Exception as e:
                 logger.error(f"Failed to create config file: {e}")
                 await self._broadcast(
@@ -826,7 +869,8 @@ class RunnerManager:
                 )
             # Ensure terminal-color escape codes are disabled in streamed runner logs.
             env["NO_COLOR"] = "1"
-            config_meta = self.get_config().get("config_meta", {})
+            current_config = self.get_config()
+            config_meta = current_config.get("config_meta", {})
             env["SATCTRL_RUNNER_CONFIG_HASH"] = str(config_meta.get("config_hash", ""))
             env["SATCTRL_RUNNER_CONFIG_VERSION"] = str(
                 config_meta.get("config_version", "")
@@ -837,6 +881,18 @@ class RunnerManager:
             env["SATCTRL_RUNNER_RESPONSE_MIRRORS_ENABLED"] = (
                 "1" if bool(config_meta.get("response_mirrors_enabled", True)) else "0"
             )
+            app_cfg = current_config.get("app_config", {})
+            if isinstance(app_cfg, dict):
+                shared_cfg = app_cfg.get("shared", {})
+                if isinstance(shared_cfg, dict):
+                    env["SATCTRL_SHARED_PARAMETERS"] = (
+                        "1" if bool(shared_cfg.get("parameters", False)) else "0"
+                    )
+                mpc_core_cfg = app_cfg.get("mpc_core", {})
+                if isinstance(mpc_core_cfg, dict):
+                    env["SATCTRL_ACTIVE_CONTROLLER_PROFILE"] = str(
+                        mpc_core_cfg.get("controller_profile", "")
+                    )
             if self._active_preset_name:
                 env["SATCTRL_RUNNER_PRESET_NAME"] = self._active_preset_name
             if mission_name:

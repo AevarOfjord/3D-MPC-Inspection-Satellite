@@ -11,6 +11,7 @@ import {
 import { RUNNER_API_URL } from '../config/endpoints';
 
 import type {
+  ControllerProfileId,
   MpcSettings,
   SettingsConfig,
   RunnerSystemStatus,
@@ -20,6 +21,8 @@ import type {
   PresetPayload,
 } from './mpc-settings/mpcSettingsTypes';
 import {
+  CONTROLLER_PROFILE_IDS,
+  CONTROLLER_PROFILE_LABELS,
   DEFAULT_MPC_PROFILE_OVERRIDES,
   SETTING_REFERENCE_SECTIONS,
 } from './mpc-settings/mpcSettingsDefaults';
@@ -77,11 +80,13 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     () => (config ? stableSerializeConfig(config) !== savedSnapshot : false),
     [config, savedSnapshot]
   );
-  const activeControllerProfile = useMemo<'hybrid' | 'nonlinear' | 'linear'>(
+  const activeControllerProfile = useMemo<ControllerProfileId>(
     () => {
-      const profile = String(config?.mpc_core.controller_profile ?? 'hybrid');
-      if (profile === 'nonlinear' || profile === 'linear') return profile;
-      return 'hybrid';
+      const profile = String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp');
+      if ((CONTROLLER_PROFILE_IDS as string[]).includes(profile)) {
+        return profile as ControllerProfileId;
+      }
+      return 'cpp_hybrid_rti_osqp';
     },
     [config?.mpc_core.controller_profile]
   );
@@ -457,22 +462,15 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
 
   const ensureProfileOverrides = (
     root: Record<string, unknown>
-  ): Record<'hybrid' | 'nonlinear' | 'linear', Record<string, unknown>> => {
+  ): Record<ControllerProfileId, Record<string, unknown>> => {
     const existing = asRecord(root.mpc_profile_overrides);
-    const normalized: Record<'hybrid' | 'nonlinear' | 'linear', Record<string, unknown>> = {
-      hybrid: {
-        ...DEFAULT_MPC_PROFILE_OVERRIDES.hybrid,
-        ...(asRecord(existing?.hybrid) ?? {}),
-      },
-      nonlinear: {
-        ...DEFAULT_MPC_PROFILE_OVERRIDES.nonlinear,
-        ...(asRecord(existing?.nonlinear) ?? {}),
-      },
-      linear: {
-        ...DEFAULT_MPC_PROFILE_OVERRIDES.linear,
-        ...(asRecord(existing?.linear) ?? {}),
-      },
-    };
+    const normalized = {} as Record<ControllerProfileId, Record<string, unknown>>;
+    CONTROLLER_PROFILE_IDS.forEach((profileId) => {
+      normalized[profileId] = {
+        ...DEFAULT_MPC_PROFILE_OVERRIDES[profileId],
+        ...(asRecord(existing?.[profileId]) ?? {}),
+      };
+    });
     root.mpc_profile_overrides = normalized;
     return normalized;
   };
@@ -481,7 +479,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     field: keyof MpcSettings,
     rawValue: string
   ) => {
-    if (!config) return;
+    if (!config || sharedParametersEnabled) return;
     const newConfig = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
     const overrides = ensureProfileOverrides(newConfig);
     const selected = overrides[activeControllerProfile];
@@ -507,7 +505,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     key: string,
     rawValue: string | boolean
   ) => {
-    if (!config) return;
+    if (!config || sharedParametersEnabled) return;
     const newConfig = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
     const overrides = ensureProfileOverrides(newConfig);
     const selected = overrides[activeControllerProfile];
@@ -614,6 +612,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     asRecord(config?.mpc_profile_overrides)?.[activeControllerProfile] ??
     DEFAULT_MPC_PROFILE_OVERRIDES[activeControllerProfile]
   ) as unknown;
+  const sharedParametersEnabled = Boolean(config?.shared.parameters);
   const selectedBaseOverrides =
     asRecord(asRecord(selectedProfileOverrideEntry)?.base_overrides) ?? {};
   const selectedProfileSpecific =
@@ -1150,6 +1149,43 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
             {showBasic && (
               <div className="mt-4 space-y-8">
                 <section>
+                  <h3 className="text-sm uppercase tracking-wider text-emerald-400 font-bold mb-4 border-b border-emerald-900/30 pb-1">
+                    Parameter Source Policy
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <ToggleField
+                      label="Use Shared Parameters For All Profiles"
+                      checked={sharedParametersEnabled}
+                      onChange={(checked) => updateConfig('shared.parameters', checked)}
+                    />
+                    <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                      <p className="text-xs text-slate-300">
+                        {sharedParametersEnabled
+                          ? 'Fair-comparison mode is active. All six controllers use the shared baseline in app_config.mpc.'
+                          : 'Per-profile tuning mode is active. Only the selected controller profile can apply delta overrides and an external profile parameter file.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {CONTROLLER_PROFILE_IDS.map((profileId) => (
+                      <ConfigField
+                        key={profileId}
+                        label={`${CONTROLLER_PROFILE_LABELS[profileId]} File`}
+                        value={config?.shared.profile_parameter_files[profileId] ?? ''}
+                        onChange={(v) =>
+                          updateConfig(`shared.profile_parameter_files.${profileId}`, v)
+                        }
+                        desc={
+                          profileId === activeControllerProfile
+                            ? 'Applied only when shared mode is off and this profile is selected.'
+                            : 'Stored for this profile; inactive unless that profile is selected.'
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
                   <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
                     Basic - Timing and Horizons
                   </h3>
@@ -1192,21 +1228,26 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                     />
                     <SelectField
                       label="Controller Profile"
-                      value={String(config?.mpc_core.controller_profile ?? 'hybrid')}
+                      value={String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp')}
                       onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
-                      options={[
-                        { label: 'Hybrid MPC', value: 'hybrid' },
-                        { label: 'Nonlinear MPC', value: 'nonlinear' },
-                        { label: 'Linear MPC', value: 'linear' },
-                      ]}
+                      options={CONTROLLER_PROFILE_IDS.map((profileId) => ({
+                        label: CONTROLLER_PROFILE_LABELS[profileId],
+                        value: profileId,
+                      }))}
+                      desc="In per-profile mode, this decides which profile delta file and override block are active."
                     />
                   </div>
                 </section>
 
                 <section>
                   <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
-                    Selected Profile Overrides ({activeControllerProfile})
+                    Selected Profile Overrides ({CONTROLLER_PROFILE_LABELS[activeControllerProfile]})
                   </h3>
+                  {sharedParametersEnabled && (
+                    <div className="mb-4 rounded border border-amber-900/40 bg-amber-950/40 p-3 text-xs text-amber-200">
+                      Per-profile overrides are preserved for later tuning, but inactive while shared fair-comparison mode is enabled.
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <ConfigField
                       label="Override Prediction Horizon"
@@ -1215,6 +1256,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Control Horizon"
@@ -1223,6 +1265,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Solver Time Limit (s)"
@@ -1231,6 +1274,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={0.001}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Q_contour"
@@ -1239,6 +1283,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Q_progress"
@@ -1247,6 +1292,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Q_attitude"
@@ -1255,6 +1301,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Q_smooth"
@@ -1263,6 +1310,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={1}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
                       label="Override Path Speed"
@@ -1271,10 +1319,11 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       isNumber
                       step={0.001}
                       desc="Blank = inherit shared baseline"
+                      disabled={sharedParametersEnabled}
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-5">
-                    {activeControllerProfile === 'hybrid' && (
+                    {activeControllerProfile === 'cpp_hybrid_rti_osqp' && (
                       <ToggleField
                         label="allow_stale_stage_reuse"
                         checked={Boolean(
@@ -1283,9 +1332,10 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                         onChange={(checked) =>
                           updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
                         }
+                        disabled={sharedParametersEnabled}
                       />
                     )}
-                    {activeControllerProfile === 'nonlinear' && (
+                    {activeControllerProfile === 'cpp_nonlinear_rti_osqp' && (
                       <>
                         <ConfigField
                           label="sqp_max_iter"
@@ -1295,6 +1345,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                           }
                           isNumber
                           step={1}
+                          disabled={sharedParametersEnabled}
                         />
                         <ConfigField
                           label="sqp_tol"
@@ -1302,6 +1353,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                           onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
                           isNumber
                           step={0.0001}
+                          disabled={sharedParametersEnabled}
                         />
                         <ToggleField
                           label="strict_integrity"
@@ -1309,10 +1361,11 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                           onChange={(checked) =>
                             updateSelectedProfileSpecific('strict_integrity', checked)
                           }
+                          disabled={sharedParametersEnabled}
                         />
                       </>
                     )}
-                    {activeControllerProfile === 'linear' && (
+                    {activeControllerProfile === 'cpp_linearized_rti_osqp' && (
                       <ConfigField
                         label="freeze_refresh_interval_steps"
                         value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
@@ -1321,7 +1374,90 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                         }
                         isNumber
                         step={1}
+                        disabled={sharedParametersEnabled}
                       />
+                    )}
+                    {activeControllerProfile === 'cpp_nonlinear_fullnlp_ipopt' && (
+                      <ConfigField
+                        label="ipopt_max_iter"
+                        value={selectedProfileSpecific.ipopt_max_iter ?? 3000}
+                        onChange={(v) => updateSelectedProfileSpecific('ipopt_max_iter', v)}
+                        isNumber
+                        step={1}
+                        disabled={sharedParametersEnabled}
+                      />
+                    )}
+                    {activeControllerProfile === 'cpp_nonlinear_rti_hpipm' && (
+                      <>
+                        <ConfigField
+                          label="acados_max_iter"
+                          value={selectedProfileSpecific.acados_max_iter ?? 1}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                          isNumber
+                          step={1}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_stat"
+                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_eq"
+                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_ineq"
+                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                      </>
+                    )}
+                    {activeControllerProfile === 'cpp_nonlinear_sqp_hpipm' && (
+                      <>
+                        <ConfigField
+                          label="acados_max_iter"
+                          value={selectedProfileSpecific.acados_max_iter ?? 50}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                          isNumber
+                          step={1}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_stat"
+                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_eq"
+                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_ineq"
+                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                      </>
                     )}
                   </div>
                   <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
@@ -1642,9 +1778,10 @@ interface ConfigFieldProps {
   isNumber?: boolean;
   desc?: string;
   step?: number;
+  disabled?: boolean;
 }
 
-function ConfigField({ label, value, onChange, isNumber, desc, step }: ConfigFieldProps) {
+function ConfigField({ label, value, onChange, isNumber, desc, step, disabled }: ConfigFieldProps) {
   const inputValue =
     typeof value === 'string' || typeof value === 'number' ? value : '';
   const inputId = `cfg-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -1658,8 +1795,11 @@ function ConfigField({ label, value, onChange, isNumber, desc, step }: ConfigFie
         type={isNumber ? 'number' : 'text'}
         step={step ?? (isNumber ? 1 : undefined)}
         value={inputValue}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+        className={`bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors ${
+          disabled ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
       />
       {desc && <span className="text-[10px] text-slate-400">{desc}</span>}
     </div>
@@ -1670,12 +1810,17 @@ interface ToggleFieldProps {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
-function ToggleField({ label, checked, onChange }: ToggleFieldProps) {
+function ToggleField({ label, checked, onChange, disabled }: ToggleFieldProps) {
   const inputId = `toggle-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
-    <div className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800">
+    <div
+      className={`flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800 ${
+        disabled ? 'opacity-50' : ''
+      }`}
+    >
       <label htmlFor={inputId} className="text-sm font-medium text-slate-200">
         {label}
       </label>
@@ -1684,8 +1829,11 @@ function ToggleField({ label, checked, onChange }: ToggleFieldProps) {
         aria-label={label}
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-offset-slate-900"
+        className={`w-5 h-5 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-offset-slate-900 ${
+          disabled ? 'cursor-not-allowed' : ''
+        }`}
       />
     </div>
   );
@@ -1702,9 +1850,10 @@ interface SelectFieldProps {
   onChange: (value: string) => void;
   options: SelectFieldOption[];
   desc?: string;
+  disabled?: boolean;
 }
 
-function SelectField({ label, value, onChange, options, desc }: SelectFieldProps) {
+function SelectField({ label, value, onChange, options, desc, disabled }: SelectFieldProps) {
   const selectId = `sel-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
     <div className="flex flex-col gap-1">
@@ -1713,8 +1862,11 @@ function SelectField({ label, value, onChange, options, desc }: SelectFieldProps
         id={selectId}
         aria-label={label}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+        className={`bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors ${
+          disabled ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

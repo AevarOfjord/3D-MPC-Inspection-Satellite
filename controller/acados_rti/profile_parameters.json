@@ -1,0 +1,11 @@
+{
+  "mpc_core": {
+    "controller_profile": "cpp_nonlinear_rti_hpipm"
+  },
+  "mpc_profile_overrides": {
+    "cpp_nonlinear_rti_hpipm": {
+      "base_overrides": {},
+      "profile_specific": {}
+    }
+  }
+}

@@ -1,15 +1,19 @@
 import type {
+  ControllerProfileId,
   MpcCoreSettings,
   MpcProfileOverrideSettings,
   MpcProfileOverridesSettings,
   MpcSettings,
+  SharedSettings,
   SimulationSettings,
   SettingsConfig,
 } from './mpcSettingsTypes';
 import {
+  CONTROLLER_PROFILE_IDS,
   DEFAULT_MPC_CORE_SETTINGS,
   DEFAULT_MPC_PROFILE_OVERRIDES,
   DEFAULT_MPC_SETTINGS,
+  DEFAULT_SHARED_SETTINGS,
   DEFAULT_SIMULATION_SETTINGS,
   MPC_CANONICAL_KEYS,
 } from './mpcSettingsDefaults';
@@ -38,12 +42,17 @@ function normalizeControllerProfileValue(
   mpcCore: Record<string, unknown> | null | undefined
 ): MpcCoreSettings['controller_profile'] {
   const profile = mpcCore?.controller_profile;
-  if (profile === 'hybrid' || profile === 'nonlinear' || profile === 'linear') {
-    return profile;
+  if (typeof profile === 'string') {
+    if ((CONTROLLER_PROFILE_IDS as string[]).includes(profile)) {
+      return profile as ControllerProfileId;
+    }
+    if (profile === 'hybrid') return 'cpp_hybrid_rti_osqp';
+    if (profile === 'nonlinear') return 'cpp_nonlinear_rti_osqp';
+    if (profile === 'linear') return 'cpp_linearized_rti_osqp';
   }
   const legacyBackend = mpcCore?.controller_backend;
-  if (legacyBackend === 'v1') return 'linear';
-  return 'hybrid';
+  if (legacyBackend === 'v1') return 'cpp_linearized_rti_osqp';
+  return 'cpp_hybrid_rti_osqp';
 }
 
 function sanitizeMpcCore(
@@ -61,7 +70,7 @@ function sanitizeMpcCore(
 
 function sanitizeProfileOverrideEntry(
   entry: unknown,
-  fallback: MpcProfileOverrideSettings
+  _fallback: MpcProfileOverrideSettings
 ): MpcProfileOverrideSettings {
   const entryObj = asRecord(entry);
   const rawBase = asRecord(entryObj?.base_overrides);
@@ -74,29 +83,58 @@ function sanitizeProfileOverrideEntry(
   });
   return {
     base_overrides,
-    profile_specific: {
-      ...(fallback.profile_specific ?? {}),
-      ...(rawSpecific ?? {}),
-    },
+    profile_specific: { ...(rawSpecific ?? {}) },
   };
+}
+
+function normalizeProfileOverrideKey(key: string): ControllerProfileId | null {
+  if ((CONTROLLER_PROFILE_IDS as string[]).includes(key)) {
+    return key as ControllerProfileId;
+  }
+  if (key === 'hybrid') return 'cpp_hybrid_rti_osqp';
+  if (key === 'nonlinear') return 'cpp_nonlinear_rti_osqp';
+  if (key === 'linear') return 'cpp_linearized_rti_osqp';
+  return null;
 }
 
 function sanitizeMpcProfileOverrides(
   profileOverrides: Record<string, unknown> | null | undefined
 ): MpcProfileOverridesSettings {
+  const normalized = JSON.parse(
+    JSON.stringify(DEFAULT_MPC_PROFILE_OVERRIDES)
+  ) as MpcProfileOverridesSettings;
+
+  Object.entries(profileOverrides ?? {}).forEach(([rawKey, entry]) => {
+    const key = normalizeProfileOverrideKey(rawKey);
+    if (!key) return;
+    normalized[key] = sanitizeProfileOverrideEntry(
+      entry,
+      DEFAULT_MPC_PROFILE_OVERRIDES[key]
+    );
+  });
+
+  return normalized;
+}
+
+function sanitizeSharedSettings(
+  shared: Record<string, unknown> | null | undefined
+): SharedSettings {
+  const profileFiles = asRecord(shared?.profile_parameter_files);
+  const normalizedFiles = {
+    ...DEFAULT_SHARED_SETTINGS.profile_parameter_files,
+  } as Record<ControllerProfileId, string>;
+  Object.entries(profileFiles ?? {}).forEach(([rawKey, value]) => {
+    const key = normalizeProfileOverrideKey(rawKey);
+    if (!key || typeof value !== 'string') return;
+    normalizedFiles[key] = value;
+  });
+
   return {
-    hybrid: sanitizeProfileOverrideEntry(
-      profileOverrides?.hybrid,
-      DEFAULT_MPC_PROFILE_OVERRIDES.hybrid
-    ),
-    nonlinear: sanitizeProfileOverrideEntry(
-      profileOverrides?.nonlinear,
-      DEFAULT_MPC_PROFILE_OVERRIDES.nonlinear
-    ),
-    linear: sanitizeProfileOverrideEntry(
-      profileOverrides?.linear,
-      DEFAULT_MPC_PROFILE_OVERRIDES.linear
-    ),
+    parameters:
+      typeof shared?.parameters === 'boolean'
+        ? shared.parameters
+        : DEFAULT_SHARED_SETTINGS.parameters,
+    profile_parameter_files: normalizedFiles,
   };
 }
 
@@ -107,7 +145,8 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
   const appConfig = asRecord(root.app_config);
   const source = appConfig ?? root;
   const mpcCore = asRecord(source.mpc_core);
-  const mpc = mpcCore ?? asRecord(source.mpc);
+  const mpc = asRecord(source.mpc) ?? mpcCore;
+  const shared = asRecord(source.shared);
   const simulation = asRecord(source.simulation);
   const mpcProfileOverrides = asRecord(source.mpc_profile_overrides);
   const physics = asRecord(source.physics);
@@ -131,6 +170,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
     };
     const normalizedMpcCore = sanitizeMpcCore(mpcCore);
     const normalizedProfileOverrides = sanitizeMpcProfileOverrides(mpcProfileOverrides);
+    const normalizedShared = sanitizeSharedSettings(shared);
     if (typeof normalizedMpc.dt === 'number') {
       normalizedSimulation.control_dt = normalizedMpc.dt;
     }
@@ -148,6 +188,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
     return {
       mpc: normalizedMpc,
       mpc_core: normalizedMpcCore,
+      shared: normalizedShared,
       mpc_profile_overrides: normalizedProfileOverrides,
       simulation: normalizedSimulation,
       physics: physics ?? undefined,
@@ -210,6 +251,7 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
   return {
     mpc: normalizedMpc,
     mpc_core: sanitizeMpcCore(legacyMpc),
+    shared: sanitizeSharedSettings(undefined),
     mpc_profile_overrides: sanitizeMpcProfileOverrides(undefined),
     simulation: normalizedSimulation,
     physics: undefined,
@@ -223,12 +265,8 @@ export function normalizeConfig(raw: unknown): SettingsConfig | null {
 export function buildV3Envelope(config: SettingsConfig): Record<string, unknown> {
   const sanitizedMpc = stripRemovedMpcFields(config.mpc as Record<string, unknown>);
   const mpcCore = sanitizeMpcCore(asRecord(config.mpc_core));
+  const shared = sanitizeSharedSettings(asRecord(config.shared));
   const profileOverrides = sanitizeMpcProfileOverrides(asRecord(config.mpc_profile_overrides));
-  const mergedMpcCore: Record<string, unknown> = {
-    ...sanitizedMpc,
-    ...mpcCore,
-  };
-  delete mergedMpcCore.controller_backend;
   const actuatorPolicy =
     asRecord(config.actuator_policy) ?? {};
   const mergedActuatorPolicy: Record<string, unknown> = {
@@ -239,7 +277,9 @@ export function buildV3Envelope(config: SettingsConfig): Record<string, unknown>
   };
 
   const appConfig: Record<string, unknown> = {
-    mpc_core: mergedMpcCore,
+    mpc: sanitizedMpc,
+    mpc_core: mpcCore,
+    shared,
     mpc_profile_overrides: profileOverrides,
     actuator_policy: mergedActuatorPolicy,
     simulation: {
@@ -303,7 +343,7 @@ function isNonNegative(n: number): boolean {
 
 export function validateConfig(config: SettingsConfig): string[] {
   const issues: string[] = [];
-  const { mpc, simulation } = config;
+  const { mpc, simulation, shared } = config;
   const mpcCore = config.mpc_core;
 
   if (mpc.prediction_horizon < 1) issues.push('Prediction horizon must be >= 1.');
@@ -344,8 +384,10 @@ export function validateConfig(config: SettingsConfig): string[] {
   if (mpc.thruster_hysteresis_on <= mpc.thruster_hysteresis_off) {
     issues.push('Thruster hysteresis on-threshold must be greater than off-threshold.');
   }
-  if (!['hybrid', 'nonlinear', 'linear'].includes(mpcCore.controller_profile)) {
-    issues.push('Controller profile must be one of: hybrid, nonlinear, linear.');
+  if (!(CONTROLLER_PROFILE_IDS as string[]).includes(mpcCore.controller_profile)) {
+    issues.push(
+      'Controller profile must be one of the six canonical profile identifiers.'
+    );
   }
   const profileOverrides = sanitizeMpcProfileOverrides(asRecord(config.mpc_profile_overrides));
   const selectedProfile = mpcCore.controller_profile;
@@ -357,6 +399,36 @@ export function validateConfig(config: SettingsConfig): string[] {
   const freezeInterval = Number(selectedProfileSpecific.freeze_refresh_interval_steps);
   if (Number.isFinite(freezeInterval) && freezeInterval < 1) {
     issues.push('Profile-specific freeze_refresh_interval_steps must be >= 1.');
+  }
+  const ipoptMaxIter = Number(selectedProfileSpecific.ipopt_max_iter);
+  if (Number.isFinite(ipoptMaxIter) && ipoptMaxIter < 1) {
+    issues.push('Profile-specific ipopt_max_iter must be >= 1.');
+  }
+  const acadosMaxIter = Number(selectedProfileSpecific.acados_max_iter);
+  if (Number.isFinite(acadosMaxIter) && acadosMaxIter < 1) {
+    issues.push('Profile-specific acados_max_iter must be >= 1.');
+  }
+  ['acados_tol_stat', 'acados_tol_eq', 'acados_tol_ineq'].forEach((key) => {
+    const value = Number(selectedProfileSpecific[key]);
+    if (Number.isFinite(value) && value <= 0) {
+      issues.push(`Profile-specific ${key} must be > 0.`);
+    }
+  });
+
+  if (shared.parameters) {
+    CONTROLLER_PROFILE_IDS.forEach((profileId) => {
+      const entry = profileOverrides[profileId];
+      if (Object.keys(entry.base_overrides).length > 0) {
+        issues.push(
+          `shared.parameters=true requires ${profileId}.base_overrides to be empty.`
+        );
+      }
+      if (Object.keys(entry.profile_specific).length > 0) {
+        issues.push(
+          `shared.parameters=true requires ${profileId}.profile_specific to be empty.`
+        );
+      }
+    });
   }
 
   const nonNegativeWeights: Array<[string, number]> = [

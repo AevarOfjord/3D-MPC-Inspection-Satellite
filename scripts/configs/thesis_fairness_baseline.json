@@ -1,0 +1,54 @@
+{
+  "shared": {
+    "parameters": true,
+    "profile_parameter_files": {
+      "cpp_linearized_rti_osqp": "controller/linear/profile_parameters.json",
+      "cpp_hybrid_rti_osqp": "controller/hybrid/profile_parameters.json",
+      "cpp_nonlinear_rti_osqp": "controller/nonlinear/profile_parameters.json",
+      "cpp_nonlinear_fullnlp_ipopt": "controller/nmpc/profile_parameters.json",
+      "cpp_nonlinear_rti_hpipm": "controller/acados_rti/profile_parameters.json",
+      "cpp_nonlinear_sqp_hpipm": "controller/acados_sqp/profile_parameters.json"
+    }
+  },
+  "physics": {
+    "use_realistic_physics": false,
+    "random_disturbances_enabled": false,
+    "position_noise_std": 0.0,
+    "velocity_noise_std": 0.0,
+    "angle_noise_std": 0.0,
+    "angular_velocity_noise_std": 0.0,
+    "thrust_force_noise_percent": 0.0,
+    "disturbance_force_std": 0.0,
+    "disturbance_torque_std": 0.0
+  },
+  "mpc_profile_overrides": {
+    "cpp_linearized_rti_osqp": {
+      "base_overrides": {},
+      "profile_specific": {}
+    },
+    "cpp_hybrid_rti_osqp": {
+      "base_overrides": {},
+      "profile_specific": {}
+    },
+    "cpp_nonlinear_rti_osqp": {
+      "base_overrides": {},
+      "profile_specific": {}
+    },
+    "cpp_nonlinear_fullnlp_ipopt": {
+      "base_overrides": {},
+      "profile_specific": {}
+    },
+    "cpp_nonlinear_rti_hpipm": {
+      "base_overrides": {},
+      "profile_specific": {}
+    },
+    "cpp_nonlinear_sqp_hpipm": {
+      "base_overrides": {},
+      "profile_specific": {}
+    }
+  },
+  "reference_scheduler": {
+    "auto_extend_manual_duration": true,
+    "enforce_contract_min_duration": true
+  }
+}

@@ -1,10 +1,42 @@
 import type {
+  ControllerProfileId,
   MpcCoreSettings,
   MpcProfileOverridesSettings,
   MpcSettings,
+  SharedSettings,
   SimulationSettings,
   SettingReferenceSection,
 } from './mpcSettingsTypes';
+
+export const CONTROLLER_PROFILE_IDS: ControllerProfileId[] = [
+  'cpp_linearized_rti_osqp',
+  'cpp_hybrid_rti_osqp',
+  'cpp_nonlinear_rti_osqp',
+  'cpp_nonlinear_fullnlp_ipopt',
+  'cpp_nonlinear_rti_hpipm',
+  'cpp_nonlinear_sqp_hpipm',
+];
+
+export const CONTROLLER_PROFILE_LABELS: Record<ControllerProfileId, string> = {
+  cpp_linearized_rti_osqp: 'Linearized RTI / OSQP',
+  cpp_hybrid_rti_osqp: 'Hybrid RTI / OSQP',
+  cpp_nonlinear_rti_osqp: 'Nonlinear RTI / OSQP',
+  cpp_nonlinear_fullnlp_ipopt: 'Full NLP / IPOPT',
+  cpp_nonlinear_rti_hpipm: 'Nonlinear RTI / HPIPM',
+  cpp_nonlinear_sqp_hpipm: 'Nonlinear SQP / HPIPM',
+};
+
+export const DEFAULT_SHARED_SETTINGS: SharedSettings = {
+  parameters: true,
+  profile_parameter_files: {
+    cpp_linearized_rti_osqp: 'controller/linear/profile_parameters.json',
+    cpp_hybrid_rti_osqp: 'controller/hybrid/profile_parameters.json',
+    cpp_nonlinear_rti_osqp: 'controller/nonlinear/profile_parameters.json',
+    cpp_nonlinear_fullnlp_ipopt: 'controller/nmpc/profile_parameters.json',
+    cpp_nonlinear_rti_hpipm: 'controller/acados_rti/profile_parameters.json',
+    cpp_nonlinear_sqp_hpipm: 'controller/acados_sqp/profile_parameters.json',
+  },
+};
 
 export const DEFAULT_MPC_SETTINGS: MpcSettings = {
   prediction_horizon: 50,
@@ -53,30 +85,34 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
 };
 
 export const DEFAULT_MPC_CORE_SETTINGS: MpcCoreSettings = {
-  controller_profile: 'hybrid',
+  controller_profile: 'cpp_hybrid_rti_osqp',
   solver_backend: 'OSQP',
 };
 
 export const DEFAULT_MPC_PROFILE_OVERRIDES: MpcProfileOverridesSettings = {
-  hybrid: {
+  cpp_linearized_rti_osqp: {
     base_overrides: {},
-    profile_specific: {
-      allow_stale_stage_reuse: true,
-    },
+    profile_specific: {},
   },
-  nonlinear: {
+  cpp_hybrid_rti_osqp: {
     base_overrides: {},
-    profile_specific: {
-      strict_integrity: true,
-      sqp_max_iter: 2,
-      sqp_tol: 1e-4,
-    },
+    profile_specific: {},
   },
-  linear: {
+  cpp_nonlinear_rti_osqp: {
     base_overrides: {},
-    profile_specific: {
-      freeze_refresh_interval_steps: 1,
-    },
+    profile_specific: {},
+  },
+  cpp_nonlinear_fullnlp_ipopt: {
+    base_overrides: {},
+    profile_specific: {},
+  },
+  cpp_nonlinear_rti_hpipm: {
+    base_overrides: {},
+    profile_specific: {},
+  },
+  cpp_nonlinear_sqp_hpipm: {
+    base_overrides: {},
+    profile_specific: {},
   },
 };
 
