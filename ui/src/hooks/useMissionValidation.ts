@@ -2,21 +2,21 @@ import { useState } from 'react';
 
 import { unifiedMissionApi, type ValidationReportV2 } from '../api/unifiedMissionApi';
 import type { UnifiedMission } from '../api/unifiedMission';
-import { mapIssuePathToPlannerStep } from '../utils/plannerValidation';
-import type { MissionAuthoringStep } from './useMissionState';
+import { mapIssuePathToAuthoringPhase } from '../utils/authoringValidation';
+import type { MissionAuthoringPhase } from './useMissionState';
 
 interface UseMissionValidationArgs {
   buildMission: () => UnifiedMission;
   jumpToFirstIssue?: boolean;
   onFocusSegment?: (index: number) => void;
-  setAuthoringStep?: (step: MissionAuthoringStep) => void;
+  setAuthoringPhase?: (phase: MissionAuthoringPhase) => void;
 }
 
 export function useMissionValidation({
   buildMission,
   jumpToFirstIssue = true,
   onFocusSegment,
-  setAuthoringStep,
+  setAuthoringPhase,
 }: UseMissionValidationArgs) {
   const [validationReport, setValidationReport] = useState<ValidationReportV2 | null>(
     null
@@ -29,18 +29,18 @@ export function useMissionValidation({
       const mission = buildMission();
       const report = await unifiedMissionApi.validateMission(mission);
       setValidationReport(report);
-      if (jumpToFirstIssue && !report.valid && report.issues.length > 0 && setAuthoringStep) {
+      if (jumpToFirstIssue && !report.valid && report.issues.length > 0 && setAuthoringPhase) {
         const firstIssue = report.issues[0];
-        const targetStep = mapIssuePathToPlannerStep(firstIssue.path);
+        const targetPhase = mapIssuePathToAuthoringPhase(firstIssue.path);
         const segmentMatch = /segments\[(\d+)\]/.exec(firstIssue.path);
         if (segmentMatch && onFocusSegment) {
           const segIndex = Number.parseInt(segmentMatch[1], 10);
           if (!Number.isNaN(segIndex)) {
             onFocusSegment(segIndex);
-            setAuthoringStep(targetStep);
+            setAuthoringPhase(targetPhase);
           }
         } else if (!segmentMatch) {
-          setAuthoringStep(targetStep);
+          setAuthoringPhase(targetPhase);
         }
       }
       return report;

@@ -7,7 +7,7 @@ import type {
   UnifiedMission,
 } from '../api/unifiedMission';
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
-import type { TransferTargetRef } from '../types/plannerUx';
+import type { SelectedTransferEndpoint } from '../types/authoring';
 import type { ScanProject } from '../types/scanProject';
 import { computePathLength } from '../utils/pathMetrics';
 import { normalizePathDensityMultiplier } from '../utils/pathDensity';
@@ -124,7 +124,7 @@ interface UseMissionHydrationArgs {
   setStartPosition: Dispatch<SetStateAction<[number, number, number]>>;
   setObstacles: Dispatch<SetStateAction<{ position: [number, number, number]; radius: number }[]>>;
   setSelectedOrbitTargetId: Dispatch<SetStateAction<string | null>>;
-  setTransferTargetRef: Dispatch<SetStateAction<TransferTargetRef>>;
+  setSelectedTransferEndpoint: Dispatch<SetStateAction<SelectedTransferEndpoint>>;
   setValidationReport: Dispatch<SetStateAction<ValidationReportV2 | null>>;
   setScanProject: Dispatch<SetStateAction<ScanProject>>;
 }
@@ -148,7 +148,7 @@ export function useMissionHydration({
   setStartPosition,
   setObstacles,
   setSelectedOrbitTargetId,
-  setTransferTargetRef,
+  setSelectedTransferEndpoint,
   setValidationReport,
   setScanProject,
 }: UseMissionHydrationArgs) {
@@ -284,7 +284,7 @@ export function useMissionHydration({
       | ScanSegment
       | undefined;
     setSelectedOrbitTargetId(firstScan?.target_id ?? startTargetId ?? null);
-    setTransferTargetRef(null);
+    setSelectedTransferEndpoint(null);
     setValidationReport(null);
     const missionDensity = normalizePathDensityMultiplier(
       mission.overrides?.path_density_multiplier ?? 1.0
@@ -314,7 +314,7 @@ export function useMissionHydration({
       showToast({
         tone: 'info',
         title: 'Mission migrated to LVLH',
-        message: 'Legacy ECI fields were mapped to LVLH for planner editing.',
+        message: 'Legacy ECI fields were mapped to LVLH for Studio editing.',
       });
     }
 
@@ -329,7 +329,7 @@ export function useMissionHydration({
         tone: 'error',
         title: 'Scan axis auto-migrated',
         message:
-          'Legacy scan.axis metadata did not match the attached path asset and was adjusted from planner geometry.',
+          'Legacy scan.axis metadata did not match the attached path asset and was adjusted from Studio geometry.',
       });
     }
   };

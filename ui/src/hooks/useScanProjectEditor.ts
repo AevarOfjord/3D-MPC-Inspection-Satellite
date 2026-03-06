@@ -47,7 +47,7 @@ import {
 
 
 interface UseScanProjectEditorArgs {
-  authoringStep: string;
+  authoringPhase: string;
   scanProject: ScanProject;
   setScanProject: Dispatch<SetStateAction<ScanProject>>;
   configObjPath: string;
@@ -87,7 +87,7 @@ interface UseScanProjectEditorArgs {
 }
 
 export function useScanProjectEditor({
-  authoringStep,
+  authoringPhase,
   scanProject,
   setScanProject,
   configObjPath,
@@ -683,7 +683,7 @@ export function useScanProjectEditor({
         collision_threshold_m: 0.05,
       });
       setCompilePreviewState(response);
-      const shouldHydrateManualPath = authoringStep === 'scan_definition';
+      const shouldHydrateManualPath = authoringPhase === 'scan_definition';
       if (shouldHydrateManualPath) {
         const hasDisconnectedMultiScanPreview =
           quality === 'preview' &&

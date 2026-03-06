@@ -1,6 +1,6 @@
 import type { ValidationReportV2 } from '../api/unifiedMissionApi';
 
-export type PlannerStep =
+export type AuthoringPhase =
   | 'target'
   | 'segments'
   | 'scan_definition'
@@ -8,7 +8,7 @@ export type PlannerStep =
   | 'validate'
   | 'save_launch';
 
-export function mapIssuePathToPlannerStep(path: string): PlannerStep {
+export function mapIssuePathToAuthoringPhase(path: string): AuthoringPhase {
   if (
     path.includes('start_pose') ||
     path.includes('start_target_id') ||

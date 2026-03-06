@@ -5,7 +5,7 @@ import type {
   SaveMissionV2Response,
   ValidationReportV2,
 } from '../api/unifiedMissionApi';
-import type { MissionAuthoringStep } from './useMissionState';
+import type { MissionAuthoringPhase } from './useMissionState';
 import { useDialog, useToast } from '../feedback/feedbackContext';
 import type { DialogIntent } from '../feedback/feedbackContext';
 
@@ -26,7 +26,7 @@ type UseMissionExecutionArgs = {
   controlSimulation: (action: 'pause' | 'resume' | 'step', steps?: number) => Promise<unknown>;
   setMissionId: (missionId: string) => void;
   setMissionName: (name: string) => void;
-  setAuthoringStep: (step: MissionAuthoringStep) => void;
+  setAuthoringPhase: (phase: MissionAuthoringPhase) => void;
   setLoading: (loading: boolean) => void;
   setIsManualMode: (manual: boolean) => void;
   setPreviewPath: (path: [number, number, number][]) => void;
@@ -79,7 +79,7 @@ export function useMissionExecution({
   controlSimulation,
   setMissionId,
   setMissionName,
-  setAuthoringStep,
+  setAuthoringPhase,
   setLoading,
   setIsManualMode,
   setPreviewPath,
@@ -102,9 +102,9 @@ export function useMissionExecution({
         title: 'Validation',
         message: 'Mission has validation errors. Open the Validate step to resolve them.',
         actionLabel: 'Open Validate',
-        onAction: () => setAuthoringStep('validate'),
+        onAction: () => setAuthoringPhase('validate'),
       });
-      setAuthoringStep('validate');
+      setAuthoringPhase('validate');
       return;
     }
 
@@ -147,7 +147,7 @@ export function useMissionExecution({
       setMissionName(name);
       await refreshUnifiedMissions();
       showToast({ tone: 'success', title: 'Mission Saved', message: `Mission saved: ${name}` });
-      setAuthoringStep('save_launch');
+      setAuthoringPhase('save_launch');
     } catch (err: any) {
       console.error(err);
       showToast({
@@ -174,9 +174,9 @@ export function useMissionExecution({
           title: 'Validation',
           message: 'Mission has validation errors. Resolve them before preview.',
           actionLabel: 'Open Validate',
-          onAction: () => setAuthoringStep('validate'),
+          onAction: () => setAuthoringPhase('validate'),
         });
-        setAuthoringStep('validate');
+        setAuthoringPhase('validate');
         return;
       }
 

@@ -38,7 +38,7 @@ export function TelemetryBridge() {
           addEvent('info', `Path replanned (${pathLen} waypoints)`, data.time);
         }
         if (pathLen === 0 && lastPathLen.current > 0) {
-          addEvent('warn', 'Planner returned no valid path', data.time);
+          addEvent('warn', 'Authoring view returned no valid path', data.time);
         }
         lastPathLen.current = pathLen;
       }

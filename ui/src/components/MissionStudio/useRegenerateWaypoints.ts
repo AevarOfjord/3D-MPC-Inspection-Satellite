@@ -99,7 +99,7 @@ function buildFallbackPath(path: StudioPath): [number, number, number][] {
   const dy = b[1] - a[1];
   const dz = b[2] - a[2];
   const span = Math.max(1e-6, Math.hypot(dx, dy, dz));
-  const nAxis = normalize([dx, dy, dz], [0, 0, 1]);
+  const nAxis = normalize([dx, dy, dz] as [number, number, number], [0, 0, 1]);
   const turns = Math.max(1, span / Math.max(0.05, path.levelSpacing));
   const pointsPerTurn = 32 * Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
   const total = Math.max(8, Math.ceil(turns * pointsPerTurn));
@@ -109,7 +109,7 @@ function buildFallbackPath(path: StudioPath): [number, number, number][] {
   const uProj = sub(uSeed, scale(nAxis, dot(uSeed, nAxis)));
   let u = normalize(uProj, [1, 0, 0]);
   if (Math.abs(dot(u, nAxis)) > 0.9) {
-    const alt = Math.abs(nAxis[2]) < 0.9 ? [0, 0, 1] as [number, number, number] : [1, 0, 0];
+    const alt = Math.abs(nAxis[2]) < 0.9 ? ([0, 0, 1] as [number, number, number]) : ([1, 0, 0] as [number, number, number]);
     u = normalize(cross(alt, nAxis), [1, 0, 0]);
   }
   const v = normalize(cross(nAxis, u), [0, 1, 0]);
@@ -125,7 +125,7 @@ function buildFallbackPath(path: StudioPath): [number, number, number][] {
       c[0] + off[0],
       c[1] + off[1],
       c[2] + off[2],
-    ]);
+    ] as [number, number, number]);
   }
   return out;
 }

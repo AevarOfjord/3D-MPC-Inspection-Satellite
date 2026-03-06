@@ -11,10 +11,7 @@ interface ShortcutHelpPanelProps {
 const SHORTCUTS: ShortcutItem[] = [
   { keys: 'Ctrl/Cmd + K', description: 'Open command palette' },
   { keys: '?', description: 'Open shortcut help' },
-  { keys: 'Ctrl/Cmd + 1..5', description: 'Switch top-level mode (Viewer, Planner, Runner, Data, Settings)' },
-  { keys: 'Alt + 1..5', description: 'Planner step navigation (Path Maker -> Mission Saver)' },
-  { keys: 'Ctrl/Cmd + Shift + V', description: 'Run planner validation' },
-  { keys: 'Ctrl/Cmd + S', description: 'Save mission (Planner)' },
+  { keys: 'Ctrl/Cmd + 1..5', description: 'Switch top-level mode (Viewer, Studio, Runner, Data, Settings)' },
 ];
 
 export function ShortcutHelpPanel({ open, onClose }: ShortcutHelpPanelProps) {

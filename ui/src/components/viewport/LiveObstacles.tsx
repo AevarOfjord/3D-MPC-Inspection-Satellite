@@ -84,7 +84,7 @@ export function LiveObstaclesRender() {
         </ErrorBoundary>
       )}
 
-      {params.obstacles.map((obs, i) => (
+      {(params.obstacles ?? []).map((obs, i) => (
         <mesh key={i} position={new THREE.Vector3(...obs.position)}>
           <sphereGeometry args={[obs.radius, 32, 32]} />
           <meshStandardMaterial color="#ff4444" transparent opacity={0.3} wireframe />
