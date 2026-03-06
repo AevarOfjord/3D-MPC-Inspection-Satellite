@@ -32,8 +32,11 @@ describe('MissionStudioRightPanel', () => {
     const { MissionStudioRightPanel } = await import('../MissionStudioRightPanel');
     const markup = renderToStaticMarkup(createElement(MissionStudioRightPanel));
 
-    expect(markup).toContain('Name and assembly required');
+    expect(markup).toContain('Enter a mission name to unlock validation.');
+    expect(markup).toContain('Name Mission First');
     expect(markup).toContain('Add segments using the left panel');
     expect(markup).toContain('Validate the mission before saving');
+    expect(markup).toContain('Route: empty');
+    expect(markup).toContain('Route Issues (0)');
   });
 });

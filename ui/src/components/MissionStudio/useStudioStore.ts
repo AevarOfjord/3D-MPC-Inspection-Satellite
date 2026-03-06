@@ -169,6 +169,26 @@ let assemblyCounter = 0;
 
 const PATH_COLORS = ['#22d3ee', '#a78bfa', '#fb923c', '#4ade80', '#f472b6', '#facc15'];
 
+function resolveAuthoringAnchor(state: Pick<StudioState, 'selectedPathId' | 'paths' | 'points' | 'satelliteStart'>): [number, number, number] {
+  const selectedPath = state.selectedPathId
+    ? state.paths.find((path) => path.id === state.selectedPathId) ?? null
+    : null;
+  if (selectedPath?.waypoints.length) {
+    return selectedPath.waypoints[selectedPath.waypoints.length - 1];
+  }
+  if (selectedPath) {
+    return [
+      0.5 * (selectedPath.planeA.position[0] + selectedPath.planeB.position[0]),
+      0.5 * (selectedPath.planeA.position[1] + selectedPath.planeB.position[1]),
+      0.5 * (selectedPath.planeA.position[2] + selectedPath.planeB.position[2]),
+    ];
+  }
+  if (state.points.length > 0) {
+    return state.points[state.points.length - 1]!.position;
+  }
+  return state.satelliteStart;
+}
+
 function defaultPlanes(axisSeed: StudioAxisSeed): { planeA: PlanePose; planeB: PlanePose } {
   const zero: [number, number, number] = [0, 0, 0];
   // Plane geometry normal is +Z. Orient plane A so +Z points along selected axis,
@@ -282,6 +302,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
       ],
       selectedPathId: id,
+      selectedAssemblyId: itemId,
       assembly: [...s.assembly, { id: itemId, type: 'create_path', pathId: id }],
     }));
     return id;
@@ -431,8 +452,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   addObstacle: () => {
     const id = `obs-${++obstacleCounter}`;
     const itemId = `asm-${++assemblyCounter}`;
+    const anchor = resolveAuthoringAnchor(get());
     set((s) => ({
-      obstacles: [...s.obstacles, { id, position: [0, 0, 0], radius: 2 }],
+      obstacles: [...s.obstacles, { id, position: [anchor[0] + 1.5, anchor[1] + 1.5, anchor[2]], radius: 2 }],
+      selectedAssemblyId: itemId,
       assembly: [...s.assembly, { id: itemId, type: 'obstacle', obstacleId: id }],
     }));
   },
@@ -455,8 +478,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   addPoint: () => {
     const id = `pt-${++pointCounter}`;
     const itemId = `asm-${++assemblyCounter}`;
+    const anchor = resolveAuthoringAnchor(get());
     set((s) => ({
-      points: [...s.points, { id, position: [0, 0, 0] }],
+      points: [...s.points, { id, position: [anchor[0] + 2, anchor[1], anchor[2]] }],
+      selectedAssemblyId: itemId,
       assembly: [...s.assembly, { id: itemId, type: 'point', pointId: id }],
     }));
   },

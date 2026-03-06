@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { Crosshair, Route, PenSquare, Link2, Pause, CircleDot, MapPin, Trash2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 import { trajectoryApi } from '../../api/trajectory';
 import { studioModelPathToUrl, studioReferenceLabel } from './studioReference';
+import { getStudioRouteDiagnostics } from './studioRouteDiagnostics';
 
 function SectionHeader({ label }: { label: string }) {
   return (
@@ -16,10 +17,12 @@ function SectionHeader({ label }: { label: string }) {
 function ToolButton({
   icon,
   label,
+  description,
   tool,
 }: {
   icon: React.ReactNode;
   label: string;
+  description: string;
   tool: NonNullable<ReturnType<typeof useStudioStore.getState>['activeTool']>;
 }) {
   const activeTool = useStudioStore((s) => s.activeTool);
@@ -39,8 +42,18 @@ function ToolButton({
           : 'border-slate-700 text-slate-300 hover:border-cyan-700'
       }`}
     >
-      {icon}
-      {label}
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block">{label}</span>
+        <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+          {description}
+        </span>
+      </span>
+      {active ? (
+        <span className="rounded-full border border-cyan-500/50 bg-cyan-950/60 px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-cyan-100">
+          Active
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -108,11 +121,25 @@ export function MissionStudioLeftPanel() {
   const selectedAssemblyId = useStudioStore((s) => s.selectedAssemblyId);
 
   const activeTool = useStudioStore((s) => s.activeTool);
+  const setSelectedAssemblyId = useStudioStore((s) => s.setSelectedAssemblyId);
   const regenerate = useRegenerateWaypoints();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [axisSeed, setAxisSeed] = useState<'X' | 'Y' | 'Z'>('Z');
+
+  const routeDiagnostics = useMemo(
+    () =>
+      getStudioRouteDiagnostics({
+        referenceObjectPath,
+        paths,
+        wires,
+        holds,
+        points,
+        assembly,
+      }),
+    [referenceObjectPath, paths, wires, holds, points, assembly]
+  );
 
   const selectedPath = paths.find((p) => p.id === selectedPathId) ?? null;
   const selectedWireId = selectedAssemblyId
@@ -201,17 +228,119 @@ export function MissionStudioLeftPanel() {
     }
   };
 
+  const activeTaskCopy =
+    activeTool === 'place_satellite'
+      ? 'Set the LVLH start pose. Use this before routing if the default [0,0,20] start is not right.'
+      : activeTool === 'create_path'
+        ? 'Author spiral scans. Add a path, then move, rotate, and size it until the target sweep is correct.'
+        : activeTool === 'connect'
+          ? 'Build one continuous route. Drag from satellite:start or a path endpoint into the next valid target.'
+          : activeTool === 'hold'
+            ? 'Click any waypoint on a connected path to insert a dwell segment.'
+            : activeTool === 'obstacle'
+              ? 'Place keep-out spheres where the route must avoid structure or debris.'
+              : activeTool === 'point'
+                ? 'Insert guide points to bend transfers between paths.'
+                : activeTool === 'edit'
+                  ? 'Refine the selected path or wire. Stretch, add, delete, or resample locally.'
+                  : 'Pick the next authoring task. Studio now exposes route health continuously while you work.';
+
   return (
     <div className="flex flex-col gap-0">
+      <SectionHeader label="Studio Workflow" />
+      <div className="p-3 flex flex-col gap-2">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            Current Task
+          </div>
+          <div className="mt-1 text-sm font-semibold text-slate-100">
+            {activeTool ? activeTool.replace('_', ' ') : 'Choose a tool'}
+          </div>
+          <div className="mt-2 text-[11px] leading-5 text-slate-300">
+            {activeTaskCopy}
+          </div>
+        </div>
+        <div
+          className={`rounded-xl border p-3 ${
+            routeDiagnostics.status === 'executable'
+              ? 'border-emerald-500/30 bg-emerald-950/20'
+              : routeDiagnostics.status === 'invalid'
+                ? 'border-red-500/30 bg-red-950/20'
+                : 'border-slate-800 bg-slate-950/80'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              Route Readiness
+            </div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300">
+              {routeDiagnostics.status}
+            </div>
+          </div>
+          <div className="mt-2 text-[11px] leading-5 text-slate-200">
+            {routeDiagnostics.nextAction}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-400">
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              Paths: {routeDiagnostics.validPathCount}/{routeDiagnostics.totalPathCount}
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              Wires: {routeDiagnostics.totalWireCount}
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              Holds: {routeDiagnostics.holdCount}
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              Target: {routeDiagnostics.targetMode === 'object' ? 'Object' : 'Local'}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <SectionHeader label="Add Segment" />
       <div className="p-3 flex flex-col gap-2">
-        <ToolButton icon={<Crosshair size={13} />} label="Place Satellite" tool="place_satellite" />
-        <ToolButton icon={<Route size={13} />} label="Create Path" tool="create_path" />
-        <ToolButton icon={<PenSquare size={13} />} label="Edit" tool="edit" />
-        <ToolButton icon={<Link2 size={13} />} label="Connect" tool="connect" />
-        <ToolButton icon={<Pause size={13} />} label="Hold" tool="hold" />
-        <ToolButton icon={<CircleDot size={13} />} label="Obstacle" tool="obstacle" />
-        <ToolButton icon={<MapPin size={13} />} label="Point" tool="point" />
+        <ToolButton
+          icon={<Crosshair size={13} />}
+          label="Place Satellite"
+          description="Set the starting LVLH position."
+          tool="place_satellite"
+        />
+        <ToolButton
+          icon={<Route size={13} />}
+          label="Create Path"
+          description="Add and shape a spiral inspection pass."
+          tool="create_path"
+        />
+        <ToolButton
+          icon={<Link2 size={13} />}
+          label="Connect"
+          description="Link start, points, and paths into one route."
+          tool="connect"
+        />
+        <ToolButton
+          icon={<Pause size={13} />}
+          label="Hold"
+          description="Insert dwell time on a connected path."
+          tool="hold"
+        />
+        <ToolButton
+          icon={<PenSquare size={13} />}
+          label="Edit"
+          description="Refine path geometry and wire curvature."
+          tool="edit"
+        />
+        <ToolButton
+          icon={<CircleDot size={13} />}
+          label="Obstacle"
+          description="Place keep-out spheres in the scene."
+          tool="obstacle"
+        />
+        <ToolButton
+          icon={<MapPin size={13} />}
+          label="Point"
+          description="Add guide nodes to shape transfers."
+          tool="point"
+        />
       </div>
 
       {activeTool === 'place_satellite' && (
@@ -249,18 +378,18 @@ export function MissionStudioLeftPanel() {
               type="button"
               onClick={() => {
                 const id = addPath(axisSeed);
-                const raw = window.prompt('Layer height (m) for this spiral path:', '0.5');
-                const level = raw === null ? 0.5 : Number(raw);
-                if (Number.isFinite(level) && level > 0) {
-                  updatePath(id, { levelSpacing: Math.max(0.05, level) });
-                }
                 selectPath(id);
+                setPathEditMode('translate');
                 regenerate(id, 0);
               }}
               className="w-full py-2 rounded-lg border border-violet-700 bg-violet-900/30 text-violet-100 text-xs font-semibold"
             >
               Add Path
             </button>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-[10px] text-slate-300">
+              New paths are created with the current axis seed and default spacing, then focused
+              immediately for move/rotate adjustments.
+            </div>
 
             {selectedPath && (
               <>
@@ -334,7 +463,10 @@ export function MissionStudioLeftPanel() {
         <>
           <SectionHeader label="Connect" />
           <div className="p-3 flex flex-col gap-2">
-            <div className="text-[10px] text-slate-500">Drag from one endpoint node to another in canvas.</div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-[10px] text-slate-300">
+              Drag from a source node to a valid destination. Green targets are legal, red
+              targets would branch, duplicate, or cycle the route.
+            </div>
             {wires.map((w) => (
               <div key={w.id} className="text-[10px] border border-slate-800 rounded px-2 py-1 text-slate-300 flex items-center justify-between gap-2">
                 <span className="truncate">{w.fromNodeId} → {w.toNodeId}</span>
@@ -380,13 +512,23 @@ export function MissionStudioLeftPanel() {
           <div className="p-3 flex flex-col gap-2">
             <button
               type="button"
-              onClick={addObstacle}
+              onClick={() => addObstacle()}
               className="w-full py-2 rounded-lg border border-red-800 bg-red-900/20 text-red-100 text-xs font-semibold"
             >
               Add Sphere Obstacle
             </button>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-[10px] text-slate-300">
+              New obstacles appear near the current authoring focus and can be dragged directly in the canvas.
+            </div>
             {obstacles.map((o) => (
-              <div key={o.id} className="border border-slate-800 rounded p-2 flex flex-col gap-1">
+              <div
+                key={o.id}
+                className={`border rounded p-2 flex flex-col gap-1 ${
+                  selectedAssemblyId && assembly.some((item) => item.id === selectedAssemblyId && item.obstacleId === o.id)
+                    ? 'border-red-500/40 bg-red-950/10'
+                    : 'border-slate-800'
+                }`}
+              >
                 <NumberField label="X" value={o.position[0]} onChange={(v) => updateObstacle(o.id, { position: [v, o.position[1], o.position[2]] })} />
                 <NumberField label="Y" value={o.position[1]} onChange={(v) => updateObstacle(o.id, { position: [o.position[0], v, o.position[2]] })} />
                 <NumberField label="Z" value={o.position[2]} onChange={(v) => updateObstacle(o.id, { position: [o.position[0], o.position[1], v] })} />
@@ -406,13 +548,23 @@ export function MissionStudioLeftPanel() {
           <div className="p-3 flex flex-col gap-2">
             <button
               type="button"
-              onClick={addPoint}
+              onClick={() => addPoint()}
               className="w-full py-2 rounded-lg border border-cyan-700 bg-cyan-900/20 text-cyan-100 text-xs font-semibold"
             >
               Add Point
             </button>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-[10px] text-slate-300">
+              New guide points spawn from the current route context and become the active draggable point immediately.
+            </div>
             {points.map((point) => (
-              <div key={point.id} className="border border-slate-800 rounded p-2 flex flex-col gap-1">
+              <div
+                key={point.id}
+                className={`border rounded p-2 flex flex-col gap-1 ${
+                  selectedAssemblyId && assembly.some((item) => item.id === selectedAssemblyId && item.pointId === point.id)
+                    ? 'border-cyan-500/40 bg-cyan-950/10'
+                    : 'border-slate-800'
+                }`}
+              >
                 <div className="text-[10px] text-slate-500">{point.id}</div>
                 <NumberField
                   label="X"

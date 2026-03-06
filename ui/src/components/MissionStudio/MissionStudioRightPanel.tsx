@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Trash2, Save, CheckCircle, AlertCircle, Crosshair, Route, Link2, Pause, CircleDot, MapPin } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Trash2, Save, CheckCircle, AlertCircle, Crosshair, Route, Link2, Pause, CircleDot, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
+import { getStudioRouteDiagnostics } from './studioRouteDiagnostics';
 
 function polylineLength(points: [number, number, number][]): number {
   if (!points || points.length < 2) return 0;
@@ -155,8 +156,10 @@ export function MissionStudioRightPanel() {
   const assembly = useStudioStore((s) => s.assembly);
   const paths = useStudioStore((s) => s.paths);
   const wires = useStudioStore((s) => s.wires);
+  const holds = useStudioStore((s) => s.holds);
   const satelliteStart = useStudioStore((s) => s.satelliteStart);
   const points = useStudioStore((s) => s.points);
+  const referenceObjectPath = useStudioStore((s) => s.referenceObjectPath);
   const missionName = useStudioStore((s) => s.missionName);
   const setMissionName = useStudioStore((s) => s.setMissionName);
   const validationReport = useStudioStore((s) => s.validationReport);
@@ -169,6 +172,7 @@ export function MissionStudioRightPanel() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [issuesExpanded, setIssuesExpanded] = useState(true);
 
   useEffect(() => {
     if (missionName.trim().length > 0) return;
@@ -178,6 +182,32 @@ export function MissionStudioRightPanel() {
   }, [paths.length, missionName, setMissionName]);
 
   const totalWaypoints = paths.reduce((acc, p) => acc + p.waypoints.length, 0);
+  const routeDiagnostics = useMemo(
+    () =>
+      getStudioRouteDiagnostics({
+        referenceObjectPath,
+        paths,
+        wires,
+        holds,
+        points,
+        assembly,
+      }),
+    [referenceObjectPath, paths, wires, holds, points, assembly]
+  );
+  const authoringFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        referenceObjectPath,
+        satelliteStart,
+        paths,
+        wires,
+        holds,
+        points,
+        assembly,
+      }),
+    [referenceObjectPath, satelliteStart, paths, wires, holds, points, assembly]
+  );
+  const previousFingerprintRef = useRef(authoringFingerprint);
   const totalPathLengthM = useMemo(() => {
     try {
       const mission = compileStudioMission(useStudioStore.getState());
@@ -213,6 +243,29 @@ export function MissionStudioRightPanel() {
     }, 0);
     return authoredPathLength + authoredWireLength;
   }, [paths, wires, satelliteStart, points]);
+
+  useEffect(() => {
+    if (routeDiagnostics.status !== 'executable') {
+      setIssuesExpanded(true);
+    }
+  }, [routeDiagnostics.status]);
+
+  useEffect(() => {
+    if (previousFingerprintRef.current === authoringFingerprint) return;
+    previousFingerprintRef.current = authoringFingerprint;
+    if (validationReport !== null) {
+      setValidationReport(null);
+    }
+    if (validateResult !== null) {
+      setValidateResult(null);
+    }
+    if (saveSuccess) {
+      setSaveSuccess(false);
+    }
+    if (saveError) {
+      setSaveError(null);
+    }
+  }, [authoringFingerprint, saveError, saveSuccess, setValidationReport, validateResult, validationReport]);
 
   const handleValidate = async () => {
     setValidationBusy(true);
@@ -251,7 +304,9 @@ export function MissionStudioRightPanel() {
     }
   };
 
-  const canSave = assembly.length > 0 && missionName.trim().length > 0;
+  const canSave = routeDiagnostics.executable && missionName.trim().length > 0;
+  const canValidate = routeDiagnostics.executable && missionName.trim().length > 0;
+  const validationPassed = validationReport?.valid === true;
   const validationIssueCount = validationReport?.issues.length ?? 0;
   const validationStateLabel = validationBusy
     ? 'Validating'
@@ -267,6 +322,36 @@ export function MissionStudioRightPanel() {
       : validationReport
         ? 'border-red-500/40 bg-red-950/35 text-red-200'
         : 'border-slate-700 bg-slate-900/60 text-slate-300';
+  const routeIssueCount =
+    routeDiagnostics.invalidPathIds.length +
+    routeDiagnostics.invalidWireIds.length +
+    routeDiagnostics.branchingSources.length +
+    routeDiagnostics.multiIncomingTargets.length +
+    routeDiagnostics.disconnectedPathIds.length +
+    routeDiagnostics.disconnectedWireIds.length +
+    routeDiagnostics.unconnectedHoldIds.length +
+    (routeDiagnostics.cycleDetected ? 1 : 0) +
+    (routeDiagnostics.routeStartsAtSatellite ? 0 : routeDiagnostics.validPathCount > 0 ? 1 : 0);
+  const primaryAction = !missionName.trim()
+    ? { label: 'Name Mission First', disabled: true, tone: 'neutral' as const, onClick: () => undefined }
+    : !routeDiagnostics.executable
+      ? { label: 'Complete Route Before Validation', disabled: true, tone: 'warn' as const, onClick: () => undefined }
+      : !validationPassed
+        ? { label: validationBusy ? 'Validating...' : 'Validate Mission', disabled: validationBusy, tone: 'info' as const, onClick: () => void handleValidate() }
+        : { label: saveBusy ? 'Saving...' : 'Save Mission', disabled: saveBusy, tone: 'good' as const, onClick: () => void handleSave() };
+  const primaryActionClass =
+    primaryAction.tone === 'good'
+      ? 'border-emerald-700 bg-emerald-900/40 text-emerald-100 hover:bg-emerald-900/60'
+      : primaryAction.tone === 'info'
+        ? 'border-cyan-700 bg-cyan-900/35 text-cyan-100 hover:bg-cyan-900/55'
+        : 'border-amber-700/60 bg-amber-950/30 text-amber-100';
+  const nextStepLabel = !missionName.trim()
+    ? 'Enter a mission name to unlock validation.'
+    : !routeDiagnostics.executable
+      ? routeDiagnostics.nextAction
+      : !validationPassed
+        ? 'Route is executable. Run validation before saving.'
+        : 'Validation is current. Save this mission when ready.';
 
   return (
     <div className="flex flex-col h-full">
@@ -304,6 +389,59 @@ export function MissionStudioRightPanel() {
               <div className="mt-1 text-sm font-semibold text-slate-100">{totalPathLengthM.toFixed(1)} m</div>
             </div>
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+            <div
+              className={`rounded-lg border px-2 py-2 ${
+                routeDiagnostics.targetMode === 'object'
+                  ? 'border-cyan-500/30 bg-cyan-950/20 text-cyan-100'
+                  : 'border-slate-800 bg-black/20 text-slate-300'
+              }`}
+            >
+              Target: {routeDiagnostics.targetMode === 'object' ? 'Object selected' : 'Local origin'}
+            </div>
+            <div
+              className={`rounded-lg border px-2 py-2 ${
+                routeDiagnostics.executable
+                  ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-100'
+                  : routeDiagnostics.status === 'invalid'
+                    ? 'border-red-500/30 bg-red-950/20 text-red-100'
+                    : 'border-amber-500/30 bg-amber-950/20 text-amber-100'
+              }`}
+            >
+              Route: {routeDiagnostics.executable ? 'Executable' : routeDiagnostics.status}
+            </div>
+          </div>
+          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
+            {routeDiagnostics.nextAction}
+          </div>
+          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/80">
+            <button
+              type="button"
+              onClick={() => setIssuesExpanded((expanded) => !expanded)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-slate-200"
+            >
+              <span className="font-semibold">
+                Route Issues {routeIssueCount > 0 ? `(${routeIssueCount})` : '(0)'}
+              </span>
+              {issuesExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+            </button>
+            {issuesExpanded ? (
+              <div className="border-t border-slate-800 px-3 py-2">
+                {routeDiagnostics.detailLines.length === 0 ? (
+                  <div className="text-xs text-slate-400">No route issues are currently surfaced.</div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {routeDiagnostics.detailLines.map((line, index) => (
+                      <div key={`${index}-${line}`} className="flex items-start gap-2 text-xs text-slate-300">
+                        <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500" />
+                        <span>{line}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
           {!validationReport ? (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
               <AlertCircle size={14} className="mt-0.5 shrink-0 text-sky-300" />
@@ -334,36 +472,57 @@ export function MissionStudioRightPanel() {
           value={missionName}
           onChange={(e) => setMissionName(e.target.value)}
         />
-        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-slate-500 px-0.5">
-          <span>Authoring Actions</span>
-          <span>{canSave ? 'Ready to save' : 'Name and assembly required'}</span>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/85 p-3">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-slate-500">
+            <span>Next Step</span>
+            <span>
+              {canSave && validationPassed
+                ? 'Save ready'
+                : validationPassed
+                  ? 'Validated'
+                  : canValidate
+                    ? 'Validate now'
+                    : 'Blocked'}
+            </span>
+          </div>
+          <div className="mt-2 text-xs text-slate-200">{nextStepLabel}</div>
+          <button
+            type="button"
+            onClick={primaryAction.onClick}
+            disabled={primaryAction.disabled}
+            className={`mt-3 w-full py-2 rounded-lg border text-xs font-semibold transition-all disabled:opacity-45 ${primaryActionClass}`}
+          >
+            {primaryAction.label}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleValidate()}
-          disabled={validationBusy}
-          className="w-full py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold disabled:opacity-50 hover:border-slate-600 transition-all"
-        >
-          {validationBusy ? 'Validating...' : 'Validate'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={!canSave || saveBusy}
-          className="w-full py-2 rounded-lg border border-emerald-700 bg-emerald-900/40 text-emerald-100 text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5 hover:bg-emerald-900/60 transition-all"
-        >
-          {saveSuccess ? (
-            <>
-              <CheckCircle size={13} /> Saved!
-            </>
-          ) : saveBusy ? (
-            'Saving...'
-          ) : (
-            <>
-              <Save size={13} /> Save Mission
-            </>
-          )}
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => void handleValidate()}
+            disabled={!canValidate || validationBusy}
+            className="w-full py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold disabled:opacity-50 hover:border-slate-600 transition-all"
+          >
+            {validationBusy ? 'Validating...' : validationPassed ? 'Revalidate' : 'Validate'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!canSave || !validationPassed || saveBusy}
+            className="w-full py-2 rounded-lg border border-emerald-700 bg-emerald-900/40 text-emerald-100 text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5 hover:bg-emerald-900/60 transition-all"
+          >
+            {saveSuccess ? (
+              <>
+                <CheckCircle size={13} /> Saved!
+              </>
+            ) : saveBusy ? (
+              'Saving...'
+            ) : (
+              <>
+                <Save size={13} /> Save Mission
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

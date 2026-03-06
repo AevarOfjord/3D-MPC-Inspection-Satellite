@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import * as THREE from 'three';
 import { TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
@@ -9,7 +9,7 @@ export function PointObjects() {
   const points = useStudioStore((s) => s.points);
   const activeTool = useStudioStore((s) => s.activeTool);
   const updatePoint = useStudioStore((s) => s.updatePoint);
-  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const setSelectedAssemblyId = useStudioStore((s) => s.setSelectedAssemblyId);
   const selectedAssembly = selectedAssemblyId ? assembly.find((a) => a.id === selectedAssemblyId) ?? null : null;
   const visiblePoints =
     selectedAssembly == null
@@ -17,20 +17,22 @@ export function PointObjects() {
       : selectedAssembly.type === 'point'
         ? points.filter((p) => p.id === selectedAssembly.pointId)
         : [];
-  const selectedPoint = visiblePoints.find((p) => p.id === selectedPointId) ?? null;
+  const selectedPoint = selectedAssembly?.type === 'point'
+    ? points.find((p) => p.id === selectedAssembly.pointId) ?? null
+    : null;
 
   useEffect(() => {
-    if (!selectedPointId) return;
-    if (!points.some((p) => p.id === selectedPointId)) {
-      setSelectedPointId(null);
+    if (selectedAssembly?.type !== 'point') return;
+    if (!points.some((p) => p.id === selectedAssembly.pointId)) {
+      setSelectedAssemblyId(null);
     }
-  }, [points, selectedPointId]);
+  }, [points, selectedAssembly, setSelectedAssemblyId]);
 
   useEffect(() => {
-    if (activeTool !== 'point') {
-      setSelectedPointId(null);
+    if (activeTool !== 'point' && selectedAssembly?.type === 'point') {
+      setSelectedAssemblyId(null);
     }
-  }, [activeTool]);
+  }, [activeTool, selectedAssembly, setSelectedAssemblyId]);
 
   return (
     <>
@@ -41,11 +43,12 @@ export function PointObjects() {
           onClick={(e) => {
             e.stopPropagation();
             if (activeTool !== 'point') return;
-            setSelectedPointId((prev) => (prev === point.id ? null : point.id));
+            const assemblyItem = assembly.find((item) => item.type === 'point' && item.pointId === point.id) ?? null;
+            setSelectedAssemblyId(selectedAssemblyId === assemblyItem?.id ? null : (assemblyItem?.id ?? null));
           }}
         >
           <sphereGeometry args={[0.22, 16, 16]} />
-          <meshBasicMaterial color={selectedPointId === point.id ? '#0ea5e9' : '#38bdf8'} />
+          <meshBasicMaterial color={selectedPoint?.id === point.id ? '#0ea5e9' : '#38bdf8'} />
         </mesh>
       ))}
       {activeTool === 'point' && selectedPoint && (
