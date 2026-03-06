@@ -3,6 +3,7 @@ import { MissionStudioLeftPanel } from './MissionStudioLeftPanel';
 import { MissionStudioRightPanel } from './MissionStudioRightPanel';
 import { MissionStudioCanvas } from './MissionStudioCanvas';
 import { StudioWelcome } from './StudioWelcome';
+import { StudioStatusStrip } from './StudioStatusStrip';
 import { useStudioStore } from './useStudioStore';
 
 export function MissionStudioLayout() {
@@ -21,6 +22,9 @@ export function MissionStudioLayout() {
         <Suspense fallback={<div style={{ background: '#070b14', width: '100%', height: '100%' }} />}>
           <MissionStudioCanvas />
         </Suspense>
+        <div className="pointer-events-none absolute left-3 right-3 top-3 z-10">
+          <StudioStatusStrip />
+        </div>
         {!welcomeDismissed && <StudioWelcome />}
       </div>
 

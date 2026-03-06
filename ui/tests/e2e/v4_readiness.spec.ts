@@ -40,6 +40,19 @@ test('Studio flow: disconnected authoring fails locally before backend validatio
       }),
     });
   });
+  await page.route('**/api/models/generate_scan_path', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        waypoints: [
+          [0, 0, -5],
+          [0, 0, 5],
+          [0, 0, 10],
+        ],
+      }),
+    });
+  });
 
   const startMs = Date.now();
 
@@ -47,23 +60,22 @@ test('Studio flow: disconnected authoring fails locally before backend validatio
   await chooseEmptyScene(page);
   await page.getByRole('button', { name: 'Place Satellite' }).click();
   await page.getByRole('button', { name: 'Create Path' }).click();
+  const scanPathResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/models/generate_scan_path') &&
+      response.request().method() === 'POST'
+  );
   await page.getByRole('button', { name: 'Add Path' }).click();
-  await expect
-    .poll(
-      async () =>
-        await page
-          .locator('text=Waypoints')
-          .locator('..')
-          .textContent(),
-      { timeout: 10_000 }
-    )
-    .not.toContain('0');
+  await scanPathResponse;
+  await expect(
+    page.getByText('Connect satellite:start to the first path or point.').first()
+  ).toBeVisible();
 
   await page.getByPlaceholder('Mission name...').fill('Studio E2E Mission');
-  await page.getByRole('button', { name: 'Validate' }).click();
+  await expect(page.getByRole('button', { name: 'Validate' })).toBeDisabled();
   await expect.poll(() => validateCalls).toBe(0);
   await expect(
-    page.getByText('Every valid path must be connected into the executable route exactly once')
+    page.getByText('Connect satellite:start to the first path or point.').first()
   ).toBeVisible();
 
   const elapsedMs = Date.now() - startMs;

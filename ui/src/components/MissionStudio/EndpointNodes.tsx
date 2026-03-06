@@ -1,9 +1,10 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
-import { Line, TransformControls } from '@react-three/drei';
+import { Html, Line, TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
+import { canConnectStudioNodes } from './studioRouteDiagnostics';
 
 type NodePositionState = Pick<ReturnType<typeof useStudioStore.getState>, 'satelliteStart' | 'paths' | 'points'>;
 
@@ -253,6 +254,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const satelliteStart = useStudioStore((s) => s.satelliteStart);
   const points = useStudioStore((s) => s.points);
   const wires = useStudioStore((s) => s.wires);
+  const holds = useStudioStore((s) => s.holds);
   const wireDrag = useStudioStore((s) => s.wireDrag);
   const activeTool = useStudioStore((s) => s.activeTool);
   const setWireDrag = useStudioStore((s) => s.setWireDrag);
@@ -265,6 +267,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const dragLineRef = useRef<THREE.Line>(null);
   const nodeState = { paths, satelliteStart, points };
   const [selectedWirePoint, setSelectedWirePoint] = useState<{ wireId: string; index: number } | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const visibleWireSet = useMemo(
     () => (visibleWireIds && visibleWireIds.length > 0 ? new Set(visibleWireIds) : null),
     [visibleWireIds]
@@ -276,6 +279,17 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const visibleWires = useMemo(
     () => (visibleWireSet ? wires.filter((wire) => visibleWireSet.has(wire.id)) : wires),
     [wires, visibleWireSet]
+  );
+  const connectState = useMemo(
+    () => ({
+      referenceObjectPath: null,
+      paths,
+      wires,
+      holds,
+      points,
+      assembly,
+    }),
+    [paths, wires, holds, points, assembly]
   );
 
   useFrame(() => {
@@ -310,12 +324,28 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
 
   const completeDrag = useCallback((targetNodeId: string) => {
     const drag = useStudioStore.getState().wireDrag;
-    if (drag.phase !== 'dragging' || drag.sourceNodeId === targetNodeId) {
-      setWireDrag({ phase: 'idle' });
-      gl.domElement.removeEventListener('pointermove', handlePointerMove);
+    if (drag.phase !== 'dragging') {
+      return;
+    }
+    if (drag.sourceNodeId === targetNodeId) {
       return;
     }
     const st = useStudioStore.getState();
+    const connectCheck = canConnectStudioNodes(
+      {
+        referenceObjectPath: null,
+        paths: st.paths,
+        wires: st.wires,
+        holds: st.holds,
+        points: st.points,
+        assembly: st.assembly,
+      },
+      drag.sourceNodeId,
+      targetNodeId
+    );
+    if (!connectCheck.ok) {
+      return;
+    }
     const controls = autoWireControls(drag.sourceNodeId, targetNodeId, {
       paths: st.paths,
       satelliteStart: st.satelliteStart,
@@ -329,6 +359,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
       constraintMode: 'constrained',
     });
     setWireDrag({ phase: 'idle' });
+    setHoveredNodeId(null);
     gl.domElement.removeEventListener('pointermove', handlePointerMove);
   }, [addWire, setWireDrag, gl, handlePointerMove]);
 
@@ -347,6 +378,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
     if (useStudioStore.getState().wireDrag.phase === 'dragging') {
       setWireDrag({ phase: 'idle' });
     }
+    setHoveredNodeId(null);
     setSelectedWirePoint(null);
   }, [activeTool, gl, handlePointerMove, setWireDrag]);
 
@@ -357,6 +389,47 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
       setSelectedWirePoint(null);
     }
   }, [selectedWirePoint, visibleWires]);
+
+  const getNodeVisual = useCallback(
+    (nodeId: string, baseColor: string) => {
+      if (wireDrag.phase !== 'dragging') {
+        return {
+          color: baseColor,
+          haloColor: baseColor,
+          pulse: true,
+          emphasis: 'idle' as const,
+          tooltip: null,
+        };
+      }
+      if (wireDrag.sourceNodeId === nodeId) {
+        return {
+          color: '#f8fafc',
+          haloColor: '#38bdf8',
+          pulse: true,
+          emphasis: 'source' as const,
+          tooltip: 'Connection source',
+        };
+      }
+      const check = canConnectStudioNodes(connectState, wireDrag.sourceNodeId, nodeId);
+      if (check.ok) {
+        return {
+          color: '#4ade80',
+          haloColor: hoveredNodeId === nodeId ? '#86efac' : '#22c55e',
+          pulse: true,
+          emphasis: hoveredNodeId === nodeId ? ('hover-valid' as const) : ('valid' as const),
+          tooltip: hoveredNodeId === nodeId ? 'Click to connect' : null,
+        };
+      }
+      return {
+        color: '#f87171',
+        haloColor: hoveredNodeId === nodeId ? '#fca5a5' : '#ef4444',
+        pulse: false,
+        emphasis: hoveredNodeId === nodeId ? ('hover-invalid' as const) : ('invalid' as const),
+        tooltip: hoveredNodeId === nodeId ? check.reason ?? 'Invalid target' : null,
+      };
+    },
+    [connectState, hoveredNodeId, wireDrag]
+  );
 
   return (
     <group>
@@ -452,9 +525,9 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
       {(connectNodeSet == null || connectNodeSet.has('satellite:start')) && (
         <EndpointSphere
           position={satelliteStart}
-          color="#ffffff"
-          pulse
+          {...getNodeVisual('satellite:start', '#ffffff')}
           onClick={() => handleNodeClick('satellite:start')}
+          onHoverChange={(hovered) => setHoveredNodeId(hovered ? 'satellite:start' : null)}
         />
       )}
 
@@ -470,17 +543,17 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
             {showStart && (
               <EndpointSphere
                 position={path.waypoints[0]}
-                color="#22d3ee"
-                pulse
+                {...getNodeVisual(startId, '#22d3ee')}
                 onClick={() => handleNodeClick(startId)}
+                onHoverChange={(hovered) => setHoveredNodeId(hovered ? startId : null)}
               />
             )}
             {showEnd && (
               <EndpointSphere
                 position={path.waypoints[path.waypoints.length - 1]}
-                color="#a78bfa"
-                pulse
+                {...getNodeVisual(endId, '#a78bfa')}
                 onClick={() => handleNodeClick(endId)}
+                onHoverChange={(hovered) => setHoveredNodeId(hovered ? endId : null)}
               />
             )}
           </group>
@@ -494,9 +567,9 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
           <EndpointSphere
             key={point.id}
             position={point.position}
-            color="#38bdf8"
-            pulse
+            {...getNodeVisual(nodeId, '#38bdf8')}
             onClick={() => handleNodeClick(nodeId)}
+            onHoverChange={(hovered) => setHoveredNodeId(hovered ? nodeId : null)}
           />
         );
       })}
@@ -509,13 +582,21 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
 function EndpointSphere({
   position,
   color,
+  haloColor,
   pulse,
+  emphasis,
+  tooltip,
   onClick,
+  onHoverChange,
 }: {
   position: [number, number, number];
   color: string;
+  haloColor: string;
   pulse: boolean;
+  emphasis: 'idle' | 'source' | 'valid' | 'invalid' | 'hover-valid' | 'hover-invalid';
+  tooltip: string | null;
   onClick: () => void;
+  onHoverChange: (hovered: boolean) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
@@ -523,17 +604,67 @@ function EndpointSphere({
     const s = 1 + 0.2 * Math.sin(clock.getElapsedTime() * 4);
     meshRef.current.scale.setScalar(s);
   });
+  const haloScale =
+    emphasis === 'source'
+      ? 1.95
+      : emphasis === 'hover-valid' || emphasis === 'hover-invalid'
+        ? 1.8
+        : emphasis === 'valid'
+          ? 1.65
+          : emphasis === 'invalid'
+            ? 1.55
+            : 1.5;
+  const haloOpacity =
+    emphasis === 'source'
+      ? 0.5
+      : emphasis === 'hover-valid' || emphasis === 'hover-invalid'
+        ? 0.42
+        : emphasis === 'invalid'
+          ? 0.28
+          : 0.22;
+  const coreRadius =
+    emphasis === 'hover-valid' || emphasis === 'hover-invalid'
+      ? 0.52
+      : emphasis === 'source'
+        ? 0.5
+        : 0.45;
   return (
-    <mesh
-      ref={meshRef}
+    <group
       position={position}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        onHoverChange(true);
+      }}
+      onPointerOut={(e) => {
+        e.stopPropagation();
+        onHoverChange(false);
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
     >
-      <sphereGeometry args={[0.45, 16, 16]} />
-      <meshBasicMaterial color={color} />
-    </mesh>
+      <mesh scale={haloScale}>
+        <sphereGeometry args={[0.45, 16, 16]} />
+        <meshBasicMaterial color={haloColor} transparent opacity={haloOpacity} depthWrite={false} />
+      </mesh>
+      <mesh ref={meshRef}>
+        <sphereGeometry args={[coreRadius, 16, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      {tooltip ? (
+        <Html position={[0, 0.95, 0]} center distanceFactor={14}>
+          <div
+            className={`rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg ${
+              emphasis === 'hover-invalid'
+                ? 'border-red-500/60 bg-red-950/90 text-red-100'
+                : 'border-cyan-500/60 bg-cyan-950/90 text-cyan-50'
+            }`}
+          >
+            {tooltip}
+          </div>
+        </Html>
+      ) : null}
+    </group>
   );
 }

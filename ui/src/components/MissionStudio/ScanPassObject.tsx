@@ -206,34 +206,48 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
         <Line
           points={linePoints}
           color={showEditMode && editMode === 'density' && isSelected ? '#f59e0b' : '#22d3ee'}
-          lineWidth={isSelected ? 2 : 1}
+          lineWidth={isSelected ? 3.5 : 1.4}
           transparent
-          opacity={isSelected ? 1 : 0.95}
+          opacity={isSelected ? 1 : 0.72}
           onClick={(e: any) => {
+            useStudioStore.getState().selectPath(scanId);
             if (!showEditMode || editMode !== 'add') return;
             e.stopPropagation();
-            useStudioStore.getState().selectPath(scanId);
             insertWaypointOnPath(e.point);
           }}
         />
+      )}
+      {isSelected && !isConnectMode && path.waypoints.length >= 2 && (
+        <>
+          <mesh position={path.waypoints[0]}>
+            <sphereGeometry args={[0.22, 10, 10]} />
+            <meshBasicMaterial color="#67e8f9" transparent opacity={0.75} />
+          </mesh>
+          <mesh position={path.waypoints[path.waypoints.length - 1]}>
+            <sphereGeometry args={[0.22, 10, 10]} />
+            <meshBasicMaterial color="#c4b5fd" transparent opacity={0.75} />
+          </mesh>
+        </>
       )}
       {showEditMode && editMode === 'density' && isSelected && densitySnippetPoints && (
         <Line points={densitySnippetPoints} color="#f97316" lineWidth={3} transparent opacity={1} />
       )}
       {!isConnectMode && pointsGeometry && (
         <points geometry={pointsGeometry}>
-          <pointsMaterial color="#67e8f9" size={0.08} sizeAttenuation />
+          <pointsMaterial color="#67e8f9" size={isSelected ? 0.11 : 0.08} sizeAttenuation opacity={isSelected ? 0.9 : 0.55} transparent />
         </points>
       )}
 
       {!isConnectMode && centerLinePoints && (
         <Line
           points={centerLinePoints}
-          color="#facc15"
+          color={isSelected ? '#fde047' : '#facc15'}
+          lineWidth={isSelected ? 2.2 : 1.2}
           transparent
-          opacity={0.95}
+          opacity={isSelected ? 1 : 0.45}
           onClick={(e: any) => {
             e.stopPropagation();
+            useStudioStore.getState().selectPath(scanId);
             setControlTarget((prev) => (prev === 'center' ? 'none' : 'center'));
           }}
         />
