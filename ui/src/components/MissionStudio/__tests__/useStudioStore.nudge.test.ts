@@ -40,4 +40,18 @@ describe('useStudioStore studio v1', () => {
     useStudioStore.getState().setWireConstraintMode('w1', 'free');
     expect(useStudioStore.getState().wires[0]?.constraintMode).toBe('free');
   });
+
+  it('tracks Studio authoring status fields directly in the store', () => {
+    useStudioStore.getState().setMissionName('Studio Store Mission');
+    useStudioStore.getState().setWelcomeDismissed(true);
+    useStudioStore.getState().setValidationReport({
+      valid: true,
+      issues: [],
+      summary: { errors: 0, warnings: 0, info: 0 },
+    });
+
+    expect(useStudioStore.getState().missionName).toBe('Studio Store Mission');
+    expect(useStudioStore.getState().welcomeDismissed).toBe(true);
+    expect(useStudioStore.getState().validationReport?.valid).toBe(true);
+  });
 });

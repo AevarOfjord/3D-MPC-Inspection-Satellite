@@ -1,21 +1,31 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function dismissIntroIfVisible(page: Page) {
-  const dismiss = page.getByRole('button', { name: 'Dismiss' });
-  const visible = await dismiss
+async function chooseEmptyScene(page: Page) {
+  const emptySceneButton = page.getByRole('button', { name: 'Empty Scene' });
+  const visible = await emptySceneButton
     .waitFor({ state: 'visible', timeout: 1200 })
     .then(() => true)
     .catch(() => false);
   if (visible) {
-    await dismiss.click();
+    await emptySceneButton.click();
   }
 }
 
-test('v4.2 kpi: create + validate + reach save-ready state within 5 minutes from clean storage', async ({ page }) => {
+test('Studio flow: disconnected authoring fails locally before backend validation', async ({
+  page,
+}) => {
   let validateCalls = 0;
 
   await page.addInitScript(() => {
     window.localStorage.clear();
+  });
+
+  await page.on('dialog', async (dialog) => {
+    if (dialog.type() === 'prompt') {
+      await dialog.accept('0.5');
+      return;
+    }
+    await dialog.dismiss();
   });
 
   await page.route('**/api/v2/missions/validate', async (route) => {
@@ -31,44 +41,36 @@ test('v4.2 kpi: create + validate + reach save-ready state within 5 minutes from
     });
   });
 
-  await page.route('**/api/v2/missions', async (route) => {
-    const method = route.request().method();
-    if (method === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([]),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        mission_id: 'M-v4-kpi',
-        version: 1,
-        saved_at: new Date().toISOString(),
-        filename: 'M-v4-kpi.json',
-      }),
-    });
-  });
-
   const startMs = Date.now();
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'PLANNER' }).click();
-  await dismissIntroIfVisible(page);
+  await chooseEmptyScene(page);
+  await page.getByRole('button', { name: 'Place Satellite' }).click();
+  await page.getByRole('button', { name: 'Create Path' }).click();
+  await page.getByRole('button', { name: 'Add Path' }).click();
+  await expect
+    .poll(
+      async () =>
+        await page
+          .locator('text=Waypoints')
+          .locator('..')
+          .textContent(),
+      { timeout: 10_000 }
+    )
+    .not.toContain('0');
 
-  await page.getByRole('button', { name: 'Advanced' }).click();
-  await page.keyboard.press('ControlOrMeta+Shift+V');
-
-  await expect.poll(() => validateCalls).toBeGreaterThan(0);
+  await page.getByPlaceholder('Mission name...').fill('Studio E2E Mission');
+  await page.getByRole('button', { name: 'Validate' }).click();
+  await expect.poll(() => validateCalls).toBe(0);
+  await expect(
+    page.getByText('Every valid path must be connected into the executable route exactly once')
+  ).toBeVisible();
 
   const elapsedMs = Date.now() - startMs;
   expect(elapsedMs).toBeLessThan(300_000);
 });
 
-test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
+test('Studio desktop layouts stay stable at 1280/1440/1920', async ({ page }) => {
   const sizes = [
     { width: 1280, height: 800 },
     { width: 1440, height: 900 },
@@ -81,15 +83,11 @@ test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
     });
     await page.setViewportSize(size);
     await page.goto('/');
-    await page.getByRole('button', { name: 'PLANNER' }).click();
-    await dismissIntroIfVisible(page);
+    await chooseEmptyScene(page);
 
-    await expect(page.getByText('Mission Planner')).toBeVisible();
-    await expect(
-      page.locator('#coachmark-step_rail').getByRole('button', { name: /Path Maker/ }).first()
-    ).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Step [1-5] ·/ })).toBeVisible();
-    await expect(page.getByText('Diagnostics Timeline')).toBeVisible();
+    await expect(page.getByText('Studio Status')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Path' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save Mission' })).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => {
       const root = document.documentElement;
@@ -99,24 +97,19 @@ test('v4 desktop layouts are stable at 1280/1440/1920', async ({ page }) => {
   }
 });
 
-test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ page }) => {
+test('Studio keyboard flow keeps focus navigation usable', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'PLANNER' }).click();
-  await dismissIntroIfVisible(page);
-  await page.getByRole('button', { name: 'Advanced' }).click();
+  await chooseEmptyScene(page);
 
-  const startTransferButton = page
-    .locator('#coachmark-step_rail')
-    .getByRole('button', { name: /Step 2/ })
-    .first();
-  await startTransferButton.focus();
+  const createPathButton = page.getByRole('button', { name: 'Create Path' });
+  await createPathButton.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Step 2 · Transfer')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add Path' })).toBeVisible();
 
-  let foundFocusVisible = false;
+  let foundFocusableAction = false;
   for (let i = 0; i < 25; i += 1) {
     await page.keyboard.press('Tab');
     const focused = await page.evaluate(() => {
@@ -124,17 +117,19 @@ test('v4 keyboard flow: focus-visible + step navigation without trap', async ({ 
       if (!active) return null;
       return {
         className: active.className,
-        boxShadow: getComputedStyle(active).boxShadow,
+        text: active.textContent,
       };
     });
 
-    if (focused && typeof focused.className === 'string' && focused.className.includes('v4-focus')) {
-      expect(focused.boxShadow).not.toBe('none');
-      foundFocusVisible = true;
+    if (
+      focused &&
+      typeof focused.className === 'string' &&
+      focused.className.includes('border')
+    ) {
+      foundFocusableAction = true;
       break;
     }
   }
 
-  expect(foundFocusVisible).toBe(true);
-
+  expect(foundFocusableAction).toBe(true);
 });

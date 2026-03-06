@@ -83,6 +83,79 @@ describe('compileStudioMission', () => {
     expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('assembles a continuous multi-path route with points and holds in order', async () => {
+    useStudioStore.setState({
+      referenceObjectPath: 'data/assets/model_files/Starlink/starlink.obj',
+      missionName: 'ComplexRouteMission',
+      satelliteStart: [0, 0, 20],
+      paths: [
+        {
+          id: 'p1',
+          axisSeed: 'Z',
+          planeA: { position: [0, 0, -5], orientation: [1, 0, 0, 0] },
+          planeB: { position: [0, 0, 5], orientation: [1, 0, 0, 0] },
+          ellipse: { radiusX: 2, radiusY: 1 },
+          levelSpacing: 0.5,
+          waypointDensity: 1,
+          waypoints: [
+            [1, 0, -1],
+            [1, 0, 0],
+            [1, 0, 1],
+          ],
+          color: '#fff',
+          selectedHandleId: null,
+        },
+        {
+          id: 'p2',
+          axisSeed: 'X',
+          planeA: { position: [-5, 0, 0], orientation: [1, 0, 0, 0] },
+          planeB: { position: [5, 0, 0], orientation: [1, 0, 0, 0] },
+          ellipse: { radiusX: 1.5, radiusY: 0.75 },
+          levelSpacing: 0.75,
+          waypointDensity: 1.2,
+          waypoints: [
+            [3, 0, 1],
+            [4, 0, 1],
+            [5, 0, 1],
+          ],
+          color: '#0ff',
+          selectedHandleId: null,
+        },
+      ],
+      wires: [
+        { id: 'w1', fromNodeId: 'satellite:start', toNodeId: 'path:p1:start' },
+        { id: 'w2', fromNodeId: 'path:p1:end', toNodeId: 'point:pt1' },
+        { id: 'w3', fromNodeId: 'point:pt1', toNodeId: 'path:p2:start' },
+      ],
+      holds: [
+        { id: 'h1', pathId: 'p1', waypointIndex: 1, duration: 5 },
+        { id: 'h2', pathId: 'p2', waypointIndex: 2, duration: 7 },
+      ],
+      points: [{ id: 'pt1', position: [2, 0, 1] }],
+      obstacles: [],
+      assembly: [],
+    } as any);
+
+    const { compileStudioMission } = await import('../compileStudioMission');
+    const mission = compileStudioMission(useStudioStore.getState());
+    const segmentTypes = mission.segments.map((segment) => segment.type);
+
+    expect(segmentTypes).toEqual([
+      'transfer',
+      'scan',
+      'hold',
+      'transfer',
+      'transfer',
+      'scan',
+      'hold',
+    ]);
+    expect(mission.start_target_id).toContain('STUDIO_OBJ::');
+    expect(mission.overrides?.hold_schedule).toHaveLength(2);
+    expect(mission.overrides?.hold_schedule?.[0].duration_s).toBe(5);
+    expect(mission.overrides?.hold_schedule?.[1].duration_s).toBe(7);
+    expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(8);
+  });
+
   it('preserves lateral connector deformation in free mode', async () => {
     useStudioStore.setState({
       referenceObjectPath: null,
