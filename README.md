@@ -31,7 +31,45 @@ make test           # backend tests
 make lint           # backend + frontend lint
 make docs-check     # markdown link/path accuracy checks
 make package-pyinstaller
+make sim
 ```
+
+## Shared Parameter Mode
+
+The canonical comparison workflow uses the main config file's `app_config.mpc` block as the shared baseline for all six MPC profiles.
+
+- Thesis fairness baseline: `scripts/configs/thesis_fairness_baseline.json`
+- Fair comparison mode:
+  - `shared.parameters=true`
+  - all six controllers use the same `mpc` baseline
+  - per-profile files and `mpc_profile_overrides` are inactive
+  - non-empty per-profile deltas are rejected before controller creation
+- Per-profile tuning mode:
+  - `shared.parameters=false`
+  - the active `mpc_core.controller_profile` may apply:
+    - `shared.profile_parameter_files.<profile>`
+    - `mpc_profile_overrides.<profile>.base_overrides`
+    - `mpc_profile_overrides.<profile>.profile_specific`
+
+Supported external profile delta files:
+
+- `controller/linear/profile_parameters.json`
+- `controller/hybrid/profile_parameters.json`
+- `controller/nonlinear/profile_parameters.json`
+- `controller/nmpc/profile_parameters.json`
+- `controller/acados_rti/profile_parameters.json`
+- `controller/acados_sqp/profile_parameters.json`
+
+Precedence order:
+
+1. `app_config.mpc` shared baseline
+2. active profile delta file, if `shared.parameters=false`
+3. active profile embedded deltas in `mpc_profile_overrides`, if `shared.parameters=false`
+
+Paper workflow:
+
+- Fair comparison: run all six profiles with `shared.parameters=true` and verify identical `shared_params_hash` values.
+- Feasibility/tuning: run tuned profiles separately with `shared.parameters=false`; do not mix those runs into fairness claims.
 
 ## Repository Layout
 

@@ -13,6 +13,11 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from controller.registry import SUPPORTED_CONTROLLER_PROFILES
+from controller.shared.python.control_common.parameter_policy import (
+    default_profile_parameter_files,
+)
+
 from . import constants, physics, timing
 from .reaction_wheel_config import ReactionWheelParams as RWConfigParams
 
@@ -1221,6 +1226,40 @@ class ControllerContractsParams(BaseModel):
         return self
 
 
+class SharedParameterPolicyParams(BaseModel):
+    """Shared-vs-profile parameter source policy for controller configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parameters: bool = Field(
+        True,
+        description=(
+            "If true, enforce shared-only parameter mode (fairness mode) and "
+            "disallow per-profile overrides."
+        ),
+    )
+    profile_parameter_files: dict[str, str] = Field(
+        default_factory=default_profile_parameter_files,
+        description=(
+            "Optional map from canonical controller_profile -> JSON override file path "
+            "used when parameters=false."
+        ),
+    )
+
+    @field_validator("profile_parameter_files")
+    @classmethod
+    def validate_profile_parameter_files(cls, value: dict[str, str]) -> dict[str, str]:
+        invalid = sorted(
+            key for key in value.keys() if key not in set(SUPPORTED_CONTROLLER_PROFILES)
+        )
+        if invalid:
+            raise ValueError(
+                "shared.profile_parameter_files contains unsupported profile keys: "
+                + ", ".join(invalid)
+            )
+        return value
+
+
 class AppConfig(BaseModel):
     """
     Root configuration container.
@@ -1236,6 +1275,9 @@ class AppConfig(BaseModel):
     mpc_core: MPCCoreParams = Field(default_factory=MPCCoreParams)
     mpc_profile_overrides: MPCProfileOverridesByProfile = Field(
         default_factory=MPCProfileOverridesByProfile
+    )
+    shared: SharedParameterPolicyParams = Field(
+        default_factory=SharedParameterPolicyParams
     )
     actuator_policy: ActuatorPolicyParams = Field(default_factory=ActuatorPolicyParams)
     controller_contracts: ControllerContractsParams = Field(
@@ -1265,6 +1307,14 @@ class AppConfig(BaseModel):
                 f"Control dt ({self.simulation.control_dt}s) must be >= "
                 f"simulation dt ({self.simulation.dt}s)"
             )
+        if self.shared.parameters:
+            for profile in SUPPORTED_CONTROLLER_PROFILES:
+                overrides = getattr(self.mpc_profile_overrides, profile)
+                if overrides.base_overrides or overrides.profile_specific:
+                    raise ValueError(
+                        "shared.parameters=true requires empty mpc_profile_overrides "
+                        f"for profile {profile}"
+                    )
         return self
 
     def to_dict(self) -> dict[str, Any]:

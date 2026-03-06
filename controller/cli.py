@@ -10,12 +10,17 @@ import math
 import os
 from typing import Any
 
-# a
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from controller.registry import rewrite_profile_identifiers_in_payload
+from controller.registry import (
+    rewrite_profile_identifiers_in_payload,
+)
+from controller.shared.python.control_common.parameter_policy import (
+    apply_profile_parameter_file_if_needed,
+    normalize_shared_parameters_payload,
+)
 from controller.shared.python.mission.repository import (
     MISSIONS_DIR,
     list_mission_entries,
@@ -148,7 +153,7 @@ def run(
     sim_end_pos: tuple[float, float, float] | None = None
     sim_start_angle: tuple[float, float, float] | None = None
     sim_end_angle: tuple[float, float, float] | None = None
-    config_overrides: dict[str, dict[str, Any]] | None = None
+    config_overrides: dict[str, Any] | None = None
     required_duration_hint: float | None = None
 
     # Load config file if provided
@@ -166,6 +171,7 @@ def run(
             if not isinstance(loaded_overrides, dict):
                 console.print("[red]Config file must contain a JSON object.[/red]")
                 raise typer.Exit(code=1)
+            normalize_shared_parameters_payload(loaded_overrides)
             rewrite_profile_identifiers_in_payload(loaded_overrides)
             config_overrides = loaded_overrides
             console.print(
@@ -340,6 +346,40 @@ def run(
     # Create default config if not set by mission
     if simulation_config is None:
         simulation_config = SimulationConfig.create_default()
+
+    # Apply shared/profile parameter policy before AppConfig validation.
+    if config_overrides is not None:
+        default_profile = simulation_config.app_config.mpc_core.controller_profile
+        try:
+            (
+                config_overrides,
+                applied_profile_file,
+                shared_parameters_enabled,
+                resolved_profile,
+            ) = apply_profile_parameter_file_if_needed(
+                config_overrides=config_overrides,
+                default_profile=default_profile,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1)
+        if shared_parameters_enabled:
+            console.print(
+                "[green]Shared parameter mode enabled (shared.parameters=true).[/green]"
+            )
+        elif applied_profile_file:
+            console.print(
+                "[cyan]Applied profile-specific parameter file: "
+                f"{applied_profile_file}[/cyan]"
+            )
+        os.environ["SATCTRL_SHARED_PARAMETERS"] = (
+            "1" if shared_parameters_enabled else "0"
+        )
+        os.environ["SATCTRL_ACTIVE_CONTROLLER_PROFILE"] = str(resolved_profile)
+        if applied_profile_file:
+            os.environ["SATCTRL_PROFILE_PARAMETER_FILE"] = applied_profile_file
+        else:
+            os.environ.pop("SATCTRL_PROFILE_PARAMETER_FILE", None)
 
     # Apply overrides to config
     if config_overrides:
