@@ -59,7 +59,7 @@ export function UnifiedViewport({
   const requestFocus = useCameraStore(s => s.requestFocus);
   const latestTelemetry = useTelemetryStore(s => s.latest);
   const [hoveredPoint, setHoveredPoint] = useState<[number, number, number] | null>(null);
-  const [hoveredPlannerPointId, setHoveredPlannerPointId] = useState<string | null>(null);
+  const [hoveredAuthoringPointId, setHoveredAuthoringPointId] = useState<string | null>(null);
   const isPlanning = mode !== 'viewer';
   const showOrbitLayer = mode === 'mission';
   const [viewerOrigin, setViewerOrigin] = useState<[number, number, number]>([0, 0, 0]);
@@ -88,7 +88,7 @@ export function UnifiedViewport({
   const sceneOrigin = useMemo(() => {
       let origin: [number, number, number] = [0, 0, 0];
 
-      // In Plan mode, center on the selected target or start target
+      // In Studio authoring mode, center on the selected target or start target.
       if (isPlanning && builderState) {
           const targetId = builderState.selectedOrbitTargetId || builderState.startTargetId;
           if (targetId) {
@@ -171,9 +171,8 @@ export function UnifiedViewport({
         camera={{ position: initialCameraPosition, fov: 45, near: 0.1, far: 2_000_000_000_000 }}
       >
         <CanvasRegistrar />
-        {/* Only use CameraManager in Monitor mode or if not in editing mode?
-            Actually, CameraManager handles 'chase' view.
-            In Plan mode, we usually want 'free' view.
+        {/* CameraManager mainly matters for live chase/top views.
+            Studio authoring stays in free-camera mode.
         */}
         <CameraManager mode={viewMode} origin={mode === 'viewer' ? viewerOrigin : [0, 0, 0]} />
 
@@ -397,11 +396,11 @@ export function UnifiedViewport({
                                 renderOrder={3}
                                 onPointerOver={(e) => {
                                   e.stopPropagation();
-                                  setHoveredPlannerPointId(`plane-surface:${scan.id}:a`);
+                                  setHoveredAuthoringPointId(`plane-surface:${scan.id}:a`);
                                 }}
                                 onPointerOut={(e) => {
                                   e.stopPropagation();
-                                  setHoveredPlannerPointId((prev) =>
+                                  setHoveredAuthoringPointId((prev) =>
                                     prev === `plane-surface:${scan.id}:a` ? null : prev
                                   );
                                 }}
@@ -434,7 +433,7 @@ export function UnifiedViewport({
                                     builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
                                     builderState.selectedProjectScanPlaneHandle?.handle === 'a'
                                       ? 0.18
-                                      : hoveredPlannerPointId === `plane-surface:${scan.id}:a`
+                                      : hoveredAuthoringPointId === `plane-surface:${scan.id}:a`
                                         ? 0.15
                                         : 0.09
                                   }
@@ -448,11 +447,11 @@ export function UnifiedViewport({
                                 renderOrder={3}
                                 onPointerOver={(e) => {
                                   e.stopPropagation();
-                                  setHoveredPlannerPointId(`plane-surface:${scan.id}:b`);
+                                  setHoveredAuthoringPointId(`plane-surface:${scan.id}:b`);
                                 }}
                                 onPointerOut={(e) => {
                                   e.stopPropagation();
-                                  setHoveredPlannerPointId((prev) =>
+                                  setHoveredAuthoringPointId((prev) =>
                                     prev === `plane-surface:${scan.id}:b` ? null : prev
                                   );
                                 }}
@@ -485,7 +484,7 @@ export function UnifiedViewport({
                                     builderState.selectedProjectScanPlaneHandle?.scanId === scan.id &&
                                     builderState.selectedProjectScanPlaneHandle?.handle === 'b'
                                       ? 0.18
-                                      : hoveredPlannerPointId === `plane-surface:${scan.id}:b`
+                                      : hoveredAuthoringPointId === `plane-surface:${scan.id}:b`
                                         ? 0.15
                                         : 0.09
                                   }
@@ -500,18 +499,18 @@ export function UnifiedViewport({
                               ]).map((h) => {
                                 const scenePos = scaleToScene(h.pos);
                                 const hoverId = `plane:${scan.id}:${h.id}`;
-                                const hovered = hoveredPlannerPointId === hoverId;
+                                const hovered = hoveredAuthoringPointId === hoverId;
                                 return (
                                   <group key={`scan-plane-${scan.id}-${h.id}`}>
                                     <mesh
                                       position={scenePos}
                                       onPointerOver={(e) => {
                                         e.stopPropagation();
-                                        setHoveredPlannerPointId(hoverId);
+                                        setHoveredAuthoringPointId(hoverId);
                                       }}
                                       onPointerOut={(e) => {
                                         e.stopPropagation();
-                                        setHoveredPlannerPointId((prev) =>
+                                        setHoveredAuthoringPointId((prev) =>
                                           prev === hoverId ? null : prev
                                         );
                                       }}
@@ -603,7 +602,7 @@ export function UnifiedViewport({
                                 <group key={`scan-center-${scan.id}`}>
                                   {(() => {
                                     const hoverId = `scan-center:${scan.id}`;
-                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const hovered = hoveredAuthoringPointId === hoverId;
                                     const scenePos = scaleToScene(scanCenterPos);
                                     const markerRadius = Math.max(0.06 * ORBIT_SCALE, 0.000005);
                                     return (
@@ -612,11 +611,11 @@ export function UnifiedViewport({
                                           position={scenePos}
                                           onPointerOver={(e) => {
                                             e.stopPropagation();
-                                            setHoveredPlannerPointId(hoverId);
+                                            setHoveredAuthoringPointId(hoverId);
                                           }}
                                           onPointerOut={(e) => {
                                             e.stopPropagation();
-                                            setHoveredPlannerPointId((prev) =>
+                                            setHoveredAuthoringPointId((prev) =>
                                               prev === hoverId ? null : prev
                                             );
                                           }}
@@ -739,7 +738,7 @@ export function UnifiedViewport({
                                     ];
                                     const scenePos = scaleToScene(meterPos);
                                     const hoverId = `key:${scan.id}:${keyLevel.id}:${h.id}`;
-                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const hovered = hoveredAuthoringPointId === hoverId;
                                     const selected =
                                       builderState.selectedKeyLevelHandle?.scanId === scan.id &&
                                       builderState.selectedKeyLevelHandle?.keyLevelId === keyLevel.id &&
@@ -750,11 +749,11 @@ export function UnifiedViewport({
                                           position={scenePos}
                                           onPointerOver={(e) => {
                                             e.stopPropagation();
-                                            setHoveredPlannerPointId(hoverId);
+                                            setHoveredAuthoringPointId(hoverId);
                                           }}
                                           onPointerOut={(e) => {
                                             e.stopPropagation();
-                                            setHoveredPlannerPointId((prev) =>
+                                            setHoveredAuthoringPointId((prev) =>
                                               prev === hoverId ? null : prev
                                             );
                                           }}
@@ -821,7 +820,7 @@ export function UnifiedViewport({
                                 <group key={`endpoint-${scanId}-${item.key}`}>
                                   {(() => {
                                     const hoverId = `endpoint:${scanId}:${item.key}`;
-                                    const hovered = hoveredPlannerPointId === hoverId;
+                                    const hovered = hoveredAuthoringPointId === hoverId;
                                     const isConnectSource =
                                       builderState.connectSourceEndpoint?.scanId === scanId &&
                                       builderState.connectSourceEndpoint?.endpoint === item.key;
@@ -836,11 +835,11 @@ export function UnifiedViewport({
                                     position={scaleToScene(item.pos)}
                                     onPointerOver={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId(hoverId);
+                                      setHoveredAuthoringPointId(hoverId);
                                     }}
                                     onPointerOut={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId((prev) =>
+                                      setHoveredAuthoringPointId((prev) =>
                                         prev === hoverId ? null : prev
                                       );
                                     }}
@@ -849,8 +848,8 @@ export function UnifiedViewport({
                                       builderActions.setSelectedScanId(scanId);
                                       if (builderState.connectMode) {
                                         builderActions.selectEndpointForConnect(scanId, item.key);
-                                      } else if (builderState.authoringStep === 'target') {
-                                        builderActions.setTransferTargetRef({
+                                      } else if (builderState.authoringPhase === 'target') {
+                                        builderActions.setSelectedTransferEndpoint({
                                           scanId,
                                           endpoint: item.key,
                                         });
@@ -892,7 +891,7 @@ export function UnifiedViewport({
                               const pos = connector[controlName] as [number, number, number] | null | undefined;
                               if (!pos) return null;
                               const hoverId = `connector:${connector.id}:${controlName}`;
-                              const hovered = hoveredPlannerPointId === hoverId;
+                              const hovered = hoveredAuthoringPointId === hoverId;
                               const selected =
                                 builderState.selectedConnectorControl?.connectorId === connector.id &&
                                 builderState.selectedConnectorControl?.control === controlName;
@@ -903,11 +902,11 @@ export function UnifiedViewport({
                                     position={scenePos}
                                     onPointerOver={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId(hoverId);
+                                      setHoveredAuthoringPointId(hoverId);
                                     }}
                                     onPointerOut={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId((prev) =>
+                                      setHoveredAuthoringPointId((prev) =>
                                         prev === hoverId ? null : prev
                                       );
                                     }}
@@ -1019,7 +1018,7 @@ export function UnifiedViewport({
                     )}
 
                     {mode !== 'scan' &&
-                      builderState.authoringStep === 'target' &&
+                      builderState.authoringPhase === 'target' &&
                       builderState.compilePreviewState?.endpoints &&
                       Object.entries(builderState.compilePreviewState.endpoints).flatMap(
                         ([scanId, ep]: any) =>
@@ -1030,24 +1029,24 @@ export function UnifiedViewport({
                             <group key={`transfer-endpoint-${scanId}-${item.key}`}>
                               {(() => {
                                 const hoverId = `endpoint:${scanId}:${item.key}`;
-                                const hovered = hoveredPlannerPointId === hoverId;
+                                const hovered = hoveredAuthoringPointId === hoverId;
                                 const radius = Math.max(0.07 * ORBIT_SCALE, 0.000007);
                                 return (
                                   <mesh
                                     position={scaleToScene(item.pos)}
                                     onPointerOver={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId(hoverId);
+                                      setHoveredAuthoringPointId(hoverId);
                                     }}
                                     onPointerOut={(e) => {
                                       e.stopPropagation();
-                                      setHoveredPlannerPointId((prev) =>
+                                      setHoveredAuthoringPointId((prev) =>
                                         prev === hoverId ? null : prev
                                       );
                                     }}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      builderActions.setTransferTargetRef({
+                                      builderActions.setSelectedTransferEndpoint({
                                         scanId,
                                         endpoint: item.key,
                                       });

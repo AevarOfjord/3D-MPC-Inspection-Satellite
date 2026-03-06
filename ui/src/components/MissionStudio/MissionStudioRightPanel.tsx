@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Trash2, Save, CheckCircle, Crosshair, Route, Link2, Pause, CircleDot, MapPin } from 'lucide-react';
+import { Trash2, Save, CheckCircle, AlertCircle, Crosshair, Route, Link2, Pause, CircleDot, MapPin } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { compileStudioMission } from './compileStudioMission';
 
@@ -159,6 +159,8 @@ export function MissionStudioRightPanel() {
   const points = useStudioStore((s) => s.points);
   const missionName = useStudioStore((s) => s.missionName);
   const setMissionName = useStudioStore((s) => s.setMissionName);
+  const validationReport = useStudioStore((s) => s.validationReport);
+  const setValidationReport = useStudioStore((s) => s.setValidationReport);
   const validationBusy = useStudioStore((s) => s.validationBusy);
   const setValidationBusy = useStudioStore((s) => s.setValidationBusy);
   const saveBusy = useStudioStore((s) => s.saveBusy);
@@ -219,11 +221,13 @@ export function MissionStudioRightPanel() {
       const mission = compileStudioMission(useStudioStore.getState());
       const { unifiedMissionApi } = await import('../../api/unifiedMissionApi');
       const report = await unifiedMissionApi.validateMission(mission);
+      setValidationReport(report);
       setValidateResult({
         ok: report.valid,
         message: report.valid ? 'Validation passed' : `${report.summary?.errors ?? '?'} error(s)`,
       });
     } catch (e) {
+      setValidationReport(null);
       setValidateResult({ ok: false, message: String(e) });
     } finally {
       setValidationBusy(false);
@@ -248,6 +252,21 @@ export function MissionStudioRightPanel() {
   };
 
   const canSave = assembly.length > 0 && missionName.trim().length > 0;
+  const validationIssueCount = validationReport?.issues.length ?? 0;
+  const validationStateLabel = validationBusy
+    ? 'Validating'
+    : validationReport?.valid
+      ? 'Validated'
+      : validationReport
+        ? `${validationIssueCount} issue${validationIssueCount === 1 ? '' : 's'}`
+        : 'Not yet validated';
+  const validationStateClass = validationBusy
+    ? 'border-amber-500/40 bg-amber-950/40 text-amber-200'
+    : validationReport?.valid
+      ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
+      : validationReport
+        ? 'border-red-500/40 bg-red-950/35 text-red-200'
+        : 'border-slate-700 bg-slate-900/60 text-slate-300';
 
   return (
     <div className="flex flex-col h-full">
@@ -259,6 +278,39 @@ export function MissionStudioRightPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 mb-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Studio Status</div>
+              <div className="mt-1 text-sm font-semibold text-slate-100 truncate">
+                {missionName.trim() || 'Untitled Studio Mission'}
+              </div>
+            </div>
+            <div className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${validationStateClass}`}>
+              {validationStateLabel}
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Segments</div>
+              <div className="mt-1 text-sm font-semibold text-slate-100">{assembly.length}</div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Waypoints</div>
+              <div className="mt-1 text-sm font-semibold text-slate-100">{totalWaypoints}</div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Path</div>
+              <div className="mt-1 text-sm font-semibold text-slate-100">{totalPathLengthM.toFixed(1)} m</div>
+            </div>
+          </div>
+          {!validationReport ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
+              <AlertCircle size={14} className="mt-0.5 shrink-0 text-sky-300" />
+              <span>Validate the mission before saving so Studio can surface route and payload issues early.</span>
+            </div>
+          ) : null}
+        </div>
         {assembly.length === 0 ? (
           <div className="text-xs text-slate-600 text-center py-8">Add segments using the left panel</div>
         ) : (
@@ -282,6 +334,10 @@ export function MissionStudioRightPanel() {
           value={missionName}
           onChange={(e) => setMissionName(e.target.value)}
         />
+        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-slate-500 px-0.5">
+          <span>Authoring Actions</span>
+          <span>{canSave ? 'Ready to save' : 'Name and assembly required'}</span>
+        </div>
         <button
           type="button"
           onClick={() => void handleValidate()}

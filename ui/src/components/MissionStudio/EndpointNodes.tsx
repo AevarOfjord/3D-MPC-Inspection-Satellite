@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
-import { TransformControls } from '@react-three/drei';
+import { Line, TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
 
@@ -380,15 +380,11 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
         const sampled = sampleCatmullRomBySpacing(controls, dotSpacing);
         sampled[0] = src;
         sampled[sampled.length - 1] = dst;
-        const lineVec = dense.map((p) => new THREE.Vector3(...p));
         const dotVec = sampled.map((p) => new THREE.Vector3(...p));
-        const geom = new THREE.BufferGeometry().setFromPoints(lineVec);
         const pointGeom = new THREE.BufferGeometry().setFromPoints(dotVec);
         return (
           <group key={wire.id}>
-            <line geometry={geom}>
-              <lineBasicMaterial color="#f59e0b" opacity={0.98} transparent />
-            </line>
+            <Line points={dense} color="#f59e0b" transparent opacity={0.98} lineWidth={1.5} />
             <points geometry={pointGeom}>
               <pointsMaterial color="#fdba74" size={0.06} sizeAttenuation opacity={0.95} transparent />
             </points>

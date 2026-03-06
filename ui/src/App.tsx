@@ -15,10 +15,9 @@ const RunnerView = lazy(() =>
   import('./components/RunnerWindow').then((m) => ({ default: m.RunnerView }))
 );
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard, Layers } from 'lucide-react';
+import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard } from 'lucide-react';
 import { useDialog } from './feedback/feedbackContext';
 import { parseStoredAppMode, type AppMode } from './utils/appMode';
-import { type PlannerStep } from './utils/plannerValidation';
 import { CommandPalette, type CommandPaletteItem } from './components/CommandPalette';
 import { ShortcutHelpPanel } from './components/ShortcutHelpPanel';
 const SimulationDataView = lazy(() =>
@@ -26,9 +25,6 @@ const SimulationDataView = lazy(() =>
 );
 const MPCSettingsView = lazy(() =>
   import('./components/MPCSettingsView').then((m) => ({ default: m.MPCSettingsView }))
-);
-const PlannerModeViewV4 = lazy(() =>
-  import('./components/modes/PlannerModeViewV4').then((m) => ({ default: m.PlannerModeViewV4 }))
 );
 const ViewerModeView = lazy(() =>
   import('./components/modes/ViewerModeView').then((m) => ({ default: m.ViewerModeView }))
@@ -39,13 +35,6 @@ const MissionStudioLayout = lazy(() =>
 import { ORBIT_SCALE } from './data/orbitSnapshot';
 
 const APP_MODE_STORAGE_KEY = 'mission_control_app_mode_v1';
-const PLANNER_STEP_KEYS: Record<string, PlannerStep> = {
-  '1': 'scan_definition',
-  '2': 'target',
-  '3': 'constraints',
-  '4': 'segments',
-  '5': 'save_launch',
-};
 
 function isEditableEventTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -66,8 +55,7 @@ function getInitialAppMode(): AppMode {
   } catch {
     // no-op: fallback below
   }
-  // Default to non-3D startup mode to avoid pulling 3D stack on first load.
-  return 'runner';
+  return 'studio';
 }
 
 function App() {
@@ -92,7 +80,7 @@ function App() {
     if (is3DPrefetchedRef.current) return;
     is3DPrefetchedRef.current = true;
     void Promise.all([
-      import('./components/modes/PlannerModeViewV4'),
+      import('./components/MissionStudio/MissionStudioLayout'),
       import('./components/modes/ViewerModeView'),
     ]);
   };
@@ -113,15 +101,6 @@ function App() {
         if (!canLeave) return;
         setAppMode('viewer');
         setViewMode('chase'); // Default to chase in viewer
-      });
-  };
-
-  const switchToPlanner = () => {
-      preload3DModules();
-      void ensureCanLeaveSettings().then((canLeave) => {
-        if (!canLeave) return;
-        setAppMode('planner');
-        setViewMode('free'); // Free cam for planning
       });
   };
 
@@ -152,15 +131,8 @@ function App() {
       setAppMode('settings');
   };
 
-  const jumpToPlannerStep = (step: PlannerStep) => {
-    if (appMode !== 'planner') {
-      switchToPlanner();
-    }
-    builder.actions.setAuthoringStep(step);
-  };
-
   const commandItems = useMemo<CommandPaletteItem[]>(() => {
-    const items: CommandPaletteItem[] = [
+    return [
       {
         id: 'mode-viewer',
         label: 'Switch to Viewer',
@@ -169,16 +141,9 @@ function App() {
         onSelect: switchToViewer,
       },
       {
-        id: 'mode-planner',
-        label: 'Switch to Planner',
-        shortcut: 'Ctrl/Cmd+2',
-        keywords: ['mode', 'planner', 'mission'],
-        onSelect: switchToPlanner,
-      },
-      {
         id: 'mode-studio',
         label: 'Switch to Mission Studio',
-        shortcut: 'Ctrl/Cmd+2.5',
+        shortcut: 'Ctrl/Cmd+2',
         keywords: ['mode', 'studio', 'mission'],
         onSelect: switchToStudio,
       },
@@ -204,59 +169,7 @@ function App() {
         onSelect: switchToSettings,
       },
     ];
-
-    if (appMode === 'planner') {
-      items.push(
-        {
-          id: 'planner-step-path-maker',
-          label: 'Go to Planner Step: Path Maker',
-          shortcut: 'Alt+1',
-          onSelect: () => jumpToPlannerStep('scan_definition'),
-        },
-        {
-          id: 'planner-step-transfer',
-          label: 'Go to Planner Step: Transfer',
-          shortcut: 'Alt+2',
-          onSelect: () => jumpToPlannerStep('target'),
-        },
-        {
-          id: 'planner-step-obstacles',
-          label: 'Go to Planner Step: Obstacles',
-          shortcut: 'Alt+3',
-          onSelect: () => jumpToPlannerStep('constraints'),
-        },
-        {
-          id: 'planner-step-path-edit',
-          label: 'Go to Planner Step: Path Edit',
-          shortcut: 'Alt+4',
-          onSelect: () => jumpToPlannerStep('segments'),
-        },
-        {
-          id: 'planner-step-mission-saver',
-          label: 'Go to Planner Step: Mission Saver',
-          shortcut: 'Alt+5',
-          onSelect: () => jumpToPlannerStep('save_launch'),
-        },
-        {
-          id: 'planner-validate',
-          label: 'Planner: Run Validation',
-          shortcut: 'Ctrl/Cmd+Shift+V',
-          onSelect: () => {
-            void builder.actions.validateUnifiedMission();
-          },
-        },
-        {
-          id: 'planner-save',
-          label: 'Planner: Save Mission',
-          shortcut: 'Ctrl/Cmd+S',
-          onSelect: () => {
-            void builder.actions.handleSaveUnifiedMission();
-          },
-        },
-      );
-    }
-    return items;
-  }, [appMode, builder.actions, switchToDataView, switchToPlanner, switchToStudio, switchToRunner, switchToSettings, switchToViewer]);
+  }, [switchToDataView, switchToStudio, switchToRunner, switchToSettings, switchToViewer]);
 
   useEffect(() => {
     try {
@@ -297,43 +210,20 @@ function App() {
       if (mod && event.key >= '1' && event.key <= '5') {
         event.preventDefault();
         if (event.key === '1') switchToViewer();
-        if (event.key === '2') switchToPlanner();
+        if (event.key === '2') switchToStudio();
         if (event.key === '3') switchToRunner();
         if (event.key === '4') switchToDataView();
         if (event.key === '5') switchToSettings();
         return;
       }
-
-      if (appMode !== 'planner') return;
-
-      if (event.altKey && PLANNER_STEP_KEYS[event.key]) {
-        event.preventDefault();
-        builder.actions.setAuthoringStep(PLANNER_STEP_KEYS[event.key]);
-        return;
-      }
-
-      if (mod && event.shiftKey && key === 'v') {
-        event.preventDefault();
-        void builder.actions.validateUnifiedMission();
-        return;
-      }
-
-      if (mod && key === 's') {
-        event.preventDefault();
-        void builder.actions.handleSaveUnifiedMission();
-        return;
-      }
-
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     appMode,
-    builder.actions,
     shortcutHelpOpen,
     switchToDataView,
-    switchToPlanner,
     switchToStudio,
     switchToRunner,
     switchToSettings,
@@ -341,7 +231,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (appMode !== 'planner' || builder.state.authoringStep !== 'scan_definition') return;
+    if (appMode !== 'studio') return;
     const selectedObjectId = builder.state.selectedObjectId;
     const editingWaypoint = Boolean(
       selectedObjectId &&
@@ -394,7 +284,6 @@ function App() {
     builder.state.selectedScanCenterHandle,
     builder.state.selectedKeyLevelHandle,
     builder.state.selectedConnectorControl,
-    builder.state.authoringStep,
   ]);
 
   return (
@@ -427,29 +316,16 @@ function App() {
                 VIEWER
               </button>
               <button
-                onClick={switchToPlanner}
-                onMouseEnter={preload3DModules}
-                onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'planner'
-                    ? 'bg-fuchsia-600/90 text-white shadow-[0_0_10px_rgba(217,70,239,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <FileText size={14} />
-                PLANNER
-              </button>
-              <button
                 onClick={switchToStudio}
                 onMouseEnter={preload3DModules}
                 onFocus={preload3DModules}
                 className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
                   appMode === 'studio'
-                    ? 'bg-violet-600/90 text-white shadow-[0_0_10px_rgba(139,92,246,0.3)]'
+                    ? 'bg-fuchsia-600/90 text-white shadow-[0_0_10px_rgba(217,70,239,0.3)]'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Layers size={14} />
+                <FileText size={14} />
                 STUDIO
               </button>
               <button
@@ -574,13 +450,8 @@ function App() {
       {/* Main Layout Area */}
       <main className="flex-1 relative flex overflow-hidden">
 
-        {appMode === 'planner' && (
-            <Suspense fallback={<ModeLoading label="Loading Planner..." />}>
-              <PlannerModeViewV4 viewMode={viewMode} builder={builder} onOpenRunner={switchToRunner} />
-            </Suspense>
-        )}
         {appMode === 'studio' && (
-          <Suspense fallback={<ModeLoading label="Loading Mission Studio..." />}>
+          <Suspense fallback={<ModeLoading label="Loading Studio..." />}>
             <MissionStudioLayout />
           </Suspense>
         )}

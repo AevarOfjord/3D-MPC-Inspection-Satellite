@@ -7,9 +7,9 @@ import type {
   SplineControl,
   TransferSegment,
 } from '../api/unifiedMission';
-import type { PlannerStep } from '../utils/plannerValidation';
+import type { AuthoringPhase } from '../utils/authoringValidation';
 
-export type MissionAuthoringStep = PlannerStep;
+export type MissionAuthoringPhase = AuthoringPhase;
 
 interface UseMissionStateArgs {
   defaultMissionId: () => string;
@@ -35,8 +35,8 @@ export function useMissionState({
   );
   const [splineControls, setSplineControls] = useState<SplineControl[]>([]);
   const [savedUnifiedMissions, setSavedUnifiedMissions] = useState<string[]>([]);
-  const [authoringStep, setAuthoringStep] =
-    useState<MissionAuthoringStep>('target');
+  const [authoringPhase, setAuthoringPhase] =
+    useState<MissionAuthoringPhase>('target');
   const [selectedOrbitTargetId, setSelectedOrbitTargetId] = useState<
     string | null
   >(null);
@@ -221,7 +221,7 @@ export function useMissionState({
       selectedSegmentIndex,
       splineControls,
       savedUnifiedMissions,
-      authoringStep,
+      authoringPhase,
       selectedOrbitTargetId,
     },
     setters: {
@@ -232,7 +232,7 @@ export function useMissionState({
       setSelectedSegmentIndex,
       setSplineControls,
       setSavedUnifiedMissions,
-      setAuthoringStep,
+      setAuthoringPhase,
       setSelectedOrbitTargetId,
     },
     actions: {

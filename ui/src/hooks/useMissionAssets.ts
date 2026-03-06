@@ -78,7 +78,7 @@ export function useMissionAssets({
     setModelPath(path);
     setConfig((prev) => ({ ...prev, obj_path: path }));
     setScanProject((prev) => ({ ...prev, obj_path: path }));
-    // Planner V4.2 relies on auto-compile for immediate spiral visibility.
+    // Keep auto-compile on so Studio path edits remain visible immediately.
     setScanProjectAutoPreviewEnabled(true);
     setModelUrl(`${API_BASE_URL}/api/models/serve?path=${encodeURIComponent(path)}`);
     trajectoryApi
@@ -86,7 +86,7 @@ export function useMissionAssets({
       .then((bounds) => {
         const extent = Math.max(bounds.extents[0], bounds.extents[1], bounds.extents[2]);
         const distance = Math.max(extent * 2.5, 5);
-        // Planner uses floating-origin scene space; center focus on local origin.
+        // Studio uses floating-origin scene space; center focus on local origin.
         useCameraStore.getState().requestFocus([0, 0, 0], distance * ORBIT_SCALE);
       })
       .catch(() => null);
@@ -107,7 +107,7 @@ export function useMissionAssets({
       setModelPath(res.path);
       setConfig((prev) => ({ ...prev, obj_path: res.path }));
       setScanProject((prev) => ({ ...prev, obj_path: res.path }));
-      // Keep auto-compile on after upload so Step 1 spiral appears without extra actions.
+      // Keep auto-compile on after upload so Studio previews update immediately.
       setScanProjectAutoPreviewEnabled(true);
       trajectoryApi.listModels().then(setAvailableModels).catch(() => null);
     } catch (err) {

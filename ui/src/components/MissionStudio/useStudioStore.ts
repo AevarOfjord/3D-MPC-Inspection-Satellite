@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ValidationReportV2 } from '../../api/unifiedMissionApi';
 import { fairCorners } from './splineUtils';
 
 export type StudioTool =
@@ -109,7 +110,7 @@ export interface StudioState {
   selectedAssemblyId: string | null;
   wireDrag: WireDragState;
 
-  validationReport: null;
+  validationReport: ValidationReportV2 | null;
   validationBusy: boolean;
   saveBusy: boolean;
   missionName: string;
@@ -155,7 +156,7 @@ export interface StudioState {
   setWireDrag: (state: WireDragState) => void;
   setSelectedAssemblyId: (id: string | null) => void;
 
-  setValidationReport: (report: null) => void;
+  setValidationReport: (report: ValidationReportV2 | null) => void;
   setValidationBusy: (busy: boolean) => void;
   setSaveBusy: (busy: boolean) => void;
   setMissionName: (name: string) => void;

@@ -8,7 +8,6 @@ import { useHistory } from './useHistory';
 import { useScanProjectEditor } from './useScanProjectEditor';
 import {
   useMissionState,
-  type MissionAuthoringStep,
 } from './useMissionState';
 import { useMissionValidation } from './useMissionValidation';
 import { useMissionPersistence } from './useMissionPersistence';
@@ -102,7 +101,7 @@ export function useMissionBuilder() {
       connectMode,
       connectSourceEndpoint,
       compilePreviewState,
-      transferTargetRef,
+      selectedTransferEndpoint,
       compilePending,
       scanProjectAutoPreviewEnabled,
       centerDragActive,
@@ -131,7 +130,7 @@ export function useMissionBuilder() {
       setConnectMode,
       setConnectSourceEndpoint,
       setCompilePreviewState,
-      setTransferTargetRef,
+      setSelectedTransferEndpoint,
       setCompilePending,
       setScanProjectAutoPreviewEnabled,
       setCenterDragActive,
@@ -155,7 +154,7 @@ export function useMissionBuilder() {
       selectedSegmentIndex,
       splineControls,
       savedUnifiedMissions,
-      authoringStep,
+      authoringPhase,
       selectedOrbitTargetId,
     },
     setters: {
@@ -166,7 +165,7 @@ export function useMissionBuilder() {
       setSelectedSegmentIndex,
       setSplineControls,
       setSavedUnifiedMissions,
-      setAuthoringStep,
+      setAuthoringPhase,
       setSelectedOrbitTargetId,
     },
     actions: {
@@ -247,7 +246,7 @@ export function useMissionBuilder() {
   });
 
   const scanProjectEditor = useScanProjectEditor({
-    authoringStep,
+    authoringPhase,
     scanProject,
     setScanProject,
     configObjPath: config.obj_path,
@@ -383,7 +382,7 @@ export function useMissionBuilder() {
     buildMission: () => buildUnifiedMission({ includeManualPath: true }),
     jumpToFirstIssue: false,
     onFocusSegment: setSelectedSegmentIndex,
-    setAuthoringStep,
+    setAuthoringPhase,
   });
   const {
     state: { validationReport, validationBusy },
@@ -410,7 +409,7 @@ export function useMissionBuilder() {
     setStartPosition,
     setObstacles,
     setSelectedOrbitTargetId,
-    setTransferTargetRef,
+    setSelectedTransferEndpoint,
     setValidationReport,
     setScanProject,
   });
@@ -443,7 +442,7 @@ export function useMissionBuilder() {
     controlSimulation: unifiedMissionApi.controlSimulation,
     setMissionId,
     setMissionName,
-    setAuthoringStep,
+    setAuthoringPhase,
     setLoading,
     setIsManualMode,
     setPreviewPath: pathHistory.set,
@@ -549,7 +548,7 @@ export function useMissionBuilder() {
       connectSourceEndpoint,
       centerDragActive,
       compilePreviewState,
-      transferTargetRef,
+      selectedTransferEndpoint,
       compilePending,
       scanProjectAutoPreviewEnabled,
     },
@@ -562,7 +561,7 @@ export function useMissionBuilder() {
       splineControls,
       savedUnifiedMissions,
       selectedOrbitTargetId,
-      authoringStep,
+      authoringPhase,
     },
     validationState: {
       validationReport,
@@ -609,7 +608,7 @@ export function useMissionBuilder() {
       setConnectMode,
       setConnectSourceEndpoint,
       setCompilePreviewState,
-      setTransferTargetRef,
+      setSelectedTransferEndpoint,
     },
     missionSetters: {
       setMissionId,
@@ -617,7 +616,7 @@ export function useMissionBuilder() {
       setEpoch,
       setSelectedSegmentIndex,
       setSegments,
-      setAuthoringStep,
+      setAuthoringPhase,
     },
     validationSetters: {
       setValidationReport,
@@ -669,7 +668,7 @@ export function useMissionBuilder() {
       setSelectedScanId,
       setSelectedKeyLevelId,
       setSelectedConnectorId,
-      setTransferTargetRef,
+      setSelectedTransferEndpoint,
     },
     interactionActions: {
       addObstacle,
@@ -697,7 +696,7 @@ export function useMissionBuilder() {
       removeSplineControl,
       assignScanTarget,
       setSelectedOrbitTargetId,
-      setAuthoringStep,
+      setAuthoringPhase,
     },
     validationActions: {
       validateUnifiedMission,

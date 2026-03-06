@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { TransformControls } from '@react-three/drei';
+import { Line, TransformControls } from '@react-three/drei';
 import { useStudioStore } from './useStudioStore';
 import { useRegenerateWaypoints } from './useRegenerateWaypoints';
 import { fairCorners, sampleCatmullRomBySpacing } from './splineUtils';
@@ -72,25 +72,22 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
     regenerate(scanId, 0);
   }, [scanId, path?.planeA, path?.planeB, path?.ellipse, path?.levelSpacing, path?.waypointDensity, path?.isLocallyEdited, activeTool, regenerate]);
 
-  const lineGeometry = useMemo(() => {
+  const linePoints = useMemo(() => {
     if (!path || path.waypoints.length < 2) return null;
     const density = Math.max(0.25, Math.min(25, path.waypointDensity ?? 1));
     const controls = fairCorners(path.waypoints, 150, 2);
     const spacing = Math.min(0.05, 1 / density);
-    const sampled = sampleCatmullRomBySpacing(controls, spacing);
-    const points = sampled.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-    return new THREE.BufferGeometry().setFromPoints(points);
+    return sampleCatmullRomBySpacing(controls, spacing);
   }, [path?.waypoints, path?.waypointDensity]);
 
-  const densitySnippetGeometry = useMemo(() => {
+  const densitySnippetPoints = useMemo(() => {
     if (!path || !path.densitySnippetRange) return null;
     const [rawA, rawB] = path.densitySnippetRange;
     const a = Math.max(0, Math.min(rawA, rawB));
     const b = Math.min(path.waypoints.length - 1, Math.max(rawA, rawB));
     if (b - a < 1) return null;
-    const points = path.waypoints.slice(a, b + 1).map(([x, y, z]) => new THREE.Vector3(x, y, z));
-    if (points.length < 2) return null;
-    return new THREE.BufferGeometry().setFromPoints(points);
+    const points = path.waypoints.slice(a, b + 1);
+    return points.length < 2 ? null : points;
   }, [path?.waypoints, path?.densitySnippetRange, path]);
 
   const pointsGeometry = useMemo(() => {
@@ -102,11 +99,9 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
     return new THREE.BufferGeometry().setFromPoints(points);
   }, [path?.waypoints, path?.waypointDensity]);
 
-  const centerLineGeometry = useMemo(() => {
+  const centerLinePoints = useMemo(() => {
     if (!path) return null;
-    const pa = new THREE.Vector3(...path.planeA.position);
-    const pb = new THREE.Vector3(...path.planeB.position);
-    return new THREE.BufferGeometry().setFromPoints([pa, pb]);
+    return [path.planeA.position, path.planeB.position] as [[number, number, number], [number, number, number]];
   }, [path?.planeA.position, path?.planeB.position, path]);
 
   const centerMid = useMemo(() => {
@@ -207,28 +202,23 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
 
   return (
     <group>
-      {lineGeometry && (
-        <line
-          geometry={lineGeometry}
-          onClick={(e) => {
+      {linePoints && (
+        <Line
+          points={linePoints}
+          color={showEditMode && editMode === 'density' && isSelected ? '#f59e0b' : '#22d3ee'}
+          lineWidth={isSelected ? 2 : 1}
+          transparent
+          opacity={isSelected ? 1 : 0.95}
+          onClick={(e: any) => {
             if (!showEditMode || editMode !== 'add') return;
             e.stopPropagation();
             useStudioStore.getState().selectPath(scanId);
             insertWaypointOnPath(e.point);
           }}
-        >
-          <lineBasicMaterial
-            color={showEditMode && editMode === 'density' && isSelected ? '#f59e0b' : '#22d3ee'}
-            linewidth={isSelected ? 2 : 1}
-            opacity={isSelected ? 1 : 0.95}
-            transparent
-          />
-        </line>
+        />
       )}
-      {showEditMode && editMode === 'density' && isSelected && densitySnippetGeometry && (
-        <line geometry={densitySnippetGeometry}>
-          <lineBasicMaterial color="#f97316" linewidth={3} opacity={1} transparent />
-        </line>
+      {showEditMode && editMode === 'density' && isSelected && densitySnippetPoints && (
+        <Line points={densitySnippetPoints} color="#f97316" lineWidth={3} transparent opacity={1} />
       )}
       {!isConnectMode && pointsGeometry && (
         <points geometry={pointsGeometry}>
@@ -236,16 +226,17 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
         </points>
       )}
 
-      {!isConnectMode && centerLineGeometry && (
-        <line
-          geometry={centerLineGeometry}
-          onClick={(e) => {
+      {!isConnectMode && centerLinePoints && (
+        <Line
+          points={centerLinePoints}
+          color="#facc15"
+          transparent
+          opacity={0.95}
+          onClick={(e: any) => {
             e.stopPropagation();
             setControlTarget((prev) => (prev === 'center' ? 'none' : 'center'));
           }}
-        >
-          <lineBasicMaterial color="#facc15" opacity={0.95} transparent />
-        </line>
+        />
       )}
 
       {!isConnectMode && (
