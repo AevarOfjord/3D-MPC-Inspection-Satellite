@@ -85,15 +85,18 @@ The MPC augments this to 17D by adding `s` (path progress parameter). Control ve
 
 ### Controller Profiles
 
-Three profiles selectable via `AppConfig.mpc_core.controller_profile`:
+Six canonical profiles are selectable via `AppConfig.mpc_core.controller_profile`:
 
-| Profile | Class | C++ Backend | Linearization |
-| ------- | ----- | ----------- | ------------- |
-| `hybrid` (default) | `HybridMPCController` | `_cpp_mpc` | Mixed |
-| `nonlinear` | `NonlinearMPCController` | `_cpp_mpc_nonlinear` | Exact CasADi stage-wise |
-| `linear` | `LinearMPCController` | `_cpp_mpc_linear` | Fixed linearization |
+| Profile ID | Class | Main backend | Linearization / solve style |
+| ---------- | ----- | ------------ | ---------------------------- |
+| `cpp_hybrid_rti_osqp` (default) | `HybridMPCController` | `_cpp_mpc` | stage-wise RTI linearization with tolerant stale reuse |
+| `cpp_nonlinear_rti_osqp` | `NonlinearMPCController` | `_cpp_mpc_nonlinear` | exact stage-wise CasADi linearization, optional outer SQP loop |
+| `cpp_linearized_rti_osqp` | `LinearMPCController` | `_cpp_mpc_linear` | frozen affine model reused across horizon |
+| `cpp_nonlinear_fullnlp_ipopt` | `NmpcController` | CasADi Opti + IPOPT | full nonlinear NLP |
+| `cpp_nonlinear_rti_hpipm` | `AcadosRtiController` | acados + HPIPM | exact nonlinear OCP with `SQP_RTI` |
+| `cpp_nonlinear_sqp_hpipm` | `AcadosSqpController` | acados + HPIPM | exact nonlinear OCP with full `SQP` |
 
-Entry point: `controller.factory.create_controller(cfg)` dispatches based on profile. Profile constants in `controller/registry.py`.
+Legacy names such as `hybrid`, `nonlinear`, `linear`, `nmpc`, `acados_rti`, and `acados_sqp` are normalized in `controller/registry.py`. Entry point: `controller.factory.create_controller(cfg)`.
 
 ### Package Layout
 
@@ -109,6 +112,10 @@ controller/
   linear/python/controller.py
   nonlinear/python/controller.py
   hybrid/python/controller.py
+  nmpc/python/controller.py
+  acados_rti/python/controller.py
+  acados_sqp/python/controller.py
+  acados_shared/python/base.py
   shared/python/
     control_common/
       base.py             # Controller ABC
@@ -161,8 +168,10 @@ Mission JSON
   → RuntimeLoader.parse_unified_mission_payload()
   → UnifiedCompiler.compile_unified_mission_runtime()
   → SatelliteMPCLinearizedSimulation (engine.py)
-      ├─ create_controller(cfg)  →  [Linear|Nonlinear|Hybrid]MPCController
-      │                              └─ C++ SQPController (profile-specific)
+      ├─ create_controller(cfg)  →  selected profile controller
+      │                              ├─ OSQP-family C++ SQP runtime, or
+      │                              ├─ CasADi Opti + IPOPT, or
+      │                              └─ acados nonlinear OCP runtime
       ├─ SimulationEngine  →  C++ RK4 integrator (_cpp_sim)
       ├─ ThrusterManager  (PWM / continuous actuation)
       └─ PerformanceMonitor
@@ -251,5 +260,6 @@ Do not rely on fixed test-count baselines; use current gate outputs (`make test`
 ## Documentation
 
 - `ARCHITECTURE.md` — system design and key interfaces
-- `MATHEMATICS.md` — MPC formulation, cost function, DARE terminal costs
+- `MATH/README.md` — shared controller formulation and comparison framing
+- `MATH/*.md` — profile-specific controller mathematics
 - `PHYSICS-ENGINE.md` — RK4 integrator, gravity models, thruster/wheel dynamics
