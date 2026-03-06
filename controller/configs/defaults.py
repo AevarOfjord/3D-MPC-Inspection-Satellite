@@ -16,6 +16,7 @@ from controller.configs.models import (
     ReactionWheelParams,
     ReferenceSchedulerParams,
     SatellitePhysicalParams,
+    SharedParameterPolicyParams,
     SimulationParams,
 )
 from controller.configs.reaction_wheel_config import get_reaction_wheel_config
@@ -207,6 +208,7 @@ def create_default_app_config() -> AppConfig:
         reference_scheduler=reference_scheduler,
         mpc_core=mpc_core,
         mpc_profile_overrides=MPCProfileOverridesByProfile(),
+        shared=SharedParameterPolicyParams(),
         actuator_policy=actuator_policy,
         controller_contracts=controller_contracts,
         simulation=sim,

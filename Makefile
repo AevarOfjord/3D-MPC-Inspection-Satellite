@@ -72,7 +72,12 @@ SKBUILD_BUILD_DIR := $(if $(SKBUILD_MATCHED_EXT),$(patsubst %/,%,$(abspath $(dir
 SKBUILD_SKIP_RUNTIME_REBUILD ?= 1
 SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RUNTIME_REBUILD)),$(SKBUILD_BUILD_DIR)),SKBUILD_EDITABLE_SKIP="$(SKBUILD_BUILD_DIR)")
 SIM_CONTROLLER_PROFILE ?=
+SIM_SHARED_CONFIG ?= scripts/configs/thesis_fairness_baseline.json
 COMPARE_ARGS ?=
+FAIRNESS_ARGS ?=
+FAIRNESS_MISSION ?=
+FAIRNESS_BASELINE_CONFIG ?= scripts/configs/thesis_fairness_baseline.json
+FAIRNESS_DURATION ?=
 CPP_IMPORT_CHECK_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -c "from controller.shared.python.cpp import _cpp_mpc, _cpp_mpc_nonlinear, _cpp_mpc_linear, _cpp_sim, _cpp_physics"
 LINT_BACKEND_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m ruff check controller tests
 TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m pytest -q --tb=short --cov=controller --cov-report=term-missing --cov-fail-under=30
@@ -82,7 +87,7 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PY
 # ============================================================================
 
 .PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
-	sim comparison install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
+	sim comparison fairness-run fairness-check install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -102,8 +107,10 @@ help:
 	@echo "  make package-pyinstaller Build OS-native PyInstaller bundle + archive under ./release"
 	@echo "  make smoke-pyinstaller Launch smoke test on latest PyInstaller bundle"
 	@echo "  make package-clean Remove generated app bundles in ./release"
-	@echo "  make sim          Run CLI simulation (prompts for controller profile, then tests)"
+	@echo "  make sim          Run CLI simulation with shared-parameter config (prompts for controller profile, then tests)"
 	@echo "  make comparison   Run multi-run comparison report generator"
+	@echo "  make fairness-run Run one mission across all 6 controller profiles with thesis baseline config"
+	@echo "  make fairness-check Run fairness contract validator (pass extra args via FAIRNESS_ARGS)"
 	@echo "  make test         Run pytest suite"
 	@echo "  make test-cov     Run pytest with coverage gate (>=30%)"
 	@echo "  make test-ui      Run frontend unit/component tests (Vitest)"
@@ -367,6 +374,11 @@ sim:
 		*) echo "Invalid SIM_CONTROLLER_PROFILE='$$controller_profile'. Falling back to cpp_hybrid_rti_osqp."; controller_profile="cpp_hybrid_rti_osqp" ;; \
 	esac; \
 	echo "Using controller profile: $$controller_profile"; \
+	if [ ! -f "$(SIM_SHARED_CONFIG)" ]; then \
+		echo "Error: shared parameter config not found: $(SIM_SHARED_CONFIG)"; \
+		exit 1; \
+	fi; \
+	echo "Using shared parameter config: $(SIM_SHARED_CONFIG)"; \
 	printf "Run tests before simulation? [y/N] "; \
 	read ans; \
 	case "$$ans" in \
@@ -376,7 +388,7 @@ sim:
 	if [ -n "$$ACADOS_SOURCE_DIR" ]; then \
 		export DYLD_LIBRARY_PATH="$$ACADOS_SOURCE_DIR/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"; \
 	fi; \
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --controller-profile "$$controller_profile"
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --config "$(SIM_SHARED_CONFIG)" --controller-profile "$$controller_profile"
 
 # Run multi-run comparison report generator.
 comparison:
@@ -391,6 +403,46 @@ comparison:
 		fi; \
 	fi
 	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) scripts/compare_simulations.py $(COMPARE_ARGS)
+
+# Run one mission through all six canonical profiles with the thesis fairness baseline config.
+fairness-run:
+	@$(MAKE) venv
+	@if [ -z "$(FAIRNESS_MISSION)" ]; then \
+		echo "Error: set FAIRNESS_MISSION=missions/<Mission>.json"; \
+		echo "Example: make fairness-run FAIRNESS_MISSION=missions/DoubleSpiral.json"; \
+		exit 2; \
+	fi
+	@if [ ! -f "$(FAIRNESS_BASELINE_CONFIG)" ]; then \
+		echo "Error: fairness baseline config not found: $(FAIRNESS_BASELINE_CONFIG)"; \
+		exit 2; \
+	fi
+	@for profile in \
+		cpp_linearized_rti_osqp \
+		cpp_hybrid_rti_osqp \
+		cpp_nonlinear_rti_osqp \
+		cpp_nonlinear_fullnlp_ipopt \
+		cpp_nonlinear_rti_hpipm \
+		cpp_nonlinear_sqp_hpipm; do \
+		echo "Running fairness mission with profile: $$profile"; \
+		if [ -n "$(FAIRNESS_DURATION)" ]; then \
+			$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
+				$(VENV_PY) -m controller.cli run --no-anim --mission "$(FAIRNESS_MISSION)" \
+				--config "$(FAIRNESS_BASELINE_CONFIG)" --duration "$(FAIRNESS_DURATION)" \
+				--controller-profile "$$profile" || exit $$?; \
+		else \
+			$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
+				$(VENV_PY) -m controller.cli run --no-anim --mission "$(FAIRNESS_MISSION)" \
+				--config "$(FAIRNESS_BASELINE_CONFIG)" --controller-profile "$$profile" || exit $$?; \
+		fi; \
+	done
+	@echo "Completed fairness batch for mission: $(FAIRNESS_MISSION)"
+	@echo "Next: make fairness-check FAIRNESS_ARGS=\"--mission $$(basename \"$(FAIRNESS_MISSION)\" .json)\""
+
+# Validate fairness contract for either explicit runs or a mission token.
+fairness-check:
+	@$(MAKE) venv
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
+		$(VENV_PY) scripts/validate_fairness_contract.py $(FAIRNESS_ARGS)
 
 # ============================================================================
 # Build targets

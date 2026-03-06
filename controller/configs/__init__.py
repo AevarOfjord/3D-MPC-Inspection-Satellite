@@ -17,6 +17,7 @@ from .models import (
     MPCParams,
     ReferenceSchedulerParams,
     SatellitePhysicalParams,
+    SharedParameterPolicyParams,
     SimulationParams,
 )
 from .physics import PhysicsConfig, get_physics_params
@@ -32,6 +33,7 @@ __all__ = [
     "SimulationParams",
     "ReferenceSchedulerParams",
     "MPCCoreParams",
+    "SharedParameterPolicyParams",
     "ActuatorPolicyParams",
     "ControllerContractsParams",
     # Supporting modules
