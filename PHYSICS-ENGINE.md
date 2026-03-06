@@ -2,10 +2,10 @@
 
 This document describes the physics that is currently implemented in:
 
-- `src/cpp/sim/simulation_engine.cpp`
-- `src/cpp/sim/orbital_dynamics.cpp`
-- `src/python/runtime/thruster_manager.py`
-- `src/python/simulation/cpp_backend.py`
+- `controller/shared/cpp/sim/simulation_engine.cpp`
+- `controller/shared/cpp/sim/orbital_dynamics.cpp`
+- `controller/shared/python/runtime/thruster_manager.py`
+- `controller/shared/python/simulation/cpp_backend.py`
 
 It is intentionally implementation-specific.
 
@@ -17,7 +17,7 @@ The runtime plant is the C++ simulation engine (`cpp._cpp_sim`), wrapped by `Cpp
 - `ThrusterManager` converts commanded thruster pattern to actual per-thruster output.
 - C++ `SimulationEngine` propagates the 16-state plant with RK4.
 
-`src/python/physics/orbital_dynamics.py` is not the active runtime integrator path for this engine.
+`controller/shared/python/physics/orbital_dynamics.py` is not the active runtime integrator path for this engine.
 
 ## 2. State and Inputs
 

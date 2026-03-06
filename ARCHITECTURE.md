@@ -1,191 +1,103 @@
 # Architecture
 
-This document describes the current backend architecture after removing `src/` and consolidating runtime code under top-level `controller/`.
+This document describes the current controller, runtime, and documentation architecture rooted under the top-level `controller/` package.
 
 ## 1. Repository Shape
 
 ```text
-Main/
-  data/
-  docs/
-  missions/
-  scripts/
-  controller/
-    __init__.py
-    cli.py
-    exceptions.py
-    factory.py
-    registry.py
-    py.typed
+controller/
+  factory.py
+  registry.py
+  configs/
+  hybrid/
+  nonlinear/
+  linear/
+  nmpc/
+  acados_rti/
+  acados_sqp/
+  acados_shared/
+  shared/
+    cpp/
+    python/
 
-    configs/
-      __init__.py
-      constants.py
-      defaults.py
-      models.py
-      paths.py
-      physics.py
-      reaction_wheel_config.py
-      simulation_config.py
-      timing.py
-      validator.py
-
-    shared/
-      __init__.py
-      assets/
-      cpp/
-        satellite_params.hpp
-        sim/
-          bindings_sim.cpp
-          bindings_physics.cpp
-          orbital_dynamics.cpp
-          orbital_dynamics.hpp
-          simulation_engine.cpp
-          simulation_engine.hpp
-      python/
-        __init__.py
-        benchmarks/
-        control_common/
-          base.py
-          mpc_controller.py
-          codegen/
-        core/
-        cpp/
-        dashboard/
-        mission/
-        physics/
-        runtime/
-        simulation/
-        utils/
-        visualization/
-
-    hybrid/
-      __init__.py
-      python/
-        __init__.py
-        controller.py
-      cpp/
-        bindings.cpp
-        sqp_controller.cpp
-        sqp_controller.hpp
-        sqp_types.cpp
-        sqp_types.hpp
-      shared/
-
-    nonlinear/
-      __init__.py
-      python/
-        __init__.py
-        controller.py
-      cpp/
-      shared/
-
-    linear/
-      __init__.py
-      python/
-        __init__.py
-        controller.py
-      cpp/
-      shared/
-
-  tests/
-  ui/
+ui/
+tests/
+scripts/
+docs/
+MATH/
 ```
 
-## 2. Package Root and Imports
+## 2. Controller Profiles
 
-- Python backend package root is `controller`.
-- Runtime imports use `controller.*` namespaces.
-- There is no `src/` runtime package path.
+Controller selection is driven by `AppConfig.mpc_core.controller_profile`. Canonical profile IDs are defined in `controller/registry.py`.
 
-Examples:
+| Profile ID | Python entrypoint | Solver family | Main role |
+| --- | --- | --- | --- |
+| `cpp_hybrid_rti_osqp` | `controller.hybrid.python.controller.HybridMPCController` | RTI-SQP + OSQP | pragmatic real-time baseline |
+| `cpp_nonlinear_rti_osqp` | `controller.nonlinear.python.controller.NonlinearMPCController` | RTI/SQP + OSQP | exact stage-wise OSQP benchmark |
+| `cpp_linearized_rti_osqp` | `controller.linear.python.controller.LinearMPCController` | RTI-SQP + OSQP | cheapest frozen-linearization variant |
+| `cpp_nonlinear_fullnlp_ipopt` | `controller.nmpc.python.controller.NmpcController` | full NLP + IPOPT | high-fidelity nonlinear benchmark |
+| `cpp_nonlinear_rti_hpipm` | `controller.acados_rti.python.controller.AcadosRtiController` | acados SQP_RTI + HPIPM | exact-model real-time nonlinear MPC |
+| `cpp_nonlinear_sqp_hpipm` | `controller.acados_sqp.python.controller.AcadosSqpController` | acados SQP + HPIPM | higher-iteration nonlinear benchmark |
 
-- `from controller.configs.models import AppConfig`
-- `from controller.factory import create_controller`
-- `from controller.shared.python.dashboard.app import app`
+Legacy names such as `hybrid`, `nonlinear`, `linear`, `nmpc`, `acados_rti`, and `acados_sqp` are normalized to these canonical IDs before controller creation.
 
-## 3. Controller Profiles and Selection
+## 3. Shared Parameter and Fairness Contract
 
-Controller profile selection is configured via:
+The comparison workflow is built around one shared baseline:
 
-- `AppConfig.mpc_core.controller_profile`: `"hybrid" | "nonlinear" | "linear"`
+- `app_config.mpc` is the canonical shared parameter block.
+- `shared.parameters=true` means all profiles use that same shared baseline.
+- `shared.parameters=false` enables active-profile deltas from:
+  - `shared.profile_parameter_files.<profile>`
+  - `mpc_profile_overrides.<profile>.base_overrides`
+  - `mpc_profile_overrides.<profile>.profile_specific`
 
-Compatibility is preserved for legacy fields:
+The fairness contract is resolved in:
 
-- `mpc_core.controller_backend` (`v1`/`v2`) is mapped to profile when needed.
+- `controller/shared/python/control_common/parameter_policy.py`
+- `controller/shared/python/control_common/profile_params.py`
 
-Routing:
+Every run records the active profile plus the shared and effective parameter signatures so cross-profile comparisons can be audited.
 
-- `controller.factory.create_controller(...)` selects profile implementation.
-- `controller.registry.normalize_controller_profile(...)` centralizes normalization.
+## 4. Runtime Flow
 
-Current implementations:
+1. Config and mission data are loaded through `controller.configs.*` and `controller.shared.python.mission.*`.
+2. `controller.factory.create_controller()` resolves the canonical profile and instantiates the chosen controller.
+3. Shared runtime logic in `controller.shared.python.runtime.*` handles mode switching, fallback behavior, and contract checks.
+4. Shared simulation logic in `controller.shared.python.simulation.*` propagates the plant and records telemetry.
+5. Dashboard and CLI entrypoints expose the same underlying configuration and runtime stack.
 
-- `hybrid` -> `controller.hybrid.python.controller.HybridMPCController`
-- `nonlinear` -> `controller.nonlinear.python.controller.NonlinearMPCController`
-- `linear` -> `controller.linear.python.controller.LinearMPCController`
+## 5. Native Runtime Pieces
 
-## 4. Shared Parameter/Fairness Contract
+Compiled extensions are loaded through `controller/shared/python/cpp/__init__.py`.
 
-All profiles consume the same canonical application config model:
+Available modules:
 
-- `controller.configs.models.AppConfig`
-- `controller.configs.models.MPCCoreParams`
+- `_cpp_mpc`, `_cpp_mpc_nonlinear`, `_cpp_mpc_linear` for the OSQP-based C++ controller family
+- `_cpp_mpc_runtime` for unified runtime capability detection
+- `_cpp_sim` and `_cpp_physics` for plant propagation and orbital utilities
 
-Default profile:
+The acados and IPOPT controllers currently use Python orchestration around their own nonlinear transcriptions rather than the OSQP-family C++ QP runtime.
 
-- `controller.configs.defaults.build_default_config()` sets `controller_profile = "hybrid"`.
+## 6. UI and API
 
-This keeps comparisons fair by ensuring one common parameter contract and schema.
+The UI and backend both preserve the same controller-config shape:
 
-## 5. Runtime Flow
+- shared baseline under `mpc`
+- fairness switch under `shared.parameters`
+- per-profile deltas under `mpc_profile_overrides`
 
-1. Config and mission are loaded through shared modules under `controller.shared.python.*`.
-2. Factory resolves the effective profile and instantiates the controller.
-3. Simulation/runtime loops execute through shared runtime/simulation modules.
-4. Dashboard routes and runner manager expose control and telemetry APIs.
-5. Artifacts and telemetry include controller metadata:
-   - `controller_profile`
-   - `controller_core`
-
-## 6. C++ Build and Bindings
-
-C++ sources are split by profile/shared concerns:
-
-- Hybrid MPC C++: `controller/hybrid/cpp/*`
-- Shared simulation C++: `controller/shared/cpp/sim/*`
-
-`CMakeLists.txt` installs Python extensions into:
-
-- `controller/shared/python/cpp/`
-
-Loaded extension modules:
-
-- `_cpp_mpc`
-- `_cpp_sim`
-- `_cpp_physics`
-
-## 7. Entry Points
-
-- CLI app: `controller/cli.py`
-- Project script entrypoint: `satellite-control = "controller.cli:app"` (`pyproject.toml`)
-- Dashboard ASGI app: `controller.shared.python.dashboard.app:app`
-
-Helper scripts under `scripts/` call these `controller.*` entrypoints.
-
-## 8. UI Integration
-
-MPC settings UI exposes and persists controller profile selection:
+The main editor lives in:
 
 - `ui/src/components/MPCSettingsView.tsx`
-- `ui/src/components/mpc-settings/mpcSettingsTypes.ts`
-- `ui/src/components/mpc-settings/mpcSettingsDefaults.ts`
+- `ui/src/components/mpc-settings/`
 
-The profile is round-tripped through runner config payloads and backend normalization.
+## 7. Documentation Map
 
-## 9. Migration Status
+Use these files as the primary references:
 
-- `src/` removed.
-- Backend consolidated under top-level `controller/`.
-- Build/test/package wiring updated for `controller` root.
-- Profile architecture (`hybrid`/`nonlinear`/`linear`) is active with shared contract.
+- `README.md` for setup and workflow
+- `PHYSICS-ENGINE.md` for the runtime plant model
+- `MATH/README.md` for the shared controller formulation
+- `MATH/*.md` for controller-specific mathematics

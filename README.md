@@ -71,16 +71,27 @@ Paper workflow:
 - Fair comparison: run all six profiles with `shared.parameters=true` and verify identical `shared_params_hash` values.
 - Feasibility/tuning: run tuned profiles separately with `shared.parameters=false`; do not mix those runs into fairness claims.
 
+## Controller Math Docs
+
+Authoritative controller mathematics now lives under `MATH/`:
+
+- `MATH/README.md` for the shared path-following formulation and comparison framing
+- one standalone note per canonical controller profile
+
+Use those files for controller-method writeups and paper drafting.
+
 ## Repository Layout
 
-- `src/python/` backend code
-- `src/cpp/` C++ solver/runtime modules
+- `controller/` backend package, controller implementations, config models, runtime, and simulation code
+- `controller/shared/cpp/` shared C++ runtime and physics sources
 - `ui/` frontend application
 - `scripts/` operations and release scripts
 - `missions/` saved mission payloads
 - `data/` canonical assets and runtime simulation/dashboard data
 - `tests/` backend test suite
 - `ARCHITECTURE.md` system architecture notes
+- `PHYSICS-ENGINE.md` runtime plant and propagation model
+- `MATH/` controller mathematics and comparison notes
 
 ## Compatibility Matrix
 
