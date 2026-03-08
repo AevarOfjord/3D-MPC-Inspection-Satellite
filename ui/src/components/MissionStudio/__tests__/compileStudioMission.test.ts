@@ -80,6 +80,13 @@ describe('compileStudioMission', () => {
     const { compileStudioMission } = await import('../compileStudioMission');
     const mission = compileStudioMission(useStudioStore.getState());
     expect((mission.segments ?? []).some((seg: any) => seg.type === 'transfer')).toBe(true);
+    expect(
+      (mission.segments ?? [])
+        .filter((seg: any) => seg.type === 'transfer')
+        .every((seg: any) => seg.target_id === 'STUDIO_LOCAL_ORIGIN')
+    ).toBe(true);
+    expect(mission.metadata.tags).toContain('studio');
+    expect(mission.metadata.tags).toContain('studio:local-origin');
     expect(mission.overrides?.manual_path?.length).toBeGreaterThanOrEqual(4);
   });
 
@@ -150,6 +157,12 @@ describe('compileStudioMission', () => {
       'hold',
     ]);
     expect(mission.start_target_id).toContain('STUDIO_OBJ::');
+    expect(
+      mission.segments
+        .filter((segment) => segment.type === 'transfer')
+        .every((segment: any) => segment.target_id === mission.start_target_id)
+    ).toBe(true);
+    expect(mission.metadata.tags).toContain('studio');
     expect(mission.overrides?.hold_schedule).toHaveLength(2);
     expect(mission.overrides?.hold_schedule?.[0].duration_s).toBe(5);
     expect(mission.overrides?.hold_schedule?.[1].duration_s).toBe(7);

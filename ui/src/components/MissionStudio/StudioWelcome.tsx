@@ -10,25 +10,21 @@ const BUILTIN_MODELS = [
     key: 'ISS',
     label: 'ISS',
     description: 'International Space Station',
-    icon: '🛸',
     path: 'data/assets/model_files/ISS/ISS.obj',
   },
   {
     key: 'Starlink',
     label: 'Starlink',
     description: 'Starlink satellite',
-    icon: '🛰️',
     path: 'data/assets/model_files/Starlink/starlink.obj',
   },
 ];
 
 function ModelCard({
-  icon,
   label,
   description,
   onClick,
 }: {
-  icon: React.ReactNode;
   label: string;
   description: string;
   onClick: () => void;
@@ -37,9 +33,8 @@ function ModelCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border border-slate-700 bg-slate-900/70 hover:border-cyan-600 hover:bg-slate-800/80 transition-all duration-150 hover:scale-[1.03] active:scale-[0.99] w-44 text-center"
+      className="flex flex-col items-center justify-center gap-2 px-6 py-7 rounded-2xl border border-slate-700 bg-slate-900/70 hover:border-cyan-600 hover:bg-slate-800/80 transition-all duration-150 hover:scale-[1.03] active:scale-[0.99] w-44 min-h-[190px] text-center"
     >
-      <span className="text-4xl leading-none">{icon}</span>
       <div>
         <div className="text-sm font-semibold text-slate-100">{label}</div>
         <div className="text-[11px] text-slate-500 mt-0.5">{description}</div>
@@ -105,10 +100,9 @@ export function StudioWelcome() {
 
         {/* Cards */}
         <div className="flex items-stretch gap-4 flex-wrap justify-center">
-          {BUILTIN_MODELS.map(({ key, label, description, icon, path }) => (
+          {BUILTIN_MODELS.map(({ key, label, description, path }) => (
             <ModelCard
               key={key}
-              icon={icon}
               label={label}
               description={description}
               onClick={() => handlePickBuiltin(path)}
@@ -116,7 +110,6 @@ export function StudioWelcome() {
           ))}
 
           <ModelCard
-            icon="✦"
             label="Empty Scene"
             description="No target object"
             onClick={handleEmpty}

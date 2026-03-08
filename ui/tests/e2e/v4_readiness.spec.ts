@@ -11,6 +11,11 @@ async function chooseEmptyScene(page: Page) {
   }
 }
 
+async function openStudio(page: Page) {
+  await page.getByRole('button', { name: 'STUDIO' }).click();
+  await chooseEmptyScene(page);
+}
+
 test('Studio flow: disconnected authoring fails locally before backend validation', async ({
   page,
 }) => {
@@ -57,7 +62,7 @@ test('Studio flow: disconnected authoring fails locally before backend validatio
   const startMs = Date.now();
 
   await page.goto('/');
-  await chooseEmptyScene(page);
+  await openStudio(page);
   await page.getByRole('button', { name: 'Place Satellite' }).click();
   await page.getByRole('button', { name: 'Create Path' }).click();
   const scanPathResponse = page.waitForResponse(
@@ -95,7 +100,7 @@ test('Studio desktop layouts stay stable at 1280/1440/1920', async ({ page }) =>
     });
     await page.setViewportSize(size);
     await page.goto('/');
-    await chooseEmptyScene(page);
+    await openStudio(page);
 
     await expect(page.getByText('Studio Status')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create Path' })).toBeVisible();
@@ -114,7 +119,7 @@ test('Studio keyboard flow keeps focus navigation usable', async ({ page }) => {
     window.localStorage.clear();
   });
   await page.goto('/');
-  await chooseEmptyScene(page);
+  await openStudio(page);
 
   const createPathButton = page.getByRole('button', { name: 'Create Path' });
   await createPathButton.focus();

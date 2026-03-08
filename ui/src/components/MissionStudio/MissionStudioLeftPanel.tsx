@@ -247,7 +247,7 @@ export function MissionStudioLeftPanel() {
 
   return (
     <div className="flex flex-col gap-0">
-      <SectionHeader label="Studio Workflow" />
+      <SectionHeader label="Workflow" />
       <div className="p-3 flex flex-col gap-2">
         <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -258,41 +258,6 @@ export function MissionStudioLeftPanel() {
           </div>
           <div className="mt-2 text-[11px] leading-5 text-slate-300">
             {activeTaskCopy}
-          </div>
-        </div>
-        <div
-          className={`rounded-xl border p-3 ${
-            routeDiagnostics.status === 'executable'
-              ? 'border-emerald-500/30 bg-emerald-950/20'
-              : routeDiagnostics.status === 'invalid'
-                ? 'border-red-500/30 bg-red-950/20'
-                : 'border-slate-800 bg-slate-950/80'
-          }`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              Route Readiness
-            </div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-300">
-              {routeDiagnostics.status}
-            </div>
-          </div>
-          <div className="mt-2 text-[11px] leading-5 text-slate-200">
-            {routeDiagnostics.nextAction}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-400">
-            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              Paths: {routeDiagnostics.validPathCount}/{routeDiagnostics.totalPathCount}
-            </div>
-            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              Wires: {routeDiagnostics.totalWireCount}
-            </div>
-            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              Holds: {routeDiagnostics.holdCount}
-            </div>
-            <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              Target: {routeDiagnostics.targetMode === 'object' ? 'Object' : 'Local'}
-            </div>
           </div>
         </div>
       </div>

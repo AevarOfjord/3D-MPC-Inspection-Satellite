@@ -1,8 +1,18 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { Folder, FileText, Film, Image as ImageIcon, FileCode, ChevronLeft, Download } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ChevronLeft,
+  Download,
+  FileCode,
+  FileText,
+  Film,
+  Folder,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { API_BASE_URL } from '../config/endpoints';
-import { runEvents } from '../services/runEvents';
 import type { SimulationRun } from '../api/simulations';
+import { runEvents } from '../services/runEvents';
+import { Panel } from './ui-v4/Panel';
+import { StatusPill } from './ui-v4/StatusPill';
 
 interface FileNode {
   path: string;
@@ -13,6 +23,23 @@ interface FileNode {
 }
 
 const RUN_LIST_REFRESH_MS = 5000;
+
+function formatUpdatedAt(timestamp: number | null): string {
+  if (!timestamp) return '--';
+  return new Date(timestamp).toLocaleTimeString();
+}
+
+function describeFileKind(file: FileNode | null): string {
+  if (!file) return 'Select an artifact to inspect.';
+  if (file.type === 'directory') return 'Open folder';
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (ext === 'json') return 'Structured config / metrics file';
+  if (ext === 'csv') return 'Tabular export';
+  if (ext === 'mp4' || ext === 'webm') return 'Rendered media output';
+  if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'gif') return 'Image artifact';
+  if (ext === 'txt' || ext === 'log' || ext === 'md' || ext === 'py') return 'Text preview';
+  return 'Artifact preview';
+}
 
 export const SimulationDataView: React.FC = () => {
   const [runs, setRuns] = useState<SimulationRun[]>([]);
@@ -45,21 +72,20 @@ export const SimulationDataView: React.FC = () => {
     return () => unsubscribe();
   }, [selectedRunId]);
 
-  // Fetch runs on mount
   useEffect(() => {
     let cancelled = false;
     const loadRuns = () => {
       setRefreshingRuns(true);
       fetch(`${API_BASE_URL}/simulations`)
-        .then(res => {
+        .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
-        .then(data => {
+        .then((data) => {
           if (cancelled) return;
           applyRunsUpdate(data.runs || []);
         })
-        .catch(err => console.error("Failed to fetch runs:", err))
+        .catch((err) => console.error('Failed to fetch runs:', err))
         .finally(() => {
           if (!cancelled) setRefreshingRuns(false);
         });
@@ -75,232 +101,249 @@ export const SimulationDataView: React.FC = () => {
     };
   }, []);
 
-  // Fetch files when run is selected
   useEffect(() => {
     if (!selectedRunId) {
-        setFiles([]);
-        setCurrentDir('');
-        return;
+      setFiles([]);
+      setCurrentDir('');
+      return;
     }
 
     fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files`)
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then(data => {
-          setFiles(data.files || []);
-          setCurrentDir('');
+      .then((data) => {
+        setFiles(data.files || []);
+        setCurrentDir('');
       })
-      .catch(err => console.error("Failed to fetch files:", err));
+      .catch((err) => console.error('Failed to fetch files:', err));
   }, [selectedRunId]);
 
   const visibleEntries = useMemo(() => {
-    const parentOf = (p: string) => {
-      const idx = p.lastIndexOf('/');
-      return idx === -1 ? '' : p.slice(0, idx);
+    const parentOf = (path: string) => {
+      const idx = path.lastIndexOf('/');
+      return idx === -1 ? '' : path.slice(0, idx);
     };
     return files
-      .filter((f) => parentOf(f.path) === currentDir)
+      .filter((file) => parentOf(file.path) === currentDir)
       .sort((a, b) => {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
   }, [files, currentDir]);
 
-  // Fetch content when file is selected
   useEffect(() => {
     if (!selectedRunId || !selectedFile || selectedFile.type === 'directory') {
-        setFileContent(null);
-        setContentType(null);
-        return;
+      setFileContent(null);
+      setContentType(null);
+      return;
     }
 
     const ext = selectedFile.name.split('.').pop()?.toLowerCase();
 
     if (['png', 'jpg', 'jpeg', 'gif'].includes(ext || '')) {
-        setContentType('image');
-        setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
-    } else if (['mp4', 'webm'].includes(ext || '')) {
-        setContentType('video');
-        setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
-    } else if (['txt', 'log', 'csv', 'json', 'md', 'py'].includes(ext || '')) {
-        setContentType('text');
-        setIsLoading(true);
-        setFileContent(null);
-        const controller = new AbortController();
-        fetch(
-          `${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`,
-          { signal: controller.signal }
-        )
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.text();
-            })
-            .then(text => setFileContent(text))
-            .catch(err => {
-                if (err.name === 'AbortError') return;
-                console.error(err);
-                setFileContent('Error loading file content.');
-            })
-            .finally(() => setIsLoading(false));
-        return () => controller.abort();
-    } else {
-        setContentType('other');
-        setFileContent(null);
+      setContentType('image');
+      setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
+      return;
     }
 
+    if (['mp4', 'webm'].includes(ext || '')) {
+      setContentType('video');
+      setFileContent(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`);
+      return;
+    }
+
+    if (['txt', 'log', 'csv', 'json', 'md', 'py'].includes(ext || '')) {
+      setContentType('text');
+      setIsLoading(true);
+      setFileContent(null);
+      const controller = new AbortController();
+      fetch(`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`, {
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.text();
+        })
+        .then((text) => setFileContent(text))
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          console.error(err);
+          setFileContent('Error loading file content.');
+        })
+        .finally(() => setIsLoading(false));
+      return () => controller.abort();
+    }
+
+    setContentType('other');
+    setFileContent(null);
   }, [selectedRunId, selectedFile]);
 
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.id === selectedRunId) ?? null,
+    [runs, selectedRunId]
+  );
+
   return (
-    <div className="flex h-full w-full text-white overflow-hidden font-mono text-sm">
-      {/* Sidebar: Runs */}
-      <div className="w-64 border-r border-slate-700 flex flex-col bg-slate-900/50">
-        <div className="p-3 border-b border-slate-700 font-bold text-slate-300">
-          Simulation Runs
-          <div className="text-[10px] font-normal text-slate-500 mt-1">
-            {refreshingRuns
-              ? 'Refreshing...'
-              : `Updated ${
-                  lastRunsRefreshAt
-                    ? new Date(lastRunsRefreshAt).toLocaleTimeString()
-                    : '--:--:--'
-                }`}
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {runs.map(run => (
-            <div
-              key={run.id}
-              onClick={() => {
-                setSelectedRunId(run.id);
-                setSelectedFile(null);
-                setCurrentDir('');
-              }}
-              className={`p-3 cursor-pointer hover:bg-slate-800 border-b border-slate-800/50 ${selectedRunId === run.id ? 'bg-blue-900/30 text-blue-300' : 'text-slate-400'}`}
-            >
-              <div className="font-semibold">{run.id}</div>
-              <div className="text-xs opacity-60 mt-1">
-                {new Date(run.modified * 1000).toLocaleString()}
-              </div>
+    <div className="h-full w-full overflow-hidden bg-[color:var(--v4-bg)] text-[color:var(--v4-text-1)]">
+      <div className="flex h-full flex-col gap-4 overflow-hidden p-4">
+        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[280px_320px_minmax(0,1fr)]">
+          <Panel
+            title="Saved Runs"
+            className="min-h-0 flex flex-col"
+            bodyClassName="flex min-h-0 flex-1 flex-col p-0"
+          >
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {runs.length === 0 ? (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[color:var(--v4-text-3)]">
+                  No saved runs yet. Launch a simulation in Runner, then come back here to inspect
+                  its outputs.
+                </div>
+              ) : (
+                runs.map((run) => (
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRunId(run.id);
+                      setSelectedFile(null);
+                      setCurrentDir('');
+                    }}
+                    className={`flex w-full flex-col gap-1 border-b border-[color:var(--v4-border)]/60 px-4 py-3 text-left transition-colors ${
+                      selectedRunId === run.id
+                        ? 'bg-cyan-950/35 text-cyan-100'
+                        : 'text-[color:var(--v4-text-2)] hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="text-[12px] font-semibold leading-snug">{run.id}</div>
+                  </button>
+                ))
+              )}
             </div>
-          ))}
-        </div>
-      </div>
+          </Panel>
 
-      {/* Middle: File List */}
-      <div className="w-72 border-r border-slate-700 flex flex-col bg-slate-900/30">
-        <div className="p-3 border-b border-slate-700 font-bold text-slate-300 flex justify-between items-center">
-          <span>Files</span>
-          {selectedRunId && <span className="text-xs opacity-50">{selectedRunId}</span>}
-        </div>
-        {selectedRunId && (
-          <div className="px-3 py-2 border-b border-slate-800 text-xs text-slate-400 flex items-center gap-2">
-            {currentDir ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const idx = currentDir.lastIndexOf('/');
-                  setCurrentDir(idx === -1 ? '' : currentDir.slice(0, idx));
-                  setSelectedFile(null);
-                }}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1"
-              >
-                <ChevronLeft size={12} />
-                Up
-              </button>
-            ) : (
-              <span className="px-2 py-1 rounded bg-slate-800 text-slate-500">Root</span>
-            )}
-            <span className="truncate">/{currentDir}</span>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto">
-          {visibleEntries.map((file) => (
-             <div
-                key={file.path}
-                onClick={() => {
-                  if (file.type === 'directory') {
-                    setCurrentDir(file.path);
-                    setSelectedFile(null);
-                    return;
-                  }
-                  setSelectedFile(file);
-                }}
-                className={`p-2 px-4 cursor-pointer hover:bg-slate-800 flex items-center gap-2 ${selectedFile?.path === file.path ? 'bg-blue-900/30 text-blue-300' : 'text-slate-400'}`}
-             >
-                {file.type === 'directory' ? <Folder size={14} className="text-yellow-500" /> :
-                 file.name.endsWith('.json') ? <FileCode size={14} className="text-green-500" /> :
-                 file.name.endsWith('.csv') ? <FileText size={14} className="text-blue-500" /> :
-                 file.name.endsWith('.mp4') ? <Film size={14} className="text-purple-500" /> :
-                 file.name.endsWith('.png') ? <ImageIcon size={14} className="text-orange-500" /> :
-                 <FileText size={14} />
-                }
-                <span className="truncate">{file.name}</span>
-             </div>
-          ))}
-          {visibleEntries.length === 0 && selectedRunId && (
-              <div className="p-4 text-center opacity-50 italic">No files found</div>
-          )}
-           {!selectedRunId && (
-              <div className="p-4 text-center opacity-50 italic">Select a run</div>
-          )}
-        </div>
-      </div>
-
-      {/* Main: Content Preview */}
-      <div className="flex-1 flex flex-col bg-black">
-        <div className="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-900">
-          <span className="font-bold text-slate-300">
-            {selectedFile ? selectedFile.name : "Preview"}
-          </span>
-          {selectedFile && selectedRunId && (
-             <a
-                href={`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded transition-colors"
-             >
-                <Download size={14} /> Download
-             </a>
-          )}
-        </div>
-        <div className="flex-1 overflow-hidden relative">
-            {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-500">
-                    Loading...
+          <Panel className="min-h-0 flex flex-col" bodyClassName="flex min-h-0 flex-1 flex-col p-0">
+            <div className="flex items-center justify-between gap-3 border-b border-[color:var(--v4-border)]/60 px-4 py-2 text-xs text-[color:var(--v4-text-3)]">
+              <span className="truncate">/{currentDir}</span>
+              {selectedRunId ? (
+                currentDir ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idx = currentDir.lastIndexOf('/');
+                      setCurrentDir(idx === -1 ? '' : currentDir.slice(0, idx));
+                      setSelectedFile(null);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--v4-border)] px-2 py-1 text-[11px] text-[color:var(--v4-text-2)] hover:border-cyan-500 hover:text-cyan-200"
+                  >
+                    <ChevronLeft size={12} />
+                    Back
+                  </button>
+                ) : (
+                  <StatusPill tone="neutral">Root</StatusPill>
+                )
+              ) : null}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {!selectedRunId ? (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[color:var(--v4-text-3)]">
+                  Select a saved run to browse its result tree.
                 </div>
-            )}
-
-            {!selectedFile && (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-600">
-                    Select a file to view content
+              ) : visibleEntries.length === 0 ? (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[color:var(--v4-text-3)]">
+                  No artifacts found in this directory.
                 </div>
-            )}
+              ) : (
+                visibleEntries.map((file) => (
+                  <button
+                    key={file.path}
+                    type="button"
+                    onClick={() => {
+                      if (file.type === 'directory') {
+                        setCurrentDir(file.path);
+                        setSelectedFile(null);
+                        return;
+                      }
+                      setSelectedFile(file);
+                    }}
+                    className={`flex w-full items-center gap-2 border-b border-[color:var(--v4-border)]/50 px-4 py-2 text-left transition-colors ${
+                      selectedFile?.path === file.path
+                        ? 'bg-cyan-950/35 text-cyan-100'
+                        : 'text-[color:var(--v4-text-2)] hover:bg-white/5'
+                    }`}
+                  >
+                    {file.type === 'directory' ? (
+                      <Folder size={14} className="text-yellow-400" />
+                    ) : file.name.endsWith('.json') ? (
+                      <FileCode size={14} className="text-emerald-400" />
+                    ) : file.name.endsWith('.csv') ? (
+                      <FileText size={14} className="text-cyan-400" />
+                    ) : file.name.endsWith('.mp4') || file.name.endsWith('.webm') ? (
+                      <Film size={14} className="text-purple-400" />
+                    ) : file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg') ? (
+                      <ImageIcon size={14} className="text-amber-400" />
+                    ) : (
+                      <FileText size={14} />
+                    )}
+                    <span className="truncate text-[12px]">{file.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </Panel>
 
-            {selectedFile && !isLoading && contentType === 'text' && (
-                <pre className="w-full h-full overflow-auto p-4 text-xs text-slate-300 leading-relaxed custom-scrollbar">
-                    {fileContent}
+          <Panel className="min-h-0 flex flex-col" bodyClassName="flex min-h-0 flex-1 flex-col p-0">
+            <div className="relative min-h-0 flex-1 overflow-hidden bg-[#050816]">
+              {selectedFile && selectedRunId ? (
+                <div className="absolute right-4 top-4 z-10">
+                  <a
+                    href={`${API_BASE_URL}/simulations/${selectedRunId}/files/${selectedFile.path}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--v4-border)] bg-[color:var(--v4-surface-1)]/80 px-3 py-1.5 text-xs text-[color:var(--v4-text-2)] hover:border-cyan-500 hover:text-cyan-200"
+                  >
+                    <Download size={14} />
+                    Download
+                  </a>
+                </div>
+              ) : null}
+              {isLoading ? (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+                  Loading artifact preview…
+                </div>
+              ) : null}
+
+              {selectedFile && !isLoading && contentType === 'text' ? (
+                <pre className="h-full w-full overflow-auto p-4 text-xs leading-relaxed text-slate-300">
+                  {fileContent}
                 </pre>
-            )}
+              ) : null}
 
-            {selectedFile && !isLoading && contentType === 'image' && (
-                <div className="w-full h-full flex items-center justify-center p-4">
-                    <img src={fileContent as string} alt={selectedFile.name} className="max-w-full max-h-full object-contain border border-slate-700" />
+              {selectedFile && !isLoading && contentType === 'image' ? (
+                <div className="flex h-full w-full items-center justify-center p-4">
+                  <img
+                    src={fileContent as string}
+                    alt={selectedFile.name}
+                    className="max-h-full max-w-full object-contain border border-slate-700"
+                  />
                 </div>
-            )}
+              ) : null}
 
-            {selectedFile && !isLoading && contentType === 'video' && (
-                <div className="w-full h-full flex items-center justify-center p-4 bg-black">
-                     <video controls src={fileContent as string} className="max-w-full max-h-full" />
+              {selectedFile && !isLoading && contentType === 'video' ? (
+                <div className="flex h-full w-full items-center justify-center bg-black p-4">
+                  <video controls src={fileContent as string} className="max-h-full max-w-full" />
                 </div>
-            )}
+              ) : null}
 
-             {selectedFile && !isLoading && contentType === 'other' && (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-500">
-                    Preview not available for this file type.
+              {selectedFile && !isLoading && contentType === 'other' ? (
+                <div className="absolute inset-0 flex items-center justify-center px-8 text-center text-sm text-slate-500">
+                  Preview is not available for this file type. Download the artifact to inspect it
+                  externally.
                 </div>
-            )}
+              ) : null}
+            </div>
+          </Panel>
         </div>
       </div>
     </div>

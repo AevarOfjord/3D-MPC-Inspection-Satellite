@@ -38,7 +38,8 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
   const satPosRef = useRef(new Vector3());
   const satQuatRef = useRef(new Quaternion());
   const originRef = useRef(new Vector3(origin[0], origin[1], origin[2]));
-  const chaseDistRef = useRef(CHASE_DISTANCE);   // live chase distance, user-adjustable
+  const chaseDistance = useCameraStore(s => s.chaseDistance);
+  const setChaseDistance = useCameraStore(s => s.setChaseDistance);
   const focusTarget = useCameraStore(s => s.focusTarget);
   const focusDistance = useCameraStore(s => s.focusDistance);
   const focusNonce = useCameraStore(s => s.focusNonce);
@@ -58,14 +59,14 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
       e.preventDefault();
       // deltaY > 0 → scroll down → zoom out (increase distance)
       const factor = 1 + Math.sign(e.deltaY) * CHASE_ZOOM_SPEED;
-      chaseDistRef.current = Math.min(
+      setChaseDistance(Math.min(
         CHASE_MAX_DIST,
-        Math.max(CHASE_MIN_DIST, chaseDistRef.current * factor)
-      );
+        Math.max(CHASE_MIN_DIST, chaseDistance * factor)
+      ));
     };
     window.addEventListener('wheel', onWheel, { passive: false });
     return () => window.removeEventListener('wheel', onWheel);
-  }, [mode]);
+  }, [chaseDistance, mode, setChaseDistance]);
 
   useEffect(() => {
     const unsub = telemetry.subscribe(d => {
@@ -99,7 +100,7 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
        }
     } else if (mode === 'chase') {
         camera.up.copy(WORLD_UP);
-        chaseDistRef.current = CHASE_DISTANCE;   // reset to default when entering chase
+        setChaseDistance(CHASE_DISTANCE);
         // Disable orbit controls — camera is programmatically locked to the corner
         if (controls) {
             (controls as any).enabled = false;
@@ -110,7 +111,7 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
             (controls as any).enabled = true;
         }
     }
-  }, [baseDistance, mode, camera, controls]);
+  }, [baseDistance, mode, camera, controls, setChaseDistance]);
 
   useEffect(() => {
     if (!focusTarget) return;
@@ -203,7 +204,7 @@ export function CameraManager({ mode, origin = [0, 0, 0] }: CameraManagerProps) 
         const worldCorner = CHASE_BODY_CORNER.clone().applyQuaternion(satQuat);
 
         // Position camera along that world-space direction from the satellite centre
-        const camPos = satPos.clone().addScaledVector(worldCorner, chaseDistRef.current);
+        const camPos = satPos.clone().addScaledVector(worldCorner, chaseDistance);
         camera.position.copy(camPos);
 
         // Use satellite body +Z rotated to world space as camera up,

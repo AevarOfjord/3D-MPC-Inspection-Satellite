@@ -6,20 +6,28 @@ interface CameraState {
   focusTarget: [number, number, number] | null;
   focusDistance: number | null;
   focusNonce: number;
+  chaseDistance: number;
   viewPreset: 'iso' | 'top' | 'front' | 'right' | 'left' | 'back' | null;
   viewNonce: number;
   controls: OrbitControlsImpl | null;
   requestFocus: (target: [number, number, number], distance?: number) => void;
   requestViewPreset: (preset: CameraState['viewPreset']) => void;
   setControls: (controls: OrbitControlsImpl | null) => void;
+  setChaseDistance: (distance: number) => void;
+  adjustChaseDistance: (factor: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
 }
+
+const CHASE_DEFAULT_DISTANCE = 5;
+const CHASE_MIN_DISTANCE = 0.5;
+const CHASE_MAX_DISTANCE = 500;
 
 export const useCameraStore = create<CameraState>((set) => ({
   focusTarget: null,
   focusDistance: null,
   focusNonce: 0,
+  chaseDistance: CHASE_DEFAULT_DISTANCE,
   viewPreset: null,
   viewNonce: 0,
   controls: null,
@@ -46,6 +54,20 @@ export const useCameraStore = create<CameraState>((set) => ({
       viewNonce: state.viewNonce + 1,
     })),
   setControls: (controls) => set({ controls }),
+  setChaseDistance: (distance) =>
+    set({
+      chaseDistance: Math.min(
+        CHASE_MAX_DISTANCE,
+        Math.max(CHASE_MIN_DISTANCE, distance)
+      ),
+    }),
+  adjustChaseDistance: (factor) =>
+    set((state) => ({
+      chaseDistance: Math.min(
+        CHASE_MAX_DISTANCE,
+        Math.max(CHASE_MIN_DISTANCE, state.chaseDistance * factor)
+      ),
+    })),
   zoomIn: () => {
     set((state) => {
       const controls: any = state.controls;
