@@ -78,6 +78,52 @@ def _scan_mission_payload(
     }
 
 
+def _studio_local_scan_payload(
+    *, mission_id: str = "mission_studio_local"
+) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "mission_id": mission_id,
+        "name": "Studio Local Mission",
+        "epoch": "2026-01-01T00:00:00Z",
+        "start_pose": {
+            "frame": "LVLH",
+            "position": [0.0, 0.0, 20.0],
+        },
+        "start_target_id": "STUDIO_LOCAL_ORIGIN",
+        "segments": [
+            {
+                "type": "transfer",
+                "segment_id": "seg_transfer_001",
+                "target_id": "STUDIO_LOCAL_ORIGIN",
+                "end_pose": {
+                    "frame": "LVLH",
+                    "position": [1.0, 0.0, 0.0],
+                },
+            },
+            {
+                "type": "scan",
+                "segment_id": "seg_scan_001",
+                "target_id": "STUDIO_LOCAL_ORIGIN",
+                "scan": {
+                    "frame": "LVLH",
+                    "axis": "+Z",
+                    "standoff": 10.0,
+                    "overlap": 0.25,
+                    "fov_deg": 60.0,
+                    "revolutions": 4,
+                    "direction": "CW",
+                    "sensor_axis": "+Y",
+                },
+            },
+        ],
+        "metadata": {
+            "version": 1,
+            "tags": ["studio", "studio:local-origin"],
+        },
+    }
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     missions_dir = tmp_path / "missions"
@@ -253,6 +299,19 @@ def test_validate_warns_scan_axis_asset_mismatch(client: TestClient):
     assert any(
         issue["code"] == "SCAN_AXIS_ASSET_MISMATCH" for issue in payload["issues"]
     )
+
+
+def test_validate_accepts_studio_local_origin_without_object_target(client: TestClient):
+    response = client.post(
+        "/api/v2/missions/validate",
+        json=_studio_local_scan_payload(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is True
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+    assert "TRANSFER_TARGET_REQUIRED" not in issue_codes
+    assert "SCAN_PATH_ASSET_RECOMMENDED" not in issue_codes
 
 
 def test_load_auto_migrates_scan_axis_and_sets_notice_tag(client: TestClient):

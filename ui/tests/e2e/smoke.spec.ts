@@ -13,9 +13,33 @@ async function chooseEmptyScene(page: Page) {
 
 test('app shell loads', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByText('ORBITAL INSPECTOR')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'VIEWER' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'STUDIO' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'RUNNER' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'VIEWER' })).toHaveClass(/bg-cyan/);
+});
+
+test('toolbench tabs switch between viewer, runner, data, and settings', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+  });
+
+  await page.goto('/');
+  await chooseEmptyScene(page);
+  await expect(page.getByRole('button', { name: 'VIEWER' })).toHaveClass(/bg-cyan/);
+
+  await page.getByRole('button', { name: 'RUNNER' }).click();
+  await expect(page.getByText('Headless Execution')).toBeVisible();
+  await expect(page.getByText('Pre-Flight')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chase Sat' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'DATA' }).click();
+  await expect(page.getByText('Results Browser')).toBeVisible();
+
+  await page.getByRole('button', { name: 'SETTINGS' }).click();
+  await expect(page.getByText('MPC Settings')).toBeVisible();
 });
 
 test('Studio shell renders its authoring panels from a clean launch', async ({
@@ -26,6 +50,7 @@ test('Studio shell renders its authoring panels from a clean launch', async ({
   });
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'STUDIO' }).click();
   await chooseEmptyScene(page);
   await expect(page.getByText('Studio Status')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create Path' })).toBeVisible();
@@ -40,7 +65,7 @@ test('command palette and Studio shortcuts work', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Command Palette/ }).click();
   await expect(page.getByPlaceholder('Search commands...')).toBeVisible();
-  await page.getByPlaceholder('Search commands...').fill('switch to mission studio');
+  await page.getByPlaceholder('Search commands...').fill('mission studio');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'STUDIO' })).toHaveClass(
     /bg-fuchsia/

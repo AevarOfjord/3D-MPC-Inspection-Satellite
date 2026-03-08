@@ -55,6 +55,8 @@ LEGACY_DEPRECATION_HEADERS: dict[str, str] = {
 }
 SCAN_AXIS_ASSET_MISMATCH_CODE = "SCAN_AXIS_ASSET_MISMATCH"
 SCAN_AXIS_MIGRATION_NOTICE_TAG = "migration:scan_axis_asset_mismatch"
+STUDIO_LOCAL_TARGET_ID = "STUDIO_LOCAL_ORIGIN"
+STUDIO_MISSION_TAG = "studio"
 
 
 def _now_iso() -> str:
@@ -280,6 +282,12 @@ def _with_scan_axis_migration_notice(
 def build_validation_report(mission: UnifiedMissionModel) -> ValidationReportModel:
     issues: list[ValidationIssueModel] = []
     axis_mismatch_map = _build_scan_axis_mismatch_map(mission)
+    mission_tags = {
+        str(tag).strip().lower()
+        for tag in (mission.metadata.tags or [])
+        if str(tag).strip()
+    }
+    is_studio_mission = STUDIO_MISSION_TAG in mission_tags
 
     if not mission.name.strip():
         issues.append(
@@ -343,7 +351,7 @@ def build_validation_report(mission: UnifiedMissionModel) -> ValidationReportMod
                         suggestion="Select a target object for scan segments.",
                     )
                 )
-            if not segment.path_asset:
+            if not segment.path_asset and not is_studio_mission:
                 issues.append(
                     ValidationIssueModel(
                         code="SCAN_PATH_ASSET_RECOMMENDED",
@@ -376,6 +384,8 @@ def build_validation_report(mission: UnifiedMissionModel) -> ValidationReportMod
             segment.type == "transfer"
             and segment.end_pose.frame == "LVLH"
             and not (segment.target_id or "").strip()
+            and (mission.start_target_id or "").strip().upper()
+            != STUDIO_LOCAL_TARGET_ID
         ):
             issues.append(
                 ValidationIssueModel(

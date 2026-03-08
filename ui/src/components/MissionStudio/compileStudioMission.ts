@@ -230,6 +230,7 @@ function appendConnectorFromWire(
 }
 
 function buildRouteGraph(state: StudioState): RouteBuildResult {
+  const referenceTargetId = studioTargetIdFromModelPath(state.referenceObjectPath);
   const outgoing = new Map<string, { id: string; to: string }>();
   const incoming = new Map<string, { id: string; from: string }>();
 
@@ -279,6 +280,7 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
         const transferSeg: TransferSegment = {
           segment_id: `transfer-${edge.id}`,
           type: 'transfer',
+          target_id: referenceTargetId,
           end_pose: {
             frame: 'LVLH',
             position: pointPos,
@@ -309,6 +311,7 @@ function buildRouteGraph(state: StudioState): RouteBuildResult {
       const transferSeg: TransferSegment = {
         segment_id: `transfer-${edge.id}`,
         type: 'transfer',
+        target_id: referenceTargetId,
         end_pose: {
           frame: 'LVLH',
           position: entry,
@@ -434,6 +437,7 @@ export function compileStudioMission(state: StudioState): UnifiedMission {
     metadata: {
       version: 1,
       created_at: new Date().toISOString(),
+      tags: referenceTargetId === 'STUDIO_LOCAL_ORIGIN' ? ['studio', 'studio:local-origin'] : ['studio'],
     },
   };
 

@@ -101,6 +101,11 @@ export function StudioStatusStrip() {
           }
         />
         <StatusPill
+          label="Holds"
+          value={`${diagnostics.holdCount}`}
+          tone={diagnostics.holdCount > 0 ? 'info' : 'neutral'}
+        />
+        <StatusPill
           label="Route"
           value={
             diagnostics.status === 'executable'
@@ -128,7 +133,6 @@ export function StudioStatusStrip() {
           tone={saveTone}
         />
       </div>
-      <div className="mt-2 text-[11px] text-slate-300">{diagnostics.nextAction}</div>
     </div>
   );
 }

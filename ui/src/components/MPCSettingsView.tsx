@@ -626,7 +626,9 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       <div className="flex-none p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
         <div>
           <h2 className="text-lg font-bold text-white">MPC Settings</h2>
-          <p className="text-xs text-slate-300">Controller tuning, bounds, and solver options</p>
+          <p className="text-xs text-slate-300">
+            Shared MPC baseline first, then per-profile overrides and expert packaging tools.
+          </p>
           <p className={`text-[11px] mt-1 ${isDirty ? 'text-amber-300' : 'text-emerald-300'}`}>
             {isDirty ? 'Unsaved changes' : 'All changes saved'}
           </p>
@@ -726,6 +728,36 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
               </ul>
             </div>
           )}
+
+          <section className="grid gap-3 lg:grid-cols-3">
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-cyan-400 font-semibold">
+                Shared Baseline
+              </div>
+              <p className="mt-2 text-sm text-slate-200">
+                Basic and Advanced sections define the common MPC configuration used across the
+                toolchain.
+              </p>
+            </div>
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-amber-400 font-semibold">
+                Profile Overrides
+              </div>
+              <p className="mt-2 text-sm text-slate-200">
+                Expert controls expose per-profile deltas, solver-specific switches, and fairness
+                mode behavior.
+              </p>
+            </div>
+            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-emerald-400 font-semibold">
+                Workspace Tools
+              </div>
+              <p className="mt-2 text-sm text-slate-200">
+                Presets, packaging, import/export, and readiness checks live here so tuning stays
+                separate from run playback and data review.
+              </p>
+            </div>
+          </section>
 
           <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
             <div className="flex items-center justify-between gap-3">

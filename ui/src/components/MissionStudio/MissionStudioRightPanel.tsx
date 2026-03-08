@@ -172,12 +172,18 @@ export function MissionStudioRightPanel() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validateResult, setValidateResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [issuesExpanded, setIssuesExpanded] = useState(true);
+  const [issuesExpanded, setIssuesExpanded] = useState(false);
+  const [validationIssuesExpanded, setValidationIssuesExpanded] = useState(false);
 
   useEffect(() => {
     if (missionName.trim().length > 0) return;
     if (paths.length === 0) return;
-    const ts = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    const ts = new Date()
+      .toISOString()
+      .slice(0, 16)
+      .replaceAll('-', '')
+      .replaceAll(':', '')
+      .replace('T', '');
     setMissionName(`Studio_${paths.length}path_${ts}`);
   }, [paths.length, missionName, setMissionName]);
 
@@ -249,6 +255,12 @@ export function MissionStudioRightPanel() {
       setIssuesExpanded(true);
     }
   }, [routeDiagnostics.status]);
+
+  useEffect(() => {
+    if ((validationReport?.issues.length ?? 0) > 0) {
+      setValidationIssuesExpanded(true);
+    }
+  }, [validationReport]);
 
   useEffect(() => {
     if (previousFingerprintRef.current === authoringFingerprint) return;
@@ -355,37 +367,25 @@ export function MissionStudioRightPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 border-b border-slate-800/60 flex items-center justify-between">
-        <span>Mission Assembly</span>
-        <span className="text-slate-600 tabular-nums">
-          {assembly.length} seg · {totalWaypoints} pts · {totalPathLengthM.toFixed(1)} m
-        </span>
-      </div>
-
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 mb-2">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Studio Status</div>
-              <div className="mt-1 text-sm font-semibold text-slate-100 truncate">
-                {missionName.trim() || 'Untitled Studio Mission'}
-              </div>
-            </div>
-            <div className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${validationStateClass}`}>
-              {validationStateLabel}
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Status</div>
+            <div className="mt-1 text-sm font-semibold text-slate-100 truncate">
+              {missionName.trim() || 'Untitled Studio Mission'}
             </div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Segments</div>
+              <div className="text-[7px] uppercase tracking-[0.06em] text-slate-500">Segments</div>
               <div className="mt-1 text-sm font-semibold text-slate-100">{assembly.length}</div>
             </div>
             <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Waypoints</div>
+              <div className="text-[7px] uppercase tracking-[0.04em] text-slate-500">Waypoints</div>
               <div className="mt-1 text-sm font-semibold text-slate-100">{totalWaypoints}</div>
             </div>
             <div className="rounded-lg border border-slate-800 bg-black/20 px-2 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Path</div>
+              <div className="text-[7px] uppercase tracking-[0.06em] text-slate-500">Path</div>
               <div className="mt-1 text-sm font-semibold text-slate-100">{totalPathLengthM.toFixed(1)} m</div>
             </div>
           </div>
@@ -442,13 +442,71 @@ export function MissionStudioRightPanel() {
               </div>
             ) : null}
           </div>
-          {!validationReport ? (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
-              <AlertCircle size={14} className="mt-0.5 shrink-0 text-sky-300" />
-              <span>Validate the mission before saving so Studio can surface route and payload issues early.</span>
+          {validationReport ? (
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/80">
+              <button
+                type="button"
+                onClick={() => setValidationIssuesExpanded((expanded) => !expanded)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-slate-200"
+              >
+                <span className="font-semibold">
+                  Validation Issues {validationIssueCount > 0 ? `(${validationIssueCount})` : '(0)'}
+                </span>
+                {validationIssuesExpanded ? (
+                  <ChevronUp size={14} className="text-slate-400" />
+                ) : (
+                  <ChevronDown size={14} className="text-slate-400" />
+                )}
+              </button>
+              {validationIssuesExpanded ? (
+                <div className="border-t border-slate-800 px-3 py-2">
+                  {validationIssueCount === 0 ? (
+                    <div className="text-xs text-emerald-300">No backend validation issues are currently reported.</div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {validationReport.issues.map((issue, index) => {
+                        const severityClass =
+                          issue.severity === 'error'
+                            ? 'border-red-500/30 bg-red-950/20 text-red-100'
+                            : issue.severity === 'warning'
+                              ? 'border-amber-500/30 bg-amber-950/20 text-amber-100'
+                              : 'border-sky-500/30 bg-sky-950/20 text-sky-100';
+                        return (
+                          <div
+                            key={`${issue.code}-${issue.path}-${index}`}
+                            className="rounded-lg border border-slate-800 bg-black/20 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-100 break-words">{issue.message}</div>
+                                <div className="mt-1 text-[10px] text-slate-400 break-all">
+                                  {issue.path || 'mission'} · {issue.code}
+                                </div>
+                              </div>
+                              <div className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${severityClass}`}>
+                                {issue.severity}
+                              </div>
+                            </div>
+                            {issue.suggestion ? (
+                              <div className="mt-2 text-xs text-slate-300">
+                                Suggestion: <span className="text-slate-200">{issue.suggestion}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
+        {assembly.length > 0 ? (
+          <div className="px-1 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            Segments
+          </div>
+        ) : null}
         {assembly.length === 0 ? (
           <div className="text-xs text-slate-600 text-center py-8">Add segments using the left panel</div>
         ) : (

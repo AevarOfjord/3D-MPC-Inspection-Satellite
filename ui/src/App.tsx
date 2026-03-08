@@ -15,7 +15,7 @@ const RunnerView = lazy(() =>
   import('./components/RunnerWindow').then((m) => ({ default: m.RunnerView }))
 );
 import { useMissionBuilder } from './hooks/useMissionBuilder';
-import { Monitor, Terminal, Rocket, Database, FileText, Settings, Keyboard } from 'lucide-react';
+import { Monitor, Terminal, Database, FileText, Settings, Keyboard } from 'lucide-react';
 import { useDialog } from './feedback/feedbackContext';
 import { parseStoredAppMode, type AppMode } from './utils/appMode';
 import { CommandPalette, type CommandPaletteItem } from './components/CommandPalette';
@@ -55,8 +55,54 @@ function getInitialAppMode(): AppMode {
   } catch {
     // no-op: fallback below
   }
-  return 'studio';
+  return 'viewer';
 }
+
+const TOOL_META: Record<
+  AppMode,
+  { label: string; shortLabel: string; icon: typeof Monitor; description: string; themeClass: string; tone: 'info' | 'neutral' | 'warning' | 'success' }
+> = {
+  viewer: {
+    label: 'Viewer',
+    shortLabel: 'Playback',
+    icon: Monitor,
+    description: 'Inspect completed simulation runs and playback results.',
+    themeClass: 'border-cyan-500/60 bg-cyan-950/35 text-cyan-100',
+    tone: 'info',
+  },
+  studio: {
+    label: 'Studio',
+    shortLabel: 'Mission Creator',
+    icon: FileText,
+    description: 'Create and edit missions before execution.',
+    themeClass: 'border-fuchsia-500/60 bg-fuchsia-950/35 text-fuchsia-100',
+    tone: 'info',
+  },
+  runner: {
+    label: 'Runner',
+    shortLabel: 'Execution',
+    icon: Terminal,
+    description: 'Launch headless simulations and monitor terminal-style output.',
+    themeClass: 'border-indigo-500/60 bg-indigo-950/35 text-indigo-100',
+    tone: 'warning',
+  },
+  data: {
+    label: 'Data',
+    shortLabel: 'Results',
+    icon: Database,
+    description: 'Browse exported files, metrics, and artifacts.',
+    themeClass: 'border-amber-500/60 bg-amber-950/35 text-amber-100',
+    tone: 'warning',
+  },
+  settings: {
+    label: 'Settings',
+    shortLabel: 'Controller Tuning',
+    icon: Settings,
+    description: 'Edit expert MPC and runtime configuration.',
+    themeClass: 'border-slate-500/60 bg-slate-900/80 text-slate-100',
+    tone: 'neutral',
+  },
+};
 
 function App() {
   const dialog = useDialog();
@@ -71,6 +117,7 @@ function App() {
   const eventCount = useTelemetryStore(s => s.events.length);
   const latestTelemetry = useTelemetryStore(s => s.latest);
   const scanFocusRef = useRef<string>('');
+  const activeToolMeta = TOOL_META[appMode];
 
   // Builder Hook (Hoisted State)
   const builder = useMissionBuilder();
@@ -135,37 +182,42 @@ function App() {
     return [
       {
         id: 'mode-viewer',
-        label: 'Switch to Viewer',
+        label: 'Open Playback Viewer',
         shortcut: 'Ctrl/Cmd+1',
-        keywords: ['mode', 'viewer'],
+        description: 'Inspect completed simulation runs and playback results.',
+        keywords: ['viewer', 'playback', 'results'],
         onSelect: switchToViewer,
       },
       {
         id: 'mode-studio',
-        label: 'Switch to Mission Studio',
+        label: 'Open Mission Studio',
         shortcut: 'Ctrl/Cmd+2',
-        keywords: ['mode', 'studio', 'mission'],
+        description: 'Create and edit missions before execution.',
+        keywords: ['studio', 'mission', 'author'],
         onSelect: switchToStudio,
       },
       {
         id: 'mode-runner',
-        label: 'Switch to Runner',
+        label: 'Open Simulation Runner',
         shortcut: 'Ctrl/Cmd+3',
-        keywords: ['mode', 'runner'],
+        description: 'Configure and launch headless simulations.',
+        keywords: ['runner', 'simulation', 'execution'],
         onSelect: switchToRunner,
       },
       {
         id: 'mode-data',
-        label: 'Switch to Data',
+        label: 'Open Results Data',
         shortcut: 'Ctrl/Cmd+4',
-        keywords: ['mode', 'data'],
+        description: 'Browse saved runs, exported files, and metrics.',
+        keywords: ['data', 'results', 'files'],
         onSelect: switchToDataView,
       },
       {
         id: 'mode-settings',
-        label: 'Switch to Settings',
+        label: 'Open Controller Settings',
         shortcut: 'Ctrl/Cmd+5',
-        keywords: ['mode', 'settings'],
+        description: 'Tune MPC parameters and expert runtime configuration.',
+        keywords: ['settings', 'mpc', 'controller'],
         onSelect: switchToSettings,
       },
     ];
@@ -287,80 +339,47 @@ function App() {
   ]);
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
+    <div className="flex flex-col h-screen bg-[color:var(--v4-bg)] text-[color:var(--v4-text-1)]">
       <TelemetryBridge />
 
-      {/* Header */}
-      <header className="flex-none glass-panel border-b border-white/10 select-none z-50 shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-gradient-to-br from-cyan-500 to-fuchsia-600 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.4)]">
-                <Rocket className="text-white" size={18} />
-              </div>
-              <span className="font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-100 to-white">ORBITAL INSPECTOR</span>
+      <header className="flex-none border-b border-[color:var(--v4-border)]/80 select-none z-50 bg-[color:var(--v4-surface-1)]/96 backdrop-blur-xl shadow-[0_18px_48px_rgba(2,6,23,0.35)]">
+        <div className="px-5 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-5 min-w-0">
+            <div className="flex rounded-2xl border border-[color:var(--v4-border)]/70 bg-[color:var(--v4-surface-2)]/72 p-1 gap-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              {(
+                [
+                  ['viewer', switchToViewer, preload3DModules],
+                  ['studio', switchToStudio, preload3DModules],
+                  ['runner', switchToRunner, undefined],
+                  ['data', switchToDataView, undefined],
+                  ['settings', switchToSettings, undefined],
+                ] as const
+              ).map(([mode, onClick, prefetch]) => {
+                const meta = TOOL_META[mode];
+                const Icon = meta.icon;
+                const active = appMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={onClick}
+                    onMouseEnter={prefetch}
+                    onFocus={prefetch}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                      active
+                        ? `${meta.themeClass} shadow-[0_8px_22px_rgba(2,6,23,0.22)]`
+                        : 'text-[color:var(--v4-text-2)] hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Icon size={14} />
+                    {meta.label.toUpperCase()}
+                  </button>
+                );
+              })}
             </div>
-
-            <div className="flex bg-slate-950/60 rounded-lg p-1 gap-1 border border-white/5 shadow-inner">
-              <button
-                onClick={switchToViewer}
-                onMouseEnter={preload3DModules}
-                onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'viewer'
-                    ? 'bg-cyan-600/90 text-white shadow-[0_0_10px_rgba(6,182,212,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Monitor size={14} />
-                VIEWER
-              </button>
-              <button
-                onClick={switchToStudio}
-                onMouseEnter={preload3DModules}
-                onFocus={preload3DModules}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'studio'
-                    ? 'bg-fuchsia-600/90 text-white shadow-[0_0_10px_rgba(217,70,239,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <FileText size={14} />
-                STUDIO
-              </button>
-              <button
-                onClick={switchToRunner}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'runner'
-                    ? 'bg-indigo-600/90 text-white shadow-[0_0_10px_rgba(79,70,229,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Terminal size={14} />
-                RUNNER
-              </button>
-              <button
-                onClick={switchToDataView}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'data'
-                    ? 'bg-orange-600/90 text-white shadow-[0_0_10px_rgba(234,88,12,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Database size={14} />
-                DATA
-              </button>
-              <button
-                onClick={switchToSettings}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-300 ${
-                  appMode === 'settings'
-                    ? 'bg-slate-600/90 text-white shadow-[0_0_10px_rgba(71,85,105,0.3)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Settings size={14} />
-                SETTINGS
-              </button>
+          </div>
+          <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center px-4">
+            <div className="truncate text-center text-[11px] text-[color:var(--v4-text-3)]">
+              {activeToolMeta.description}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -370,7 +389,7 @@ function App() {
                 setShortcutHelpOpen(false);
                 setCommandPaletteOpen(true);
               }}
-              className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-cyan-500 hover:text-cyan-200"
+              className="px-2.5 py-1.5 text-[10px] uppercase rounded-lg border border-[color:var(--v4-border)] text-[color:var(--v4-text-2)] hover:border-cyan-500 hover:text-cyan-200"
             >
               Command Palette <span className="text-slate-500 ml-1">Ctrl/Cmd+K</span>
             </button>
@@ -380,7 +399,7 @@ function App() {
                 setCommandPaletteOpen(false);
                 setShortcutHelpOpen(true);
               }}
-              className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-cyan-500 hover:text-cyan-200 flex items-center gap-1"
+              className="px-2.5 py-1.5 text-[10px] uppercase rounded-lg border border-[color:var(--v4-border)] text-[color:var(--v4-text-2)] hover:border-cyan-500 hover:text-cyan-200 flex items-center gap-1"
             >
               <Keyboard size={11} />
               Shortcuts
@@ -388,67 +407,86 @@ function App() {
           </div>
         </div>
 
-        {appMode === 'viewer' && (
-          <div className="h-10 px-4 border-t border-slate-800/80 bg-slate-950/70 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex bg-slate-900 rounded p-1 gap-1 items-center border border-slate-800">
+        {appMode === 'viewer' || (appMode === 'settings' && settingsDirty) ? (
+          <div className="px-5 py-3 border-t border-[color:var(--v4-border)]/70 bg-[color:var(--v4-surface-2)]/70 flex items-center justify-between gap-4">
+            {appMode === 'viewer' ? (
+              <div className="flex items-center gap-3">
+                <div className="flex rounded-xl border border-[color:var(--v4-border)] bg-[color:var(--v4-surface-1)]/65 p-1 gap-1 items-center">
+                  <Suspense fallback={null}>
+                    <FocusButton />
+                  </Suspense>
+                  <button
+                    onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
+                    className={`px-2 py-1 text-[10px] uppercase rounded-lg border transition-colors ${
+                      viewMode === 'chase'
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-200'
+                        : 'border-slate-700 text-slate-300 hover:border-blue-500'
+                    }`}
+                  >
+                    Chase Sat
+                  </button>
+                  <div className="w-px h-4 bg-slate-700 mx-1" />
+                  <button
+                    onClick={() => {
+                      if (viewMode === 'chase') {
+                        useCameraStore.getState().adjustChaseDistance(1.15);
+                        return;
+                      }
+                      useCameraStore.getState().zoomOut();
+                    }}
+                    className="px-2 py-1 text-[10px] uppercase rounded-lg border border-slate-700 text-slate-300 hover:border-blue-500"
+                  >
+                    -
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (viewMode === 'chase') {
+                        useCameraStore.getState().adjustChaseDistance(0.85);
+                        return;
+                      }
+                      useCameraStore.getState().zoomIn();
+                    }}
+                    className="px-2 py-1 text-[10px] uppercase rounded-lg border border-slate-700 text-slate-300 hover:border-blue-500"
+                  >
+                    +
+                  </button>
+                </div>
+
                 <Suspense fallback={null}>
-                  <FocusButton />
+                  <PlaybackSelector />
                 </Suspense>
-                <button
-                  onClick={() => setViewMode(viewMode === 'chase' ? 'free' : 'chase')}
-                  className={`px-2 py-1 text-[10px] uppercase rounded border transition-colors ${
-                    viewMode === 'chase'
-                      ? 'border-blue-500 bg-blue-900/30 text-blue-200'
-                      : 'border-slate-700 text-slate-300 hover:border-blue-500'
-                  }`}
-                >
-                  Chase Sat
-                </button>
-                <div className="w-px h-4 bg-slate-700 mx-1" />
-                <button
-                  onClick={() => useCameraStore.getState().zoomOut()}
-                  className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
-                >
-                  -
-                </button>
-                <button
-                  onClick={() => useCameraStore.getState().zoomIn()}
-                  className="px-2 py-1 text-[10px] uppercase rounded border border-slate-700 text-slate-300 hover:border-blue-500"
-                >
-                  +
-                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setEventLogOpen((open) => !open)}
+                    className={`px-2 py-1 text-[10px] uppercase rounded-lg border ${
+                      eventLogOpen ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300 hover:border-blue-500'
+                    }`}
+                  >
+                    Event Log
+                    {eventCount > 0 && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                        {eventCount}
+                      </span>
+                    )}
+                  </button>
+                  <Suspense fallback={null}>
+                    <EventLog open={eventLogOpen} onClose={() => setEventLogOpen(false)} />
+                  </Suspense>
+                </div>
               </div>
-
-              <Suspense fallback={null}>
-                <PlaybackSelector />
-              </Suspense>
-            </div>
-
-            <div className="relative">
-              <button
-                onClick={() => setEventLogOpen((open) => !open)}
-                className={`px-2 py-1 text-[10px] uppercase rounded border ${
-                  eventLogOpen ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300 hover:border-blue-500'
-                }`}
-              >
-                Event Log
-                {eventCount > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
-                    {eventCount}
-                  </span>
-                )}
-              </button>
-              <Suspense fallback={null}>
-                <EventLog open={eventLogOpen} onClose={() => setEventLogOpen(false)} />
-              </Suspense>
-            </div>
+            ) : null}
+            {appMode === 'settings' && settingsDirty ? (
+              <div className="ml-auto inline-flex items-center rounded-full border border-amber-700/60 bg-amber-950/40 px-2 py-0.5 text-[10px] text-amber-200">
+                Unsaved Settings
+              </div>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </header>
 
       {/* Main Layout Area */}
-      <main className="flex-1 relative flex overflow-hidden">
+      <main className="flex-1 relative flex overflow-hidden bg-[color:var(--v4-bg)]">
 
         {appMode === 'studio' && (
           <Suspense fallback={<ModeLoading label="Loading Studio..." />}>
@@ -456,7 +494,7 @@ function App() {
           </Suspense>
         )}
         {appMode === 'runner' && (
-            <div className="flex-1 relative bg-slate-900">
+            <div className="flex-1 relative bg-[color:var(--v4-bg)]">
                 <Suspense fallback={<ModeLoading label="Loading Runner..." />}>
                   <RunnerView hasUnsavedSettings={settingsDirty} />
                 </Suspense>
@@ -495,7 +533,7 @@ function App() {
 
 function ModeLoading({ label }: { label: string }) {
   return (
-    <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
+    <div className="h-full w-full flex items-center justify-center text-[color:var(--v4-text-3)] text-sm">
       {label}
     </div>
   );

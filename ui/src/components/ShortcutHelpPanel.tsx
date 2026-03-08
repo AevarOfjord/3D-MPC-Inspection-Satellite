@@ -11,7 +11,11 @@ interface ShortcutHelpPanelProps {
 const SHORTCUTS: ShortcutItem[] = [
   { keys: 'Ctrl/Cmd + K', description: 'Open command palette' },
   { keys: '?', description: 'Open shortcut help' },
-  { keys: 'Ctrl/Cmd + 1..5', description: 'Switch top-level mode (Viewer, Studio, Runner, Data, Settings)' },
+  {
+    keys: 'Ctrl/Cmd + 1..5',
+    description:
+      'Switch tools in the workbench (Viewer, Studio, Runner, Data, Settings)',
+  },
 ];
 
 export function ShortcutHelpPanel({ open, onClose }: ShortcutHelpPanelProps) {
