@@ -31,15 +31,18 @@ test('toolbench tabs switch between viewer, runner, data, and settings', async (
   await expect(page.getByRole('button', { name: 'VIEWER' })).toHaveClass(/bg-cyan/);
 
   await page.getByRole('button', { name: 'RUNNER' }).click();
-  await expect(page.getByText('Headless Execution')).toBeVisible();
-  await expect(page.getByText('Pre-Flight')).toBeVisible();
+  await expect(page.getByText('Run Context')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Run Simulation' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Chase Sat' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'DATA' }).click();
-  await expect(page.getByText('Results Browser')).toBeVisible();
+  await expect(page.getByText('Saved Runs')).toBeVisible();
 
   await page.getByRole('button', { name: 'SETTINGS' }).click();
-  await expect(page.getByText('MPC Settings')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'MPC Settings' })).toBeVisible();
+  await page.getByRole('button', { name: 'General Settings' }).click();
+  await expect(page.getByText('System Readiness')).toBeVisible();
+  await expect(page.getByText('Build & Package')).toBeVisible();
 });
 
 test('Studio shell renders its authoring panels from a clean launch', async ({
@@ -52,7 +55,7 @@ test('Studio shell renders its authoring panels from a clean launch', async ({
   await page.goto('/');
   await page.getByRole('button', { name: 'STUDIO' }).click();
   await chooseEmptyScene(page);
-  await expect(page.getByText('Studio Status')).toBeVisible();
+  await expect(page.getByText('Status')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create Path' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Validate' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save Mission' })).toBeDisabled();

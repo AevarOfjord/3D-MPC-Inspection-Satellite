@@ -39,6 +39,10 @@ import {
 // Re-export for tests
 export { MPC_SETTINGS_TESTING } from './mpc-settings/mpcSettingsUtils';
 
+type SettingsSection = 'mpc' | 'general';
+
+const SETTINGS_SECTION_STORAGE_KEY = 'mission_control_settings_section_v1';
+
 export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [config, setConfig] = useState<SettingsConfig | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string>('');
@@ -75,6 +79,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [overwriteMissionNames, setOverwriteMissionNames] = useState<string[]>([]);
   const [overwritePresetNames, setOverwritePresetNames] = useState<string[]>([]);
   const [overwriteSimulationRunNames, setOverwriteSimulationRunNames] = useState<string[]>([]);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
+    try {
+      const stored = window.sessionStorage.getItem(SETTINGS_SECTION_STORAGE_KEY);
+      return stored === 'general' ? 'general' : 'mpc';
+    } catch {
+      return 'mpc';
+    }
+  });
   const validationErrors = useMemo(() => (config ? validateConfig(config) : []), [config]);
   const isDirty = useMemo(
     () => (config ? stableSerializeConfig(config) !== savedSnapshot : false),
@@ -101,6 +113,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(SETTINGS_SECTION_STORAGE_KEY, settingsSection);
+    } catch {
+      // no-op
+    }
+  }, [settingsSection]);
 
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -620,1183 +640,1223 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const selectedOverrideDiff = Object.entries(selectedBaseOverrides)
     .filter(([key, value]) => asRecord(config?.mpc)?.[key] !== value)
     .sort(([a], [b]) => a.localeCompare(b));
+  const settingsSubtitle =
+    settingsSection === 'mpc'
+      ? 'Tune shared baseline, profile overrides, presets, and run-shaping controller settings.'
+      : 'Manage readiness checks, runner utilities, packaging, and workspace import/export.';
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-950 text-slate-200 overflow-hidden">
-      <div className="flex-none p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
-        <div>
-          <h2 className="text-lg font-bold text-white">MPC Settings</h2>
-          <p className="text-xs text-slate-300">
-            Shared MPC baseline first, then per-profile overrides and expert packaging tools.
-          </p>
-          <p className={`text-[11px] mt-1 ${isDirty ? 'text-amber-300' : 'text-emerald-300'}`}>
-            {isDirty ? 'Unsaved changes' : 'All changes saved'}
-          </p>
-        </div>
+      <div className="flex-none border-b border-slate-800 bg-slate-900/50 p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-lg font-bold text-white">Settings</h2>
+              <p className="text-xs text-slate-300">{settingsSubtitle}</p>
+              <p className={`mt-1 text-[11px] ${isDirty ? 'text-amber-300' : 'text-emerald-300'}`}>
+                {isDirty ? 'Unsaved changes' : 'All changes saved'}
+              </p>
+            </div>
+            <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+              <button
+                type="button"
+                onClick={() => setSettingsSection('mpc')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  settingsSection === 'mpc'
+                    ? 'bg-cyan-950/60 text-cyan-100'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                MPC Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsSection('general')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  settingsSection === 'general'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                General Settings
+              </button>
+            </div>
+          </div>
 
-        <div className="flex gap-2 items-center">
-          <input
-            type="text"
-            value={presetName}
-            onChange={(e) => setPresetName(e.target.value)}
-            placeholder="Preset name"
-            aria-label="Preset name"
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-32 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            onClick={handleSavePreset}
-            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100"
-            aria-label="Save preset"
-          >
-            Save Preset
-          </button>
-          <select
-            value={selectedPreset}
-            onChange={(e) => setSelectedPreset(e.target.value)}
-            aria-label="Preset selection"
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-40 focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Load preset...</option>
-            {Object.keys(presets)
-              .sort()
-              .map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-          </select>
-          <button
-            onClick={handleLoadPreset}
-            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100 disabled:opacity-40"
-            disabled={!selectedPreset}
-            aria-label="Load selected preset"
-          >
-            Load
-          </button>
-          <button
-            onClick={handleDeletePreset}
-            className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-slate-100 disabled:opacity-40"
-            disabled={!selectedPreset}
-            aria-label="Delete selected preset"
-          >
-            Delete
-          </button>
-          <button
-            onClick={() => void handleReset()}
-            className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition"
-            aria-label="Reset configuration to defaults"
-          >
-            <RotateCcw size={14} /> Reset
-          </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={isSaving || validationErrors.length > 0}
-            className="flex items-center gap-2 px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition shadow-sm disabled:opacity-50"
-            aria-label="Save settings"
-          >
-            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Changes
-          </button>
+          {settingsSection === 'mpc' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="Preset name"
+                aria-label="Preset name"
+                className="w-32 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+              />
+              <button
+                onClick={handleSavePreset}
+                className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 hover:bg-slate-600"
+                aria-label="Save preset"
+              >
+                Save Preset
+              </button>
+              <select
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+                aria-label="Preset selection"
+                className="w-40 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">Load preset...</option>
+                {Object.keys(presets)
+                  .sort()
+                  .map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+              </select>
+              <button
+                onClick={handleLoadPreset}
+                className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 disabled:opacity-40 hover:bg-slate-600"
+                disabled={!selectedPreset}
+                aria-label="Load selected preset"
+              >
+                Load
+              </button>
+              <button
+                onClick={handleDeletePreset}
+                className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 disabled:opacity-40 hover:bg-slate-600"
+                disabled={!selectedPreset}
+                aria-label="Delete selected preset"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => void handleReset()}
+                className="flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-700"
+                aria-label="Reset configuration to defaults"
+              >
+                <RotateCcw size={14} /> Reset
+              </button>
+              <button
+                onClick={() => void handleSave()}
+                disabled={isSaving || validationErrors.length > 0}
+                className="flex items-center gap-2 rounded bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-50"
+                aria-label="Save settings"
+              >
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Changes
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="w-full space-y-8">
           {error && (
-            <div className="p-3 bg-red-900/20 border border-red-800 rounded text-red-200 text-sm flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded border border-red-800 bg-red-900/20 p-3 text-sm text-red-200">
               <AlertCircle size={16} /> {error}
             </div>
           )}
           {successMsg && (
-            <div className="p-3 bg-green-900/20 border border-green-800 rounded text-green-200 text-sm flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded border border-green-800 bg-green-900/20 p-3 text-sm text-green-200">
               <Check size={16} /> {successMsg}
             </div>
           )}
-          {removedMpcFieldsWarning.length > 0 && (
-            <div className="p-3 bg-amber-900/20 border border-amber-700 rounded text-amber-200 text-sm">
+          {settingsSection === 'mpc' && removedMpcFieldsWarning.length > 0 && (
+            <div className="rounded border border-amber-700 bg-amber-900/20 p-3 text-sm text-amber-200">
               <p className="font-semibold">Deprecated MPC fields were dropped by backend:</p>
-              <p className="text-xs mt-1">{removedMpcFieldsWarning.join(', ')}</p>
+              <p className="mt-1 text-xs">{removedMpcFieldsWarning.join(', ')}</p>
             </div>
           )}
-          {validationErrors.length > 0 && (
-            <div className="p-3 bg-amber-900/20 border border-amber-700 rounded text-amber-200 text-sm">
-              <p className="font-semibold mb-1">Validation issues ({validationErrors.length}):</p>
-              <ul className="list-disc ml-5 space-y-0.5">
+          {settingsSection === 'mpc' && validationErrors.length > 0 && (
+            <div className="rounded border border-amber-700 bg-amber-900/20 p-3 text-sm text-amber-200">
+              <p className="mb-1 font-semibold">Validation issues ({validationErrors.length}):</p>
+              <ul className="ml-5 list-disc space-y-0.5">
                 {validationErrors.map((msg) => (
                   <li key={msg}>{msg}</li>
                 ))}
               </ul>
             </div>
           )}
-
-          <section className="grid gap-3 lg:grid-cols-3">
-            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-cyan-400 font-semibold">
-                Shared Baseline
-              </div>
-              <p className="mt-2 text-sm text-slate-200">
-                Basic and Advanced sections define the common MPC configuration used across the
-                toolchain.
-              </p>
-            </div>
-            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-amber-400 font-semibold">
-                Profile Overrides
-              </div>
-              <p className="mt-2 text-sm text-slate-200">
-                Expert controls expose per-profile deltas, solver-specific switches, and fairness
-                mode behavior.
-              </p>
-            </div>
-            <div className="rounded border border-slate-800 bg-slate-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-emerald-400 font-semibold">
-                Workspace Tools
-              </div>
-              <p className="mt-2 text-sm text-slate-200">
-                Presets, packaging, import/export, and readiness checks live here so tuning stays
-                separate from run playback and data review.
-              </p>
-            </div>
-          </section>
-
-          <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm uppercase tracking-wider text-cyan-400 font-bold">
-                  System Readiness
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Verifies this machine can run from web interface without rebuild.
-                </p>
-              </div>
-              <button
-                onClick={() => void fetchSystemStatus()}
-                className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200"
-                aria-label="Refresh system status"
-                disabled={statusLoading}
-              >
-                {statusLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
-            </div>
-
-            {systemStatus ? (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  {systemStatus.ready_for_runner ? (
-                    <Check size={14} className="text-emerald-400" />
-                  ) : (
-                    <AlertCircle size={14} className="text-amber-400" />
-                  )}
-                  <span className={systemStatus.ready_for_runner ? 'text-emerald-300' : 'text-amber-300'}>
-                    {systemStatus.ready_for_runner ? 'Runner ready' : 'Runner not ready'}
+          {settingsSection === 'mpc' ? (
+            <>
+              <section>
+                <button
+                  onClick={() => setShowBasic((v) => !v)}
+                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
+                >
+                  <span className="text-sm font-bold uppercase tracking-wider text-blue-400">
+                    Basic Settings
                   </span>
-                  <span className="text-slate-500">|</span>
-                  <span className={systemStatus.runner_active ? 'text-indigo-300' : 'text-slate-400'}>
-                    {systemStatus.runner_active ? 'Runner active' : 'Runner idle'}
-                  </span>
-                </div>
+                  {showBasic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <p className="text-slate-400 mb-2 uppercase tracking-wide">Path Checks</p>
-                    {Object.entries(systemStatus.checks).map(([name, ok]) => (
-                      <div key={name} className="flex items-center justify-between py-0.5">
-                        <span className="text-slate-300 font-mono">{name}</span>
-                        <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
-                          {ok ? 'ok' : 'missing'}
-                        </span>
+                {showBasic && (
+                  <div className="mt-4 space-y-8">
+                    <section>
+                      <h3 className="mb-4 border-b border-emerald-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-emerald-400">
+                        Parameter Source Policy
+                      </h3>
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <ToggleField
+                          label="Use Shared Parameters For All Profiles"
+                          checked={sharedParametersEnabled}
+                          onChange={(checked) => updateConfig('shared.parameters', checked)}
+                        />
+                        <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                          <p className="text-xs text-slate-300">
+                            {sharedParametersEnabled
+                              ? 'Fair-comparison mode is active. All six controllers use the shared baseline in app_config.mpc.'
+                              : 'Per-profile tuning mode is active. Only the selected controller profile can apply delta overrides and an external profile parameter file.'}
+                          </p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <p className="text-slate-400 mb-2 uppercase tracking-wide">Dependencies</p>
-                    {Object.entries(systemStatus.dependencies).map(([name, ok]) => (
-                      <div key={name} className="flex items-center justify-between py-0.5">
-                        <span className="text-slate-300 font-mono">{name}</span>
-                        <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
-                          {ok ? 'ok' : 'missing'}
-                        </span>
+                      <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {CONTROLLER_PROFILE_IDS.map((profileId) => (
+                          <ConfigField
+                            key={profileId}
+                            label={`${CONTROLLER_PROFILE_LABELS[profileId]} File`}
+                            value={config?.shared.profile_parameter_files[profileId] ?? ''}
+                            onChange={(v) =>
+                              updateConfig(`shared.profile_parameter_files.${profileId}`, v)
+                            }
+                            desc={
+                              profileId === activeControllerProfile
+                                ? 'Applied only when shared mode is off and this profile is selected.'
+                                : 'Stored for this profile; inactive unless that profile is selected.'
+                            }
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </section>
 
-                {(systemStatus.missing_checks.length > 0 || systemStatus.missing_dependencies.length > 0) && (
-                  <div className="rounded border border-amber-800/60 bg-amber-900/20 p-3 text-xs">
-                    {systemStatus.missing_checks.length > 0 && (
-                      <p className="text-amber-200">
-                        Missing checks: <span className="font-mono">{systemStatus.missing_checks.join(', ')}</span>
-                      </p>
-                    )}
-                    {systemStatus.missing_dependencies.length > 0 && (
-                      <p className="text-amber-200 mt-1">
-                        Missing dependencies:{' '}
-                        <span className="font-mono">{systemStatus.missing_dependencies.join(', ')}</span>
-                      </p>
-                    )}
+                    <section>
+                      <h3 className="mb-4 border-b border-slate-800 pb-1 text-sm font-bold uppercase tracking-wider text-slate-500">
+                        Basic - Timing and Horizons
+                      </h3>
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <ConfigField
+                          label="Simulation Duration (s)"
+                          value={config?.simulation.max_duration}
+                          onChange={(v) => updateConfig('simulation.max_duration', v)}
+                          isNumber
+                          step={1}
+                          desc="0 = no hard duration limit"
+                        />
+                        <ConfigField
+                          label="Control Step dt (s)"
+                          value={config?.mpc.dt}
+                          onChange={(v) => updateConfig('mpc.dt', v)}
+                          isNumber
+                          step={0.001}
+                        />
+                        <ConfigField
+                          label="Prediction Horizon"
+                          value={config?.mpc.prediction_horizon}
+                          onChange={(v) => updateConfig('mpc.prediction_horizon', v)}
+                          isNumber
+                          step={1}
+                        />
+                        <ConfigField
+                          label="Control Horizon"
+                          value={config?.mpc.control_horizon}
+                          onChange={(v) => updateConfig('mpc.control_horizon', v)}
+                          isNumber
+                          step={1}
+                        />
+                        <ConfigField
+                          label="Solver Time Limit (s)"
+                          value={config?.mpc.solver_time_limit}
+                          onChange={(v) => updateConfig('mpc.solver_time_limit', v)}
+                          isNumber
+                          step={0.001}
+                        />
+                        <SelectField
+                          label="Controller Profile"
+                          value={String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp')}
+                          onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
+                          options={CONTROLLER_PROFILE_IDS.map((profileId) => ({
+                            label: CONTROLLER_PROFILE_LABELS[profileId],
+                            value: profileId,
+                          }))}
+                          desc="In per-profile mode, this decides which profile delta file and override block are active."
+                        />
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="mb-4 border-b border-blue-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-blue-400">
+                        Selected Profile Overrides ({CONTROLLER_PROFILE_LABELS[activeControllerProfile]})
+                      </h3>
+                      {sharedParametersEnabled && (
+                        <div className="mb-4 rounded border border-amber-900/40 bg-amber-950/40 p-3 text-xs text-amber-200">
+                          Per-profile overrides are preserved for later tuning, but inactive while shared fair-comparison mode is enabled.
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <ConfigField
+                          label="Override Prediction Horizon"
+                          value={selectedBaseOverrides.prediction_horizon ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('prediction_horizon', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Control Horizon"
+                          value={selectedBaseOverrides.control_horizon ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('control_horizon', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Solver Time Limit (s)"
+                          value={selectedBaseOverrides.solver_time_limit ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('solver_time_limit', v)}
+                          isNumber
+                          step={0.001}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Q_contour"
+                          value={selectedBaseOverrides.Q_contour ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('Q_contour', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Q_progress"
+                          value={selectedBaseOverrides.Q_progress ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('Q_progress', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Q_attitude"
+                          value={selectedBaseOverrides.Q_attitude ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('Q_attitude', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Q_smooth"
+                          value={selectedBaseOverrides.Q_smooth ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('Q_smooth', v)}
+                          isNumber
+                          step={1}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="Override Path Speed"
+                          value={selectedBaseOverrides.path_speed ?? ''}
+                          onChange={(v) => updateSelectedProfileBaseOverride('path_speed', v)}
+                          isNumber
+                          step={0.001}
+                          desc="Blank = inherit shared baseline"
+                          disabled={sharedParametersEnabled}
+                        />
+                      </div>
+                      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {activeControllerProfile === 'cpp_hybrid_rti_osqp' && (
+                          <ToggleField
+                            label="allow_stale_stage_reuse"
+                            checked={Boolean(selectedProfileSpecific.allow_stale_stage_reuse ?? true)}
+                            onChange={(checked) =>
+                              updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
+                            }
+                            disabled={sharedParametersEnabled}
+                          />
+                        )}
+                        {activeControllerProfile === 'cpp_nonlinear_rti_osqp' && (
+                          <>
+                            <ConfigField
+                              label="sqp_max_iter"
+                              value={selectedProfileSpecific.sqp_max_iter ?? 2}
+                              onChange={(v) => updateSelectedProfileSpecific('sqp_max_iter', v)}
+                              isNumber
+                              step={1}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="sqp_tol"
+                              value={selectedProfileSpecific.sqp_tol ?? 0.0001}
+                              onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
+                              isNumber
+                              step={0.0001}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ToggleField
+                              label="strict_integrity"
+                              checked={Boolean(selectedProfileSpecific.strict_integrity ?? true)}
+                              onChange={(checked) =>
+                                updateSelectedProfileSpecific('strict_integrity', checked)
+                              }
+                              disabled={sharedParametersEnabled}
+                            />
+                          </>
+                        )}
+                        {activeControllerProfile === 'cpp_linearized_rti_osqp' && (
+                          <ConfigField
+                            label="freeze_refresh_interval_steps"
+                            value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
+                            onChange={(v) =>
+                              updateSelectedProfileSpecific('freeze_refresh_interval_steps', v)
+                            }
+                            isNumber
+                            step={1}
+                            disabled={sharedParametersEnabled}
+                          />
+                        )}
+                        {activeControllerProfile === 'cpp_nonlinear_fullnlp_ipopt' && (
+                          <ConfigField
+                            label="ipopt_max_iter"
+                            value={selectedProfileSpecific.ipopt_max_iter ?? 3000}
+                            onChange={(v) => updateSelectedProfileSpecific('ipopt_max_iter', v)}
+                            isNumber
+                            step={1}
+                            disabled={sharedParametersEnabled}
+                          />
+                        )}
+                        {activeControllerProfile === 'cpp_nonlinear_rti_hpipm' && (
+                          <>
+                            <ConfigField
+                              label="acados_max_iter"
+                              value={selectedProfileSpecific.acados_max_iter ?? 1}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                              isNumber
+                              step={1}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_stat"
+                              value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_eq"
+                              value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_ineq"
+                              value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                          </>
+                        )}
+                        {activeControllerProfile === 'cpp_nonlinear_sqp_hpipm' && (
+                          <>
+                            <ConfigField
+                              label="acados_max_iter"
+                              value={selectedProfileSpecific.acados_max_iter ?? 50}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                              isNumber
+                              step={1}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_stat"
+                              value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_eq"
+                              value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                            <ConfigField
+                              label="acados_tol_ineq"
+                              value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                              isNumber
+                              step={0.001}
+                              disabled={sharedParametersEnabled}
+                            />
+                          </>
+                        )}
+                      </div>
+                      <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
+                        <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">
+                          Override Diff Preview
+                        </p>
+                        {selectedOverrideDiff.length === 0 &&
+                        Object.keys(selectedProfileSpecific).length === 0 ? (
+                          <p className="text-xs text-slate-500">
+                            No profile-specific deltas. This profile inherits shared baseline.
+                          </p>
+                        ) : (
+                          <div className="space-y-1 font-mono text-xs text-emerald-300">
+                            {selectedOverrideDiff.map(([key, value]) => (
+                              <p key={key}>
+                                {key}: {String(value)}
+                              </p>
+                            ))}
+                            {Object.entries(selectedProfileSpecific)
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([key, value]) => (
+                                <p key={key}>profile_specific.{key}: {String(value)}</p>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="mb-4 border-b border-blue-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-blue-400">
+                        Basic - Tracking Weights
+                      </h3>
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <ConfigField
+                          label="Contour Error (Q_contour)"
+                          value={config?.mpc.Q_contour}
+                          onChange={(v) => updateConfig('mpc.Q_contour', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="Progress (Q_progress)"
+                          value={config?.mpc.Q_progress}
+                          onChange={(v) => updateConfig('mpc.Q_progress', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="Attitude (Q_attitude)"
+                          value={config?.mpc.Q_attitude}
+                          onChange={(v) => updateConfig('mpc.Q_attitude', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="Smoothness (Q_smooth)"
+                          value={config?.mpc.Q_smooth}
+                          onChange={(v) => updateConfig('mpc.Q_smooth', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="Angular Velocity (q_angular_velocity)"
+                          value={config?.mpc.q_angular_velocity}
+                          onChange={(v) => updateConfig('mpc.q_angular_velocity', v)}
+                          isNumber
+                        />
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="mb-4 border-b border-slate-800 pb-1 text-sm font-bold uppercase tracking-wider text-slate-500">
+                        Basic - Actuation and Path
+                      </h3>
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <ConfigField
+                          label="Thrust Cost (r_thrust)"
+                          value={config?.mpc.r_thrust}
+                          onChange={(v) => updateConfig('mpc.r_thrust', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="RW Torque Cost (r_rw_torque)"
+                          value={config?.mpc.r_rw_torque}
+                          onChange={(v) => updateConfig('mpc.r_rw_torque', v)}
+                          isNumber
+                        />
+                        <ConfigField
+                          label="Path Speed (m/s)"
+                          value={config?.mpc.path_speed}
+                          onChange={(v) => updateConfig('mpc.path_speed', v)}
+                          isNumber
+                          step={0.001}
+                        />
+                      </div>
+                    </section>
                   </div>
                 )}
+              </section>
 
-                {systemStatus.python && (
-                  <p className="text-[11px] text-slate-500 font-mono">
-                    python={systemStatus.python.version ?? 'n/a'} pid={String(systemStatus.python.pid ?? 'n/a')}
-                  </p>
-                )}
-
-                <div className="pt-2 border-t border-slate-800">
-                  <p className="text-xs uppercase tracking-wide text-slate-400 mb-2">Runner Controls</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={quickMissionName}
-                      onChange={(e) => setQuickMissionName(e.target.value)}
-                      placeholder="Mission name (optional)"
-                      aria-label="Mission name for quick start"
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-48 focus:outline-none focus:border-blue-500"
-                    />
-                    <button
-                      onClick={() => void handleQuickRunnerStart()}
-                      className="px-2.5 py-1.5 rounded bg-indigo-700 hover:bg-indigo-600 text-xs text-white"
-                    >
-                      Start Runner
-                    </button>
-                    <button
-                      onClick={() => void handleQuickRunnerStop()}
-                      className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white"
-                    >
-                      Stop Runner
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 text-xs text-slate-500">No status loaded yet.</div>
-            )}
-          </section>
-
-          <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm uppercase tracking-wider text-emerald-400 font-bold">
-                  Build & Package
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Runs <span className="font-mono">make package-app</span> from the backend.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
+              <section>
                 <button
-                  onClick={() => void fetchPackageStatus()}
-                  className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200"
-                  disabled={packageLoading}
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
                 >
-                  {packageLoading ? 'Refreshing...' : 'Refresh'}
-                </button>
-                <button
-                  onClick={() => void handleStartPackaging()}
-                  className="px-2.5 py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-xs text-white disabled:opacity-50"
-                  disabled={packageStarting || Boolean(packageStatus?.running)}
-                >
-                  {packageStarting ? 'Starting...' : 'Start Packaging'}
-                </button>
-                <a
-                  href={`${RUNNER_API_URL}/package_app/download_latest`}
-                  className="px-2.5 py-1.5 rounded bg-cyan-700 hover:bg-cyan-600 text-xs text-white"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Download Latest Archive
-                </a>
-                <button
-                  onClick={() => {
-                    const url = `${RUNNER_API_URL}/workspace/export?include_simulation_data=${includeSimulationDataExport ? 'true' : 'false'}`;
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                  }}
-                  className="px-2.5 py-1.5 rounded bg-blue-700 hover:bg-blue-600 text-xs text-white"
-                >
-                  Export Workspace
-                </button>
-              </div>
-            </div>
-
-            {packageStatus ? (
-              <div className="mt-3 space-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Status:</span>
-                  <span
-                    className={
-                      packageStatus.status === 'completed'
-                        ? 'text-emerald-300'
-                        : packageStatus.status === 'failed'
-                          ? 'text-red-300'
-                          : packageStatus.status === 'running'
-                            ? 'text-cyan-300'
-                            : 'text-slate-300'
-                    }
-                  >
-                    {packageStatus.status}
+                  <span className="text-sm font-bold uppercase tracking-wider text-cyan-400">
+                    Advanced Settings
                   </span>
-                  {typeof packageStatus.return_code === 'number' && (
-                    <span className="text-slate-500 font-mono">rc={packageStatus.return_code}</span>
-                  )}
-                </div>
-                {packageStatus.archive_path && (
-                  <p className="text-slate-300">
-                    Archive: <span className="font-mono text-emerald-300">{packageStatus.archive_path}</span>
-                  </p>
-                )}
-                {packageStatus.error && (
-                  <p className="text-red-300">Error: {packageStatus.error}</p>
-                )}
-                <div className="rounded border border-slate-800 bg-slate-950/70 p-2 max-h-40 overflow-y-auto font-mono text-[11px] text-slate-300 whitespace-pre-wrap">
-                  {(packageStatus.log_lines && packageStatus.log_lines.length > 0)
-                    ? packageStatus.log_lines.slice(-40).join('\n')
-                    : 'No packaging logs yet.'}
-                </div>
+                  {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
 
-                <div className="pt-2 border-t border-slate-800">
-                  <label className="flex items-center gap-2 text-[11px] text-slate-300 mb-2">
-                    <input
-                      type="checkbox"
-                      checked={includeSimulationDataExport}
-                      onChange={(e) => setIncludeSimulationDataExport(e.target.checked)}
+                {showAdvanced && (
+                  <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <ConfigField
+                      label="Lag Error (Q_lag)"
+                      value={config?.mpc.Q_lag}
+                      onChange={(v) => updateConfig('mpc.Q_lag', v)}
+                      isNumber
                     />
-                    Include simulation run data in export (can be large)
-                  </label>
-                  <p className="text-slate-400 uppercase tracking-wide mb-2">Import Workspace</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".zip,application/zip"
-                      onChange={(e) => {
-                        setWorkspaceImportFile(e.target.files?.[0] ?? null);
-                        setWorkspaceInspection(null);
-                        setMissionConflictFilter('');
-                        setPresetConflictFilter('');
-                        setSimulationRunConflictFilter('');
-                        setOverwriteMissionNames([]);
-                        setOverwritePresetNames([]);
-                        setOverwriteSimulationRunNames([]);
-                      }}
-                      className="text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-white hover:file:bg-slate-600"
+                    <ConfigField
+                      label="Lag Default (Q_lag_default)"
+                      value={config?.mpc.Q_lag_default}
+                      onChange={(v) => updateConfig('mpc.Q_lag_default', v)}
+                      isNumber
+                      desc="-1 = auto fallback"
                     />
-                    <button
-                      onClick={() => void handleInspectWorkspace()}
-                      className="px-2.5 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-xs text-white disabled:opacity-50"
-                      disabled={workspaceInspecting || !workspaceImportFile}
-                    >
-                      {workspaceInspecting ? 'Inspecting...' : 'Inspect Workspace'}
-                    </button>
-                    <button
-                      onClick={() => void handleImportWorkspace()}
-                      className="px-2.5 py-1.5 rounded bg-violet-700 hover:bg-violet-600 text-xs text-white disabled:opacity-50"
-                      disabled={workspaceImporting || !workspaceImportFile}
-                    >
-                      {workspaceImporting ? 'Importing...' : 'Import Workspace'}
-                    </button>
-                  </div>
-                  {workspaceImportFile && (
-                    <p className="text-[11px] text-slate-500 mt-1">Selected: {workspaceImportFile.name}</p>
-                  )}
-                  <div className="w-full grid grid-cols-1 md:grid-cols-4 gap-2 mt-2">
-                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={replaceExistingMissions}
-                        onChange={(e) => setReplaceExistingMissions(e.target.checked)}
-                      />
-                      Replace existing missions
-                    </label>
-                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={replaceExistingPresets}
-                        onChange={(e) => setReplaceExistingPresets(e.target.checked)}
-                      />
-                      Replace existing presets
-                    </label>
-                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={replaceExistingSimulationRuns}
-                        onChange={(e) => setReplaceExistingSimulationRuns(e.target.checked)}
-                      />
-                      Replace existing simulation runs
-                    </label>
-                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={applyRunnerConfigOnImport}
-                        onChange={(e) => setApplyRunnerConfigOnImport(e.target.checked)}
-                      />
-                      Apply runner config overrides
-                    </label>
-                  </div>
-                  {workspaceInspection && (
-                    <div className="w-full rounded border border-slate-800 bg-slate-950/70 p-2 mt-2 text-[11px]">
-                      <p className="text-slate-300">
-                        Bundle: missions={workspaceInspection.counts.missions_total}, presets={workspaceInspection.counts.presets_total}, runs={workspaceInspection.counts.simulation_runs_total}, config={workspaceInspection.bundle.has_runner_overrides ? 'yes' : 'no'}
-                      </p>
-                      <p className="text-amber-300 mt-1">
-                        Conflicts: missions={workspaceInspection.counts.mission_conflicts}, presets={workspaceInspection.counts.preset_conflicts}, runs={workspaceInspection.counts.simulation_run_conflicts}
-                      </p>
-                      {workspaceInspection.conflicts.missions.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-slate-400">
-                            Mission conflicts ({workspaceInspection.conflicts.missions.length})
-                          </p>
-                          <input
-                            type="text"
-                            value={missionConflictFilter}
-                            onChange={(e) => setMissionConflictFilter(e.target.value)}
-                            placeholder="Filter mission conflicts..."
-                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
-                          />
-                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
-                            {filteredMissionConflicts.length > 0 ? (
-                              filteredMissionConflicts.map((name) => (
-                                <label key={name} className="flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={overwriteMissionNames.includes(name)}
-                                    onChange={() =>
-                                      toggleNameSelection(
-                                        name,
-                                        overwriteMissionNames,
-                                        setOverwriteMissionNames
-                                      )
-                                    }
-                                  />
-                                  <span>{name}</span>
-                                </label>
-                              ))
-                            ) : (
-                              <span>No matches for current filter.</span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-1">
-                            Selected mission overwrites: {overwriteMissionNames.length}
-                          </p>
-                        </div>
-                      )}
-                      {workspaceInspection.conflicts.presets.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-slate-400">
-                            Preset conflicts ({workspaceInspection.conflicts.presets.length})
-                          </p>
-                          <input
-                            type="text"
-                            value={presetConflictFilter}
-                            onChange={(e) => setPresetConflictFilter(e.target.value)}
-                            placeholder="Filter preset conflicts..."
-                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
-                          />
-                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
-                            {filteredPresetConflicts.length > 0 ? (
-                              filteredPresetConflicts.map((name) => (
-                                <label key={name} className="flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={overwritePresetNames.includes(name)}
-                                    onChange={() =>
-                                      toggleNameSelection(
-                                        name,
-                                        overwritePresetNames,
-                                        setOverwritePresetNames
-                                      )
-                                    }
-                                  />
-                                  <span>{name}</span>
-                                </label>
-                              ))
-                            ) : (
-                              <span>No matches for current filter.</span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-1">
-                            Selected preset overwrites: {overwritePresetNames.length}
-                          </p>
-                        </div>
-                      )}
-                      {workspaceInspection.conflicts.simulation_runs.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-slate-400">
-                            Simulation run conflicts ({workspaceInspection.conflicts.simulation_runs.length})
-                          </p>
-                          <input
-                            type="text"
-                            value={simulationRunConflictFilter}
-                            onChange={(e) => setSimulationRunConflictFilter(e.target.value)}
-                            placeholder="Filter simulation run conflicts..."
-                            className="mt-1 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500"
-                          />
-                          <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
-                            {filteredSimulationRunConflicts.length > 0 ? (
-                              filteredSimulationRunConflicts.map((name) => (
-                                <label key={name} className="flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={overwriteSimulationRunNames.includes(name)}
-                                    onChange={() =>
-                                      toggleNameSelection(
-                                        name,
-                                        overwriteSimulationRunNames,
-                                        setOverwriteSimulationRunNames
-                                      )
-                                    }
-                                  />
-                                  <span>{name}</span>
-                                </label>
-                              ))
-                            ) : (
-                              <span>No matches for current filter.</span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-1">
-                            Selected simulation run overwrites: {overwriteSimulationRunNames.length}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 text-xs text-slate-500">No package status loaded yet.</div>
-            )}
-          </section>
-
-          <section>
-            <button
-              onClick={() => setShowBasic((v) => !v)}
-              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
-            >
-              <span className="text-sm uppercase tracking-wider text-blue-400 font-bold">
-                Basic Settings
-              </span>
-              {showBasic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-
-            {showBasic && (
-              <div className="mt-4 space-y-8">
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-emerald-400 font-bold mb-4 border-b border-emerald-900/30 pb-1">
-                    Parameter Source Policy
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <ConfigField
+                      label="Velocity Align (Q_velocity_align)"
+                      value={config?.mpc.Q_velocity_align}
+                      onChange={(v) => updateConfig('mpc.Q_velocity_align', v)}
+                      isNumber
+                      desc="0 = reuse Q_progress"
+                    />
+                    <ConfigField
+                      label="S Anchor (Q_s_anchor)"
+                      value={config?.mpc.Q_s_anchor}
+                      onChange={(v) => updateConfig('mpc.Q_s_anchor', v)}
+                      isNumber
+                      desc="-1 = auto fallback"
+                    />
+                    <ConfigField
+                      label="Axis Align (Q_axis_align)"
+                      value={config?.mpc.Q_axis_align}
+                      onChange={(v) => updateConfig('mpc.Q_axis_align', v)}
+                      isNumber
+                      desc="extra attitude alignment weight"
+                    />
+                    <ConfigField
+                      label="Path Speed Min (m/s)"
+                      value={config?.mpc.path_speed_min}
+                      onChange={(v) => updateConfig('mpc.path_speed_min', v)}
+                      isNumber
+                      step={0.001}
+                    />
+                    <ConfigField
+                      label="Path Speed Max (m/s)"
+                      value={config?.mpc.path_speed_max}
+                      onChange={(v) => updateConfig('mpc.path_speed_max', v)}
+                      isNumber
+                      step={0.001}
+                    />
+                    <ConfigField
+                      label="Terminal Position (Q_terminal_pos)"
+                      value={config?.mpc.Q_terminal_pos}
+                      onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)}
+                      isNumber
+                      desc="0 = auto"
+                    />
+                    <ConfigField
+                      label="Terminal Progress (Q_terminal_s)"
+                      value={config?.mpc.Q_terminal_s}
+                      onChange={(v) => updateConfig('mpc.Q_terminal_s', v)}
+                      isNumber
+                      desc="0 = auto"
+                    />
+                    <ConfigField
+                      label="Progress Reward"
+                      value={config?.mpc.progress_reward}
+                      onChange={(v) => updateConfig('mpc.progress_reward', v)}
+                      isNumber
+                    />
+                    <ConfigField
+                      label="Max Linear Velocity (m/s)"
+                      value={config?.mpc.max_linear_velocity}
+                      onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
+                      isNumber
+                      desc="0 = auto bound"
+                    />
+                    <ConfigField
+                      label="Max Angular Velocity (rad/s)"
+                      value={config?.mpc.max_angular_velocity}
+                      onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
+                      isNumber
+                      desc="0 = auto bound"
+                    />
+                    <ConfigField
+                      label="Obstacle Margin (m)"
+                      value={config?.mpc.obstacle_margin}
+                      onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
+                      isNumber
+                      step={0.01}
+                    />
                     <ToggleField
-                      label="Use Shared Parameters For All Profiles"
-                      checked={sharedParametersEnabled}
-                      onChange={(checked) => updateConfig('shared.parameters', checked)}
+                      label="Enable Auto State Bounds"
+                      checked={Boolean(config?.mpc.enable_auto_state_bounds)}
+                      onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
                     />
-                    <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                      <p className="text-xs text-slate-300">
-                        {sharedParametersEnabled
-                          ? 'Fair-comparison mode is active. All six controllers use the shared baseline in app_config.mpc.'
-                          : 'Per-profile tuning mode is active. Only the selected controller profile can apply delta overrides and an external profile parameter file.'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {CONTROLLER_PROFILE_IDS.map((profileId) => (
-                      <ConfigField
-                        key={profileId}
-                        label={`${CONTROLLER_PROFILE_LABELS[profileId]} File`}
-                        value={config?.shared.profile_parameter_files[profileId] ?? ''}
-                        onChange={(v) =>
-                          updateConfig(`shared.profile_parameter_files.${profileId}`, v)
-                        }
-                        desc={
-                          profileId === activeControllerProfile
-                            ? 'Applied only when shared mode is off and this profile is selected.'
-                            : 'Stored for this profile; inactive unless that profile is selected.'
-                        }
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                    Basic - Timing and Horizons
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <ConfigField
-                      label="Simulation Duration (s)"
-                      value={config?.simulation.max_duration}
-                      onChange={(v) => updateConfig('simulation.max_duration', v)}
-                      isNumber
-                      step={1}
-                      desc="0 = no hard duration limit"
-                    />
-                    <ConfigField
-                      label="Control Step dt (s)"
-                      value={config?.mpc.dt}
-                      onChange={(v) => updateConfig('mpc.dt', v)}
-                      isNumber
-                      step={0.001}
-                    />
-                    <ConfigField
-                      label="Prediction Horizon"
-                      value={config?.mpc.prediction_horizon}
-                      onChange={(v) => updateConfig('mpc.prediction_horizon', v)}
-                      isNumber
-                      step={1}
-                    />
-                    <ConfigField
-                      label="Control Horizon"
-                      value={config?.mpc.control_horizon}
-                      onChange={(v) => updateConfig('mpc.control_horizon', v)}
-                      isNumber
-                      step={1}
-                    />
-                    <ConfigField
-                      label="Solver Time Limit (s)"
-                      value={config?.mpc.solver_time_limit}
-                      onChange={(v) => updateConfig('mpc.solver_time_limit', v)}
-                      isNumber
-                      step={0.001}
+                    <ToggleField
+                      label="Enable Collision Avoidance"
+                      checked={Boolean(config?.mpc.enable_collision_avoidance)}
+                      onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
                     />
                     <SelectField
-                      label="Controller Profile"
-                      value={String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp')}
-                      onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
-                      options={CONTROLLER_PROFILE_IDS.map((profileId) => ({
-                        label: CONTROLLER_PROFILE_LABELS[profileId],
-                        value: profileId,
-                      }))}
-                      desc="In per-profile mode, this decides which profile delta file and override block are active."
+                      label="Thruster Type"
+                      value={String(config?.mpc.thruster_type ?? 'CON')}
+                      onChange={(v) => updateConfig('mpc.thruster_type', v)}
+                      options={[
+                        { label: 'Continuous (CON)', value: 'CON' },
+                        { label: 'PWM', value: 'PWM' },
+                      ]}
+                    />
+                    <SelectField
+                      label="Solver"
+                      value={String(config?.mpc.solver_type ?? 'OSQP')}
+                      onChange={(v) => updateConfig('mpc.solver_type', v)}
+                      options={[{ label: 'OSQP', value: 'OSQP' }]}
+                    />
+                    <ToggleField
+                      label="Enable Delta-U Coupling"
+                      checked={Boolean(config?.mpc.enable_delta_u_coupling)}
+                      onChange={(checked) => updateConfig('mpc.enable_delta_u_coupling', checked)}
+                    />
+                    <ToggleField
+                      label="Enable Gyro Jacobian"
+                      checked={Boolean(config?.mpc.enable_gyro_jacobian)}
+                      onChange={(checked) => updateConfig('mpc.enable_gyro_jacobian', checked)}
+                    />
+                    <ToggleField
+                      label="Verbose MPC Solver Logs"
+                      checked={Boolean(config?.mpc.verbose_mpc)}
+                      onChange={(checked) => updateConfig('mpc.verbose_mpc', checked)}
                     />
                   </div>
-                </section>
+                )}
+              </section>
 
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
-                    Selected Profile Overrides ({CONTROLLER_PROFILE_LABELS[activeControllerProfile]})
-                  </h3>
-                  {sharedParametersEnabled && (
-                    <div className="mb-4 rounded border border-amber-900/40 bg-amber-950/40 p-3 text-xs text-amber-200">
-                      Per-profile overrides are preserved for later tuning, but inactive while shared fair-comparison mode is enabled.
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <section>
+                <button
+                  onClick={() => setShowExpert((v) => !v)}
+                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
+                >
+                  <span className="text-sm font-bold uppercase tracking-wider text-orange-400">
+                    Expert Settings
+                  </span>
+                  {showExpert ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+
+                {showExpert && (
+                  <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     <ConfigField
-                      label="Override Prediction Horizon"
-                      value={selectedBaseOverrides.prediction_horizon ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('prediction_horizon', v)}
+                      label="Thruster L1 Weight"
+                      value={config?.mpc.thrust_l1_weight}
+                      onChange={(v) => updateConfig('mpc.thrust_l1_weight', v)}
                       isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
                     />
                     <ConfigField
-                      label="Override Control Horizon"
-                      value={selectedBaseOverrides.control_horizon ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('control_horizon', v)}
+                      label="Thruster Pair Weight"
+                      value={config?.mpc.thrust_pair_weight}
+                      onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)}
                       isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Solver Time Limit (s)"
-                      value={selectedBaseOverrides.solver_time_limit ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('solver_time_limit', v)}
-                      isNumber
-                      step={0.001}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Q_contour"
-                      value={selectedBaseOverrides.Q_contour ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('Q_contour', v)}
-                      isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Q_progress"
-                      value={selectedBaseOverrides.Q_progress ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('Q_progress', v)}
-                      isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Q_attitude"
-                      value={selectedBaseOverrides.Q_attitude ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('Q_attitude', v)}
-                      isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Q_smooth"
-                      value={selectedBaseOverrides.Q_smooth ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('Q_smooth', v)}
-                      isNumber
-                      step={1}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
-                    />
-                    <ConfigField
-                      label="Override Path Speed"
-                      value={selectedBaseOverrides.path_speed ?? ''}
-                      onChange={(v) => updateSelectedProfileBaseOverride('path_speed', v)}
-                      isNumber
-                      step={0.001}
-                      desc="Blank = inherit shared baseline"
-                      disabled={sharedParametersEnabled}
                     />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-5">
-                    {activeControllerProfile === 'cpp_hybrid_rti_osqp' && (
-                      <ToggleField
-                        label="allow_stale_stage_reuse"
-                        checked={Boolean(
-                          selectedProfileSpecific.allow_stale_stage_reuse ?? true
-                        )}
-                        onChange={(checked) =>
-                          updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
-                        }
-                        disabled={sharedParametersEnabled}
-                      />
-                    )}
-                    {activeControllerProfile === 'cpp_nonlinear_rti_osqp' && (
-                      <>
-                        <ConfigField
-                          label="sqp_max_iter"
-                          value={selectedProfileSpecific.sqp_max_iter ?? 2}
-                          onChange={(v) =>
-                            updateSelectedProfileSpecific('sqp_max_iter', v)
-                          }
-                          isNumber
-                          step={1}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="sqp_tol"
-                          value={selectedProfileSpecific.sqp_tol ?? 0.0001}
-                          onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
-                          isNumber
-                          step={0.0001}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ToggleField
-                          label="strict_integrity"
-                          checked={Boolean(selectedProfileSpecific.strict_integrity ?? true)}
-                          onChange={(checked) =>
-                            updateSelectedProfileSpecific('strict_integrity', checked)
-                          }
-                          disabled={sharedParametersEnabled}
-                        />
-                      </>
-                    )}
-                    {activeControllerProfile === 'cpp_linearized_rti_osqp' && (
-                      <ConfigField
-                        label="freeze_refresh_interval_steps"
-                        value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
-                        onChange={(v) =>
-                          updateSelectedProfileSpecific('freeze_refresh_interval_steps', v)
-                        }
-                        isNumber
-                        step={1}
-                        disabled={sharedParametersEnabled}
-                      />
-                    )}
-                    {activeControllerProfile === 'cpp_nonlinear_fullnlp_ipopt' && (
-                      <ConfigField
-                        label="ipopt_max_iter"
-                        value={selectedProfileSpecific.ipopt_max_iter ?? 3000}
-                        onChange={(v) => updateSelectedProfileSpecific('ipopt_max_iter', v)}
-                        isNumber
-                        step={1}
-                        disabled={sharedParametersEnabled}
-                      />
-                    )}
-                    {activeControllerProfile === 'cpp_nonlinear_rti_hpipm' && (
-                      <>
-                        <ConfigField
-                          label="acados_max_iter"
-                          value={selectedProfileSpecific.acados_max_iter ?? 1}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
-                          isNumber
-                          step={1}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_stat"
-                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_eq"
-                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_ineq"
-                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                      </>
-                    )}
-                    {activeControllerProfile === 'cpp_nonlinear_sqp_hpipm' && (
-                      <>
-                        <ConfigField
-                          label="acados_max_iter"
-                          value={selectedProfileSpecific.acados_max_iter ?? 50}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
-                          isNumber
-                          step={1}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_stat"
-                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_eq"
-                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="acados_tol_ineq"
-                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
-                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
-                          isNumber
-                          step={0.001}
-                          disabled={sharedParametersEnabled}
-                        />
-                      </>
-                    )}
-                  </div>
-                  <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">
-                      Override Diff Preview
-                    </p>
-                    {selectedOverrideDiff.length === 0 &&
-                    Object.keys(selectedProfileSpecific).length === 0 ? (
-                      <p className="text-xs text-slate-500">
-                        No profile-specific deltas. This profile inherits shared baseline.
-                      </p>
-                    ) : (
-                      <div className="text-xs font-mono text-emerald-300 space-y-1">
-                        {selectedOverrideDiff.map(([key, value]) => (
-                          <p key={key}>
-                            {key}: {String(value)}
-                          </p>
-                        ))}
-                        {Object.entries(selectedProfileSpecific)
-                          .sort(([a], [b]) => a.localeCompare(b))
-                          .map(([key, value]) => (
-                            <p key={key}>profile_specific.{key}: {String(value)}</p>
+                )}
+              </section>
+
+              <section>
+                <button
+                  onClick={() => setShowReference((v) => !v)}
+                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
+                >
+                  <span className="text-sm font-bold uppercase tracking-wider text-emerald-400">
+                    Settings Reference
+                  </span>
+                  {showReference ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+
+                {showReference && (
+                  <div className="mt-4 space-y-4">
+                    {SETTING_REFERENCE_SECTIONS.map((section) => (
+                      <div
+                        key={section.title}
+                        className="rounded border border-slate-800 bg-slate-900/70 p-4"
+                      >
+                        <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
+                          {section.title}
+                        </h4>
+                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                          {section.items.map((item) => (
+                            <div
+                              key={item.key}
+                              className="rounded border border-slate-800 bg-slate-950/60 p-3"
+                            >
+                              <div className="mb-1 flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-200">{item.label}</p>
+                                <span className="font-mono text-[10px] text-slate-500">
+                                  {item.key}
+                                </span>
+                              </div>
+                              <p className="mb-1 text-xs text-slate-300">{item.description}</p>
+                              <p className="text-[11px] text-emerald-300/90">{item.impact}</p>
+                            </div>
                           ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          ) : (
+            <>
+              <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm uppercase tracking-wider text-cyan-400 font-bold">
+                      System Readiness
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Verifies this machine can run from web interface without rebuild.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => void fetchSystemStatus()}
+                    className="rounded bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700"
+                    aria-label="Refresh system status"
+                    disabled={statusLoading}
+                  >
+                    {statusLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {systemStatus ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      {systemStatus.ready_for_runner ? (
+                        <Check size={14} className="text-emerald-400" />
+                      ) : (
+                        <AlertCircle size={14} className="text-amber-400" />
+                      )}
+                      <span
+                        className={
+                          systemStatus.ready_for_runner ? 'text-emerald-300' : 'text-amber-300'
+                        }
+                      >
+                        {systemStatus.ready_for_runner ? 'Runner ready' : 'Runner not ready'}
+                      </span>
+                      <span className="text-slate-500">|</span>
+                      <span
+                        className={systemStatus.runner_active ? 'text-indigo-300' : 'text-slate-400'}
+                      >
+                        {systemStatus.runner_active ? 'Runner active' : 'Runner idle'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-2">
+                      <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                        <p className="mb-2 uppercase tracking-wide text-slate-400">Path Checks</p>
+                        {Object.entries(systemStatus.checks).map(([name, ok]) => (
+                          <div key={name} className="flex items-center justify-between py-0.5">
+                            <span className="font-mono text-slate-300">{name}</span>
+                            <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
+                              {ok ? 'ok' : 'missing'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                        <p className="mb-2 uppercase tracking-wide text-slate-400">Dependencies</p>
+                        {Object.entries(systemStatus.dependencies).map(([name, ok]) => (
+                          <div key={name} className="flex items-center justify-between py-0.5">
+                            <span className="font-mono text-slate-300">{name}</span>
+                            <span className={ok ? 'text-emerald-300' : 'text-red-300'}>
+                              {ok ? 'ok' : 'missing'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {(systemStatus.missing_checks.length > 0 ||
+                      systemStatus.missing_dependencies.length > 0) && (
+                      <div className="rounded border border-amber-800/60 bg-amber-900/20 p-3 text-xs">
+                        {systemStatus.missing_checks.length > 0 && (
+                          <p className="text-amber-200">
+                            Missing checks:{' '}
+                            <span className="font-mono">
+                              {systemStatus.missing_checks.join(', ')}
+                            </span>
+                          </p>
+                        )}
+                        {systemStatus.missing_dependencies.length > 0 && (
+                          <p className="mt-1 text-amber-200">
+                            Missing dependencies:{' '}
+                            <span className="font-mono">
+                              {systemStatus.missing_dependencies.join(', ')}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     )}
-                  </div>
-                </section>
 
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-blue-400 font-bold mb-4 border-b border-blue-900/30 pb-1">
-                    Basic - Tracking Weights
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <ConfigField
-                      label="Contour Error (Q_contour)"
-                      value={config?.mpc.Q_contour}
-                      onChange={(v) => updateConfig('mpc.Q_contour', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Progress (Q_progress)"
-                      value={config?.mpc.Q_progress}
-                      onChange={(v) => updateConfig('mpc.Q_progress', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Attitude (Q_attitude)"
-                      value={config?.mpc.Q_attitude}
-                      onChange={(v) => updateConfig('mpc.Q_attitude', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Smoothness (Q_smooth)"
-                      value={config?.mpc.Q_smooth}
-                      onChange={(v) => updateConfig('mpc.Q_smooth', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Angular Velocity (q_angular_velocity)"
-                      value={config?.mpc.q_angular_velocity}
-                      onChange={(v) => updateConfig('mpc.q_angular_velocity', v)}
-                      isNumber
-                    />
-                  </div>
-                </section>
+                    {systemStatus.python && (
+                      <p className="font-mono text-[11px] text-slate-500">
+                        python={systemStatus.python.version ?? 'n/a'} pid=
+                        {String(systemStatus.python.pid ?? 'n/a')}
+                      </p>
+                    )}
 
-                <section>
-                  <h3 className="text-sm uppercase tracking-wider text-slate-500 font-bold mb-4 border-b border-slate-800 pb-1">
-                    Basic - Actuation and Path
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <ConfigField
-                      label="Thrust Cost (r_thrust)"
-                      value={config?.mpc.r_thrust}
-                      onChange={(v) => updateConfig('mpc.r_thrust', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="RW Torque Cost (r_rw_torque)"
-                      value={config?.mpc.r_rw_torque}
-                      onChange={(v) => updateConfig('mpc.r_rw_torque', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Path Speed (m/s)"
-                      value={config?.mpc.path_speed}
-                      onChange={(v) => updateConfig('mpc.path_speed', v)}
-                      isNumber
-                      step={0.001}
-                    />
-                  </div>
-                </section>
-
-              </div>
-            )}
-          </section>
-
-          <section>
-            <button
-              onClick={() => setShowAdvanced((v) => !v)}
-              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
-            >
-              <span className="text-sm uppercase tracking-wider text-cyan-400 font-bold">
-                Advanced Settings
-              </span>
-              {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <ConfigField
-                  label="Lag Error (Q_lag)"
-                  value={config?.mpc.Q_lag}
-                  onChange={(v) => updateConfig('mpc.Q_lag', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Lag Default (Q_lag_default)"
-                  value={config?.mpc.Q_lag_default}
-                  onChange={(v) => updateConfig('mpc.Q_lag_default', v)}
-                  isNumber
-                  desc="-1 = auto fallback"
-                />
-                <ConfigField
-                  label="Velocity Align (Q_velocity_align)"
-                  value={config?.mpc.Q_velocity_align}
-                  onChange={(v) => updateConfig('mpc.Q_velocity_align', v)}
-                  isNumber
-                  desc="0 = reuse Q_progress"
-                />
-                <ConfigField
-                  label="S Anchor (Q_s_anchor)"
-                  value={config?.mpc.Q_s_anchor}
-                  onChange={(v) => updateConfig('mpc.Q_s_anchor', v)}
-                  isNumber
-                  desc="-1 = auto fallback"
-                />
-                <ConfigField
-                  label="Axis Align (Q_axis_align)"
-                  value={config?.mpc.Q_axis_align}
-                  onChange={(v) => updateConfig('mpc.Q_axis_align', v)}
-                  isNumber
-                  desc="extra attitude alignment weight"
-                />
-                <ConfigField
-                  label="Path Speed Min (m/s)"
-                  value={config?.mpc.path_speed_min}
-                  onChange={(v) => updateConfig('mpc.path_speed_min', v)}
-                  isNumber
-                  step={0.001}
-                />
-                <ConfigField
-                  label="Path Speed Max (m/s)"
-                  value={config?.mpc.path_speed_max}
-                  onChange={(v) => updateConfig('mpc.path_speed_max', v)}
-                  isNumber
-                  step={0.001}
-                />
-                <ConfigField
-                  label="Terminal Position (Q_terminal_pos)"
-                  value={config?.mpc.Q_terminal_pos}
-                  onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)}
-                  isNumber
-                  desc="0 = auto"
-                />
-                <ConfigField
-                  label="Terminal Progress (Q_terminal_s)"
-                  value={config?.mpc.Q_terminal_s}
-                  onChange={(v) => updateConfig('mpc.Q_terminal_s', v)}
-                  isNumber
-                  desc="0 = auto"
-                />
-                <ConfigField
-                  label="Progress Reward"
-                  value={config?.mpc.progress_reward}
-                  onChange={(v) => updateConfig('mpc.progress_reward', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Max Linear Velocity (m/s)"
-                  value={config?.mpc.max_linear_velocity}
-                  onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
-                  isNumber
-                  desc="0 = auto bound"
-                />
-                <ConfigField
-                  label="Max Angular Velocity (rad/s)"
-                  value={config?.mpc.max_angular_velocity}
-                  onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
-                  isNumber
-                  desc="0 = auto bound"
-                />
-                <ConfigField
-                  label="Obstacle Margin (m)"
-                  value={config?.mpc.obstacle_margin}
-                  onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
-                  isNumber
-                  step={0.01}
-                />
-                <ToggleField
-                  label="Enable Auto State Bounds"
-                  checked={Boolean(config?.mpc.enable_auto_state_bounds)}
-                  onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
-                />
-                <ToggleField
-                  label="Enable Collision Avoidance"
-                  checked={Boolean(config?.mpc.enable_collision_avoidance)}
-                  onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
-                />
-                <SelectField
-                  label="Thruster Type"
-                  value={String(config?.mpc.thruster_type ?? 'CON')}
-                  onChange={(v) => updateConfig('mpc.thruster_type', v)}
-                  options={[
-                    { label: 'Continuous (CON)', value: 'CON' },
-                    { label: 'PWM', value: 'PWM' },
-                  ]}
-                />
-                <SelectField
-                  label="Solver"
-                  value={String(config?.mpc.solver_type ?? 'OSQP')}
-                  onChange={(v) => updateConfig('mpc.solver_type', v)}
-                  options={[{ label: 'OSQP', value: 'OSQP' }]}
-                />
-                <ToggleField
-                  label="Enable Delta-U Coupling"
-                  checked={Boolean(config?.mpc.enable_delta_u_coupling)}
-                  onChange={(checked) => updateConfig('mpc.enable_delta_u_coupling', checked)}
-                />
-                <ToggleField
-                  label="Enable Gyro Jacobian"
-                  checked={Boolean(config?.mpc.enable_gyro_jacobian)}
-                  onChange={(checked) => updateConfig('mpc.enable_gyro_jacobian', checked)}
-                />
-                <ToggleField
-                  label="Verbose MPC Solver Logs"
-                  checked={Boolean(config?.mpc.verbose_mpc)}
-                  onChange={(checked) => updateConfig('mpc.verbose_mpc', checked)}
-                />
-              </div>
-            )}
-          </section>
-
-          <section>
-            <button
-              onClick={() => setShowExpert((v) => !v)}
-              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
-            >
-              <span className="text-sm uppercase tracking-wider text-orange-400 font-bold">
-                Expert Settings
-              </span>
-              {showExpert ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-
-            {showExpert && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <ConfigField
-                  label="Thruster L1 Weight"
-                  value={config?.mpc.thrust_l1_weight}
-                  onChange={(v) => updateConfig('mpc.thrust_l1_weight', v)}
-                  isNumber
-                />
-                <ConfigField
-                  label="Thruster Pair Weight"
-                  value={config?.mpc.thrust_pair_weight}
-                  onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)}
-                  isNumber
-                />
-              </div>
-            )}
-          </section>
-
-          <section>
-            <button
-              onClick={() => setShowReference((v) => !v)}
-              className="w-full flex items-center justify-between p-3 rounded border border-slate-800 bg-slate-900 hover:bg-slate-800 transition-colors"
-            >
-              <span className="text-sm uppercase tracking-wider text-emerald-400 font-bold">
-                Settings Reference
-              </span>
-              {showReference ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-
-            {showReference && (
-              <div className="mt-4 space-y-4">
-                {SETTING_REFERENCE_SECTIONS.map((section) => (
-                  <div key={section.title} className="rounded border border-slate-800 bg-slate-900/70 p-4">
-                    <h4 className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-3">
-                      {section.title}
-                    </h4>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                      {section.items.map((item) => (
-                        <div key={item.key} className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <p className="text-sm font-semibold text-slate-200">{item.label}</p>
-                            <span className="text-[10px] text-slate-500 font-mono">{item.key}</span>
-                          </div>
-                          <p className="text-xs text-slate-300 mb-1">{item.description}</p>
-                          <p className="text-[11px] text-emerald-300/90">{item.impact}</p>
-                        </div>
-                      ))}
+                    <div className="border-t border-slate-800 pt-2">
+                      <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">
+                        Runner Controls
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={quickMissionName}
+                          onChange={(e) => setQuickMissionName(e.target.value)}
+                          placeholder="Mission name (optional)"
+                          aria-label="Mission name for quick start"
+                          className="w-48 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => void handleQuickRunnerStart()}
+                          className="rounded bg-indigo-700 px-2.5 py-1.5 text-xs text-white hover:bg-indigo-600"
+                        >
+                          Start Runner
+                        </button>
+                        <button
+                          onClick={() => void handleQuickRunnerStop()}
+                          className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-white hover:bg-slate-600"
+                        >
+                          Stop Runner
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
+                ) : (
+                  <div className="mt-3 text-xs text-slate-500">No status loaded yet.</div>
+                )}
+              </section>
+
+              <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm uppercase tracking-wider text-emerald-400 font-bold">
+                      Build & Package
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Runs <span className="font-mono">make package-app</span> from the backend.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void fetchPackageStatus()}
+                      className="rounded bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700"
+                      disabled={packageLoading}
+                    >
+                      {packageLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                    <button
+                      onClick={() => void handleStartPackaging()}
+                      className="rounded bg-emerald-700 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-600 disabled:opacity-50"
+                      disabled={packageStarting || Boolean(packageStatus?.running)}
+                    >
+                      {packageStarting ? 'Starting...' : 'Start Packaging'}
+                    </button>
+                    <a
+                      href={`${RUNNER_API_URL}/package_app/download_latest`}
+                      className="rounded bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-600"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Download Latest Archive
+                    </a>
+                    <button
+                      onClick={() => {
+                        const url = `${RUNNER_API_URL}/workspace/export?include_simulation_data=${
+                          includeSimulationDataExport ? 'true' : 'false'
+                        }`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="rounded bg-blue-700 px-2.5 py-1.5 text-xs text-white hover:bg-blue-600"
+                    >
+                      Export Workspace
+                    </button>
+                  </div>
+                </div>
+
+                {packageStatus ? (
+                  <div className="mt-3 space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">Status:</span>
+                      <span
+                        className={
+                          packageStatus.status === 'completed'
+                            ? 'text-emerald-300'
+                            : packageStatus.status === 'failed'
+                              ? 'text-red-300'
+                              : packageStatus.status === 'running'
+                                ? 'text-cyan-300'
+                                : 'text-slate-300'
+                        }
+                      >
+                        {packageStatus.status}
+                      </span>
+                      {typeof packageStatus.return_code === 'number' && (
+                        <span className="font-mono text-slate-500">rc={packageStatus.return_code}</span>
+                      )}
+                    </div>
+                    {packageStatus.archive_path && (
+                      <p className="text-slate-300">
+                        Archive:{' '}
+                        <span className="font-mono text-emerald-300">
+                          {packageStatus.archive_path}
+                        </span>
+                      </p>
+                    )}
+                    {packageStatus.error && (
+                      <p className="text-red-300">Error: {packageStatus.error}</p>
+                    )}
+                    <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-slate-950/70 p-2 font-mono text-[11px] text-slate-300">
+                      {packageStatus.log_lines && packageStatus.log_lines.length > 0
+                        ? packageStatus.log_lines.slice(-40).join('\n')
+                        : 'No packaging logs yet.'}
+                    </div>
+
+                    <div className="border-t border-slate-800 pt-2">
+                      <label className="mb-2 flex items-center gap-2 text-[11px] text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={includeSimulationDataExport}
+                          onChange={(e) => setIncludeSimulationDataExport(e.target.checked)}
+                        />
+                        Include simulation run data in export (can be large)
+                      </label>
+                      <p className="mb-2 uppercase tracking-wide text-slate-400">
+                        Import Workspace
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="file"
+                          accept=".zip,application/zip"
+                          onChange={(e) => {
+                            setWorkspaceImportFile(e.target.files?.[0] ?? null);
+                            setWorkspaceInspection(null);
+                            setMissionConflictFilter('');
+                            setPresetConflictFilter('');
+                            setSimulationRunConflictFilter('');
+                            setOverwriteMissionNames([]);
+                            setOverwritePresetNames([]);
+                            setOverwriteSimulationRunNames([]);
+                          }}
+                          className="text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:px-2 file:py-1 file:text-xs file:text-white hover:file:bg-slate-600"
+                        />
+                        <button
+                          onClick={() => void handleInspectWorkspace()}
+                          className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
+                          disabled={workspaceInspecting || !workspaceImportFile}
+                        >
+                          {workspaceInspecting ? 'Inspecting...' : 'Inspect Workspace'}
+                        </button>
+                        <button
+                          onClick={() => void handleImportWorkspace()}
+                          className="rounded bg-violet-700 px-2.5 py-1.5 text-xs text-white hover:bg-violet-600 disabled:opacity-50"
+                          disabled={workspaceImporting || !workspaceImportFile}
+                        >
+                          {workspaceImporting ? 'Importing...' : 'Import Workspace'}
+                        </button>
+                      </div>
+                      {workspaceImportFile && (
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Selected: {workspaceImportFile.name}
+                        </p>
+                      )}
+                      <div className="mt-2 grid w-full grid-cols-1 gap-2 md:grid-cols-4">
+                        <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={replaceExistingMissions}
+                            onChange={(e) => setReplaceExistingMissions(e.target.checked)}
+                          />
+                          Replace existing missions
+                        </label>
+                        <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={replaceExistingPresets}
+                            onChange={(e) => setReplaceExistingPresets(e.target.checked)}
+                          />
+                          Replace existing presets
+                        </label>
+                        <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={replaceExistingSimulationRuns}
+                            onChange={(e) => setReplaceExistingSimulationRuns(e.target.checked)}
+                          />
+                          Replace existing simulation runs
+                        </label>
+                        <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={applyRunnerConfigOnImport}
+                            onChange={(e) => setApplyRunnerConfigOnImport(e.target.checked)}
+                          />
+                          Apply runner config overrides
+                        </label>
+                      </div>
+                      {workspaceInspection && (
+                        <div className="mt-2 w-full rounded border border-slate-800 bg-slate-950/70 p-2 text-[11px]">
+                          <p className="text-slate-300">
+                            Bundle: missions={workspaceInspection.counts.missions_total}, presets=
+                            {workspaceInspection.counts.presets_total}, runs=
+                            {workspaceInspection.counts.simulation_runs_total}, config=
+                            {workspaceInspection.bundle.has_runner_overrides ? 'yes' : 'no'}
+                          </p>
+                          <p className="mt-1 text-amber-300">
+                            Conflicts: missions={workspaceInspection.counts.mission_conflicts},
+                            presets={workspaceInspection.counts.preset_conflicts}, runs=
+                            {workspaceInspection.counts.simulation_run_conflicts}
+                          </p>
+                          {workspaceInspection.conflicts.missions.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-slate-400">
+                                Mission conflicts ({workspaceInspection.conflicts.missions.length})
+                              </p>
+                              <input
+                                type="text"
+                                value={missionConflictFilter}
+                                onChange={(e) => setMissionConflictFilter(e.target.value)}
+                                placeholder="Filter mission conflicts..."
+                                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-100 focus:border-blue-500 focus:outline-none"
+                              />
+                              <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                                {filteredMissionConflicts.length > 0 ? (
+                                  filteredMissionConflicts.map((name) => (
+                                    <label key={name} className="flex items-center gap-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={overwriteMissionNames.includes(name)}
+                                        onChange={() =>
+                                          toggleNameSelection(
+                                            name,
+                                            overwriteMissionNames,
+                                            setOverwriteMissionNames
+                                          )
+                                        }
+                                      />
+                                      <span>{name}</span>
+                                    </label>
+                                  ))
+                                ) : (
+                                  <span>No matches for current filter.</span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Selected mission overwrites: {overwriteMissionNames.length}
+                              </p>
+                            </div>
+                          )}
+                          {workspaceInspection.conflicts.presets.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-slate-400">
+                                Preset conflicts ({workspaceInspection.conflicts.presets.length})
+                              </p>
+                              <input
+                                type="text"
+                                value={presetConflictFilter}
+                                onChange={(e) => setPresetConflictFilter(e.target.value)}
+                                placeholder="Filter preset conflicts..."
+                                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-100 focus:border-blue-500 focus:outline-none"
+                              />
+                              <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                                {filteredPresetConflicts.length > 0 ? (
+                                  filteredPresetConflicts.map((name) => (
+                                    <label key={name} className="flex items-center gap-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={overwritePresetNames.includes(name)}
+                                        onChange={() =>
+                                          toggleNameSelection(
+                                            name,
+                                            overwritePresetNames,
+                                            setOverwritePresetNames
+                                          )
+                                        }
+                                      />
+                                      <span>{name}</span>
+                                    </label>
+                                  ))
+                                ) : (
+                                  <span>No matches for current filter.</span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Selected preset overwrites: {overwritePresetNames.length}
+                              </p>
+                            </div>
+                          )}
+                          {workspaceInspection.conflicts.simulation_runs.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-slate-400">
+                                Simulation run conflicts (
+                                {workspaceInspection.conflicts.simulation_runs.length})
+                              </p>
+                              <input
+                                type="text"
+                                value={simulationRunConflictFilter}
+                                onChange={(e) => setSimulationRunConflictFilter(e.target.value)}
+                                placeholder="Filter simulation run conflicts..."
+                                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-100 focus:border-blue-500 focus:outline-none"
+                              />
+                              <div className="mt-1 max-h-20 overflow-y-auto rounded border border-slate-800 bg-slate-900/60 p-1 font-mono text-[10px] text-amber-200">
+                                {filteredSimulationRunConflicts.length > 0 ? (
+                                  filteredSimulationRunConflicts.map((name) => (
+                                    <label key={name} className="flex items-center gap-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={overwriteSimulationRunNames.includes(name)}
+                                        onChange={() =>
+                                          toggleNameSelection(
+                                            name,
+                                            overwriteSimulationRunNames,
+                                            setOverwriteSimulationRunNames
+                                          )
+                                        }
+                                      />
+                                      <span>{name}</span>
+                                    </label>
+                                  ))
+                                ) : (
+                                  <span>No matches for current filter.</span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Selected simulation run overwrites: {overwriteSimulationRunNames.length}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs text-slate-500">No package status loaded yet.</div>
+                )}
+              </section>
+            </>
+          )}
         </div>
       </div>
     </div>
