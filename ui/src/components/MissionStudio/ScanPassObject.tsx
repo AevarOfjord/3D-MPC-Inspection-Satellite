@@ -15,27 +15,9 @@ function qToEuler(qwxyz: [number, number, number, number]): [number, number, num
   return [e.x, e.y, e.z];
 }
 
-function oppositeFacingQuat(qwxyz: [number, number, number, number]): [number, number, number, number] {
-  const q = new THREE.Quaternion(qwxyz[1], qwxyz[2], qwxyz[3], qwxyz[0]).normalize();
-  const flipLocalY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-  const out = q.clone().multiply(flipLocalY).normalize();
-  return [out.w, out.x, out.y, out.z];
-}
-
 function normalFromQuat(qwxyz: [number, number, number, number]): THREE.Vector3 {
   const q = new THREE.Quaternion(qwxyz[1], qwxyz[2], qwxyz[3], qwxyz[0]).normalize();
   return new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
-}
-
-function gapAlongNormal(
-  aPos: [number, number, number],
-  bPos: [number, number, number],
-  n: THREE.Vector3
-): number {
-  const a = new THREE.Vector3(...aPos);
-  const b = new THREE.Vector3(...bPos);
-  const g = b.clone().sub(a).dot(n);
-  return Math.abs(g) < 1e-6 ? 10 : g;
 }
 
 function PlaneMesh({
@@ -311,38 +293,6 @@ export function ScanPassObject({ scanId }: ScanPassObjectProps) {
               }}
             />
           )}
-          {pathEditMode === 'rotate' && controlTarget === 'center' && (
-            <TransformControls
-              mode="rotate"
-              position={[centerMid.x, centerMid.y, centerMid.z]}
-              rotation={qToEuler(path.planeA.orientation)}
-              onObjectChange={(e: any) => {
-                if (!e?.target?.dragging) return;
-                const obj = e?.target?.object as THREE.Object3D | undefined;
-                if (!obj) return;
-                const s = useStudioStore.getState();
-                const p = s.paths.find((it) => it.id === scanId);
-                if (!p) return;
-                const qA: [number, number, number, number] = [obj.quaternion.w, obj.quaternion.x, obj.quaternion.y, obj.quaternion.z];
-                const n = normalFromQuat(qA);
-                const oldMid = new THREE.Vector3(
-                  0.5 * (p.planeA.position[0] + p.planeB.position[0]),
-                  0.5 * (p.planeA.position[1] + p.planeB.position[1]),
-                  0.5 * (p.planeA.position[2] + p.planeB.position[2]),
-                );
-                const g = gapAlongNormal(p.planeA.position, p.planeB.position, n);
-                const a = oldMid.clone().add(n.clone().multiplyScalar(-0.5 * g));
-                const b = oldMid.clone().add(n.clone().multiplyScalar(0.5 * g));
-                s.updatePathPlane(scanId, 'planeA', { orientation: qA, position: [a.x, a.y, a.z] });
-                s.updatePathPlane(scanId, 'planeB', {
-                  orientation: oppositeFacingQuat(qA),
-                  position: [b.x, b.y, b.z],
-                });
-                regenerate(scanId, 120);
-              }}
-            />
-          )}
-
           {/* Individual plane slide controls constrained to centerline */}
           {pathEditMode === 'translate' && controlTarget === 'A' && (
             <TransformControls

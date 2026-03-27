@@ -93,6 +93,8 @@ export function MissionStudioLeftPanel() {
     selectPath,
     updatePath,
     removePath,
+    updatePathCenter,
+    updatePathRotation,
     wires,
     assembly,
     removeWire,
@@ -142,6 +144,13 @@ export function MissionStudioLeftPanel() {
   );
 
   const selectedPath = paths.find((p) => p.id === selectedPathId) ?? null;
+  const selectedPathCenter = selectedPath
+    ? ([
+        0.5 * (selectedPath.planeA.position[0] + selectedPath.planeB.position[0]),
+        0.5 * (selectedPath.planeA.position[1] + selectedPath.planeB.position[1]),
+        0.5 * (selectedPath.planeA.position[2] + selectedPath.planeB.position[2]),
+      ] as [number, number, number])
+    : null;
   const selectedWireId = selectedAssemblyId
     ? assembly.find((item) => item.id === selectedAssemblyId && item.type === 'connect')?.wireId ?? null
     : null;
@@ -384,8 +393,69 @@ export function MissionStudioLeftPanel() {
                   </button>
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Move/Rotate: click centerline or plane to toggle controls.
+                  {pathEditMode === 'translate'
+                    ? 'Move: click centerline or plane to toggle controls.'
+                    : 'Rotate: use the degree fields below to spin the spiral about the path midpoint.'}
                 </div>
+                {pathEditMode === 'translate' && selectedPathCenter && (
+                  <>
+                    <NumberField
+                      label="X Position"
+                      value={selectedPathCenter[0]}
+                      onChange={(v) => {
+                        updatePathCenter(selectedPath.id, [v, selectedPathCenter[1], selectedPathCenter[2]]);
+                        regenerate(selectedPath.id, 120);
+                      }}
+                    />
+                    <NumberField
+                      label="Y Position"
+                      value={selectedPathCenter[1]}
+                      onChange={(v) => {
+                        updatePathCenter(selectedPath.id, [selectedPathCenter[0], v, selectedPathCenter[2]]);
+                        regenerate(selectedPath.id, 120);
+                      }}
+                    />
+                    <NumberField
+                      label="Z Position"
+                      value={selectedPathCenter[2]}
+                      onChange={(v) => {
+                        updatePathCenter(selectedPath.id, [selectedPathCenter[0], selectedPathCenter[1], v]);
+                        regenerate(selectedPath.id, 120);
+                      }}
+                    />
+                  </>
+                )}
+                {pathEditMode === 'rotate' && (
+                  <>
+                    <NumberField
+                      label="X Rotation °"
+                      value={selectedPath.rotationDegrees?.x ?? 0}
+                      onChange={(v) => {
+                        updatePathRotation(selectedPath.id, { x: v });
+                        regenerate(selectedPath.id, 120);
+                      }}
+                      step={1}
+                    />
+                    <NumberField
+                      label="Y Rotation °"
+                      value={selectedPath.rotationDegrees?.y ?? 0}
+                      onChange={(v) => {
+                        updatePathRotation(selectedPath.id, { y: v });
+                        regenerate(selectedPath.id, 120);
+                      }}
+                      step={1}
+                    />
+                    <NumberField
+                      label="Z Rotation °"
+                      value={selectedPath.rotationDegrees?.z ?? 0}
+                      onChange={(v) => {
+                        updatePathRotation(selectedPath.id, { z: v });
+                        regenerate(selectedPath.id, 120);
+                      }}
+                      step={1}
+                    />
+                  </>
+                )}
                 <NumberField
                   label="Level Spacing"
                   value={selectedPath.levelSpacing}
