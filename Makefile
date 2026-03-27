@@ -74,6 +74,7 @@ SKBUILD_RUNTIME_ENV := $(if $(and $(filter 1 true TRUE yes YES,$(SKBUILD_SKIP_RU
 SIM_CONTROLLER_PROFILE ?=
 SIM_SHARED_CONFIG ?= scripts/configs/thesis_fairness_baseline.json
 COMPARE_ARGS ?=
+SWEEP_ARGS ?=
 FAIRNESS_ARGS ?=
 FAIRNESS_MISSION ?=
 FAIRNESS_BASELINE_CONFIG ?= scripts/configs/thesis_fairness_baseline.json
@@ -87,7 +88,7 @@ TEST_COV_CMD := $(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PY
 # ============================================================================
 
 .PHONY: help run run-app stop backend backend-prod frontend ui-build sync-ui-model-assets package-app package-pyinstaller smoke-pyinstaller package-clean \
-	sim comparison fairness-run fairness-check install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
+	sim sweep comparison fairness-run fairness-check install test test-cov test-ui test-ui-e2e lint lint-backend lint-ui docs-check docs-build release-v4-beta release-v4-final clean rebuild \
 	check-python check-cmake venv build dashboard install-dev clean-build
 
 # Show available high-level commands.
@@ -108,6 +109,7 @@ help:
 	@echo "  make smoke-pyinstaller Launch smoke test on latest PyInstaller bundle"
 	@echo "  make package-clean Remove generated app bundles in ./release"
 	@echo "  make sim          Run CLI simulation with shared-parameter config (prompts for controller profile, then tests)"
+	@echo "  make sweep        Run 10x10 MPC dt/horizon sweep and persist best per-profile winners"
 	@echo "  make comparison   Run multi-run comparison report generator"
 	@echo "  make fairness-run Run one mission across all 6 controller profiles with thesis baseline config"
 	@echo "  make fairness-check Run fairness contract validator (pass extra args via FAIRNESS_ARGS)"
@@ -379,6 +381,13 @@ sim:
 		exit 1; \
 	fi; \
 	echo "Using shared parameter config: $(SIM_SHARED_CONFIG)"; \
+	sim_config_file="$$(mktemp)"; \
+	trap 'rm -f "$$sim_config_file"' EXIT; \
+	$(VENV_PY) scripts/build_profile_run_config.py \
+		--base-config "$(SIM_SHARED_CONFIG)" \
+		--profile "$$controller_profile" \
+		--output "$$sim_config_file" || exit $$?; \
+	echo "Using saved profile winner config via: $$sim_config_file"; \
 	printf "Run tests before simulation? [y/N] "; \
 	read ans; \
 	case "$$ans" in \
@@ -388,7 +397,56 @@ sim:
 	if [ -n "$$ACADOS_SOURCE_DIR" ]; then \
 		export DYLD_LIBRARY_PATH="$$ACADOS_SOURCE_DIR/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"; \
 	fi; \
-	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --config "$(SIM_SHARED_CONFIG)" --controller-profile "$$controller_profile"
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" $(VENV_PY) -m controller.cli run --config "$$sim_config_file"
+
+# Run 10x10 MPC dt/horizon sweep and persist best per-profile winners.
+sweep:
+	@$(MAKE) venv
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
+		echo "pip missing in $(VENV_DIR), bootstrapping with ensurepip..."; \
+		$(VENV_PY) -m ensurepip --upgrade || true; \
+	fi
+	@if ! $(VENV_PY) -m pip --version >/dev/null 2>&1; then \
+		echo "Error: pip is not available in $(VENV_DIR)."; \
+		echo "Your Python 3.11 may be missing ensurepip support."; \
+		echo "Try reinstalling Python 3.11, then run: make clean && make install"; \
+		exit 1; \
+	fi
+	@if ! $(VENV_PY) -c "import numpy, scipy, pydantic, typer, matplotlib, questionary" >/dev/null 2>&1; then \
+		echo "Sweep dependencies are missing in $(VENV_DIR)."; \
+		echo "Running 'make install' to repair the environment..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(VENV_PY) -c "import numpy, scipy, pydantic, typer, matplotlib, questionary" >/dev/null 2>&1; then \
+			echo "Error: sweep dependencies are still missing after install."; \
+			exit 1; \
+		fi; \
+	fi
+	@if [ ! -x "$(CMAKE_MAKE_PROGRAM)" ]; then \
+		echo "Build tool missing: $(CMAKE_MAKE_PROGRAM)"; \
+		echo "Installing C++ build dependencies into $(VENV_DIR)..."; \
+		$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10" || exit $$?; \
+	fi
+	@if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+		echo "Editable install/C++ modules are stale for this checkout."; \
+		echo "Running 'make install' to rebuild bindings..."; \
+		$(MAKE) install || exit $$?; \
+		if ! $(CPP_IMPORT_CHECK_CMD) >/dev/null 2>&1; then \
+			echo "Error: C++ modules are still unavailable after reinstall."; \
+			exit 1; \
+		fi; \
+	fi
+	@if [ ! -f "$(SIM_SHARED_CONFIG)" ]; then \
+		echo "Error: shared parameter config not found: $(SIM_SHARED_CONFIG)"; \
+		exit 1; \
+	fi
+	@if [ -n "$$ACADOS_SOURCE_DIR" ]; then \
+		export DYLD_LIBRARY_PATH="$$ACADOS_SOURCE_DIR/lib$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"; \
+	fi; \
+	$(SKBUILD_RUNTIME_ENV) PYTHONPATH="$(CURDIR)$${PYTHONPATH:+:$$PYTHONPATH}" \
+		$(VENV_PY) scripts/run_mpc_sweep.py \
+			--base-config "$(SIM_SHARED_CONFIG)" \
+			--python-executable "$(abspath $(VENV_PY))" \
+			$(SWEEP_ARGS)
 
 # Run multi-run comparison report generator.
 comparison:
@@ -495,6 +553,8 @@ install: venv check-cmake
 	$(VENV_PY) -m pip install "scikit-build-core>=0.3.3" pybind11 "ninja>=1.10"
 	@echo ""
 	@echo "=== Installing project + development dependencies ==="
+	@echo "acados_template will be fetched from the acados source repo during pip install."
+	@echo "acados-based controllers still require compiled acados C libs and ACADOS_SOURCE_DIR at runtime."
 	CMAKE_GENERATOR="$(CMAKE_GENERATOR)" CMAKE_MAKE_PROGRAM="$(CMAKE_MAKE_PROGRAM)" \
 	SKBUILD_CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" CMAKE_EXECUTABLE="$(SYSTEM_CMAKE)" \
 		$(VENV_PY) -m pip install --no-build-isolation -e ".[dev]"

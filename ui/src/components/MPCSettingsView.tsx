@@ -2,11 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   Check,
-  ChevronDown,
-  ChevronRight,
   Loader2,
   RotateCcw,
-  Save,
 } from 'lucide-react';
 import { RUNNER_API_URL } from '../config/endpoints';
 
@@ -40,24 +37,48 @@ import {
 export { MPC_SETTINGS_TESTING } from './mpc-settings/mpcSettingsUtils';
 
 type SettingsSection = 'mpc' | 'general';
+type MpcSettingsScope = 'shared' | ControllerProfileId;
+type MpcEditorSource = typeof DEFAULT_EDITOR_SOURCE | string;
+type ConfigMeta = {
+  active_preset_name?: string | null;
+};
 
 const SETTINGS_SECTION_STORAGE_KEY = 'mission_control_settings_section_v1';
+const MPC_EDITOR_SOURCE_STORAGE_KEY = 'mission_control_mpc_editor_source_v1';
+const MPC_SCOPE_STORAGE_KEY = 'mission_control_mpc_scope_v1';
+const DEFAULT_EDITOR_SOURCE = '__default__';
 
 export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const [config, setConfig] = useState<SettingsConfig | null>(null);
+  const [defaultConfig, setDefaultConfig] = useState<SettingsConfig | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string>('');
   const [removedMpcFieldsWarning, setRemovedMpcFieldsWarning] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [presetName, setPresetName] = useState('');
-  const [selectedPreset, setSelectedPreset] = useState('');
+  const [activePresetName, setActivePresetName] = useState<string | null>(null);
+  const [editorSource, setEditorSource] = useState<MpcEditorSource>(() => {
+    try {
+      return window.sessionStorage.getItem(MPC_EDITOR_SOURCE_STORAGE_KEY) || DEFAULT_EDITOR_SOURCE;
+    } catch {
+      return DEFAULT_EDITOR_SOURCE;
+    }
+  });
   const [presets, setPresets] = useState<Record<string, SettingsConfig>>({});
-  const [showBasic, setShowBasic] = useState(true);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showExpert, setShowExpert] = useState(false);
   const [showReference, setShowReference] = useState(false);
+  const [mpcScope, setMpcScope] = useState<MpcSettingsScope>(() => {
+    try {
+      const stored = window.sessionStorage.getItem(MPC_SCOPE_STORAGE_KEY);
+      if (stored === 'shared') return 'shared';
+      if (stored && (CONTROLLER_PROFILE_IDS as string[]).includes(stored)) {
+        return stored as ControllerProfileId;
+      }
+      return 'shared';
+    } catch {
+      return 'shared';
+    }
+  });
   const [systemStatus, setSystemStatus] = useState<RunnerSystemStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [quickMissionName, setQuickMissionName] = useState('');
@@ -123,6 +144,22 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   }, [settingsSection]);
 
   useEffect(() => {
+    try {
+      window.sessionStorage.setItem(MPC_EDITOR_SOURCE_STORAGE_KEY, editorSource);
+    } catch {
+      // no-op
+    }
+  }, [editorSource]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(MPC_SCOPE_STORAGE_KEY, mpcScope);
+    } catch {
+      // no-op
+    }
+  }, [mpcScope]);
+
+  useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!isDirty) return;
       e.preventDefault();
@@ -140,16 +177,47 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     return () => window.clearInterval(timer);
   }, [packageStatus?.running]);
 
+  const loadEditorSource = (source: MpcEditorSource, nextPresets?: Record<string, SettingsConfig>) => {
+    const presetMap = nextPresets ?? presets;
+    if (source === DEFAULT_EDITOR_SOURCE) {
+      if (!defaultConfig) return false;
+      const nextConfig = deepCloneConfig(defaultConfig);
+      setEditorSource(DEFAULT_EDITOR_SOURCE);
+      setConfig(nextConfig);
+      setSavedSnapshot(stableSerializeConfig(nextConfig));
+      setPresetName('');
+      return true;
+    }
+    const preset = presetMap[source];
+    if (!preset) return false;
+    const nextConfig = deepCloneConfig(preset);
+    setEditorSource(source);
+    setConfig(nextConfig);
+    setSavedSnapshot(stableSerializeConfig(nextConfig));
+    setPresetName(source);
+    return true;
+  };
+
   const fetchConfig = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${RUNNER_API_URL}/config`);
-      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to fetch config'));
-      const data = await res.json();
-      const normalized = normalizeConfig(data);
-      if (!normalized) throw new Error('Backend returned invalid config format');
-      const configMeta = asRecord(asRecord(data)?.config_meta);
+      const [activeRes, defaultRes] = await Promise.all([
+        fetch(`${RUNNER_API_URL}/config`),
+        fetch(`${RUNNER_API_URL}/config/default`),
+      ]);
+      if (!activeRes.ok) throw new Error(await parseApiError(activeRes, 'Failed to fetch config'));
+      if (!defaultRes.ok) {
+        throw new Error(await parseApiError(defaultRes, 'Failed to fetch default config'));
+      }
+      const activeData = await activeRes.json();
+      const defaultData = await defaultRes.json();
+      const normalizedActive = normalizeConfig(activeData);
+      const normalizedDefault = normalizeConfig(defaultData);
+      if (!normalizedActive || !normalizedDefault) {
+        throw new Error('Backend returned invalid config format');
+      }
+      const configMeta = asRecord(asRecord(activeData)?.config_meta) as ConfigMeta & Record<string, unknown>;
       const deprecations = asRecord(configMeta?.deprecations);
       const removedFieldValue = deprecations?.removed_mpc_fields_seen;
       const removedFields = Array.isArray(removedFieldValue)
@@ -158,8 +226,15 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
           )
         : [];
       setRemovedMpcFieldsWarning(removedFields);
-      setConfig(normalized);
-      setSavedSnapshot(stableSerializeConfig(normalized));
+      setDefaultConfig(normalizedDefault);
+      setActivePresetName(configMeta?.active_preset_name ?? null);
+      const initialSource = configMeta?.active_preset_name ?? DEFAULT_EDITOR_SOURCE;
+      setEditorSource(initialSource);
+      const initialConfig =
+        initialSource === DEFAULT_EDITOR_SOURCE ? normalizedDefault : normalizedActive;
+      setConfig(deepCloneConfig(initialConfig));
+      setSavedSnapshot(stableSerializeConfig(initialConfig));
+      setPresetName(initialSource === DEFAULT_EDITOR_SOURCE ? '' : initialSource);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -179,8 +254,8 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
         if (normalized) next[name] = normalized;
       });
       setPresets(next);
-      if (selectedPreset && !next[selectedPreset]) {
-        setSelectedPreset('');
+      if (editorSource !== DEFAULT_EDITOR_SOURCE && !next[editorSource]) {
+        void loadEditorSource(DEFAULT_EDITOR_SOURCE, next);
       }
     } catch (err) {
       setError(`Failed to load presets: ${String(err)}`);
@@ -391,54 +466,6 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       : workspaceInspection.conflicts.simulation_runs)
     : [];
 
-  const handleReset = async () => {
-    setIsLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const res = await fetch(`${RUNNER_API_URL}/config/reset`, {
-        method: 'POST',
-      });
-      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to reset config'));
-      await fetchConfig();
-      setSuccessMsg('Configuration reset to defaults.');
-      setTimeout(() => setSuccessMsg(null), 2500);
-    } catch (err) {
-      setError(`Failed to reset: ${String(err)}`);
-      setIsLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!config) return;
-    if (validationErrors.length > 0) {
-      setError('Please fix validation errors before saving.');
-      return;
-    }
-    setIsSaving(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const overrides = buildV3Envelope(config);
-
-      const res = await fetch(`${RUNNER_API_URL}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(overrides),
-      });
-
-      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save config'));
-
-      setSavedSnapshot(stableSerializeConfig(config));
-      setSuccessMsg('Configuration saved successfully. Next run will use these settings.');
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err) {
-      setError(`Failed to save: ${String(err)}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const updateConfig = (path: string, value: unknown) => {
     if (!config) return;
 
@@ -545,7 +572,7 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
     setConfig(newConfig as unknown as SettingsConfig);
   };
 
-  const handleSavePreset = async () => {
+  const handleSavePresetAs = async () => {
     if (!config) return;
     const name = presetName.trim();
     if (!name) {
@@ -564,45 +591,93 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
       });
       if (!res.ok) throw new Error(await parseApiError(res, 'Failed to save preset'));
       await fetchPresets();
-      setSelectedPreset(name);
-      setSuccessMsg(`Preset "${name}" saved.`);
+      loadEditorSource(name, {
+        ...presets,
+        [name]: deepCloneConfig(config),
+      });
+      setSuccessMsg(`Preset "${name}" saved. Runner will keep using Default or the last applied preset until you switch it in Runner.`);
       setTimeout(() => setSuccessMsg(null), 2000);
     } catch (err) {
       setError(`Failed to save preset: ${String(err)}`);
     }
   };
 
-  const handleLoadPreset = () => {
-    if (!selectedPreset) {
-      setError('Select a preset to load.');
+  const handleUpdatePreset = async () => {
+    if (!config || editorSource === DEFAULT_EDITOR_SOURCE) {
+      setError('Select a preset source to update.');
       return;
     }
-    const preset = presets[selectedPreset];
-    if (!preset) {
-      setError(`Preset "${selectedPreset}" not found.`);
-      return;
+    setError(null);
+    try {
+      const res = await fetch(`${RUNNER_API_URL}/presets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editorSource,
+          config: buildV3Envelope(deepCloneConfig(config)),
+        }),
+      });
+      if (!res.ok) throw new Error(await parseApiError(res, 'Failed to update preset'));
+      await fetchPresets();
+      setSuccessMsg(`Preset "${editorSource}" updated.`);
+      setTimeout(() => setSuccessMsg(null), 2000);
+      setSavedSnapshot(stableSerializeConfig(config));
+    } catch (err) {
+      setError(`Failed to update preset: ${String(err)}`);
     }
-    setConfig(deepCloneConfig(preset));
-    setSuccessMsg(`Preset "${selectedPreset}" loaded (not saved to backend yet).`);
-    setTimeout(() => setSuccessMsg(null), 2500);
   };
 
   const handleDeletePreset = async () => {
-    if (!selectedPreset) return;
+    if (editorSource === DEFAULT_EDITOR_SOURCE) return;
     setError(null);
     try {
-      const res = await fetch(`${RUNNER_API_URL}/presets/${encodeURIComponent(selectedPreset)}`, {
+      const res = await fetch(`${RUNNER_API_URL}/presets/${encodeURIComponent(editorSource)}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error(await parseApiError(res, 'Failed to delete preset'));
-      const deleted = selectedPreset;
+      const deleted = editorSource;
       await fetchPresets();
-      setSelectedPreset('');
+      if (deleted === activePresetName) {
+        setActivePresetName(null);
+      }
+      loadEditorSource(DEFAULT_EDITOR_SOURCE);
       setSuccessMsg(`Preset "${deleted}" deleted.`);
       setTimeout(() => setSuccessMsg(null), 1500);
     } catch (err) {
       setError(`Failed to delete preset: ${String(err)}`);
     }
+  };
+
+  const handleSelectEditorSource = (nextSource: string) => {
+    if (nextSource === editorSource) return;
+    if (isDirty && !window.confirm('Discard unsaved changes and switch editor source?')) {
+      return;
+    }
+    const ok = loadEditorSource(nextSource);
+    if (!ok) {
+      setError(
+        nextSource === DEFAULT_EDITOR_SOURCE
+          ? 'Default config is not loaded yet.'
+          : `Preset "${nextSource}" not found.`
+      );
+      return;
+    }
+    setSuccessMsg(
+      nextSource === DEFAULT_EDITOR_SOURCE
+        ? 'Editing immutable Default config. Save as a preset to use your changes.'
+        : `Editing preset "${nextSource}".`
+    );
+    setTimeout(() => setSuccessMsg(null), 2000);
+  };
+
+  const handleRevertToSource = () => {
+    const ok = loadEditorSource(editorSource);
+    if (!ok) {
+      setError('Unable to reload the selected editor source.');
+      return;
+    }
+    setSuccessMsg('Reverted editor to selected source.');
+    setTimeout(() => setSuccessMsg(null), 1500);
   };
 
   if (isLoading) {
@@ -629,10 +704,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   }
 
   const selectedProfileOverrideEntry = (
-    asRecord(config?.mpc_profile_overrides)?.[activeControllerProfile] ??
-    DEFAULT_MPC_PROFILE_OVERRIDES[activeControllerProfile]
+    asRecord(config?.mpc_profile_overrides)?.[
+      mpcScope === 'shared' ? activeControllerProfile : mpcScope
+    ] ??
+    DEFAULT_MPC_PROFILE_OVERRIDES[mpcScope === 'shared' ? activeControllerProfile : mpcScope]
   ) as unknown;
   const sharedParametersEnabled = Boolean(config?.shared.parameters);
+  const selectedControllerScope =
+    mpcScope === 'shared' ? activeControllerProfile : mpcScope;
   const selectedBaseOverrides =
     asRecord(asRecord(selectedProfileOverrideEntry)?.base_overrides) ?? {};
   const selectedProfileSpecific =
@@ -640,10 +719,16 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
   const selectedOverrideDiff = Object.entries(selectedBaseOverrides)
     .filter(([key, value]) => asRecord(config?.mpc)?.[key] !== value)
     .sort(([a], [b]) => a.localeCompare(b));
+  const isPresetSource = editorSource !== DEFAULT_EDITOR_SOURCE;
+  const editorSourceLabel = isPresetSource ? editorSource : 'Default';
   const settingsSubtitle =
     settingsSection === 'mpc'
-      ? 'Tune shared baseline, profile overrides, presets, and run-shaping controller settings.'
+      ? 'Edit immutable defaults locally, then save or update named presets for Runner.'
       : 'Manage readiness checks, runner utilities, packaging, and workspace import/export.';
+  const scopeSubtitle =
+    mpcScope === 'shared'
+      ? 'Shared comparable parameters used across all six controllers.'
+      : `${CONTROLLER_PROFILE_LABELS[selectedControllerScope]} common overrides and solver-specific numerical settings.`;
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-950 text-slate-200 overflow-hidden">
@@ -656,6 +741,14 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
               <p className={`mt-1 text-[11px] ${isDirty ? 'text-amber-300' : 'text-emerald-300'}`}>
                 {isDirty ? 'Unsaved changes' : 'All changes saved'}
               </p>
+              {settingsSection === 'mpc' ? (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Editor source: <span className="font-semibold text-slate-200">{editorSourceLabel}</span>
+                  {activePresetName
+                    ? ` | Runner currently uses preset "${activePresetName}"`
+                    : ' | Runner currently uses Default'}
+                </p>
+              ) : null}
             </div>
             <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
               <button
@@ -681,10 +774,57 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                 General Settings
               </button>
             </div>
+            {settingsSection === 'mpc' ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMpcScope('shared')}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                    mpcScope === 'shared'
+                      ? 'border-cyan-500 bg-cyan-950/60 text-cyan-100'
+                      : 'border-slate-700 text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  Shared
+                </button>
+                {CONTROLLER_PROFILE_IDS.map((profileId) => (
+                  <button
+                    key={profileId}
+                    type="button"
+                    onClick={() => setMpcScope(profileId)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                      mpcScope === profileId
+                        ? 'border-blue-500 bg-blue-950/60 text-blue-100'
+                        : 'border-slate-700 text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {CONTROLLER_PROFILE_LABELS[profileId]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {settingsSection === 'mpc' ? (
+              <p className="text-[11px] text-slate-400">{scopeSubtitle}</p>
+            ) : null}
           </div>
 
           {settingsSection === 'mpc' ? (
             <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={editorSource}
+                onChange={(e) => handleSelectEditorSource(e.target.value)}
+                aria-label="MPC editor source"
+                className="w-44 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value={DEFAULT_EDITOR_SOURCE}>Default</option>
+                {Object.keys(presets)
+                  .sort()
+                  .map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+              </select>
               <input
                 type="text"
                 value={presetName}
@@ -694,58 +834,34 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                 className="w-32 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
               />
               <button
-                onClick={handleSavePreset}
+                onClick={handleSavePresetAs}
                 className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 hover:bg-slate-600"
-                aria-label="Save preset"
+                aria-label="Save as preset"
               >
-                Save Preset
+                Save As Preset
               </button>
-              <select
-                value={selectedPreset}
-                onChange={(e) => setSelectedPreset(e.target.value)}
-                aria-label="Preset selection"
-                className="w-40 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">Load preset...</option>
-                {Object.keys(presets)
-                  .sort()
-                  .map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-              </select>
               <button
-                onClick={handleLoadPreset}
+                onClick={handleUpdatePreset}
                 className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 disabled:opacity-40 hover:bg-slate-600"
-                disabled={!selectedPreset}
-                aria-label="Load selected preset"
+                disabled={!isPresetSource || validationErrors.length > 0}
+                aria-label="Update preset"
               >
-                Load
+                Update Preset
               </button>
               <button
                 onClick={handleDeletePreset}
                 className="rounded bg-slate-700 px-2.5 py-1.5 text-xs text-slate-100 disabled:opacity-40 hover:bg-slate-600"
-                disabled={!selectedPreset}
-                aria-label="Delete selected preset"
+                disabled={!isPresetSource}
+                aria-label="Delete current preset"
               >
                 Delete
               </button>
               <button
-                onClick={() => void handleReset()}
+                onClick={handleRevertToSource}
                 className="flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-700"
-                aria-label="Reset configuration to defaults"
+                aria-label="Revert to selected source"
               >
-                <RotateCcw size={14} /> Reset
-              </button>
-              <button
-                onClick={() => void handleSave()}
-                disabled={isSaving || validationErrors.length > 0}
-                className="flex items-center gap-2 rounded bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-50"
-                aria-label="Save settings"
-              >
-                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save Changes
+                <RotateCcw size={14} /> Revert
               </button>
             </div>
           ) : null}
@@ -781,534 +897,131 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
             </div>
           )}
           {settingsSection === 'mpc' ? (
-            <>
-              <section>
-                <button
-                  onClick={() => setShowBasic((v) => !v)}
-                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
-                >
-                  <span className="text-sm font-bold uppercase tracking-wider text-blue-400">
-                    Basic Settings
-                  </span>
-                  {showBasic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {showBasic && (
-                  <div className="mt-4 space-y-8">
-                    <section>
-                      <h3 className="mb-4 border-b border-emerald-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-emerald-400">
-                        Parameter Source Policy
-                      </h3>
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <ToggleField
-                          label="Use Shared Parameters For All Profiles"
-                          checked={sharedParametersEnabled}
-                          onChange={(checked) => updateConfig('shared.parameters', checked)}
-                        />
-                        <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                          <p className="text-xs text-slate-300">
-                            {sharedParametersEnabled
-                              ? 'Fair-comparison mode is active. All six controllers use the shared baseline in app_config.mpc.'
-                              : 'Per-profile tuning mode is active. Only the selected controller profile can apply delta overrides and an external profile parameter file.'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {CONTROLLER_PROFILE_IDS.map((profileId) => (
-                          <ConfigField
-                            key={profileId}
-                            label={`${CONTROLLER_PROFILE_LABELS[profileId]} File`}
-                            value={config?.shared.profile_parameter_files[profileId] ?? ''}
-                            onChange={(v) =>
-                              updateConfig(`shared.profile_parameter_files.${profileId}`, v)
-                            }
-                            desc={
-                              profileId === activeControllerProfile
-                                ? 'Applied only when shared mode is off and this profile is selected.'
-                                : 'Stored for this profile; inactive unless that profile is selected.'
-                            }
-                          />
-                        ))}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h3 className="mb-4 border-b border-slate-800 pb-1 text-sm font-bold uppercase tracking-wider text-slate-500">
-                        Basic - Timing and Horizons
-                      </h3>
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        <ConfigField
-                          label="Simulation Duration (s)"
-                          value={config?.simulation.max_duration}
-                          onChange={(v) => updateConfig('simulation.max_duration', v)}
-                          isNumber
-                          step={1}
-                          desc="0 = no hard duration limit"
-                        />
-                        <ConfigField
-                          label="Control Step dt (s)"
-                          value={config?.mpc.dt}
-                          onChange={(v) => updateConfig('mpc.dt', v)}
-                          isNumber
-                          step={0.001}
-                        />
-                        <ConfigField
-                          label="Prediction Horizon"
-                          value={config?.mpc.prediction_horizon}
-                          onChange={(v) => updateConfig('mpc.prediction_horizon', v)}
-                          isNumber
-                          step={1}
-                        />
-                        <ConfigField
-                          label="Control Horizon"
-                          value={config?.mpc.control_horizon}
-                          onChange={(v) => updateConfig('mpc.control_horizon', v)}
-                          isNumber
-                          step={1}
-                        />
-                        <ConfigField
-                          label="Solver Time Limit (s)"
-                          value={config?.mpc.solver_time_limit}
-                          onChange={(v) => updateConfig('mpc.solver_time_limit', v)}
-                          isNumber
-                          step={0.001}
-                        />
-                        <SelectField
-                          label="Controller Profile"
-                          value={String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp')}
-                          onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
-                          options={CONTROLLER_PROFILE_IDS.map((profileId) => ({
-                            label: CONTROLLER_PROFILE_LABELS[profileId],
-                            value: profileId,
-                          }))}
-                          desc="In per-profile mode, this decides which profile delta file and override block are active."
-                        />
-                      </div>
-                    </section>
-
-                    <section>
-                      <h3 className="mb-4 border-b border-blue-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-blue-400">
-                        Selected Profile Overrides ({CONTROLLER_PROFILE_LABELS[activeControllerProfile]})
-                      </h3>
-                      {sharedParametersEnabled && (
-                        <div className="mb-4 rounded border border-amber-900/40 bg-amber-950/40 p-3 text-xs text-amber-200">
-                          Per-profile overrides are preserved for later tuning, but inactive while shared fair-comparison mode is enabled.
-                        </div>
-                      )}
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        <ConfigField
-                          label="Override Prediction Horizon"
-                          value={selectedBaseOverrides.prediction_horizon ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('prediction_horizon', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Control Horizon"
-                          value={selectedBaseOverrides.control_horizon ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('control_horizon', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Solver Time Limit (s)"
-                          value={selectedBaseOverrides.solver_time_limit ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('solver_time_limit', v)}
-                          isNumber
-                          step={0.001}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Q_contour"
-                          value={selectedBaseOverrides.Q_contour ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('Q_contour', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Q_progress"
-                          value={selectedBaseOverrides.Q_progress ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('Q_progress', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Q_attitude"
-                          value={selectedBaseOverrides.Q_attitude ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('Q_attitude', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Q_smooth"
-                          value={selectedBaseOverrides.Q_smooth ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('Q_smooth', v)}
-                          isNumber
-                          step={1}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                        <ConfigField
-                          label="Override Path Speed"
-                          value={selectedBaseOverrides.path_speed ?? ''}
-                          onChange={(v) => updateSelectedProfileBaseOverride('path_speed', v)}
-                          isNumber
-                          step={0.001}
-                          desc="Blank = inherit shared baseline"
-                          disabled={sharedParametersEnabled}
-                        />
-                      </div>
-                      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {activeControllerProfile === 'cpp_hybrid_rti_osqp' && (
-                          <ToggleField
-                            label="allow_stale_stage_reuse"
-                            checked={Boolean(selectedProfileSpecific.allow_stale_stage_reuse ?? true)}
-                            onChange={(checked) =>
-                              updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
-                            }
-                            disabled={sharedParametersEnabled}
-                          />
-                        )}
-                        {activeControllerProfile === 'cpp_nonlinear_rti_osqp' && (
-                          <>
-                            <ConfigField
-                              label="sqp_max_iter"
-                              value={selectedProfileSpecific.sqp_max_iter ?? 2}
-                              onChange={(v) => updateSelectedProfileSpecific('sqp_max_iter', v)}
-                              isNumber
-                              step={1}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="sqp_tol"
-                              value={selectedProfileSpecific.sqp_tol ?? 0.0001}
-                              onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
-                              isNumber
-                              step={0.0001}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ToggleField
-                              label="strict_integrity"
-                              checked={Boolean(selectedProfileSpecific.strict_integrity ?? true)}
-                              onChange={(checked) =>
-                                updateSelectedProfileSpecific('strict_integrity', checked)
-                              }
-                              disabled={sharedParametersEnabled}
-                            />
-                          </>
-                        )}
-                        {activeControllerProfile === 'cpp_linearized_rti_osqp' && (
-                          <ConfigField
-                            label="freeze_refresh_interval_steps"
-                            value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
-                            onChange={(v) =>
-                              updateSelectedProfileSpecific('freeze_refresh_interval_steps', v)
-                            }
-                            isNumber
-                            step={1}
-                            disabled={sharedParametersEnabled}
-                          />
-                        )}
-                        {activeControllerProfile === 'cpp_nonlinear_fullnlp_ipopt' && (
-                          <ConfigField
-                            label="ipopt_max_iter"
-                            value={selectedProfileSpecific.ipopt_max_iter ?? 3000}
-                            onChange={(v) => updateSelectedProfileSpecific('ipopt_max_iter', v)}
-                            isNumber
-                            step={1}
-                            disabled={sharedParametersEnabled}
-                          />
-                        )}
-                        {activeControllerProfile === 'cpp_nonlinear_rti_hpipm' && (
-                          <>
-                            <ConfigField
-                              label="acados_max_iter"
-                              value={selectedProfileSpecific.acados_max_iter ?? 1}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
-                              isNumber
-                              step={1}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_stat"
-                              value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_eq"
-                              value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_ineq"
-                              value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                          </>
-                        )}
-                        {activeControllerProfile === 'cpp_nonlinear_sqp_hpipm' && (
-                          <>
-                            <ConfigField
-                              label="acados_max_iter"
-                              value={selectedProfileSpecific.acados_max_iter ?? 50}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
-                              isNumber
-                              step={1}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_stat"
-                              value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_eq"
-                              value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                            <ConfigField
-                              label="acados_tol_ineq"
-                              value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
-                              onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
-                              isNumber
-                              step={0.001}
-                              disabled={sharedParametersEnabled}
-                            />
-                          </>
-                        )}
-                      </div>
-                      <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
-                        <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">
-                          Override Diff Preview
-                        </p>
-                        {selectedOverrideDiff.length === 0 &&
-                        Object.keys(selectedProfileSpecific).length === 0 ? (
-                          <p className="text-xs text-slate-500">
-                            No profile-specific deltas. This profile inherits shared baseline.
-                          </p>
-                        ) : (
-                          <div className="space-y-1 font-mono text-xs text-emerald-300">
-                            {selectedOverrideDiff.map(([key, value]) => (
-                              <p key={key}>
-                                {key}: {String(value)}
-                              </p>
-                            ))}
-                            {Object.entries(selectedProfileSpecific)
-                              .sort(([a], [b]) => a.localeCompare(b))
-                              .map(([key, value]) => (
-                                <p key={key}>profile_specific.{key}: {String(value)}</p>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h3 className="mb-4 border-b border-blue-900/30 pb-1 text-sm font-bold uppercase tracking-wider text-blue-400">
-                        Basic - Tracking Weights
-                      </h3>
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        <ConfigField
-                          label="Contour Error (Q_contour)"
-                          value={config?.mpc.Q_contour}
-                          onChange={(v) => updateConfig('mpc.Q_contour', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="Progress (Q_progress)"
-                          value={config?.mpc.Q_progress}
-                          onChange={(v) => updateConfig('mpc.Q_progress', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="Attitude (Q_attitude)"
-                          value={config?.mpc.Q_attitude}
-                          onChange={(v) => updateConfig('mpc.Q_attitude', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="Smoothness (Q_smooth)"
-                          value={config?.mpc.Q_smooth}
-                          onChange={(v) => updateConfig('mpc.Q_smooth', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="Angular Velocity (q_angular_velocity)"
-                          value={config?.mpc.q_angular_velocity}
-                          onChange={(v) => updateConfig('mpc.q_angular_velocity', v)}
-                          isNumber
-                        />
-                      </div>
-                    </section>
-
-                    <section>
-                      <h3 className="mb-4 border-b border-slate-800 pb-1 text-sm font-bold uppercase tracking-wider text-slate-500">
-                        Basic - Actuation and Path
-                      </h3>
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        <ConfigField
-                          label="Thrust Cost (r_thrust)"
-                          value={config?.mpc.r_thrust}
-                          onChange={(v) => updateConfig('mpc.r_thrust', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="RW Torque Cost (r_rw_torque)"
-                          value={config?.mpc.r_rw_torque}
-                          onChange={(v) => updateConfig('mpc.r_rw_torque', v)}
-                          isNumber
-                        />
-                        <ConfigField
-                          label="Path Speed (m/s)"
-                          value={config?.mpc.path_speed}
-                          onChange={(v) => updateConfig('mpc.path_speed', v)}
-                          isNumber
-                          step={0.001}
-                        />
-                      </div>
-                    </section>
+            mpcScope === 'shared' ? (
+              <>
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-emerald-400">
+                    Fairness Policy
+                  </h3>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    <ToggleField
+                      label="Use Shared Parameters For All Profiles"
+                      checked={sharedParametersEnabled}
+                      onChange={(checked) => updateConfig('shared.parameters', checked)}
+                    />
+                    <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                      {sharedParametersEnabled
+                        ? 'Fair-comparison mode is active. All six controllers use the shared baseline only.'
+                        : 'Per-profile tuning mode is active. Controller tabs can now apply common overrides and solver-specific numerical settings.'}
+                    </div>
                   </div>
-                )}
-              </section>
+                  <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {CONTROLLER_PROFILE_IDS.map((profileId) => (
+                      <ConfigField
+                        key={profileId}
+                        label={`${CONTROLLER_PROFILE_LABELS[profileId]} File`}
+                        value={config?.shared.profile_parameter_files[profileId] ?? ''}
+                        onChange={(v) =>
+                          updateConfig(`shared.profile_parameter_files.${profileId}`, v)
+                        }
+                        desc="Stored external delta file for this controller."
+                      />
+                    ))}
+                  </div>
+                </section>
 
-              <section>
-                <button
-                  onClick={() => setShowAdvanced((v) => !v)}
-                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
-                >
-                  <span className="text-sm font-bold uppercase tracking-wider text-cyan-400">
-                    Advanced Settings
-                  </span>
-                  {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {showAdvanced && (
-                  <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-blue-400">
+                    Core
+                  </h3>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     <ConfigField
-                      label="Lag Error (Q_lag)"
-                      value={config?.mpc.Q_lag}
-                      onChange={(v) => updateConfig('mpc.Q_lag', v)}
+                      label="Simulation Duration (s)"
+                      value={config?.simulation.max_duration}
+                      onChange={(v) => updateConfig('simulation.max_duration', v)}
                       isNumber
+                      step={1}
+                      desc="0 = no hard duration limit"
                     />
                     <ConfigField
-                      label="Lag Default (Q_lag_default)"
-                      value={config?.mpc.Q_lag_default}
-                      onChange={(v) => updateConfig('mpc.Q_lag_default', v)}
-                      isNumber
-                      desc="-1 = auto fallback"
-                    />
-                    <ConfigField
-                      label="Velocity Align (Q_velocity_align)"
-                      value={config?.mpc.Q_velocity_align}
-                      onChange={(v) => updateConfig('mpc.Q_velocity_align', v)}
-                      isNumber
-                      desc="0 = reuse Q_progress"
-                    />
-                    <ConfigField
-                      label="S Anchor (Q_s_anchor)"
-                      value={config?.mpc.Q_s_anchor}
-                      onChange={(v) => updateConfig('mpc.Q_s_anchor', v)}
-                      isNumber
-                      desc="-1 = auto fallback"
-                    />
-                    <ConfigField
-                      label="Axis Align (Q_axis_align)"
-                      value={config?.mpc.Q_axis_align}
-                      onChange={(v) => updateConfig('mpc.Q_axis_align', v)}
-                      isNumber
-                      desc="extra attitude alignment weight"
-                    />
-                    <ConfigField
-                      label="Path Speed Min (m/s)"
-                      value={config?.mpc.path_speed_min}
-                      onChange={(v) => updateConfig('mpc.path_speed_min', v)}
+                      label="Control Step dt (s)"
+                      value={config?.mpc.dt}
+                      onChange={(v) => updateConfig('mpc.dt', v)}
                       isNumber
                       step={0.001}
                     />
                     <ConfigField
-                      label="Path Speed Max (m/s)"
-                      value={config?.mpc.path_speed_max}
-                      onChange={(v) => updateConfig('mpc.path_speed_max', v)}
+                      label="Prediction Horizon"
+                      value={config?.mpc.prediction_horizon}
+                      onChange={(v) => updateConfig('mpc.prediction_horizon', v)}
+                      isNumber
+                      step={1}
+                    />
+                    <ConfigField
+                      label="Control Horizon"
+                      value={config?.mpc.control_horizon}
+                      onChange={(v) => updateConfig('mpc.control_horizon', v)}
+                      isNumber
+                      step={1}
+                    />
+                    <ConfigField
+                      label="Solver Time Limit (s)"
+                      value={config?.mpc.solver_time_limit}
+                      onChange={(v) => updateConfig('mpc.solver_time_limit', v)}
                       isNumber
                       step={0.001}
                     />
-                    <ConfigField
-                      label="Terminal Position (Q_terminal_pos)"
-                      value={config?.mpc.Q_terminal_pos}
-                      onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)}
-                      isNumber
-                      desc="0 = auto"
+                    <SelectField
+                      label="Default Controller Profile"
+                      value={String(config?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp')}
+                      onChange={(v) => updateConfig('mpc_core.controller_profile', v)}
+                      options={CONTROLLER_PROFILE_IDS.map((profileId) => ({
+                        label: CONTROLLER_PROFILE_LABELS[profileId],
+                        value: profileId,
+                      }))}
+                      desc="Used as the default profile when a run starts from Default config."
                     />
-                    <ConfigField
-                      label="Terminal Progress (Q_terminal_s)"
-                      value={config?.mpc.Q_terminal_s}
-                      onChange={(v) => updateConfig('mpc.Q_terminal_s', v)}
-                      isNumber
-                      desc="0 = auto"
-                    />
-                    <ConfigField
-                      label="Progress Reward"
-                      value={config?.mpc.progress_reward}
-                      onChange={(v) => updateConfig('mpc.progress_reward', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Max Linear Velocity (m/s)"
-                      value={config?.mpc.max_linear_velocity}
-                      onChange={(v) => updateConfig('mpc.max_linear_velocity', v)}
-                      isNumber
-                      desc="0 = auto bound"
-                    />
-                    <ConfigField
-                      label="Max Angular Velocity (rad/s)"
-                      value={config?.mpc.max_angular_velocity}
-                      onChange={(v) => updateConfig('mpc.max_angular_velocity', v)}
-                      isNumber
-                      desc="0 = auto bound"
-                    />
-                    <ConfigField
-                      label="Obstacle Margin (m)"
-                      value={config?.mpc.obstacle_margin}
-                      onChange={(v) => updateConfig('mpc.obstacle_margin', v)}
-                      isNumber
-                      step={0.01}
-                    />
-                    <ToggleField
-                      label="Enable Auto State Bounds"
-                      checked={Boolean(config?.mpc.enable_auto_state_bounds)}
-                      onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)}
-                    />
-                    <ToggleField
-                      label="Enable Collision Avoidance"
-                      checked={Boolean(config?.mpc.enable_collision_avoidance)}
-                      onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)}
-                    />
+                  </div>
+                </section>
+
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-cyan-400">
+                    Weights
+                  </h3>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <ConfigField label="Contour Error (Q_contour)" value={config?.mpc.Q_contour} onChange={(v) => updateConfig('mpc.Q_contour', v)} isNumber />
+                    <ConfigField label="Progress (Q_progress)" value={config?.mpc.Q_progress} onChange={(v) => updateConfig('mpc.Q_progress', v)} isNumber />
+                    <ConfigField label="Lag Error (Q_lag)" value={config?.mpc.Q_lag} onChange={(v) => updateConfig('mpc.Q_lag', v)} isNumber />
+                    <ConfigField label="Lag Default (Q_lag_default)" value={config?.mpc.Q_lag_default} onChange={(v) => updateConfig('mpc.Q_lag_default', v)} isNumber desc="-1 = auto fallback" />
+                    <ConfigField label="Velocity Align (Q_velocity_align)" value={config?.mpc.Q_velocity_align} onChange={(v) => updateConfig('mpc.Q_velocity_align', v)} isNumber desc="0 = reuse Q_progress" />
+                    <ConfigField label="S Anchor (Q_s_anchor)" value={config?.mpc.Q_s_anchor} onChange={(v) => updateConfig('mpc.Q_s_anchor', v)} isNumber desc="-1 = auto fallback" />
+                    <ConfigField label="Smoothness (Q_smooth)" value={config?.mpc.Q_smooth} onChange={(v) => updateConfig('mpc.Q_smooth', v)} isNumber />
+                    <ConfigField label="Attitude (Q_attitude)" value={config?.mpc.Q_attitude} onChange={(v) => updateConfig('mpc.Q_attitude', v)} isNumber />
+                    <ConfigField label="Axis Align (Q_axis_align)" value={config?.mpc.Q_axis_align} onChange={(v) => updateConfig('mpc.Q_axis_align', v)} isNumber />
+                    <ConfigField label="Terminal Position (Q_terminal_pos)" value={config?.mpc.Q_terminal_pos} onChange={(v) => updateConfig('mpc.Q_terminal_pos', v)} isNumber desc="0 = auto" />
+                    <ConfigField label="Terminal Progress (Q_terminal_s)" value={config?.mpc.Q_terminal_s} onChange={(v) => updateConfig('mpc.Q_terminal_s', v)} isNumber desc="0 = auto" />
+                    <ConfigField label="Angular Velocity (q_angular_velocity)" value={config?.mpc.q_angular_velocity} onChange={(v) => updateConfig('mpc.q_angular_velocity', v)} isNumber />
+                    <ConfigField label="Progress Reward" value={config?.mpc.progress_reward} onChange={(v) => updateConfig('mpc.progress_reward', v)} isNumber />
+                    <ConfigField label="Thrust Cost (r_thrust)" value={config?.mpc.r_thrust} onChange={(v) => updateConfig('mpc.r_thrust', v)} isNumber />
+                    <ConfigField label="RW Torque Cost (r_rw_torque)" value={config?.mpc.r_rw_torque} onChange={(v) => updateConfig('mpc.r_rw_torque', v)} isNumber />
+                    <ConfigField label="Thruster L1 Weight" value={config?.mpc.thrust_l1_weight} onChange={(v) => updateConfig('mpc.thrust_l1_weight', v)} isNumber />
+                    <ConfigField label="Thruster Pair Weight" value={config?.mpc.thrust_pair_weight} onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)} isNumber />
+                  </div>
+                </section>
+
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-orange-400">
+                    Path & Limits
+                  </h3>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <ConfigField label="Path Speed (m/s)" value={config?.mpc.path_speed} onChange={(v) => updateConfig('mpc.path_speed', v)} isNumber step={0.001} />
+                    <ConfigField label="Path Speed Min (m/s)" value={config?.mpc.path_speed_min} onChange={(v) => updateConfig('mpc.path_speed_min', v)} isNumber step={0.001} />
+                    <ConfigField label="Path Speed Max (m/s)" value={config?.mpc.path_speed_max} onChange={(v) => updateConfig('mpc.path_speed_max', v)} isNumber step={0.001} />
+                    <ConfigField label="Max Linear Velocity (m/s)" value={config?.mpc.max_linear_velocity} onChange={(v) => updateConfig('mpc.max_linear_velocity', v)} isNumber desc="0 = auto bound" />
+                    <ConfigField label="Max Angular Velocity (rad/s)" value={config?.mpc.max_angular_velocity} onChange={(v) => updateConfig('mpc.max_angular_velocity', v)} isNumber desc="0 = auto bound" />
+                    <ConfigField label="Obstacle Margin (m)" value={config?.mpc.obstacle_margin} onChange={(v) => updateConfig('mpc.obstacle_margin', v)} isNumber step={0.01} />
+                    <ConfigField label="Thruster Hysteresis On" value={config?.mpc.thruster_hysteresis_on} onChange={(v) => updateConfig('mpc.thruster_hysteresis_on', v)} isNumber step={0.001} />
+                    <ConfigField label="Thruster Hysteresis Off" value={config?.mpc.thruster_hysteresis_off} onChange={(v) => updateConfig('mpc.thruster_hysteresis_off', v)} isNumber step={0.001} />
                     <SelectField
                       label="Thruster Type"
                       value={String(config?.mpc.thruster_type ?? 'CON')}
@@ -1324,98 +1037,269 @@ export function MPCSettingsView({ onDirtyChange }: MPCSettingsViewProps) {
                       onChange={(v) => updateConfig('mpc.solver_type', v)}
                       options={[{ label: 'OSQP', value: 'OSQP' }]}
                     />
-                    <ToggleField
-                      label="Enable Delta-U Coupling"
-                      checked={Boolean(config?.mpc.enable_delta_u_coupling)}
-                      onChange={(checked) => updateConfig('mpc.enable_delta_u_coupling', checked)}
-                    />
-                    <ToggleField
-                      label="Enable Gyro Jacobian"
-                      checked={Boolean(config?.mpc.enable_gyro_jacobian)}
-                      onChange={(checked) => updateConfig('mpc.enable_gyro_jacobian', checked)}
-                    />
-                    <ToggleField
-                      label="Verbose MPC Solver Logs"
-                      checked={Boolean(config?.mpc.verbose_mpc)}
-                      onChange={(checked) => updateConfig('mpc.verbose_mpc', checked)}
-                    />
+                    <ToggleField label="Enable Auto State Bounds" checked={Boolean(config?.mpc.enable_auto_state_bounds)} onChange={(checked) => updateConfig('mpc.enable_auto_state_bounds', checked)} />
+                    <ToggleField label="Enable Collision Avoidance" checked={Boolean(config?.mpc.enable_collision_avoidance)} onChange={(checked) => updateConfig('mpc.enable_collision_avoidance', checked)} />
+                    <ToggleField label="Enable Thruster Hysteresis" checked={Boolean(config?.mpc.enable_thruster_hysteresis)} onChange={(checked) => updateConfig('mpc.enable_thruster_hysteresis', checked)} />
+                    <ToggleField label="Enable Delta-U Coupling" checked={Boolean(config?.mpc.enable_delta_u_coupling)} onChange={(checked) => updateConfig('mpc.enable_delta_u_coupling', checked)} />
+                    <ToggleField label="Enable Gyro Jacobian" checked={Boolean(config?.mpc.enable_gyro_jacobian)} onChange={(checked) => updateConfig('mpc.enable_gyro_jacobian', checked)} />
+                    <ToggleField label="Verbose MPC Solver Logs" checked={Boolean(config?.mpc.verbose_mpc)} onChange={(checked) => updateConfig('mpc.verbose_mpc', checked)} />
                   </div>
-                )}
-              </section>
+                </section>
 
-              <section>
-                <button
-                  onClick={() => setShowExpert((v) => !v)}
-                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
-                >
-                  <span className="text-sm font-bold uppercase tracking-wider text-orange-400">
-                    Expert Settings
-                  </span>
-                  {showExpert ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
+                <section>
+                  <button
+                    onClick={() => setShowReference((v) => !v)}
+                    className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
+                  >
+                    <span className="text-sm font-bold uppercase tracking-wider text-emerald-400">
+                      Settings Reference
+                    </span>
+                    <span className="text-xs text-slate-500">{showReference ? 'Hide' : 'Show'}</span>
+                  </button>
 
-                {showExpert && (
-                  <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    <ConfigField
-                      label="Thruster L1 Weight"
-                      value={config?.mpc.thrust_l1_weight}
-                      onChange={(v) => updateConfig('mpc.thrust_l1_weight', v)}
-                      isNumber
-                    />
-                    <ConfigField
-                      label="Thruster Pair Weight"
-                      value={config?.mpc.thrust_pair_weight}
-                      onChange={(v) => updateConfig('mpc.thrust_pair_weight', v)}
-                      isNumber
-                    />
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <button
-                  onClick={() => setShowReference((v) => !v)}
-                  className="w-full flex items-center justify-between rounded border border-slate-800 bg-slate-900 p-3 transition-colors hover:bg-slate-800"
-                >
-                  <span className="text-sm font-bold uppercase tracking-wider text-emerald-400">
-                    Settings Reference
-                  </span>
-                  {showReference ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {showReference && (
-                  <div className="mt-4 space-y-4">
-                    {SETTING_REFERENCE_SECTIONS.map((section) => (
-                      <div
-                        key={section.title}
-                        className="rounded border border-slate-800 bg-slate-900/70 p-4"
-                      >
-                        <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                          {section.title}
-                        </h4>
-                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                          {section.items.map((item) => (
-                            <div
-                              key={item.key}
-                              className="rounded border border-slate-800 bg-slate-950/60 p-3"
-                            >
-                              <div className="mb-1 flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-200">{item.label}</p>
-                                <span className="font-mono text-[10px] text-slate-500">
-                                  {item.key}
-                                </span>
+                  {showReference && (
+                    <div className="mt-4 space-y-4">
+                      {SETTING_REFERENCE_SECTIONS.map((section) => (
+                        <div
+                          key={section.title}
+                          className="rounded border border-slate-800 bg-slate-900/70 p-4"
+                        >
+                          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
+                            {section.title}
+                          </h4>
+                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            {section.items.map((item) => (
+                              <div
+                                key={item.key}
+                                className="rounded border border-slate-800 bg-slate-950/60 p-3"
+                              >
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-slate-200">{item.label}</p>
+                                  <span className="font-mono text-[10px] text-slate-500">
+                                    {item.key}
+                                  </span>
+                                </div>
+                                <p className="mb-1 text-xs text-slate-300">{item.description}</p>
+                                <p className="text-[11px] text-emerald-300/90">{item.impact}</p>
                               </div>
-                              <p className="mb-1 text-xs text-slate-300">{item.description}</p>
-                              <p className="text-[11px] text-emerald-300/90">{item.impact}</p>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            ) : (
+              <>
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-300">
+                    Inherited Shared Values
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <SummaryValueCard label="Prediction Horizon" value={String(config?.mpc.prediction_horizon ?? '--')} />
+                    <SummaryValueCard label="Control Horizon" value={String(config?.mpc.control_horizon ?? '--')} />
+                    <SummaryValueCard label="Solver Time Limit" value={`${String(config?.mpc.solver_time_limit ?? '--')} s`} />
+                    <SummaryValueCard label="Path Speed" value={`${String(config?.mpc.path_speed ?? '--')} m/s`} />
+                    <SummaryValueCard label="Q_contour" value={String(config?.mpc.Q_contour ?? '--')} />
+                    <SummaryValueCard label="Q_progress" value={String(config?.mpc.Q_progress ?? '--')} />
+                    <SummaryValueCard label="Q_attitude" value={String(config?.mpc.Q_attitude ?? '--')} />
+                    <SummaryValueCard label="Q_smooth" value={String(config?.mpc.Q_smooth ?? '--')} />
                   </div>
-                )}
-              </section>
-            </>
+                  <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                    Editing overrides here affects only <span className="font-semibold text-slate-100">{CONTROLLER_PROFILE_LABELS[selectedControllerScope]}</span>.
+                    {sharedParametersEnabled
+                      ? ' Shared mode is enabled, so these override inputs are locked.'
+                      : ' Shared mode is disabled, so controller-specific deltas are editable.'}
+                  </div>
+                </section>
+
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-blue-400">
+                    Common Overrides
+                  </h3>
+                  {sharedParametersEnabled && (
+                    <div className="mb-4 rounded border border-amber-900/40 bg-amber-950/40 p-3 text-xs text-amber-200">
+                      Shared baseline locked. Turn off shared mode in the Shared tab to edit per-controller overrides.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <ConfigField label={`Override Prediction Horizon (shared ${config?.mpc.prediction_horizon ?? '--'})`} value={selectedBaseOverrides.prediction_horizon ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('prediction_horizon', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.prediction_horizon ?? config?.mpc.prediction_horizon ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Control Horizon (shared ${config?.mpc.control_horizon ?? '--'})`} value={selectedBaseOverrides.control_horizon ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('control_horizon', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.control_horizon ?? config?.mpc.control_horizon ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Solver Time Limit (shared ${config?.mpc.solver_time_limit ?? '--'})`} value={selectedBaseOverrides.solver_time_limit ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('solver_time_limit', v)} isNumber step={0.001} desc={`Effective: ${selectedBaseOverrides.solver_time_limit ?? config?.mpc.solver_time_limit ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Q_contour (shared ${config?.mpc.Q_contour ?? '--'})`} value={selectedBaseOverrides.Q_contour ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('Q_contour', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.Q_contour ?? config?.mpc.Q_contour ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Q_progress (shared ${config?.mpc.Q_progress ?? '--'})`} value={selectedBaseOverrides.Q_progress ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('Q_progress', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.Q_progress ?? config?.mpc.Q_progress ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Q_attitude (shared ${config?.mpc.Q_attitude ?? '--'})`} value={selectedBaseOverrides.Q_attitude ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('Q_attitude', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.Q_attitude ?? config?.mpc.Q_attitude ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Q_smooth (shared ${config?.mpc.Q_smooth ?? '--'})`} value={selectedBaseOverrides.Q_smooth ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('Q_smooth', v)} isNumber step={1} desc={`Effective: ${selectedBaseOverrides.Q_smooth ?? config?.mpc.Q_smooth ?? '--'}`} disabled={sharedParametersEnabled} />
+                    <ConfigField label={`Override Path Speed (shared ${config?.mpc.path_speed ?? '--'})`} value={selectedBaseOverrides.path_speed ?? ''} onChange={(v) => updateSelectedProfileBaseOverride('path_speed', v)} isNumber step={0.001} desc={`Effective: ${selectedBaseOverrides.path_speed ?? config?.mpc.path_speed ?? '--'}`} disabled={sharedParametersEnabled} />
+                  </div>
+                </section>
+
+                <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-cyan-400">
+                    Solver-Specific Numerical Settings
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {selectedControllerScope === 'cpp_hybrid_rti_osqp' && (
+                      <ToggleField
+                        label="allow_stale_stage_reuse"
+                        checked={Boolean(selectedProfileSpecific.allow_stale_stage_reuse ?? true)}
+                        onChange={(checked) =>
+                          updateSelectedProfileSpecific('allow_stale_stage_reuse', checked)
+                        }
+                        disabled={sharedParametersEnabled}
+                      />
+                    )}
+                    {selectedControllerScope === 'cpp_nonlinear_rti_osqp' && (
+                      <>
+                        <ConfigField
+                          label="sqp_max_iter"
+                          value={selectedProfileSpecific.sqp_max_iter ?? 2}
+                          onChange={(v) => updateSelectedProfileSpecific('sqp_max_iter', v)}
+                          isNumber
+                          step={1}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="sqp_tol"
+                          value={selectedProfileSpecific.sqp_tol ?? 0.0001}
+                          onChange={(v) => updateSelectedProfileSpecific('sqp_tol', v)}
+                          isNumber
+                          step={0.0001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ToggleField
+                          label="strict_integrity"
+                          checked={Boolean(selectedProfileSpecific.strict_integrity ?? true)}
+                          onChange={(checked) =>
+                            updateSelectedProfileSpecific('strict_integrity', checked)
+                          }
+                          disabled={sharedParametersEnabled}
+                        />
+                      </>
+                    )}
+                    {selectedControllerScope === 'cpp_linearized_rti_osqp' && (
+                      <ConfigField
+                        label="freeze_refresh_interval_steps"
+                        value={selectedProfileSpecific.freeze_refresh_interval_steps ?? 1}
+                        onChange={(v) =>
+                          updateSelectedProfileSpecific('freeze_refresh_interval_steps', v)
+                        }
+                        isNumber
+                        step={1}
+                        disabled={sharedParametersEnabled}
+                      />
+                    )}
+                    {selectedControllerScope === 'cpp_nonlinear_fullnlp_ipopt' && (
+                      <ConfigField
+                        label="ipopt_max_iter"
+                        value={selectedProfileSpecific.ipopt_max_iter ?? 3000}
+                        onChange={(v) => updateSelectedProfileSpecific('ipopt_max_iter', v)}
+                        isNumber
+                        step={1}
+                        disabled={sharedParametersEnabled}
+                      />
+                    )}
+                    {selectedControllerScope === 'cpp_nonlinear_rti_hpipm' && (
+                      <>
+                        <ConfigField
+                          label="acados_max_iter"
+                          value={selectedProfileSpecific.acados_max_iter ?? 1}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                          isNumber
+                          step={1}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_stat"
+                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_eq"
+                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_ineq"
+                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                      </>
+                    )}
+                    {selectedControllerScope === 'cpp_nonlinear_sqp_hpipm' && (
+                      <>
+                        <ConfigField
+                          label="acados_max_iter"
+                          value={selectedProfileSpecific.acados_max_iter ?? 50}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_max_iter', v)}
+                          isNumber
+                          step={1}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_stat"
+                          value={selectedProfileSpecific.acados_tol_stat ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_stat', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_eq"
+                          value={selectedProfileSpecific.acados_tol_eq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_eq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                        <ConfigField
+                          label="acados_tol_ineq"
+                          value={selectedProfileSpecific.acados_tol_ineq ?? 0.01}
+                          onChange={(v) => updateSelectedProfileSpecific('acados_tol_ineq', v)}
+                          isNumber
+                          step={0.001}
+                          disabled={sharedParametersEnabled}
+                        />
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">
+                      Override Diff Preview
+                    </p>
+                    {selectedOverrideDiff.length === 0 &&
+                    Object.keys(selectedProfileSpecific).length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        No controller-specific deltas. This controller inherits the shared baseline.
+                      </p>
+                    ) : (
+                      <div className="space-y-1 font-mono text-xs text-emerald-300">
+                        {selectedOverrideDiff.map(([key, value]) => (
+                          <p key={key}>
+                            {key}: {String(value)}
+                          </p>
+                        ))}
+                        {Object.entries(selectedProfileSpecific)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([key, value]) => (
+                            <p key={key}>profile_specific.{key}: {String(value)}</p>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </>
+            )
           ) : (
             <>
               <section className="rounded border border-slate-800 bg-slate-900/60 p-4">
@@ -1967,6 +1851,20 @@ function SelectField({ label, value, onChange, options, desc, disabled }: Select
         ))}
       </select>
       {desc && <span className="text-[10px] text-slate-400">{desc}</span>}
+    </div>
+  );
+}
+
+interface SummaryValueCardProps {
+  label: string;
+  value: string;
+}
+
+function SummaryValueCard({ label, value }: SummaryValueCardProps) {
+  return (
+    <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-slate-100">{value}</div>
     </div>
   );
 }

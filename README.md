@@ -11,6 +11,7 @@ A local-first satellite simulation and mission control project with:
 - Python 3.11
 - Node.js 20+
 - CMake + Ninja (for C++ extension builds)
+- Network access for the first `make install` so `acados_template` can be fetched from the `acados` source repo
 
 ## Quick Start
 
@@ -21,6 +22,8 @@ make run-app
 ```
 
 Open `http://127.0.0.1:8000`.
+
+If you use the acados controller profiles, you also need the compiled acados C libraries available and `ACADOS_SOURCE_DIR` set at runtime.
 
 ## Core Commands
 

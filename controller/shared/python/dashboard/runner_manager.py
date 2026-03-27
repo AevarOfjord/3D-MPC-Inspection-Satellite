@@ -559,8 +559,8 @@ class RunnerManager:
             "app_config": app_config,
         }
 
-    def get_config(self) -> dict:
-        """Get the current configuration (default + overrides)."""
+    def _build_config_response(self, *, apply_custom: bool) -> dict:
+        """Build config payload for either default-only or active runtime config."""
         from controller.configs.models import MPCParams
         from controller.configs.simulation_config import SimulationConfig
 
@@ -568,7 +568,7 @@ class RunnerManager:
         config = SimulationConfig.create_default()
 
         # Apply overrides if present
-        if self._custom_config:
+        if apply_custom and self._custom_config:
             runtime_overrides = self._extract_runtime_overrides(self._custom_config)
             if runtime_overrides:
                 config = SimulationConfig.create_with_overrides(
@@ -593,8 +593,13 @@ class RunnerManager:
         ui_config["config_meta"] = {
             "config_hash": config_hash,
             "config_version": APP_CONFIG_SCHEMA_VERSION,
-            "overrides_active": bool(self._custom_config),
-            "active_preset_name": self._active_preset_name,
+            "overrides_active": bool(apply_custom and self._custom_config),
+            "active_preset_name": self._active_preset_name if apply_custom else None,
+            "config_source": (
+                self._active_preset_name
+                if apply_custom and self._active_preset_name
+                else "default"
+            ),
             "response_mirrors_enabled": (
                 str(os.environ.get(DISABLE_CONFIG_MIRRORS_ENV, "")).strip().lower()
                 not in {"1", "true", "yes", "on"}
@@ -618,6 +623,14 @@ class RunnerManager:
         }
         ui_config["mpc_parameter_groups"] = MPCParams.parameter_groups()
         return ui_config
+
+    def get_config(self) -> dict:
+        """Get the current configuration (default + active preset overrides)."""
+        return self._build_config_response(apply_custom=True)
+
+    def get_default_config(self) -> dict:
+        """Get the immutable default configuration without applying any preset."""
+        return self._build_config_response(apply_custom=False)
 
     def update_config(self, overrides: dict, active_preset_name: str | None = None):
         """Update the custom configuration overrides."""
@@ -716,6 +729,8 @@ class RunnerManager:
         """Delete a named preset."""
         if name in self._presets:
             del self._presets[name]
+            if self._active_preset_name == name:
+                self.reset_config()
             self._persist_presets()
             return True
         return False
@@ -723,6 +738,7 @@ class RunnerManager:
     def clear_presets(self) -> None:
         """Delete all saved presets."""
         self._presets.clear()
+        self.reset_config()
         self._persist_presets()
 
     def apply_preset(self, name: str) -> dict[str, Any]:
