@@ -8,17 +8,9 @@ The current showcase mission uses a Starlink satellite model as the inspection t
 
 ## Showcase
 
-Mission Studio for authoring inspection routes around a target object:
-
-![Mission Studio authoring view](docs/assets/readme/mission-studio-starlink.png)
-
 Overview of the Mission Studio workspace and authoring tools:
 
 ![Studio overview](docs/assets/readme/Studio-overview.png)
-
-Viewer and playback workflow for running and inspecting simulated missions:
-
-![Viewer playback and telemetry](docs/assets/readme/viewer-starlink-playback.png)
 
 Overview of the Viewer workspace and mission playback controls:
 
