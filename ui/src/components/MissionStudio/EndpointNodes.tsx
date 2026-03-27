@@ -109,12 +109,12 @@ function constrainWireControls(
   const dst = resolveNodePosition(toNodeId, state);
   if (!src || !dst) return controls;
   if (!controls || controls.length < 2) return [src, dst];
-  if (controls.length < 4) {
-    return autoWireControls(fromNodeId, toNodeId, state) ?? [src, dst];
-  }
   const next = controls.map((p) => [p[0], p[1], p[2]] as [number, number, number]);
   next[0] = src;
   next[next.length - 1] = dst;
+  if (next.length < 4) {
+    return next;
+  }
 
   const dist = Math.hypot(dst[0] - src[0], dst[1] - src[1], dst[2] - src[2]);
   if (dist <= 1e-9) return [src];
@@ -244,6 +244,36 @@ function applyLocalWireDeform(
   });
 }
 
+function insertWireWaypoint(
+  controls: [number, number, number][],
+  clickPoint: [number, number, number]
+): [number, number, number][] {
+  if (!controls || controls.length < 2) return controls;
+  const click = new THREE.Vector3(...clickPoint);
+  let bestSeg = 0;
+  let bestDist2 = Number.POSITIVE_INFINITY;
+  let bestPoint = new THREE.Vector3(...controls[0]);
+  for (let i = 0; i < controls.length - 1; i += 1) {
+    const a = new THREE.Vector3(...controls[i]);
+    const b = new THREE.Vector3(...controls[i + 1]);
+    const ab = b.clone().sub(a);
+    const len2 = Math.max(ab.lengthSq(), 1e-9);
+    const t = THREE.MathUtils.clamp(click.clone().sub(a).dot(ab) / len2, 0, 1);
+    const projected = a.clone().add(ab.multiplyScalar(t));
+    const dist2 = projected.distanceToSquared(click);
+    if (dist2 < bestDist2) {
+      bestDist2 = dist2;
+      bestSeg = i;
+      bestPoint = projected;
+    }
+  }
+  return [
+    ...controls.slice(0, bestSeg + 1),
+    [bestPoint.x, bestPoint.y, bestPoint.z] as [number, number, number],
+    ...controls.slice(bestSeg + 1),
+  ];
+}
+
 interface EndpointNodesProps {
   visibleWireIds?: string[] | null;
   connectNodeFilter?: string[] | null;
@@ -257,6 +287,7 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
   const holds = useStudioStore((s) => s.holds);
   const wireDrag = useStudioStore((s) => s.wireDrag);
   const activeTool = useStudioStore((s) => s.activeTool);
+  const editMode = useStudioStore((s) => s.editMode);
   const setWireDrag = useStudioStore((s) => s.setWireDrag);
   const addWire = useStudioStore((s) => s.addWire);
   const setWireWaypoints = useStudioStore((s) => s.setWireWaypoints);
@@ -457,7 +488,26 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
         const pointGeom = new THREE.BufferGeometry().setFromPoints(dotVec);
         return (
           <group key={wire.id}>
-            <Line points={dense} color="#f59e0b" transparent opacity={0.98} lineWidth={1.5} />
+            <Line
+              points={dense}
+              color="#f59e0b"
+              transparent
+              opacity={0.98}
+              lineWidth={1.5}
+              onClick={(e: any) => {
+                if (activeTool !== 'edit' || editMode !== 'add') return;
+                e.stopPropagation();
+                const next = insertWireWaypoint(controls, [e.point.x, e.point.y, e.point.z]);
+                const endpointAnchored = anchorWireEndpoints(next, src, dst);
+                const updated = constraintMode === 'free'
+                  ? endpointAnchored
+                  : constrainWireControls(endpointAnchored, wire.fromNodeId, wire.toNodeId, nodeState);
+                const connectAssembly = assembly.find((item) => item.type === 'connect' && item.wireId === wire.id);
+                setSelectedAssemblyId(connectAssembly?.id ?? null);
+                setSelectedWirePoint(null);
+                setWireWaypoints(wire.id, updated);
+              }}
+            />
             <points geometry={pointGeom}>
               <pointsMaterial color="#fdba74" size={0.06} sizeAttenuation opacity={0.95} transparent />
             </points>
@@ -471,6 +521,16 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isEndpoint) return;
+                    if (editMode === 'delete') {
+                      const next = controls.filter((_, idx) => idx !== i) as [number, number, number][];
+                      const endpointAnchored = anchorWireEndpoints(next, src, dst);
+                      const updated = constraintMode === 'free'
+                        ? endpointAnchored
+                        : constrainWireControls(endpointAnchored, wire.fromNodeId, wire.toNodeId, nodeState);
+                      setWireWaypoints(wire.id, updated);
+                      setSelectedWirePoint(null);
+                      return;
+                    }
                     const connectAssembly = assembly.find((item) => item.type === 'connect' && item.wireId === wire.id);
                     setSelectedAssemblyId(connectAssembly?.id ?? null);
                     setSelectedWirePoint((prev) =>
@@ -479,7 +539,11 @@ export function EndpointNodes({ visibleWireIds = null, connectNodeFilter = null 
                   }}
                 >
                   <sphereGeometry args={[selected ? 0.11 : 0.08, 10, 10]} />
-                  <meshBasicMaterial color={selected ? '#fde047' : '#fbbf24'} opacity={0.95} transparent />
+                  <meshBasicMaterial
+                    color={editMode === 'delete' ? '#f87171' : selected ? '#fde047' : '#fbbf24'}
+                    opacity={0.95}
+                    transparent
+                  />
                 </mesh>
               );
             })}

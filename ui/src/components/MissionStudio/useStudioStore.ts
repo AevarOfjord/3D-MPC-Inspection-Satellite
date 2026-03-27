@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { create } from 'zustand';
 import type { ValidationReportV2 } from '../../api/unifiedMissionApi';
 import { fairCorners } from './splineUtils';
@@ -24,12 +25,19 @@ export interface EllipseShape {
   radiusY: number;
 }
 
+export interface RotationDegrees {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface StudioPath {
   id: string;
   axisSeed: StudioAxisSeed;
   planeA: PlanePose;
   planeB: PlanePose;
   ellipse: EllipseShape;
+  rotationDegrees?: RotationDegrees;
   levelSpacing: number;
   waypointDensity: number;
   densityScope: 'total' | 'snippet';
@@ -130,6 +138,8 @@ export interface StudioState {
   updatePath: (id: string, updates: Partial<StudioPath>) => void;
   updatePathPlane: (id: string, plane: 'planeA' | 'planeB', pose: Partial<PlanePose>) => void;
   updatePathEllipse: (id: string, ellipse: Partial<EllipseShape>) => void;
+  updatePathCenter: (id: string, center: [number, number, number]) => void;
+  updatePathRotation: (id: string, rotation: Partial<RotationDegrees>) => void;
   removePath: (id: string) => void;
   selectPath: (id: string | null) => void;
   setSelectedHandle: (pathId: string, handleId: StudioPath['selectedHandleId']) => void;
@@ -232,6 +242,94 @@ function defaultPlanes(axisSeed: StudioAxisSeed): { planeA: PlanePose; planeB: P
   };
 }
 
+function normalizeRotationDegrees(rotation?: Partial<RotationDegrees> | null): RotationDegrees {
+  return {
+    x: Number.isFinite(rotation?.x) ? Number(rotation?.x) : 0,
+    y: Number.isFinite(rotation?.y) ? Number(rotation?.y) : 0,
+    z: Number.isFinite(rotation?.z) ? Number(rotation?.z) : 0,
+  };
+}
+
+function quatFromWxyz(qwxyz: [number, number, number, number]): THREE.Quaternion {
+  return new THREE.Quaternion(qwxyz[1], qwxyz[2], qwxyz[3], qwxyz[0]);
+}
+
+function quatToWxyz(q: THREE.Quaternion): [number, number, number, number] {
+  return [q.w, q.x, q.y, q.z];
+}
+
+function applyPathRotationDegrees(path: StudioPath, rotation: Partial<RotationDegrees>): StudioPath {
+  const current = normalizeRotationDegrees(path.rotationDegrees);
+  const next = normalizeRotationDegrees({ ...current, ...rotation });
+  if (current.x === next.x && current.y === next.y && current.z === next.z) {
+    return { ...path, rotationDegrees: next };
+  }
+  const center = new THREE.Vector3(
+    0.5 * (path.planeA.position[0] + path.planeB.position[0]),
+    0.5 * (path.planeA.position[1] + path.planeB.position[1]),
+    0.5 * (path.planeA.position[2] + path.planeB.position[2]),
+  );
+  const qDelta = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(
+      THREE.MathUtils.degToRad(next.x - current.x),
+      THREE.MathUtils.degToRad(next.y - current.y),
+      THREE.MathUtils.degToRad(next.z - current.z),
+      'XYZ',
+    )
+  );
+  const rotatePoint = (position: [number, number, number]): [number, number, number] => {
+    const rotated = new THREE.Vector3(...position).sub(center).applyQuaternion(qDelta).add(center);
+    return [rotated.x, rotated.y, rotated.z];
+  };
+  const nextPlaneAQuat = qDelta.clone().multiply(quatFromWxyz(path.planeA.orientation)).normalize();
+  const nextPlaneBQuat = qDelta.clone().multiply(quatFromWxyz(path.planeB.orientation)).normalize();
+  return {
+    ...path,
+    isLocallyEdited: false,
+    rotationDegrees: next,
+    planeA: {
+      ...path.planeA,
+      position: rotatePoint(path.planeA.position),
+      orientation: quatToWxyz(nextPlaneAQuat),
+    },
+    planeB: {
+      ...path.planeB,
+      position: rotatePoint(path.planeB.position),
+      orientation: quatToWxyz(nextPlaneBQuat),
+    },
+  };
+}
+
+function applyPathCenterPosition(path: StudioPath, center: [number, number, number]): StudioPath {
+  const currentCenter = new THREE.Vector3(
+    0.5 * (path.planeA.position[0] + path.planeB.position[0]),
+    0.5 * (path.planeA.position[1] + path.planeB.position[1]),
+    0.5 * (path.planeA.position[2] + path.planeB.position[2]),
+  );
+  const nextCenter = new THREE.Vector3(...center);
+  const delta = nextCenter.sub(currentCenter);
+  if (delta.lengthSq() <= 1e-12) {
+    return path;
+  }
+  const movePoint = (position: [number, number, number]): [number, number, number] => [
+    position[0] + delta.x,
+    position[1] + delta.y,
+    position[2] + delta.z,
+  ];
+  return {
+    ...path,
+    isLocallyEdited: false,
+    planeA: {
+      ...path.planeA,
+      position: movePoint(path.planeA.position),
+    },
+    planeB: {
+      ...path.planeB,
+      position: movePoint(path.planeB.position),
+    },
+  };
+}
+
 export const useStudioStore = create<StudioState>((set, get) => ({
   modelUrl: null,
   referenceObjectPath: null,
@@ -291,6 +389,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
           planeA,
           planeB,
           ellipse: { radiusX: 5, radiusY: 5 },
+          rotationDegrees: { x: 0, y: 0, z: 0 },
           levelSpacing: 0.5,
           waypointDensity: 1,
           densityScope: 'total',
@@ -340,6 +439,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
           : p
       ),
+    })),
+
+  updatePathCenter: (id, center) =>
+    set((s) => ({
+      paths: s.paths.map((p) => (p.id === id ? applyPathCenterPosition(p, center) : p)),
+    })),
+
+  updatePathRotation: (id, rotation) =>
+    set((s) => ({
+      paths: s.paths.map((p) => (p.id === id ? applyPathRotationDegrees(p, rotation) : p)),
     })),
 
   removePath: (id) =>

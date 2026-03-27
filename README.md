@@ -1,19 +1,46 @@
 # Orbital Inspector Satellite Control
 
-A local-first satellite simulation and mission control project with:
+3D inspection-satellite software for designing, simulating, and evaluating autonomous inspection missions around stationary space objects.
 
-- Python backend simulation and APIs
-- Web UI for mission design and runtime control
-- MPC-based control and telemetry outputs
+This project continues the same inspection-satellite idea as my master's project on a planar 2D testbed, but moves the problem into full 3D. Instead of authoring paths on a flat floor, the software stack now supports mission design around orbital targets, simulation playback, telemetry, controller comparisons, and sweep-based MPC tuning.
 
-## Requirements
+The current showcase mission uses a Starlink satellite model as the inspection target. The repo is simulation-first and intended as a public research/demo project rather than as flight software.
+
+## Showcase
+
+Mission Studio for authoring inspection routes around a target object:
+
+![Mission Studio authoring view](docs/assets/readme/mission-studio-starlink.png)
+
+Viewer and playback workflow for running and inspecting simulated missions:
+
+![Viewer playback and telemetry](docs/assets/readme/viewer-starlink-playback.png)
+
+## What This Repo Is
+
+- A local-first mission control and simulation stack for 3D orbital inspection scenarios
+- A browser-based Mission Studio for authoring paths, connections, holds, and target-relative inspection geometry
+- A controller benchmarking environment for comparing multiple MPC profiles against the same mission
+- A telemetry and playback workflow for inspecting solve time, trajectory quality, and actuator behavior
+- A research/demo codebase for experimenting with inspection autonomy around stationary orbital targets
+
+## What This Repo Is Not
+
+- Not flight software
+- Not a packaged end-user product
+- Not a guarantee that every controller profile works out of the box on every machine
+- Not a one-command acados setup; the acados-backed profiles require additional native prerequisites
+
+## Quick Start
+
+### Requirements
 
 - Python 3.11
 - Node.js 20+
-- CMake + Ninja (for C++ extension builds)
+- CMake + Ninja for the C++ extension builds
 - Network access for the first `make install` so `acados_template` can be fetched from the `acados` source repo
 
-## Quick Start
+### Recommended first run
 
 ```bash
 make install
@@ -23,88 +50,77 @@ make run-app
 
 Open `http://127.0.0.1:8000`.
 
-If you use the acados controller profiles, you also need the compiled acados C libraries available and `ACADOS_SOURCE_DIR` set at runtime.
-
-## Core Commands
+### Useful commands
 
 ```bash
-make run            # backend + frontend dev
-make run-app        # backend serving prebuilt ui/dist
-make test           # backend tests
-make lint           # backend + frontend lint
-make docs-check     # markdown link/path accuracy checks
-make package-pyinstaller
-make sim
+make run          # backend + frontend dev servers
+make run-app      # backend serving prebuilt ui/dist
+make sim          # interactive CLI simulation run
+make sweep        # 10x10 dt/horizon MPC sweep with saved winners
+make test         # backend pytest suite
+make lint         # backend + frontend + docs checks
 ```
 
-## Shared Parameter Mode
+### acados profiles
 
-The canonical comparison workflow uses the main config file's `app_config.mpc` block as the shared baseline for all six MPC profiles.
+The OSQP-based profiles are the easiest path for a fresh clone. If you want to use the acados-backed RTI/SQP profiles, you also need:
 
-- Thesis fairness baseline: `scripts/configs/thesis_fairness_baseline.json`
-- Fair comparison mode:
-  - `shared.parameters=true`
-  - all six controllers use the same `mpc` baseline
-  - per-profile files and `mpc_profile_overrides` are inactive
-  - non-empty per-profile deltas are rejected before controller creation
-- Per-profile tuning mode:
-  - `shared.parameters=false`
-  - the active `mpc_core.controller_profile` may apply:
-    - `shared.profile_parameter_files.<profile>`
-    - `mpc_profile_overrides.<profile>.base_overrides`
-    - `mpc_profile_overrides.<profile>.profile_specific`
+- compiled acados C libraries available locally
+- `ACADOS_SOURCE_DIR` set at runtime
 
-Supported external profile delta files:
+## Project Highlights
 
-- `controller/linear/profile_parameters.json`
-- `controller/hybrid/profile_parameters.json`
-- `controller/nonlinear/profile_parameters.json`
-- `controller/nmpc/profile_parameters.json`
-- `controller/acados_rti/profile_parameters.json`
-- `controller/acados_sqp/profile_parameters.json`
+### Mission Studio
 
-Precedence order:
+The UI includes a Mission Studio for constructing inspection routes around a target object. You can place the inspector, create spiral paths, connect path segments, add holds, and validate the route before execution.
 
-1. `app_config.mpc` shared baseline
-2. active profile delta file, if `shared.parameters=false`
-3. active profile embedded deltas in `mpc_profile_overrides`, if `shared.parameters=false`
+### Simulation and Playback
 
-Paper workflow:
+The backend runs the mission through the satellite dynamics and controller stack, writes simulation artifacts under `data/simulation_data/`, and serves playback data back into the viewer for inspection.
 
-- Fair comparison: run all six profiles with `shared.parameters=true` and verify identical `shared_params_hash` values.
-- Feasibility/tuning: run tuned profiles separately with `shared.parameters=false`; do not mix those runs into fairness claims.
+### MPC Controller Comparisons
 
-## Controller Math Docs
+The repo supports six canonical MPC controller profiles:
 
-Authoritative controller mathematics now lives under `MATH/`:
+- Hybrid RTI + OSQP
+- Nonlinear RTI + OSQP
+- Linearized RTI + OSQP
+- Full nonlinear MPC + IPOPT
+- Nonlinear RTI + HPIPM
+- Nonlinear SQP + HPIPM
 
-- `MATH/README.md` for the shared path-following formulation and comparison framing
-- one standalone note per canonical controller profile
+Comparison and fairness workflows are documented in the math notes and benchmark scripts.
 
-Use those files for controller-method writeups and paper drafting.
+### Sweep-Based Tuning
+
+`make sweep` runs a 10x10 grid over controller interval and horizon length, records results for each controller, writes comparison artifacts, and persists the best profile-specific setup when an eligible winner exists.
+
+## Public Demo Caveat
+
+This repository is set up for reproducible local experimentation, but the public demo story is intentionally narrower than the total internal development surface:
+
+- the Starlink mission is a showcase scenario
+- the current public framing is inspection of stationary objects
+- the repo mixes simulation, controller research, UI tooling, and packaging support
+
+Future work is aimed at extending the inspection problem from stationary targets to moving spacecraft in Earth orbit, where the inspector first has to catch up to the object before carrying out the inspection route.
 
 ## Repository Layout
 
-- `controller/` backend package, controller implementations, config models, runtime, and simulation code
-- `controller/shared/cpp/` shared C++ runtime and physics sources
-- `ui/` frontend application
-- `scripts/` operations and release scripts
-- `missions/` saved mission payloads
-- `data/` canonical assets and runtime simulation/dashboard data
-- `tests/` backend test suite
-- `ARCHITECTURE.md` system architecture notes
-- `PHYSICS-ENGINE.md` runtime plant and propagation model
+- `controller/` backend package, simulation runtime, controller implementations, and config models
+- `ui/` frontend application and Mission Studio
+- `missions/` sample mission payloads including `Starlink-FullScan.json`
+- `scripts/` benchmark, packaging, and operational helpers
+- `data/assets/model_files/` canonical 3D assets used by the UI and simulation
+- `tests/` backend tests
 - `MATH/` controller mathematics and comparison notes
 
-## Compatibility Matrix
+## Additional Docs
 
-Supported mission APIs are split between canonical v2 endpoints and retained compatibility endpoints:
-
-- Canonical: `/api/v2/missions/*`
-- Compatibility retained: `/mission_v2`, `/save_mission_v2`, `/saved_missions_v2`
-- Compatibility migration helper retained: `/api/v2/missions/migrate_legacy`
-
-Compatibility endpoints include deprecation headers and are retained to avoid breaking existing UI/test workflows.
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [PHYSICS-ENGINE.md](PHYSICS-ENGINE.md)
+- [MATH/README.md](MATH/README.md)
+- [docs/github-launch-checklist.md](docs/github-launch-checklist.md)
 
 ## Contributing & Policies
 

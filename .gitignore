@@ -61,6 +61,9 @@ htmlcov/
 # Benchmark / Cache artifacts
 .benchmarks/
 .pycache_local/
+data/sweeps/
+codegen_cache/
+CLAUDE.md
 
 # OS
 .DS_Store
@@ -68,6 +71,7 @@ Thumbs.db
 # macOS Finder duplicates ("file 2.ext", "file 2.py", etc.)
 * 2.*
 simulation.log
+firebase-debug.log
 
 # Node
 node_modules/
@@ -93,7 +97,5 @@ src/python/cpp/*.dylib
 # Ignore oversized mission artifacts that are kept out-of-repo
 missions/ISS-FullScan.json
 
-# acados code-generation output (compiled per-profile OCP solvers)
-codegen_cache/acados_rti/
-codegen_cache/acados_sqp/
+# acados code-generation output
 c_generated_code/

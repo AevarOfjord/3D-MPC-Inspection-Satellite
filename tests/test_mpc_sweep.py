@@ -240,8 +240,11 @@ def test_run_controller_sweep_produces_100_rows_and_persists_winner(
     assert summary["winner_eligible"] is True
     assert summary["profile_updated"] is True
     assert persisted["profile"] == "cpp_hybrid_rti_osqp"
-    assert (tmp_path / "cpp_hybrid_rti_osqp_matrix.csv").exists()
-    assert (tmp_path / "cpp_hybrid_rti_osqp_heatmap.png").exists()
+    assert (tmp_path / "data" / "matrix.csv").exists()
+    assert (tmp_path / "data" / "matrix.json").exists()
+    assert (tmp_path / "plots" / "heatmap.png").exists()
+    assert (tmp_path / "plots" / "all_runs_comparison.png").exists()
+    assert (tmp_path / "summary.md").exists()
 
 
 def test_run_mpc_sweep_all_controllers_creates_batch_summary(
@@ -285,4 +288,10 @@ def test_run_mpc_sweep_all_controllers_creates_batch_summary(
     assert len(batch_payload["profiles"]) == len(
         mpc_sweep.SUPPORTED_CONTROLLER_PROFILES
     )
+    assert batch_payload["schema_version"] == "mpc_sweep_v2"
+    first_profile = batch_payload["profiles"][0]
+    assert "rows" not in first_profile
+    assert first_profile["artifact_paths"]["matrix_csv"].startswith("controllers/")
     assert (out_dir / "batch_summary.md").exists()
+    assert (out_dir / "comparisons" / "winner_comparison.png").exists()
+    assert (out_dir / "comparisons" / "winner_summary.csv").exists()
