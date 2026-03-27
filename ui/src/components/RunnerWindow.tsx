@@ -13,22 +13,24 @@ import { useDialog } from '../feedback/feedbackContext';
 import { InlineBanner } from './ui-v4/InlineBanner';
 import { Panel } from './ui-v4/Panel';
 import { StatusPill } from './ui-v4/StatusPill';
-import {
-  CONTROLLER_PROFILE_IDS,
-  CONTROLLER_PROFILE_LABELS,
-} from './mpc-settings/mpcSettingsDefaults';
+import { CONTROLLER_PROFILE_LABELS } from './mpc-settings/mpcSettingsDefaults';
 import type {
   ControllerProfileId,
+  PresetPayload,
   RunnerSystemStatus,
   SettingsConfig,
 } from './mpc-settings/mpcSettingsTypes';
 import { normalizeConfig } from './mpc-settings/mpcSettingsUtils';
+
+const DEFAULT_CONFIG_SOURCE = '__default__';
 
 interface RunnerConfigMeta {
   config_hash: string;
   config_version?: string;
   overrides_active: boolean;
   generated_at: string;
+  active_preset_name?: string | null;
+  config_source?: string;
 }
 
 interface RunnerConfigResponse {
@@ -53,10 +55,6 @@ async function parseApiError(res: Response, fallback: string): Promise<string> {
   } catch {
     return `${fallback} (HTTP ${res.status})`;
   }
-}
-
-function isControllerProfileId(value: string): value is ControllerProfileId {
-  return (CONTROLLER_PROFILE_IDS as string[]).includes(value);
 }
 
 function formatDateTime(value?: string | null): string {
@@ -91,10 +89,11 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [isRefreshingControlPlane, setIsRefreshingControlPlane] = useState(false);
-  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isApplyingConfigSource, setIsApplyingConfigSource] = useState(false);
   const [missions, setMissions] = useState<string[]>([]);
+  const [presets, setPresets] = useState<string[]>([]);
   const [selectedMission, setSelectedMission] = useState<string>('');
-  const [selectedProfile, setSelectedProfile] = useState<ControllerProfileId>('cpp_hybrid_rti_osqp');
+  const [selectedConfigSource, setSelectedConfigSource] = useState<string>(DEFAULT_CONFIG_SOURCE);
   const [configMeta, setConfigMeta] = useState<RunnerConfigMeta | null>(null);
   const [runnerConfig, setRunnerConfig] = useState<SettingsConfig | null>(null);
   const [systemStatus, setSystemStatus] = useState<RunnerSystemStatus | null>(null);
@@ -115,8 +114,8 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
       throw new Error('Runner config returned an unsupported shape');
     }
     setRunnerConfig(normalizedConfig);
-    setSelectedProfile(normalizedConfig.mpc_core.controller_profile);
     setConfigMeta(configData.config_meta ?? null);
+    setSelectedConfigSource(configData.config_meta?.active_preset_name ?? DEFAULT_CONFIG_SOURCE);
 
     const systemRes = await fetch(`${RUNNER_API_URL}/system_status`);
     if (!systemRes.ok) {
@@ -124,6 +123,15 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
     }
     const systemData = (await systemRes.json()) as RunnerSystemStatus;
     setSystemStatus(systemData);
+  };
+
+  const fetchPresets = async () => {
+    const res = await fetch(`${RUNNER_API_URL}/presets`);
+    if (!res.ok) {
+      throw new Error(await parseApiError(res, 'Failed to fetch presets'));
+    }
+    const data = (await res.json()) as { presets?: Record<string, PresetPayload> };
+    setPresets(Object.keys(data.presets ?? {}).sort());
   };
 
   const fetchMissions = async () => {
@@ -147,7 +155,7 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
   const refreshRunnerState = async () => {
     setIsRefreshingControlPlane(true);
     try {
-      await Promise.all([fetchMissions(), fetchControlPlane()]);
+      await Promise.all([fetchMissions(), fetchPresets(), fetchControlPlane()]);
     } catch (err) {
       setLogs((prev) => [...prev, `>>> ${String(err)}\n`]);
     } finally {
@@ -225,36 +233,41 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
     };
   }, []);
 
-  const handleProfileChange = async (nextProfile: ControllerProfileId) => {
-    const previous = selectedProfile;
-    setSelectedProfile(nextProfile);
-    setIsUpdatingProfile(true);
+  const handleConfigSourceChange = async (nextSource: string) => {
+    const previous = selectedConfigSource;
+    setSelectedConfigSource(nextSource);
+    setIsApplyingConfigSource(true);
     try {
-      const res = await fetch(`${RUNNER_API_URL}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schema_version: 'app_config_v3',
-          app_config: {
-            mpc_core: {
-              controller_profile: nextProfile,
-            },
-          },
-        }),
-      });
+      const res =
+        nextSource === DEFAULT_CONFIG_SOURCE
+          ? await fetch(`${RUNNER_API_URL}/config/reset`, { method: 'POST' })
+          : await fetch(`${RUNNER_API_URL}/presets/apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: nextSource }),
+            });
       if (!res.ok) {
-        throw new Error(await parseApiError(res, 'Failed to update controller profile'));
+        throw new Error(
+          await parseApiError(
+            res,
+            nextSource === DEFAULT_CONFIG_SOURCE
+              ? 'Failed to switch runner to default config'
+              : 'Failed to apply preset'
+          )
+        );
       }
       setLogs((prev) => [
         ...prev,
-        `>>> Active controller profile set to ${CONTROLLER_PROFILE_LABELS[nextProfile]}\n`,
+        nextSource === DEFAULT_CONFIG_SOURCE
+          ? '>>> Runner config source set to Default\n'
+          : `>>> Runner config source set to preset "${nextSource}"\n`,
       ]);
       await fetchControlPlane();
     } catch (err) {
-      setSelectedProfile(previous);
+      setSelectedConfigSource(previous);
       setLogs((prev) => [...prev, `>>> ${String(err)}\n`]);
     } finally {
-      setIsUpdatingProfile(false);
+      setIsApplyingConfigSource(false);
     }
   };
 
@@ -284,7 +297,11 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
       setIsRunning(true);
       setLogs((prev) => [
         ...prev,
-        `>>> Start requested for mission "${selectedMission}" using ${CONTROLLER_PROFILE_LABELS[selectedProfile]}\n`,
+        `>>> Start requested for mission "${selectedMission}" using ${
+          configMeta?.active_preset_name
+            ? `preset "${configMeta.active_preset_name}"`
+            : 'Default config'
+        } (${CONTROLLER_PROFILE_LABELS[runnerConfig?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp']})\n`,
       ]);
       await fetchControlPlane();
     } catch (e) {
@@ -311,7 +328,7 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
     setLogs([]);
   };
 
-  const controlsDisabled = isRunning || isStarting || isStopping || isUpdatingProfile;
+  const controlsDisabled = isRunning || isStarting || isStopping || isApplyingConfigSource;
   const logSummary = useMemo(() => {
     let errorCount = 0;
     let warningCount = 0;
@@ -337,7 +354,8 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
     return { errorCount, warningCount, lastStatus };
   }, [logs]);
 
-  const activeProfileLabel = CONTROLLER_PROFILE_LABELS[selectedProfile];
+  const activeProfile = runnerConfig?.mpc_core.controller_profile ?? 'cpp_hybrid_rti_osqp';
+  const activeProfileLabel = CONTROLLER_PROFILE_LABELS[activeProfile as ControllerProfileId];
   const fairnessMode = runnerConfig?.shared.parameters ?? true;
   const systemReady = systemStatus?.ready_for_runner ?? false;
 
@@ -346,8 +364,8 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
       <div className="flex h-full flex-col gap-4 overflow-hidden p-4">
         {hasUnsavedSettings ? (
           <InlineBanner tone="warning" title="Settings Pending Save" className="shrink-0">
-            The active runner still uses the last saved MPC configuration until Settings changes
-            are committed.
+            Runner still uses Default or the last applied preset. Unsaved MPC editor changes do not
+            affect execution.
           </InlineBanner>
         ) : null}
 
@@ -385,35 +403,34 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
                   ))}
                 </select>
                 <div className="text-xs text-[color:var(--v4-text-3)]">
-                  Mission selection feeds the headless run only. Playback stays in Viewer.
+                  Select the mission payload for the next headless run.
                 </div>
               </label>
 
               <label className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--v4-text-3)]">
-                  Controller Profile
+                  Config Source
                 </div>
                 <select
-                  title="Select Controller Profile"
-                  aria-label="Select controller profile"
-                  value={selectedProfile}
+                  title="Select Config Source"
+                  aria-label="Select config source"
+                  value={selectedConfigSource}
                   onChange={(e) => {
                     const nextValue = e.target.value;
-                    if (isControllerProfileId(nextValue)) {
-                      void handleProfileChange(nextValue);
-                    }
+                    void handleConfigSourceChange(nextValue);
                   }}
                   className="w-full rounded-xl border border-[color:var(--v4-border)] bg-[color:var(--v4-surface-2)] py-2 pl-3 pr-3 text-sm text-[color:var(--v4-text-1)] focus:border-cyan-500 focus:outline-none"
                   disabled={controlsDisabled}
                 >
-                  {CONTROLLER_PROFILE_IDS.map((profileId) => (
-                    <option key={profileId} value={profileId}>
-                      {CONTROLLER_PROFILE_LABELS[profileId]}
+                  <option value={DEFAULT_CONFIG_SOURCE}>Default</option>
+                  {presets.map((presetName) => (
+                    <option key={presetName} value={presetName}>
+                      {presetName}
                     </option>
                   ))}
                 </select>
                 <div className="text-xs text-[color:var(--v4-text-3)]">
-                  Active solver profile is stored in runner config and reused until you change it.
+                  Choose the immutable Default config or apply a saved preset for the next run.
                 </div>
               </label>
 
@@ -489,6 +506,14 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
                 </div>
                 <div className="rounded-xl border border-[color:var(--v4-border)]/80 bg-[color:var(--v4-surface-2)]/70 p-3">
                   <dt className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--v4-text-3)]">
+                    Config Source
+                  </dt>
+                  <dd className="mt-1 text-sm text-[color:var(--v4-text-2)]">
+                    {configMeta?.active_preset_name ? `Preset: ${configMeta.active_preset_name}` : 'Default'}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-[color:var(--v4-border)]/80 bg-[color:var(--v4-surface-2)]/70 p-3">
+                  <dt className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--v4-text-3)]">
                     Parameter Mode
                   </dt>
                   <dd className="mt-1 text-sm text-[color:var(--v4-text-2)]">
@@ -546,8 +571,7 @@ export const RunnerView: React.FC<RunnerViewProps> = ({ hasUnsavedSettings = fal
                 <div>
                   <div className="text-sm font-semibold text-slate-200">Headless execution console</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    Select a mission, confirm the controller profile, then launch the run. Use
-                    Viewer for playback after completion.
+                    Select a mission and choose Default or a preset before launching the run.
                   </div>
                 </div>
               </div>

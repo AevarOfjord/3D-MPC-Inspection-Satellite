@@ -3,7 +3,7 @@ Computes and writes the OCP hash files for the acados controllers
 so the existing compiled .dylib files are reused immediately.
 
 Run from repo root:
-    .venv311/bin/python _prime_acados_cache.py
+    .venv311/bin/python scripts/diagnostics/_prime_acados_cache.py
 """
 
 import hashlib

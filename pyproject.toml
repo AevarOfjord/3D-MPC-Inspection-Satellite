@@ -52,7 +52,8 @@ dependencies = [
     # Optimization
     "osqp>=0.6.0",
     "casadi>=3.6.0",
-    "acados_template>=0.2.0",
+    # acados_template is distributed from the acados source repo, not PyPI.
+    "acados_template @ git+https://github.com/acados/acados.git#subdirectory=interfaces/acados_template",
 
     # Web dashboard
     "uvicorn>=0.20.0",

@@ -306,6 +306,13 @@ def get_config():
     return manager.get_config()
 
 
+@router.get("/config/default")
+def get_default_config():
+    """Get the immutable default simulation configuration."""
+    manager = get_runner_manager()
+    return manager.get_default_config()
+
+
 @router.post("/config")
 def update_config(overrides: dict):
     """Update the simulation configuration overrides."""
