@@ -6,11 +6,6 @@ import { StarlinkModel } from '../StarlinkModel';
 export function resolvePreviewModel(modelPath?: string) {
   if (!modelPath) return null;
   const lower = modelPath.toLowerCase();
-  // Preserve OBJ+MTL workflows: when the user selects an OBJ, let ObjWithMtl load
-  // the chosen file set (materials/textures/colors) instead of force-switching models.
-  if (lower.endsWith('.obj')) {
-    return null;
-  }
   if (lower.includes('starlink')) {
     return (
       <StarlinkModel
@@ -21,6 +16,12 @@ export function resolvePreviewModel(modelPath?: string) {
         pivot="origin"
       />
     );
+  }
+  // Preserve OBJ+MTL workflows for arbitrary user assets; only the built-in
+  // Starlink/ISS references are upgraded to canonical GLB previews so Studio
+  // and Viewer show the same target size/pivot.
+  if (lower.endsWith('.obj')) {
+    return null;
   }
   if (lower.includes('iss')) {
     return (

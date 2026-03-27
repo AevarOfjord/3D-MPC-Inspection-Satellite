@@ -10,8 +10,9 @@ import { SatelliteStartNode } from './SatelliteStartNode';
 import { ObstacleObjects } from './ObstacleObjects';
 import { EllipseHandles } from './EllipseHandles';
 import { PointObjects } from './PointObjects';
+import { resolvePreviewModel } from '../viewport/modelPreviewUtils';
 
-function ObjModel({ url }: { url: string }) {
+function RawObjModel({ url }: { url: string }) {
   const obj = useLoader(OBJLoader, url);
   const groupRef = useRef<THREE.Group>(null);
   const setModelBoundingBox = useStudioStore((s) => s.setModelBoundingBox);
@@ -30,6 +31,25 @@ function ObjModel({ url }: { url: string }) {
       <primitive object={obj} />
     </group>
   );
+}
+
+function CanonicalPreviewModel({ modelPath }: { modelPath: string }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const setModelBoundingBox = useStudioStore((s) => s.setModelBoundingBox);
+  const previewModel = resolvePreviewModel(modelPath);
+
+  useEffect(() => {
+    if (!groupRef.current) return;
+    const box = new THREE.Box3().setFromObject(groupRef.current);
+    setModelBoundingBox({
+      min: box.min.toArray() as [number, number, number],
+      max: box.max.toArray() as [number, number, number],
+    });
+  }, [previewModel, setModelBoundingBox]);
+
+  if (!previewModel) return null;
+
+  return <group ref={groupRef}>{previewModel}</group>;
 }
 
 class ModelErrorBoundary extends Component<{ children: ReactNode; onError: () => void }, { hasError: boolean }> {
@@ -67,6 +87,7 @@ function StudioGrid() {
 
 function SceneContents({ onModelError }: { onModelError: () => void }) {
   const modelUrl = useStudioStore((s) => s.modelUrl);
+  const referenceObjectPath = useStudioStore((s) => s.referenceObjectPath);
   const paths = useStudioStore((s) => s.paths);
   const wires = useStudioStore((s) => s.wires);
   const holds = useStudioStore((s) => s.holds);
@@ -129,7 +150,11 @@ function SceneContents({ onModelError }: { onModelError: () => void }) {
       {modelUrl && (
         <ModelErrorBoundary key={modelUrl} onError={onModelError}>
           <Suspense fallback={null}>
-            <ObjModel url={modelUrl} />
+            {resolvePreviewModel(referenceObjectPath ?? undefined) ? (
+              <CanonicalPreviewModel modelPath={referenceObjectPath ?? ''} />
+            ) : (
+              <RawObjModel url={modelUrl} />
+            )}
           </Suspense>
         </ModelErrorBoundary>
       )}
